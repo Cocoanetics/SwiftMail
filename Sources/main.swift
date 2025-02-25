@@ -69,8 +69,55 @@ do {
             // Login with credentials
             try await server.login(username: username, password: password)
             
-            // Select the INBOX mailbox
-            try await server.selectMailbox("INBOX")
+            // Select the INBOX mailbox and get mailbox information
+            let mailboxInfo = try await server.selectMailbox("INBOX")
+            
+            // Display mailbox information
+            logger.notice("📬 Mailbox Information 📬")
+            logger.notice("------------------------")
+            logger.notice("Mailbox: \(mailboxInfo.name)")
+            logger.notice("Total Messages: \(mailboxInfo.messageCount)")
+            logger.notice("Recent Messages: \(mailboxInfo.recentCount)")
+            logger.notice("Unseen Messages: \(mailboxInfo.unseenCount)")
+            if mailboxInfo.firstUnseen > 0 {
+                logger.notice("First Unseen Message: \(mailboxInfo.firstUnseen)")
+            }
+            logger.notice("UID Validity: \(mailboxInfo.uidValidity)")
+            logger.notice("Next UID: \(mailboxInfo.uidNext)")
+            logger.notice("Read-Only: \(mailboxInfo.isReadOnly ? "Yes" : "No")")
+            
+            if !mailboxInfo.availableFlags.isEmpty {
+                logger.notice("Available Flags: \(mailboxInfo.availableFlags.joined(separator: ", "))")
+            }
+            
+            if !mailboxInfo.permanentFlags.isEmpty {
+                logger.notice("Permanent Flags: \(mailboxInfo.permanentFlags.joined(separator: ", "))")
+            }
+            
+            // Also print to console for direct visibility
+            print("\n📬 Mailbox Information 📬")
+            print("------------------------")
+            print("Mailbox: \(mailboxInfo.name)")
+            print("Total Messages: \(mailboxInfo.messageCount)")
+            print("Recent Messages: \(mailboxInfo.recentCount)")
+            print("Unseen Messages: \(mailboxInfo.unseenCount)")
+            if mailboxInfo.firstUnseen > 0 {
+                print("First Unseen Message: \(mailboxInfo.firstUnseen)")
+            } else {
+                print("First Unseen Message: N/A")
+            }
+            print("UID Validity: \(mailboxInfo.uidValidity)")
+            print("Next UID: \(mailboxInfo.uidNext)")
+            print("Read-Only: \(mailboxInfo.isReadOnly ? "Yes" : "No")")
+            
+            if !mailboxInfo.availableFlags.isEmpty {
+                print("Available Flags: \(mailboxInfo.availableFlags.joined(separator: ", "))")
+            }
+            
+            if !mailboxInfo.permanentFlags.isEmpty {
+                print("Permanent Flags: \(mailboxInfo.permanentFlags.joined(separator: ", "))")
+            }
+            print()
             
             // Logout from the server
             try await server.logout()

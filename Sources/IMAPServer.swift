@@ -155,8 +155,9 @@ public class IMAPServer {
     
     /// Select a mailbox
     /// - Parameter mailboxName: The name of the mailbox to select
+    /// - Returns: Information about the selected mailbox
     /// - Throws: An error if the select operation fails
-    public func selectMailbox(_ mailboxName: String) async throws {
+    public func selectMailbox(_ mailboxName: String) async throws -> MailboxInfo {
         guard let channel = self.channel, let responseHandler = self.responseHandler else {
             throw IMAPError.connectionFailed("Channel or response handler not initialized")
         }
@@ -165,7 +166,8 @@ public class IMAPServer {
         logger.debug("Sending SELECT \(mailboxName) command...")
         let selectTag = "A002"
         responseHandler.selectTag = selectTag
-        responseHandler.selectPromise = channel.eventLoop.makePromise(of: Void.self)
+        responseHandler.currentMailboxName = mailboxName
+        responseHandler.selectPromise = channel.eventLoop.makePromise(of: MailboxInfo.self)
         
         let mailbox = MailboxName(Array(mailboxName.utf8))
         let selectCommand = CommandStreamPart.tagged(
@@ -180,9 +182,17 @@ public class IMAPServer {
         }
         
         do {
-            try await responseHandler.selectPromise?.futureResult.get()
+            let mailboxInfo = try await responseHandler.selectPromise?.futureResult.get()
             selectTimeout.cancel()
             logger.info("SELECT successful!")
+            
+            if let mailboxInfo = mailboxInfo {
+                logger.info("Mailbox information: \(mailboxInfo.description)")
+                return mailboxInfo
+            } else {
+                logger.warning("No mailbox information available")
+                throw IMAPError.selectFailed("No mailbox information available")
+            }
         } catch {
             logger.error("SELECT failed: \(error.localizedDescription)")
             throw error
@@ -252,13 +262,17 @@ final class IMAPResponseHandler: ChannelInboundHandler {
     // Promises for different command responses
     var greetingPromise: EventLoopPromise<Void>?
     var loginPromise: EventLoopPromise<Void>?
-    var selectPromise: EventLoopPromise<Void>?
+    var selectPromise: EventLoopPromise<MailboxInfo>?
     var logoutPromise: EventLoopPromise<Void>?
     
     // Tags to identify commands
     var loginTag: String?
     var selectTag: String?
     var logoutTag: String?
+    
+    // Current mailbox being selected
+    var currentMailboxName: String?
+    var currentMailboxInfo: MailboxInfo?
     
     // Logger for IMAP responses
     private let logger = Logger(subsystem: "com.example.SwiftIMAP", category: "IMAPResponseHandler")
@@ -267,11 +281,92 @@ final class IMAPResponseHandler: ChannelInboundHandler {
         let response = self.unwrapInboundIn(data)
         logger.debug("Received: \(String(describing: response))")
         
-        // Check if this is an untagged OK response (server greeting)
+        // Print all responses to console for better visibility
+        print("IMAP RESPONSE: \(response)")
+        
+        // Check if this is an untagged response (server greeting)
         if case .untagged(_) = response, greetingPromise != nil {
             // Server greeting is typically an untagged OK response
             // The first response from the server is the greeting
             greetingPromise?.succeed(())
+        }
+        
+        // Process untagged responses for mailbox information during SELECT
+        if case .untagged(let untaggedResponse) = response, selectPromise != nil, let mailboxName = currentMailboxName {
+            if currentMailboxInfo == nil {
+                currentMailboxInfo = MailboxInfo(name: mailboxName)
+            }
+            
+            // Extract mailbox information from untagged responses
+            switch untaggedResponse {
+            case .conditionalState(let status):
+                // Handle OK responses with response text
+                if case .ok(let responseText) = status {
+                    // Check for response codes in the response text
+                    if let responseCode = responseText.code {
+                        switch responseCode {
+                        case .unseen(let firstUnseen):
+                            currentMailboxInfo?.firstUnseen = Int(firstUnseen)
+                            logger.debug("First unseen message: \(String(describing: firstUnseen))")
+                            
+                        case .uidValidity(let validity):
+                            // Use the BinaryInteger extension to convert UIDValidity to UInt32
+                            currentMailboxInfo?.uidValidity = UInt32(validity)
+                            print("DEBUG: UID validity value: \(UInt32(validity))")
+                            
+                        case .uidNext(let next):
+                            // Use the BinaryInteger extension to convert UID to UInt32
+                            currentMailboxInfo?.uidNext = UInt32(next)
+                            logger.debug("Next UID: \(UInt32(next))")
+                            
+                        case .permanentFlags(let flags):
+                            currentMailboxInfo?.permanentFlags = flags.map { String(describing: $0) }
+                            logger.debug("Permanent flags: \(flags.map { String(describing: $0) }.joined(separator: ", "))")
+                            
+                        case .readOnly:
+                            currentMailboxInfo?.isReadOnly = true
+                            logger.debug("Mailbox is read-only")
+                            
+                        case .readWrite:
+                            currentMailboxInfo?.isReadOnly = false
+                            logger.debug("Mailbox is read-write")
+                            
+                        default:
+                            logger.debug("Unhandled response code: \(String(describing: responseCode))")
+                            break
+                        }
+                    }
+                }
+                
+            case .mailboxData(let mailboxData):
+                // Extract mailbox information from mailbox data
+                switch mailboxData {
+                case .exists(let count):
+                    currentMailboxInfo?.messageCount = Int(count)
+                    logger.debug("Mailbox has \(count) messages")
+                    
+                case .recent(let count):
+                    currentMailboxInfo?.recentCount = Int(count)
+                    logger.debug("Mailbox has \(count) recent messages - RECENT FLAG DETAILS")
+                    print("DEBUG: Mailbox has \(count) recent messages - RECENT FLAG DETAILS")
+                    
+                case .flags(let flags):
+                    currentMailboxInfo?.availableFlags = flags.map { String(describing: $0) }
+                    logger.debug("Available flags: \(flags.map { String(describing: $0) }.joined(separator: ", "))")
+                    
+                default:
+                    logger.debug("Unhandled mailbox data: \(String(describing: mailboxData))")
+                    break
+                }
+                
+            case .messageData(let messageData):
+                // Handle message data if needed
+                logger.debug("Received message data: \(String(describing: messageData))")
+                
+            default:
+                logger.debug("Unhandled untagged response: \(String(describing: untaggedResponse))")
+                break
+            }
         }
         
         // Check if this is a tagged response that matches one of our commands
@@ -288,7 +383,27 @@ final class IMAPResponseHandler: ChannelInboundHandler {
             // Handle select response
             if taggedResponse.tag == selectTag {
                 if case .ok = taggedResponse.state {
-                    selectPromise?.succeed(())
+                    if var mailboxInfo = currentMailboxInfo {
+                        // If we have a first unseen message but unseen count is 0,
+                        // calculate the unseen count as (total messages - first unseen + 1)
+                        if mailboxInfo.firstUnseen > 0 && mailboxInfo.unseenCount == 0 {
+                            mailboxInfo.unseenCount = mailboxInfo.messageCount - mailboxInfo.firstUnseen + 1
+                            logger.debug("Calculated unseen count: \(mailboxInfo.unseenCount)")
+                            // Update the current mailbox info with the modified copy
+                            currentMailboxInfo = mailboxInfo
+                        }
+                        
+                        selectPromise?.succeed(mailboxInfo)
+                    } else if let mailboxName = currentMailboxName {
+                        // If we didn't get any untagged responses with mailbox info, create a basic one
+                        selectPromise?.succeed(MailboxInfo(name: mailboxName))
+                    } else {
+                        selectPromise?.fail(IMAPError.selectFailed("No mailbox information available"))
+                    }
+                    
+                    // Reset for next select
+                    currentMailboxName = nil
+                    currentMailboxInfo = nil
                 } else {
                     selectPromise?.fail(IMAPError.selectFailed(String(describing: taggedResponse.state)))
                 }
@@ -344,5 +459,69 @@ public enum IMAPError: Error, CustomStringConvertible {
         case .timeout:
             return "Operation timed out"
         }
+    }
+}
+
+// MARK: - Mailbox Information
+
+/// Structure to hold information about a mailbox
+public struct MailboxInfo: Sendable {
+    /// The name of the mailbox
+    public let name: String
+    
+    /// The number of messages in the mailbox
+    public var messageCount: Int = 0
+    
+    /// The number of recent messages in the mailbox
+    /// Note: In IMAP, "recent" messages are those that have been delivered since the last time
+    /// any client selected this mailbox. This is different from "unseen" messages.
+    /// A value of 0 is normal if you've accessed this mailbox recently with another client,
+    /// or if no new messages have arrived since the last time the mailbox was selected.
+    public var recentCount: Int = 0
+    
+    /// The number of unseen messages in the mailbox
+    public var unseenCount: Int = 0
+    
+    /// The first unseen message sequence number
+    public var firstUnseen: Int = 0
+    
+    /// The UID validity value
+    /// Note: This is a number that changes when the mailbox's UID numbering is reset.
+    /// It's used by clients to determine if their cached UIDs are still valid.
+    /// A value of 1 is perfectly valid - it just means this is the first UID numbering scheme for this mailbox.
+    public var uidValidity: UInt32 = 0
+    
+    /// The next UID value
+    public var uidNext: UInt32 = 0
+    
+    /// Whether the mailbox is read-only
+    public var isReadOnly: Bool = false
+    
+    /// Flags available in the mailbox
+    public var availableFlags: [String] = []
+    
+    /// Permanent flags that can be set
+    public var permanentFlags: [String] = []
+    
+    /// Initialize a new mailbox info structure
+    /// - Parameter name: The name of the mailbox
+    public init(name: String) {
+        self.name = name
+    }
+    
+    /// A string representation of the mailbox information
+    public var description: String {
+        return """
+        Mailbox: \(name)
+        Messages: \(messageCount)
+        Recent: \(recentCount)
+        Unseen: \(unseenCount)
+        First Unseen: \(firstUnseen > 0 ? String(firstUnseen) : "N/A")
+        UID Validity: \(uidValidity)
+        UID Next: \(uidNext)
+        Read-Only: \(isReadOnly ? "Yes" : "No")
+        Available Flags: \(availableFlags.joined(separator: ", "))
+        Permanent Flags: \(permanentFlags.joined(separator: ", "))
+        """
     }
 } 
