@@ -119,6 +119,43 @@ do {
                         logger.notice("\(headerSummary, privacy: .public)")
                         print(headerSummary)
                     }
+                    
+                    // Example: Fetch all parts of the first unseen message
+                    if let firstHeader = headers.first {
+                        logger.notice("Fetching all parts of message #\(firstHeader.sequenceNumber)...")
+                        print("\nFetching all parts of message #\(firstHeader.sequenceNumber)...")
+                        
+                        do {
+                            let parts = try await server.fetchAllMessageParts(sequenceNumber: firstHeader.sequenceNumber)
+                            
+                            logger.notice("Message has \(parts.count) parts")
+                            print("Message has \(parts.count) parts")
+                            
+                            for part in parts {
+                                let partSummary = """
+                                \(part.description)
+                                """
+                                logger.notice("\(partSummary, privacy: .public)")
+                                print(partSummary)
+                                
+                                // If this is a text part, display the content
+                                if part.contentType.lowercased() == "text" {
+                                    if let textContent = String(data: part.data, encoding: .utf8) {
+                                        // Limit the text content to 200 characters for display
+                                        let limitedContent = textContent.prefix(200)
+                                        print("Content preview: \(limitedContent)...")
+                                        if textContent.count > 200 {
+                                            print("(Content truncated, total length: \(textContent.count) characters)")
+                                        }
+                                    }
+                                }
+                                print("---")
+                            }
+                        } catch {
+                            logger.error("Failed to fetch message parts: \(error.localizedDescription)")
+                            print("Failed to fetch message parts: \(error.localizedDescription)")
+                        }
+                    }
                 } catch {
                     logger.error("Failed to fetch headers: \(error.localizedDescription)")
                     print("Failed to fetch headers: \(error.localizedDescription)")

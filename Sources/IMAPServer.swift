@@ -345,6 +345,117 @@ public final class IMAPServer: @unchecked Sendable {
         }
     }
     
+    /// Fetch a specific part of a message
+    /// - Parameters:
+    ///   - sequenceNumber: The sequence number of the message
+    ///   - partNumber: The part number to fetch (e.g., "1", "1.1", "2", etc.)
+    /// - Returns: The content of the message part as Data
+    /// - Throws: An error if the fetch operation fails
+    public func fetchMessagePart(sequenceNumber: Int, partNumber: String) async throws -> Data {
+        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
+            return (self.channel, self.responseHandler)
+        }
+        
+        guard let channel = channel, let responseHandler = responseHandler else {
+            throw IMAPError.connectionFailed("Channel or response handler not initialized")
+        }
+        
+        // Send fetch command
+        logger.debug("Sending FETCH for message #\(sequenceNumber), part \(partNumber)...")
+        let fetchTag = "A005"
+        responseHandler.fetchPartTag = fetchTag
+        responseHandler.fetchPartPromise = channel.eventLoop.makePromise(of: Data.self)
+        
+        // Create the sequence set for a single message
+        let seqNum = SequenceNumber(rawValue: UInt32(sequenceNumber))
+        let sequenceSet = MessageIdentifierSetNonEmpty(set: MessageIdentifierSet<SequenceNumber>(seqNum))!
+        
+        // Create the FETCH command for the specific part
+        // Convert the part number string to a section path
+        let sectionPath = partNumber.split(separator: ".").map { Int($0)! }
+        let part = SectionSpecifier.Part(sectionPath)
+        let section = SectionSpecifier(part: part)
+        
+        let fetchCommand = CommandStreamPart.tagged(
+            TaggedCommand(tag: fetchTag, command: .fetch(
+                .set(sequenceSet),
+                [.bodySection(peek: true, section, nil)],
+                []
+            ))
+        )
+        try await channel.writeAndFlush(fetchCommand).get()
+        
+        // Set up a timeout for fetch
+        logger.debug("Waiting for FETCH PART response...")
+        let fetchTimeout = channel.eventLoop.scheduleTask(in: .seconds(10)) { [responseHandler] in
+            responseHandler.fetchPartPromise?.fail(IMAPError.timeout)
+        }
+        
+        do {
+            let partData = try await responseHandler.fetchPartPromise?.futureResult.get() ?? Data()
+            fetchTimeout.cancel()
+            logger.info("FETCH PART successful! Retrieved \(partData.count) bytes")
+            
+            return partData
+        } catch {
+            logger.error("FETCH PART failed: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+    }
+    
+    /// Fetch the structure of a message to determine its parts
+    /// - Parameter sequenceNumber: The sequence number of the message
+    /// - Returns: The body structure of the message
+    /// - Throws: An error if the fetch operation fails
+    public func fetchMessageStructure(sequenceNumber: Int) async throws -> BodyStructure {
+        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
+            return (self.channel, self.responseHandler)
+        }
+        
+        guard let channel = channel, let responseHandler = responseHandler else {
+            throw IMAPError.connectionFailed("Channel or response handler not initialized")
+        }
+        
+        // Send fetch command
+        logger.debug("Sending FETCH BODYSTRUCTURE for message #\(sequenceNumber)...")
+        let fetchTag = "A006"
+        responseHandler.fetchStructureTag = fetchTag
+        responseHandler.fetchStructurePromise = channel.eventLoop.makePromise(of: BodyStructure.self)
+        
+        // Create the sequence set for a single message
+        let seqNum = SequenceNumber(rawValue: UInt32(sequenceNumber))
+        let sequenceSet = MessageIdentifierSetNonEmpty(set: MessageIdentifierSet<SequenceNumber>(seqNum))!
+        
+        // Create the FETCH command for the body structure
+        let fetchCommand = CommandStreamPart.tagged(
+            TaggedCommand(tag: fetchTag, command: .fetch(
+                .set(sequenceSet),
+                [.bodyStructure(extensions: true)],
+                []
+            ))
+        )
+        try await channel.writeAndFlush(fetchCommand).get()
+        
+        // Set up a timeout for fetch
+        logger.debug("Waiting for FETCH BODYSTRUCTURE response...")
+        let fetchTimeout = channel.eventLoop.scheduleTask(in: .seconds(10)) { [responseHandler] in
+            responseHandler.fetchStructurePromise?.fail(IMAPError.timeout)
+        }
+        
+        do {
+            guard let structure = try await responseHandler.fetchStructurePromise?.futureResult.get() else {
+                throw IMAPError.fetchFailed("No body structure returned")
+            }
+            fetchTimeout.cancel()
+            logger.info("FETCH BODYSTRUCTURE successful!")
+            
+            return structure
+        } catch {
+            logger.error("FETCH BODYSTRUCTURE failed: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+    }
+    
     /// Parse a string range (e.g., "1:10") into a SequenceSet
     /// - Parameter range: The range string to parse
     /// - Returns: A SequenceSet object
@@ -382,12 +493,16 @@ final class IMAPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
     var selectPromise: EventLoopPromise<MailboxInfo>?
     var logoutPromise: EventLoopPromise<Void>?
     var fetchPromise: EventLoopPromise<[EmailHeader]>?
+    var fetchPartPromise: EventLoopPromise<Data>?
+    var fetchStructurePromise: EventLoopPromise<BodyStructure>?
     
     // Tags to identify commands
     var loginTag: String?
     var selectTag: String?
     var logoutTag: String?
     var fetchTag: String?
+    var fetchPartTag: String?
+    var fetchStructureTag: String?
     
     // Current mailbox being selected
     var currentMailboxName: String?
@@ -395,6 +510,12 @@ final class IMAPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
     
     // Collected email headers
     private var emailHeaders: [EmailHeader] = []
+    
+    // Message part data
+    private var partData: Data = Data()
+    
+    // Message body structure
+    private var bodyStructure: BodyStructure?
     
     // Lock for thread-safe access to mutable properties
     private let lock = NIOLock()
@@ -540,6 +661,46 @@ final class IMAPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
             }
         }
         
+        // Process FETCH responses for message parts
+        if case .fetch(let fetchResponse) = response, lock.withLock({ self.fetchPartPromise != nil }) {
+            switch fetchResponse {
+            case .simpleAttribute(let attribute):
+                if case .body(_, _) = attribute {
+                    // This is a body structure response, not what we're looking for
+                    logger.debug("Received body structure in part fetch")
+                }
+            case .streamingBegin(let kind, let size):
+                if case .body(_, _) = kind {
+                    logger.debug("Received streaming body data of size \(size)")
+                    // We'll collect the data in the streamingBytes case
+                }
+            case .streamingBytes(let data):
+                // Collect the streaming body data
+                lock.withLock {
+                    self.partData.append(Data(data.readableBytesView))
+                }
+            default:
+                break
+            }
+        }
+        
+        // Process FETCH responses for message structure
+        if case .fetch(let fetchResponse) = response, lock.withLock({ self.fetchStructurePromise != nil }) {
+            switch fetchResponse {
+            case .simpleAttribute(let attribute):
+                if case .body(let bodyStructure, _) = attribute {
+                    if case .valid(let structure) = bodyStructure {
+                        // Store the body structure
+                        lock.withLock {
+                            self.bodyStructure = structure
+                        }
+                    }
+                }
+            default:
+                break
+            }
+        }
+        
         // Check if this is a tagged response that matches one of our commands
         if case .tagged(let taggedResponse) = response {
             // Handle login response
@@ -612,6 +773,45 @@ final class IMAPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
                     lock.withLock { 
                         self.fetchPromise?.fail(IMAPError.fetchFailed(String(describing: taggedResponse.state)))
                         self.emailHeaders.removeAll()
+                    }
+                }
+            }
+            
+            // Handle fetch part response
+            if taggedResponse.tag == lock.withLock({ self.fetchPartTag }) {
+                if case .ok = taggedResponse.state {
+                    let partData = lock.withLock { () -> Data in
+                        let data = self.partData
+                        self.partData = Data()
+                        return data
+                    }
+                    lock.withLock { self.fetchPartPromise?.succeed(partData) }
+                } else {
+                    lock.withLock { 
+                        self.fetchPartPromise?.fail(IMAPError.fetchFailed(String(describing: taggedResponse.state)))
+                        self.partData = Data()
+                    }
+                }
+            }
+            
+            // Handle fetch structure response
+            if taggedResponse.tag == lock.withLock({ self.fetchStructureTag }) {
+                if case .ok = taggedResponse.state {
+                    let structure = lock.withLock { () -> BodyStructure? in
+                        let structure = self.bodyStructure
+                        self.bodyStructure = nil
+                        return structure
+                    }
+                    
+                    if let structure = structure {
+                        lock.withLock { self.fetchStructurePromise?.succeed(structure) }
+                    } else {
+                        lock.withLock { self.fetchStructurePromise?.fail(IMAPError.fetchFailed("No body structure found")) }
+                    }
+                } else {
+                    lock.withLock { 
+                        self.fetchStructurePromise?.fail(IMAPError.fetchFailed(String(describing: taggedResponse.state)))
+                        self.bodyStructure = nil
                     }
                 }
             }
@@ -816,6 +1016,8 @@ final class IMAPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
             self.selectPromise?.fail(error)
             self.logoutPromise?.fail(error)
             self.fetchPromise?.fail(error)
+            self.fetchPartPromise?.fail(error)
+            self.fetchStructurePromise?.fail(error)
         }
         
         context.close(promise: nil)
@@ -1090,5 +1292,174 @@ extension MessageID {
     /// Get a String representation of the MessageID
     var stringValue: String {
         String(describing: self)
+    }
+}
+
+// MARK: - Message Part
+
+/// Structure to hold information about a message part
+public struct MessagePart: Sendable {
+    /// The part number (e.g., "1", "1.1", "2", etc.)
+    public let partNumber: String
+    
+    /// The content type of the part
+    public let contentType: String
+    
+    /// The content subtype of the part
+    public let contentSubtype: String
+    
+    /// The content disposition of the part (e.g., "attachment", "inline")
+    public let disposition: String?
+    
+    /// The filename of the part (if available)
+    public let filename: String?
+    
+    /// The content ID of the part (if available)
+    public let contentId: String?
+    
+    /// The content of the part
+    public let data: Data
+    
+    /// The size of the part in bytes
+    public var size: Int {
+        return data.count
+    }
+    
+    /// Initialize a new message part
+    /// - Parameters:
+    ///   - partNumber: The part number
+    ///   - contentType: The content type
+    ///   - contentSubtype: The content subtype
+    ///   - disposition: The content disposition
+    ///   - filename: The filename
+    ///   - contentId: The content ID
+    ///   - data: The content data
+    public init(partNumber: String, contentType: String, contentSubtype: String, disposition: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data) {
+        self.partNumber = partNumber
+        self.contentType = contentType
+        self.contentSubtype = contentSubtype
+        self.disposition = disposition
+        self.filename = filename
+        self.contentId = contentId
+        self.data = data
+    }
+    
+    /// A string representation of the message part
+    public var description: String {
+        return """
+        Part #\(partNumber)
+        Content-Type: \(contentType)/\(contentSubtype)
+        \(disposition != nil ? "Content-Disposition: \(disposition!)" : "")
+        \(filename != nil ? "Filename: \(filename!)" : "")
+        \(contentId != nil ? "Content-ID: \(contentId!)" : "")
+        Size: \(size) bytes
+        """
+    }
+}
+
+extension IMAPServer {
+    /// Fetch all parts of a message
+    /// - Parameter sequenceNumber: The sequence number of the message
+    /// - Returns: An array of message parts
+    /// - Throws: An error if the fetch operation fails
+    public func fetchAllMessageParts(sequenceNumber: Int) async throws -> [MessagePart] {
+        // First, fetch the message structure to determine the parts
+        let structure = try await fetchMessageStructure(sequenceNumber: sequenceNumber)
+        
+        // Parse the structure and fetch each part
+        var parts: [MessagePart] = []
+        
+        // Process the structure recursively
+        try await processStructure(structure, partNumber: "", sequenceNumber: sequenceNumber, parts: &parts)
+        
+        return parts
+    }
+    
+    /// Process a body structure recursively to fetch all parts
+    /// - Parameters:
+    ///   - structure: The body structure to process
+    ///   - partNumber: The current part number prefix
+    ///   - sequenceNumber: The sequence number of the message
+    ///   - parts: The array to store the parts in
+    /// - Throws: An error if the fetch operation fails
+    private func processStructure(_ structure: BodyStructure, partNumber: String, sequenceNumber: Int, parts: inout [MessagePart]) async throws {
+        switch structure {
+        case .singlepart(let part):
+            // Determine the part number
+            let currentPartNumber = partNumber.isEmpty ? "1" : partNumber
+            
+            // Fetch the part content
+            let partData = try await fetchMessagePart(sequenceNumber: sequenceNumber, partNumber: currentPartNumber)
+            
+            // Extract content type and other metadata
+            var contentType = ""
+            var contentSubtype = ""
+            
+            switch part.kind {
+            case .basic(let mediaType):
+                contentType = String(describing: mediaType.topLevel)
+                contentSubtype = String(describing: mediaType.sub)
+            case .text(let text):
+                contentType = "text"
+                contentSubtype = String(describing: text.mediaSubtype)
+            case .message(let message):
+                contentType = "message"
+                contentSubtype = String(describing: message.message)
+            }
+            
+            // Extract disposition and filename if available
+            var disposition: String? = nil
+            var filename: String? = nil
+            
+            if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
+                if let disp = dispAndLang.disposition {
+                    disposition = String(describing: disp)
+                    
+                    for (key, value) in disp.parameters {
+                        if key.lowercased() == "filename" {
+                            filename = value
+                        }
+                    }
+                }
+            }
+            
+            // Set content ID if available
+            let contentId = part.fields.id
+            
+            // Create a message part
+            let messagePart = MessagePart(
+                partNumber: currentPartNumber,
+                contentType: contentType,
+                contentSubtype: contentSubtype,
+                disposition: disposition,
+                filename: filename,
+                contentId: contentId,
+                data: partData
+            )
+            
+            // Add the part to the array
+            parts.append(messagePart)
+            
+        case .multipart(let multipart):
+            // For multipart messages, process each child part
+            for (index, childPart) in multipart.parts.enumerated() {
+                let childPartNumber = partNumber.isEmpty ? "\(index + 1)" : "\(partNumber).\(index + 1)"
+                try await processStructure(childPart, partNumber: childPartNumber, sequenceNumber: sequenceNumber, parts: &parts)
+            }
+            
+            // If this is the root multipart, add an entry for the multipart itself
+            if partNumber.isEmpty {
+                // Create a message part for the multipart container (with empty data)
+                let messagePart = MessagePart(
+                    partNumber: "0",
+                    contentType: "multipart",
+                    contentSubtype: String(describing: multipart.mediaSubtype),
+                    data: Data()
+                )
+                
+                // Add the part to the array
+                parts.append(messagePart)
+            }
+        }
     }
 } 
