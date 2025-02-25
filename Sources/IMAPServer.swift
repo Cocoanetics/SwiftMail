@@ -14,6 +14,24 @@ import NIOConcurrencyHelpers
 // but it's necessary to suppress the Sendable warnings in the code
 extension NIOSSLClientHandler: @unchecked @retroactive Sendable {}
 
+// MARK: - ByteBuffer Extension
+
+extension ByteBuffer {
+    /// Get a String representation of the ByteBuffer
+    var stringValue: String {
+        getString(at: readerIndex, length: readableBytes) ?? ""
+    }
+}
+
+// MARK: - MessageID Extension
+
+extension MessageID {
+    /// Get a String representation of the MessageID
+    var stringValue: String {
+        String(describing: self)
+    }
+}
+
 /// A class that represents an IMAP server connection
 public final class IMAPServer: @unchecked Sendable {
     // MARK: - Properties
@@ -479,6 +497,318 @@ public final class IMAPServer: @unchecked Sendable {
             throw IMAPError.invalidArgument("Invalid sequence range: \(range)")
         }
     }
+    
+    /// Fetch all parts of a message
+    /// - Parameter sequenceNumber: The sequence number of the message
+    /// - Returns: An array of message parts
+    /// - Throws: An error if the fetch operation fails
+    public func fetchAllMessageParts(sequenceNumber: Int) async throws -> [MessagePart] {
+        // First, fetch the message structure to determine the parts
+        let structure = try await fetchMessageStructure(sequenceNumber: sequenceNumber)
+        
+        // Parse the structure and fetch each part
+        var parts: [MessagePart] = []
+        
+        // Process the structure recursively
+        try await processStructure(structure, partNumber: "", sequenceNumber: sequenceNumber, parts: &parts)
+        
+        return parts
+    }
+    
+    /// Process a body structure recursively to fetch all parts
+    /// - Parameters:
+    ///   - structure: The body structure to process
+    ///   - partNumber: The current part number prefix
+    ///   - sequenceNumber: The sequence number of the message
+    ///   - parts: The array to store the parts in
+    /// - Throws: An error if the fetch operation fails
+    private func processStructure(_ structure: BodyStructure, partNumber: String, sequenceNumber: Int, parts: inout [MessagePart]) async throws {
+        switch structure {
+        case .singlepart(let part):
+            // Determine the part number
+            let currentPartNumber = partNumber.isEmpty ? "1" : partNumber
+            
+            // Fetch the part content
+            let partData = try await fetchMessagePart(sequenceNumber: sequenceNumber, partNumber: currentPartNumber)
+            
+            // Extract content type and other metadata
+            var contentType = ""
+            var contentSubtype = ""
+            
+            switch part.kind {
+            case .basic(let mediaType):
+                contentType = String(describing: mediaType.topLevel)
+                contentSubtype = String(describing: mediaType.sub)
+            case .text(let text):
+                contentType = "text"
+                contentSubtype = String(describing: text.mediaSubtype)
+            case .message(let message):
+                contentType = "message"
+                contentSubtype = String(describing: message.message)
+            }
+            
+            // Extract disposition and filename if available
+            var disposition: String? = nil
+            var filename: String? = nil
+            
+            if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
+                if let disp = dispAndLang.disposition {
+                    disposition = String(describing: disp)
+                    
+                    for (key, value) in disp.parameters {
+                        if key.lowercased() == "filename" {
+                            filename = value
+                        }
+                    }
+                }
+            }
+            
+            // Set content ID if available
+            let contentId = part.fields.id
+            
+            // Create a message part
+            let messagePart = MessagePart(
+                partNumber: currentPartNumber,
+                contentType: contentType,
+                contentSubtype: contentSubtype,
+                disposition: disposition,
+                filename: filename,
+                contentId: contentId,
+                data: partData
+            )
+            
+            // Add the part to the array
+            parts.append(messagePart)
+            
+        case .multipart(let multipart):
+            // For multipart messages, process each child part
+            for (index, childPart) in multipart.parts.enumerated() {
+                let childPartNumber = partNumber.isEmpty ? "\(index + 1)" : "\(partNumber).\(index + 1)"
+                try await processStructure(childPart, partNumber: childPartNumber, sequenceNumber: sequenceNumber, parts: &parts)
+            }
+            
+            // If this is the root multipart, add an entry for the multipart itself
+            if partNumber.isEmpty {
+                // Create a message part for the multipart container (with empty data)
+                let messagePart = MessagePart(
+                    partNumber: "0",
+                    contentType: "multipart",
+                    contentSubtype: String(describing: multipart.mediaSubtype),
+                    data: Data()
+                )
+                
+                // Add the part to the array
+                parts.append(messagePart)
+            }
+        }
+    }
+    
+    /// Save decoded message parts to the desktop for debugging
+    /// - Parameters:
+    ///   - sequenceNumber: The sequence number of the message
+    ///   - folderName: Optional folder name to organize the output (defaults to "IMAPParts")
+    /// - Returns: The path to the saved files
+    /// - Throws: An error if the save operation fails
+    public func saveMessagePartsToDesktop(sequenceNumber: Int, folderName: String = "IMAPParts") async throws -> String {
+        // Fetch all parts of the message
+        let parts = try await fetchAllMessageParts(sequenceNumber: sequenceNumber)
+        
+        // Get the path to the desktop
+        let fileManager = FileManager.default
+        let desktopURL = fileManager.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
+        
+        // Create a folder for the message parts
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd_HHmmss"
+        let timestamp = dateFormatter.string(from: Date())
+        
+        let outputFolderName = "\(folderName)_\(sequenceNumber)_\(timestamp)"
+        let outputFolderURL = desktopURL.appendingPathComponent(outputFolderName)
+        
+        try fileManager.createDirectory(at: outputFolderURL, withIntermediateDirectories: true, attributes: nil)
+        
+        // Create an index.html file with links to all parts
+        var indexHTML = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <title>Message #\(sequenceNumber) Parts</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 20px; }
+                table { border-collapse: collapse; width: 100%; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f2f2f2; }
+                tr:nth-child(even) { background-color: #f9f9f9; }
+                .preview { max-height: 100px; overflow: auto; border: 1px solid #eee; padding: 5px; }
+            </style>
+        </head>
+        <body>
+            <h1>Message #\(sequenceNumber) Parts</h1>
+            <p>Total parts: \(parts.count)</p>
+            <table>
+                <tr>
+                    <th>Part #</th>
+                    <th>Content Type</th>
+                    <th>Filename</th>
+                    <th>Size</th>
+                    <th>Preview/Link</th>
+                </tr>
+        """
+        
+        // Save each part to a file
+        for part in parts {
+            // Create a filename for the part
+            let partFileName: String
+            if let filename = part.filename, !filename.isEmpty {
+                // Use the original filename if available
+                partFileName = sanitizeFileName(filename)
+            } else {
+                // Create a filename based on part number and content type
+                let fileExtension = getFileExtension(for: part.contentType, subtype: part.contentSubtype)
+                partFileName = "part_\(part.partNumber.replacingOccurrences(of: ".", with: "_")).\(fileExtension)"
+            }
+            
+            // Save the part to a file
+            let partFileURL = outputFolderURL.appendingPathComponent(partFileName)
+            
+            // Check if this is text content that might need decoding
+            var dataToSave = part.data
+            if part.contentType.lowercased() == "text" {
+                if let textContent = String(data: part.data, encoding: .utf8) {
+                    // Check for Content-Transfer-Encoding header in the part data
+                    let isQuotedPrintable = textContent.contains("Content-Transfer-Encoding: quoted-printable") ||
+                                           textContent.contains("Content-Transfer-Encoding:quoted-printable") ||
+                                           textContent.contains("=3D") || // Common quoted-printable pattern
+                                           textContent.contains("=\r\n") || // Soft line break
+                                           textContent.contains("=\n")    // Soft line break
+                    
+                    if isQuotedPrintable {
+                        logger.debug("Decoding quoted-printable content for part #\(part.partNumber)")
+                        if let decodedContent = textContent.decodeQuotedPrintable() {
+                            if let decodedData = decodedContent.data(using: .utf8) {
+                                dataToSave = decodedData
+                            }
+                        }
+                    }
+                }
+            }
+            
+            try dataToSave.write(to: partFileURL)
+            
+            // Add an entry to the index.html file
+            let preview: String
+            if part.contentType.lowercased() == "text" {
+                // For text parts, show a preview
+                if let textContent = String(data: dataToSave, encoding: .utf8) {
+                    let truncatedContent = textContent.prefix(500)
+                    preview = "<div class='preview'>\(truncatedContent.replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;"))</div>"
+                } else {
+                    preview = "<a href='\(partFileName)'>View</a>"
+                }
+            } else if part.contentType.lowercased() == "image" {
+                // For images, show a thumbnail
+                preview = "<a href='\(partFileName)'><img src='\(partFileName)' height='100'></a>"
+            } else {
+                // For other types, just provide a link
+                preview = "<a href='\(partFileName)'>Download</a>"
+            }
+            
+            indexHTML += """
+                <tr>
+                    <td>\(part.partNumber)</td>
+                    <td>\(part.contentType)/\(part.contentSubtype)</td>
+                    <td>\(part.filename ?? "")</td>
+                    <td>\(formatFileSize(part.size))</td>
+                    <td>\(preview)</td>
+                </tr>
+            """
+        }
+        
+        // Close the HTML
+        indexHTML += """
+            </table>
+        </body>
+        </html>
+        """
+        
+        // Write the index.html file
+        let indexFileURL = outputFolderURL.appendingPathComponent("index.html")
+        try indexHTML.write(to: indexFileURL, atomically: true, encoding: .utf8)
+        
+        // Return the path to the output folder
+        return outputFolderURL.path
+    }
+    
+    /// Sanitize a filename to ensure it's valid
+    /// - Parameter filename: The original filename
+    /// - Returns: A sanitized filename
+    private func sanitizeFileName(_ filename: String) -> String {
+        let invalidCharacters = CharacterSet(charactersIn: ":/\\?%*|\"<>")
+        return filename
+            .components(separatedBy: invalidCharacters)
+            .joined(separator: "_")
+            .replacingOccurrences(of: " ", with: "_")
+    }
+    
+    /// Get a file extension based on content type
+    /// - Parameters:
+    ///   - contentType: The content type
+    ///   - subtype: The content subtype
+    /// - Returns: An appropriate file extension
+    private func getFileExtension(for contentType: String, subtype: String) -> String {
+        let type = contentType.lowercased()
+        let sub = subtype.lowercased()
+        
+        switch (type, sub) {
+        case ("text", "plain"):
+            return "txt"
+        case ("text", "html"):
+            return "html"
+        case ("text", _):
+            return "txt"
+        case ("image", "jpeg"), ("image", "jpg"):
+            return "jpg"
+        case ("image", "png"):
+            return "png"
+        case ("image", "gif"):
+            return "gif"
+        case ("image", _):
+            return "img"
+        case ("application", "pdf"):
+            return "pdf"
+        case ("application", "json"):
+            return "json"
+        case ("application", "javascript"):
+            return "js"
+        case ("application", "zip"):
+            return "zip"
+        case ("application", _):
+            return "bin"
+        case ("audio", "mp3"):
+            return "mp3"
+        case ("audio", "wav"):
+            return "wav"
+        case ("audio", _):
+            return "audio"
+        case ("video", "mp4"):
+            return "mp4"
+        case ("video", _):
+            return "video"
+        default:
+            return "dat"
+        }
+    }
+    
+    /// Format a file size in bytes to a human-readable string
+    /// - Parameter bytes: The size in bytes
+    /// - Returns: A formatted string (e.g., "1.2 KB")
+    private func formatFileSize(_ bytes: Int) -> String {
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useKB, .useMB, .useGB]
+        formatter.countStyle = .file
+        return formatter.string(fromByteCount: Int64(bytes))
+    }
 }
 
 // MARK: - Response Handler
@@ -746,8 +1076,7 @@ final class IMAPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
                     }
                 } else {
                     lock.withLock {
-                        self.selectPromise?.fail(IMAPError.selectFailed(String(describing: taggedResponse.state)))
-                    }
+                        self.selectPromise?.fail(IMAPError.selectFailed(String(describing: taggedResponse.state))) }
                 }
             }
             
@@ -1175,15 +1504,6 @@ public struct MailboxInfo: Sendable {
     }
 }
 
-// MARK: - ByteBuffer Extension
-
-extension ByteBuffer {
-    /// Get a String representation of the ByteBuffer
-    var stringValue: String {
-        getString(at: readerIndex, length: readableBytes) ?? ""
-    }
-}
-
 // MARK: - MIME Header Decoding
 
 /// Utility functions for decoding MIME-encoded email headers
@@ -1238,7 +1558,9 @@ enum MIMEHeaderDecoder {
                 }
             } else if encoding == "Q" {
                 // Quoted-printable encoding
-                decodedText = decodeQuotedPrintable(encodedText)
+                if let decoded = encodedText.decodeQuotedPrintable() {
+                    decodedText = decoded
+                }
             }
             
             if !decodedText.isEmpty {
@@ -1252,46 +1574,52 @@ enum MIMEHeaderDecoder {
         return result
     }
     
-    /// Decode a quoted-printable encoded string
-    /// - Parameter encodedString: The quoted-printable encoded string
-    /// - Returns: The decoded string
-    private static func decodeQuotedPrintable(_ encodedString: String) -> String {
-        var result = ""
-        var i = encodedString.startIndex
+    /// Decode quoted-printable content in message bodies
+    /// - Parameter content: The content to decode
+    /// - Returns: The decoded content
+    public static func decodeQuotedPrintableContent(_ content: String) -> String {
+        // Split the content into lines
+        let lines = content.components(separatedBy: .newlines)
+        var inBody = false
+        var bodyContent = ""
+        var headerContent = ""
         
-        while i < encodedString.endIndex {
-            if encodedString[i] == "=" && i < encodedString.index(encodedString.endIndex, offsetBy: -2) {
-                let hexStart = encodedString.index(after: i)
-                let hexEnd = encodedString.index(hexStart, offsetBy: 2)
-                let hexString = String(encodedString[hexStart..<hexEnd])
-                
-                if let hexValue = UInt8(hexString, radix: 16) {
-                    result.append(Character(UnicodeScalar(hexValue)))
-                } else {
-                    result.append(encodedString[i])
+        // Process each line
+        for line in lines {
+            if !inBody {
+                // Check if we've reached the end of headers
+                if line.isEmpty {
+                    inBody = true
+                    headerContent += line + "\n"
+                    continue
                 }
                 
-                i = hexEnd
-            } else if encodedString[i] == "_" {
-                // In Q encoding, underscore represents a space
-                result.append(" ")
-                i = encodedString.index(after: i)
+                // Add header line
+                headerContent += line + "\n"
+                
+                // Check if this is a Content-Transfer-Encoding header
+                if line.lowercased().contains("content-transfer-encoding:") && 
+                   line.lowercased().contains("quoted-printable") {
+                    // Found quoted-printable encoding
+                    inBody = false
+                }
             } else {
-                result.append(encodedString[i])
-                i = encodedString.index(after: i)
+                // Add body line
+                bodyContent += line + "\n"
             }
         }
         
-        return result
-    }
-}
-
-// MARK: - MessageID Extension
-
-extension MessageID {
-    /// Get a String representation of the MessageID
-    var stringValue: String {
-        String(describing: self)
+        // If we found quoted-printable encoding, decode the body
+        if !bodyContent.isEmpty {
+            // Decode the body content
+            if let decodedBody = bodyContent.decodeQuotedPrintable() {
+                return headerContent + decodedBody
+            }
+        }
+        
+        // If we didn't find quoted-printable encoding or no body content,
+        // try to decode the entire content
+        return content.decodeQuotedPrintable() ?? content
     }
 }
 
@@ -1355,111 +1683,5 @@ public struct MessagePart: Sendable {
         Size: \(size) bytes
         """
     }
-}
-
-extension IMAPServer {
-    /// Fetch all parts of a message
-    /// - Parameter sequenceNumber: The sequence number of the message
-    /// - Returns: An array of message parts
-    /// - Throws: An error if the fetch operation fails
-    public func fetchAllMessageParts(sequenceNumber: Int) async throws -> [MessagePart] {
-        // First, fetch the message structure to determine the parts
-        let structure = try await fetchMessageStructure(sequenceNumber: sequenceNumber)
-        
-        // Parse the structure and fetch each part
-        var parts: [MessagePart] = []
-        
-        // Process the structure recursively
-        try await processStructure(structure, partNumber: "", sequenceNumber: sequenceNumber, parts: &parts)
-        
-        return parts
-    }
-    
-    /// Process a body structure recursively to fetch all parts
-    /// - Parameters:
-    ///   - structure: The body structure to process
-    ///   - partNumber: The current part number prefix
-    ///   - sequenceNumber: The sequence number of the message
-    ///   - parts: The array to store the parts in
-    /// - Throws: An error if the fetch operation fails
-    private func processStructure(_ structure: BodyStructure, partNumber: String, sequenceNumber: Int, parts: inout [MessagePart]) async throws {
-        switch structure {
-        case .singlepart(let part):
-            // Determine the part number
-            let currentPartNumber = partNumber.isEmpty ? "1" : partNumber
-            
-            // Fetch the part content
-            let partData = try await fetchMessagePart(sequenceNumber: sequenceNumber, partNumber: currentPartNumber)
-            
-            // Extract content type and other metadata
-            var contentType = ""
-            var contentSubtype = ""
-            
-            switch part.kind {
-            case .basic(let mediaType):
-                contentType = String(describing: mediaType.topLevel)
-                contentSubtype = String(describing: mediaType.sub)
-            case .text(let text):
-                contentType = "text"
-                contentSubtype = String(describing: text.mediaSubtype)
-            case .message(let message):
-                contentType = "message"
-                contentSubtype = String(describing: message.message)
-            }
-            
-            // Extract disposition and filename if available
-            var disposition: String? = nil
-            var filename: String? = nil
-            
-            if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
-                if let disp = dispAndLang.disposition {
-                    disposition = String(describing: disp)
-                    
-                    for (key, value) in disp.parameters {
-                        if key.lowercased() == "filename" {
-                            filename = value
-                        }
-                    }
-                }
-            }
-            
-            // Set content ID if available
-            let contentId = part.fields.id
-            
-            // Create a message part
-            let messagePart = MessagePart(
-                partNumber: currentPartNumber,
-                contentType: contentType,
-                contentSubtype: contentSubtype,
-                disposition: disposition,
-                filename: filename,
-                contentId: contentId,
-                data: partData
-            )
-            
-            // Add the part to the array
-            parts.append(messagePart)
-            
-        case .multipart(let multipart):
-            // For multipart messages, process each child part
-            for (index, childPart) in multipart.parts.enumerated() {
-                let childPartNumber = partNumber.isEmpty ? "\(index + 1)" : "\(partNumber).\(index + 1)"
-                try await processStructure(childPart, partNumber: childPartNumber, sequenceNumber: sequenceNumber, parts: &parts)
-            }
-            
-            // If this is the root multipart, add an entry for the multipart itself
-            if partNumber.isEmpty {
-                // Create a message part for the multipart container (with empty data)
-                let messagePart = MessagePart(
-                    partNumber: "0",
-                    contentType: "multipart",
-                    contentSubtype: String(describing: multipart.mediaSubtype),
-                    data: Data()
-                )
-                
-                // Add the part to the array
-                parts.append(messagePart)
-            }
-        }
-    }
 } 
+

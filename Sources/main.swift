@@ -151,6 +151,20 @@ do {
                                 }
                                 print("---")
                             }
+                            
+                            // Save all message parts to the desktop
+                            logger.notice("Saving message #\(firstHeader.sequenceNumber) parts to desktop...")
+                            print("\nSaving message #\(firstHeader.sequenceNumber) parts to desktop...")
+                            
+                            do {
+                                let outputPath = try await server.saveMessagePartsToDesktop(sequenceNumber: firstHeader.sequenceNumber)
+                                logger.notice("Message parts saved to: \(outputPath)")
+                                print("Message parts saved to: \(outputPath)")
+                                print("Open this folder to view all message parts and the index.html file")
+                            } catch {
+                                logger.error("Failed to save message parts to desktop: \(error.localizedDescription)")
+                                print("Failed to save message parts to desktop: \(error.localizedDescription)")
+                            }
                         } catch {
                             logger.error("Failed to fetch message parts: \(error.localizedDescription)")
                             print("Failed to fetch message parts: \(error.localizedDescription)")

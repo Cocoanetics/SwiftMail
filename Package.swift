@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version:5.7
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -23,6 +23,8 @@ let package = Package(
                 .product(name: "SwiftDotenv", package: "swift-dotenv"),
                 .product(name: "NIOIMAP", package: "swift-nio-imap"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
-            ]),
+            ],
+            path: "Sources"
+        ),
     ]
 )
