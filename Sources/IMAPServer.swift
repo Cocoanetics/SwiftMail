@@ -686,13 +686,26 @@ public final class IMAPServer: @unchecked Sendable {
                     if isQuotedPrintable {
                         logger.debug("Decoding quoted-printable content for part #\(part.partNumber)")
                         
-                        // Try to decode with auto-detection of charset
-                        if let decodedContent = textContent.decodeQuotedPrintableWithAutoDetection() {
+                        // Extract charset from Content-Type header if available
+                        var charset = "utf-8" // Default charset
+                        let contentTypePattern = "Content-Type:.*?charset=([^\\s;\"']+)"
+                        if let range = textContent.range(of: contentTypePattern, options: .regularExpression, range: nil, locale: nil),
+                           let charsetRange = textContent[range].range(of: "charset=([^\\s;\"']+)", options: .regularExpression) {
+                            charset = String(textContent[charsetRange].replacingOccurrences(of: "charset=", with: ""))
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                                .replacingOccurrences(of: "\"", with: "")
+                                .replacingOccurrences(of: "'", with: "")
+                            logger.debug("Found charset in Content-Type: \(charset)")
+                        }
+                        
+                        // Use the extracted charset for decoding
+                        let encoding = String.encodingFromCharset(charset)
+                        if let decodedContent = textContent.decodeQuotedPrintable(encoding: encoding) {
                             if let decodedData = decodedContent.data(using: .utf8) {
                                 dataToSave = decodedData
                             }
                         } else {
-                            // Fallback to the MIMEHeaderDecoder if auto-detection fails
+                            // Fallback to the MIMEHeaderDecoder if specific charset decoding fails
                             let decodedContent = MIMEHeaderDecoder.decodeQuotedPrintableContent(textContent)
                             if let decodedData = decodedContent.data(using: .utf8) {
                                 dataToSave = decodedData
@@ -1611,6 +1624,9 @@ enum MIMEHeaderDecoder {
                 if line.lowercased().contains("content-type:") && line.lowercased().contains("charset=") {
                     if let range = line.range(of: "charset=([^\\s;\"']+)", options: .regularExpression) {
                         let charsetString = line[range].replacingOccurrences(of: "charset=", with: "")
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                            .replacingOccurrences(of: "\"", with: "")
+                            .replacingOccurrences(of: "'", with: "")
                         contentEncoding = String.encodingFromCharset(charsetString)
                     }
                 }
@@ -1639,8 +1655,13 @@ enum MIMEHeaderDecoder {
         }
         
         // If we didn't find quoted-printable encoding or no body content,
-        // try to decode the entire content with auto-detection
-        return content.decodeQuotedPrintableWithAutoDetection() ?? content
+        // try to decode the entire content with the detected charset
+        if let decodedContent = content.decodeQuotedPrintable(encoding: contentEncoding) {
+            return decodedContent
+        }
+        
+        // Last resort: try with UTF-8
+        return content.decodeQuotedPrintable() ?? content
     }
 }
 

@@ -97,7 +97,7 @@ do {
                 
                 // Create a range string for unseen messages
                 // If there are too many unseen messages, limit to the first 10
-                let maxUnseenToFetch = min(mailboxInfo.unseenCount, 10)
+                let maxUnseenToFetch = min(mailboxInfo.unseenCount, 100)
                 let lastUnseen = mailboxInfo.firstUnseen + maxUnseenToFetch - 1
                 let unseenRange = "\(mailboxInfo.firstUnseen):\(lastUnseen)"
                 
