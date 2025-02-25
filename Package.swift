@@ -5,9 +5,14 @@ import PackageDescription
 
 let package = Package(
     name: "SwiftIMAP",
+    platforms: [
+        .macOS("11.0")
+    ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
         .package(url: "https://github.com/thebarndog/swift-dotenv", from: "2.1.0"),
+        .package(url: "https://github.com/apple/swift-nio-imap", branch: "main"),
+        .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.0.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -16,6 +21,8 @@ let package = Package(
             name: "SwiftIMAP",
             dependencies: [
                 .product(name: "SwiftDotenv", package: "swift-dotenv"),
+                .product(name: "NIOIMAP", package: "swift-nio-imap"),
+                .product(name: "NIOSSL", package: "swift-nio-ssl"),
             ]),
     ]
 )
