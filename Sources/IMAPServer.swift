@@ -685,7 +685,15 @@ public final class IMAPServer: @unchecked Sendable {
                     
                     if isQuotedPrintable {
                         logger.debug("Decoding quoted-printable content for part #\(part.partNumber)")
-                        if let decodedContent = textContent.decodeQuotedPrintable() {
+                        
+                        // Try to decode with auto-detection of charset
+                        if let decodedContent = textContent.decodeQuotedPrintableWithAutoDetection() {
+                            if let decodedData = decodedContent.data(using: .utf8) {
+                                dataToSave = decodedData
+                            }
+                        } else {
+                            // Fallback to the MIMEHeaderDecoder if auto-detection fails
+                            let decodedContent = MIMEHeaderDecoder.decodeQuotedPrintableContent(textContent)
                             if let decodedData = decodedContent.data(using: .utf8) {
                                 dataToSave = decodedData
                             }
@@ -1538,27 +1546,28 @@ enum MIMEHeaderDecoder {
             
             var decodedText = ""
             
+            // Convert charset to String.Encoding
+            let stringEncoding = String.encodingFromCharset(charset)
+            
             // Decode based on encoding type
             if encoding == "B" {
                 // Base64 encoding
                 if let data = Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters),
-                   let decoded = String(data: data, encoding: .utf8) {
+                   let decoded = String(data: data, encoding: stringEncoding) {
                     decodedText = decoded
                 } else {
-                    // Try with the specified charset if UTF-8 fails
-                    let cfEncoding = CFStringConvertIANACharSetNameToEncoding(charset as CFString)
-                    if cfEncoding != kCFStringEncodingInvalidId {
-                        let nsEncoding = CFStringConvertEncodingToNSStringEncoding(cfEncoding)
-                        let encoding = String.Encoding(rawValue: nsEncoding)
-                        if let data = Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters),
-                           let decoded = String(data: data, encoding: encoding) {
-                            decodedText = decoded
-                        }
+                    // Try with UTF-8 if the specified charset fails
+                    if let data = Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters),
+                       let decoded = String(data: data, encoding: .utf8) {
+                        decodedText = decoded
                     }
                 }
             } else if encoding == "Q" {
                 // Quoted-printable encoding
-                if let decoded = encodedText.decodeQuotedPrintable() {
+                if let decoded = encodedText.decodeQuotedPrintable(encoding: stringEncoding) {
+                    decodedText = decoded
+                } else if let decoded = encodedText.decodeQuotedPrintable() {
+                    // Fallback to UTF-8 if the specified charset fails
                     decodedText = decoded
                 }
             }
@@ -1583,6 +1592,7 @@ enum MIMEHeaderDecoder {
         var inBody = false
         var bodyContent = ""
         var headerContent = ""
+        var contentEncoding: String.Encoding = .utf8
         
         // Process each line
         for line in lines {
@@ -1596,6 +1606,14 @@ enum MIMEHeaderDecoder {
                 
                 // Add header line
                 headerContent += line + "\n"
+                
+                // Check for Content-Type header with charset
+                if line.lowercased().contains("content-type:") && line.lowercased().contains("charset=") {
+                    if let range = line.range(of: "charset=([^\\s;\"']+)", options: .regularExpression) {
+                        let charsetString = line[range].replacingOccurrences(of: "charset=", with: "")
+                        contentEncoding = String.encodingFromCharset(charsetString)
+                    }
+                }
                 
                 // Check if this is a Content-Transfer-Encoding header
                 if line.lowercased().contains("content-transfer-encoding:") && 
@@ -1611,15 +1629,18 @@ enum MIMEHeaderDecoder {
         
         // If we found quoted-printable encoding, decode the body
         if !bodyContent.isEmpty {
-            // Decode the body content
-            if let decodedBody = bodyContent.decodeQuotedPrintable() {
+            // Decode the body content with the detected encoding
+            if let decodedBody = bodyContent.decodeQuotedPrintable(encoding: contentEncoding) {
+                return headerContent + decodedBody
+            } else if let decodedBody = bodyContent.decodeQuotedPrintable() {
+                // Fallback to UTF-8 if the specified charset fails
                 return headerContent + decodedBody
             }
         }
         
         // If we didn't find quoted-printable encoding or no body content,
-        // try to decode the entire content
-        return content.decodeQuotedPrintable() ?? content
+        // try to decode the entire content with auto-detection
+        return content.decodeQuotedPrintableWithAutoDetection() ?? content
     }
 }
 
