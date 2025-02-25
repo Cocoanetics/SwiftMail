@@ -111,7 +111,7 @@ public class IMAPServer {
             try await responseHandler.greetingPromise?.futureResult.get()
             greetingTimeout.cancel()
         } catch {
-            logger.error("Failed to receive server greeting: \(error.localizedDescription)")
+            logger.error("Failed to receive server greeting: \(error.localizedDescription, privacy: .public)")
             throw error
         }
     }
@@ -148,7 +148,7 @@ public class IMAPServer {
             loginTimeout.cancel()
             logger.info("Login successful!")
         } catch {
-            logger.error("Login failed: \(error.localizedDescription)")
+            logger.error("Login failed: \(error.localizedDescription, privacy: .public)")
             throw error
         }
     }
@@ -194,7 +194,7 @@ public class IMAPServer {
                 throw IMAPError.selectFailed("No mailbox information available")
             }
         } catch {
-            logger.error("SELECT failed: \(error.localizedDescription)")
+            logger.error("SELECT failed: \(error.localizedDescription, privacy: .public)")
             throw error
         }
     }
@@ -228,7 +228,7 @@ public class IMAPServer {
             logoutTimeout.cancel()
             logger.info("LOGOUT successful!")
         } catch {
-            logger.error("LOGOUT failed: \(error.localizedDescription)")
+            logger.error("LOGOUT failed: \(error.localizedDescription, privacy: .public)")
             // Continue with closing even if logout fails
             throw error
         }
@@ -251,6 +251,83 @@ public class IMAPServer {
             logger.info("Connection already closed by server")
         }
     }
+    
+    /// Fetch headers for messages in the selected mailbox
+    /// - Parameters:
+    ///   - range: The range of message sequence numbers to fetch (e.g., "1:10" for first 10 messages)
+    ///   - limit: Optional limit on the number of headers to return
+    /// - Returns: An array of email headers
+    /// - Throws: An error if the fetch operation fails
+    public func fetchHeaders(range: String, limit: Int? = nil) async throws -> [EmailHeader] {
+        guard let channel = self.channel, let responseHandler = self.responseHandler else {
+            throw IMAPError.connectionFailed("Channel or response handler not initialized")
+        }
+        
+        // Send fetch command
+        logger.debug("Sending FETCH \(range) command...")
+        let fetchTag = "A004"
+        responseHandler.fetchTag = fetchTag
+        responseHandler.fetchPromise = channel.eventLoop.makePromise(of: [EmailHeader].self)
+        
+        // Parse the range string into a sequence set
+        let sequenceSet = try parseSequenceSet(range)
+        
+        // Create the FETCH command for headers
+        let fetchCommand = CommandStreamPart.tagged(
+            TaggedCommand(tag: fetchTag, command: .fetch(
+                .set(sequenceSet),
+                [.envelope, .bodyStructure(extensions: false), .bodySection(peek: true, .header, nil)],
+                []
+            ))
+        )
+        try await channel.writeAndFlush(fetchCommand).get()
+        
+        // Set up a timeout for fetch
+        logger.debug("Waiting for FETCH response...")
+        let fetchTimeout = channel.eventLoop.scheduleTask(in: .seconds(10)) {
+            responseHandler.fetchPromise?.fail(IMAPError.timeout)
+        }
+        
+        do {
+            var headers = try await responseHandler.fetchPromise?.futureResult.get() ?? []
+            fetchTimeout.cancel()
+            logger.info("FETCH successful! Retrieved \(headers.count) headers")
+            
+            // Apply limit if specified
+            if let limit = limit, headers.count > limit {
+                headers = Array(headers.prefix(limit))
+            }
+            
+            return headers
+        } catch {
+            logger.error("FETCH failed: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+    }
+    
+    /// Parse a string range (e.g., "1:10") into a SequenceSet
+    /// - Parameter range: The range string to parse
+    /// - Returns: A SequenceSet object
+    /// - Throws: An error if the range string is invalid
+    private func parseSequenceSet(_ range: String) throws -> MessageIdentifierSetNonEmpty<SequenceNumber> {
+        // Split the range by colon
+        let parts = range.split(separator: ":")
+        
+        if parts.count == 1, let number = UInt32(parts[0]) {
+            // Single number
+            let sequenceNumber = SequenceNumber(rawValue: number)
+            let set = MessageIdentifierSet<SequenceNumber>(sequenceNumber)
+            return MessageIdentifierSetNonEmpty(set: set)!
+        } else if parts.count == 2, let start = UInt32(parts[0]), let end = UInt32(parts[1]) {
+            // Range
+            let startSeq = SequenceNumber(rawValue: start)
+            let endSeq = SequenceNumber(rawValue: end)
+            let range = MessageIdentifierRange(startSeq...endSeq)
+            return MessageIdentifierSetNonEmpty(range: range)
+        } else {
+            throw IMAPError.invalidArgument("Invalid sequence range: \(range)")
+        }
+    }
 }
 
 // MARK: - Response Handler
@@ -264,25 +341,30 @@ final class IMAPResponseHandler: ChannelInboundHandler {
     var loginPromise: EventLoopPromise<Void>?
     var selectPromise: EventLoopPromise<MailboxInfo>?
     var logoutPromise: EventLoopPromise<Void>?
+    var fetchPromise: EventLoopPromise<[EmailHeader]>?
     
     // Tags to identify commands
     var loginTag: String?
     var selectTag: String?
     var logoutTag: String?
+    var fetchTag: String?
     
     // Current mailbox being selected
     var currentMailboxName: String?
     var currentMailboxInfo: MailboxInfo?
+    
+    // Collected email headers
+    private var emailHeaders: [EmailHeader] = []
     
     // Logger for IMAP responses
     private let logger = Logger(subsystem: "com.example.SwiftIMAP", category: "IMAPResponseHandler")
     
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = self.unwrapInboundIn(data)
-        logger.debug("Received: \(String(describing: response))")
+        logger.debug("Received: \(String(describing: response), privacy: .public)")
         
-        // Print all responses to console for better visibility
-        print("IMAP RESPONSE: \(response)")
+        // Log all responses for better visibility
+        logger.debug("IMAP RESPONSE: \(String(describing: response), privacy: .public)")
         
         // Check if this is an untagged response (server greeting)
         if case .untagged(_) = response, greetingPromise != nil {
@@ -307,21 +389,21 @@ final class IMAPResponseHandler: ChannelInboundHandler {
                         switch responseCode {
                         case .unseen(let firstUnseen):
                             currentMailboxInfo?.firstUnseen = Int(firstUnseen)
-                            logger.debug("First unseen message: \(String(describing: firstUnseen))")
+                            logger.debug("First unseen message: \(Int(firstUnseen))")
                             
                         case .uidValidity(let validity):
                             // Use the BinaryInteger extension to convert UIDValidity to UInt32
                             currentMailboxInfo?.uidValidity = UInt32(validity)
-                            print("DEBUG: UID validity value: \(UInt32(validity))")
+                            logger.debug("UID validity value: \(UInt32(validity), privacy: .public)")
                             
                         case .uidNext(let next):
                             // Use the BinaryInteger extension to convert UID to UInt32
                             currentMailboxInfo?.uidNext = UInt32(next)
-                            logger.debug("Next UID: \(UInt32(next))")
+                            logger.debug("Next UID: \(UInt32(next), format: .decimal, privacy: .public)")
                             
                         case .permanentFlags(let flags):
                             currentMailboxInfo?.permanentFlags = flags.map { String(describing: $0) }
-                            logger.debug("Permanent flags: \(flags.map { String(describing: $0) }.joined(separator: ", "))")
+                            logger.debug("Permanent flags: \(flags.map { String(describing: $0) }.joined(separator: ", "), privacy: .public)")
                             
                         case .readOnly:
                             currentMailboxInfo?.isReadOnly = true
@@ -343,29 +425,50 @@ final class IMAPResponseHandler: ChannelInboundHandler {
                 switch mailboxData {
                 case .exists(let count):
                     currentMailboxInfo?.messageCount = Int(count)
-                    logger.debug("Mailbox has \(count) messages")
+                    logger.debug("Mailbox has \(count, format: .decimal, privacy: .public) messages")
                     
                 case .recent(let count):
                     currentMailboxInfo?.recentCount = Int(count)
                     logger.debug("Mailbox has \(count) recent messages - RECENT FLAG DETAILS")
-                    print("DEBUG: Mailbox has \(count) recent messages - RECENT FLAG DETAILS")
                     
                 case .flags(let flags):
                     currentMailboxInfo?.availableFlags = flags.map { String(describing: $0) }
-                    logger.debug("Available flags: \(flags.map { String(describing: $0) }.joined(separator: ", "))")
+                    logger.debug("Available flags: \(flags.map { String(describing: $0) }.joined(separator: ", "), privacy: .public)")
                     
                 default:
-                    logger.debug("Unhandled mailbox data: \(String(describing: mailboxData))")
+                    logger.debug("Unhandled mailbox data: \(String(describing: mailboxData), privacy: .public)")
                     break
                 }
                 
             case .messageData(let messageData):
                 // Handle message data if needed
-                logger.debug("Received message data: \(String(describing: messageData))")
+                logger.debug("Received message data: \(String(describing: messageData), privacy: .public)")
                 
             default:
-                logger.debug("Unhandled untagged response: \(String(describing: untaggedResponse))")
+                logger.debug("Unhandled untagged response: \(String(describing: untaggedResponse), privacy: .public)")
                 break
+            }
+        }
+        
+        // Process FETCH responses for email headers
+        if case .fetch(let fetchResponse) = response, fetchPromise != nil {
+            switch fetchResponse {
+            case .simpleAttribute(let attribute):
+                // Process the attribute directly
+                processMessageAttribute(attribute, sequenceNumber: nil)
+                
+            case .start(let sequenceNumber):
+                // Create a new email header for this sequence number
+                let header = EmailHeader(sequenceNumber: Int(sequenceNumber))
+                emailHeaders.append(header)
+                
+            default:
+                break
+            }
+        } else if case .untagged(let untaggedResponse) = response, fetchPromise != nil {
+            if case .messageData(let messageData) = untaggedResponse {
+                // Handle other message data if needed
+                logger.debug("Received message data: \(String(describing: messageData), privacy: .public)")
             }
         }
         
@@ -417,17 +520,207 @@ final class IMAPResponseHandler: ChannelInboundHandler {
                     logoutPromise?.fail(IMAPError.logoutFailed(String(describing: taggedResponse.state)))
                 }
             }
+            
+            // Handle fetch response
+            if taggedResponse.tag == fetchTag {
+                if case .ok = taggedResponse.state {
+                    fetchPromise?.succeed(emailHeaders)
+                    // Reset for next fetch
+                    emailHeaders.removeAll()
+                } else {
+                    fetchPromise?.fail(IMAPError.fetchFailed(String(describing: taggedResponse.state)))
+                    emailHeaders.removeAll()
+                }
+            }
         }
     }
     
+    /// Format an address for display
+    /// - Parameter address: The address to format
+    /// - Returns: A formatted string representation of the address
+    private func formatAddress(_ address: EmailAddressListElement) -> String {
+        switch address {
+        case .singleAddress(let emailAddress):
+            let name = emailAddress.personName?.stringValue ?? ""
+            let mailbox = emailAddress.mailbox?.stringValue ?? ""
+            let host = emailAddress.host?.stringValue ?? ""
+            
+            if !name.isEmpty {
+                return "\"\(name)\" <\(mailbox)@\(host)>"
+            } else {
+                return "\(mailbox)@\(host)"
+            }
+            
+        case .group(let group):
+            let groupName = group.groupName.stringValue
+            let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
+            return "\(groupName): \(members)"
+        }
+    }
+    
+    /// Parse header data into an EmailHeader object
+    /// - Parameters:
+    ///   - data: The raw header data
+    ///   - header: The EmailHeader object to update
+    private func parseHeaderData(_ data: ByteBuffer, into header: inout EmailHeader) {
+        // Only parse if we don't already have this information from the envelope
+        if header.subject.isEmpty || header.from.isEmpty || header.date.isEmpty {
+            guard let headerString = data.getString(at: 0, length: data.readableBytes) else {
+                return
+            }
+            
+            // Parse header fields
+            let lines = headerString.split(separator: "\r\n")
+            var currentField = ""
+            var currentValue = ""
+            
+            for line in lines {
+                let trimmedLine = String(line).trimmingCharacters(in: .whitespaces)
+                
+                // Check if this is a continuation of the previous field
+                if trimmedLine.first?.isWhitespace == true {
+                    currentValue += " " + trimmedLine.trimmingCharacters(in: .whitespaces)
+                } else if let colonIndex = trimmedLine.firstIndex(of: ":") {
+                    // Process the previous field if there was one
+                    if !currentField.isEmpty {
+                        processHeaderField(field: currentField, value: currentValue, header: &header)
+                    }
+                    
+                    // Start a new field
+                    currentField = String(trimmedLine[..<colonIndex]).lowercased()
+                    currentValue = String(trimmedLine[trimmedLine.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
+                }
+            }
+            
+            // Process the last field
+            if !currentField.isEmpty {
+                processHeaderField(field: currentField, value: currentValue, header: &header)
+            }
+        }
+    }
+    
+    /// Process a header field and update the EmailHeader object
+    /// - Parameters:
+    ///   - field: The field name
+    ///   - value: The field value
+    ///   - header: The EmailHeader object to update
+    private func processHeaderField(field: String, value: String, header: inout EmailHeader) {
+        switch field {
+        case "subject":
+            header.subject = value
+        case "from":
+            header.from = value
+        case "to":
+            header.to = value
+        case "cc":
+            header.cc = value
+        case "date":
+            header.date = value
+        case "message-id":
+            header.messageId = value
+        default:
+            // Store other fields in the additionalFields dictionary
+            header.additionalFields[field] = value
+        }
+    }
+    
+    /// Process a message attribute and update the corresponding email header
+    /// - Parameters:
+    ///   - attribute: The message attribute to process
+    ///   - sequenceNumber: The sequence number of the message (if known)
+    private func processMessageAttribute(_ attribute: MessageAttribute, sequenceNumber: SequenceNumber?) {
+        // If we don't have a sequence number, we can't update a header
+        guard let sequenceNumber = sequenceNumber else {
+            // For attributes that come without a sequence number, we assume they belong to the last header
+            if let lastIndex = emailHeaders.indices.last {
+                var header = emailHeaders[lastIndex]
+                updateHeader(&header, with: attribute)
+                emailHeaders[lastIndex] = header
+            }
+            return
+        }
+        
+        // Find or create a header for this sequence number
+        let seqNum = Int(sequenceNumber)
+        if let index = emailHeaders.firstIndex(where: { $0.sequenceNumber == seqNum }) {
+            var header = emailHeaders[index]
+            updateHeader(&header, with: attribute)
+            emailHeaders[index] = header
+        } else {
+            var header = EmailHeader(sequenceNumber: seqNum)
+            updateHeader(&header, with: attribute)
+            emailHeaders.append(header)
+        }
+    }
+    
+    /// Update an email header with information from a message attribute
+    /// - Parameters:
+    ///   - header: The header to update
+    ///   - attribute: The attribute containing the information
+    private func updateHeader(_ header: inout EmailHeader, with attribute: MessageAttribute) {
+        switch attribute {
+        case .envelope(let envelope):
+            // Extract information from envelope
+            header.subject = envelope.subject?.stringValue ?? ""
+            
+            if let from = envelope.from.first {
+                header.from = formatAddress(from)
+            }
+            
+            if let to = envelope.to.first {
+                header.to = formatAddress(to)
+            }
+            
+            if let date = envelope.date {
+                header.date = formatDate(date)
+            }
+            
+            if let messageID = envelope.messageID {
+                header.messageId = messageID.stringValue
+            }
+            
+        case .body(let bodyStructure, _):
+            // Extract information from body structure if needed
+            logger.debug("Received body structure: \(String(describing: bodyStructure), privacy: .public)")
+            
+        case .uid(let uid):
+            header.uid = Int(uid)
+            
+        case .flags(let flags):
+            header.flags = flags.map { String(describing: $0) }
+            
+        case .internalDate(let date):
+            if header.date.isEmpty {
+                header.date = String(describing: date)
+            }
+            
+        default:
+            break
+        }
+        
+        // Only keep headers that have at least some basic information
+        if !header.subject.isEmpty || !header.from.isEmpty {
+            let seqNum = header.sequenceNumber // Create a copy to use in the autoclosure
+            logger.debug("Processed header for message #\(seqNum, format: .decimal, privacy: .public)")
+        }
+    }
+    
+    /// Format an InternetMessageDate for display
+    /// - Parameter date: The InternetMessageDate to format
+    /// - Returns: A formatted string representation of the date
+    private func formatDate(_ date: InternetMessageDate) -> String {
+        return String(date)
+    }
+    
     func errorCaught(context: ChannelHandlerContext, error: Error) {
-        logger.error("Error: \(error.localizedDescription)")
+        logger.error("Error: \(error.localizedDescription, privacy: .public)")
         
         // Fail all pending promises
         greetingPromise?.fail(error)
         loginPromise?.fail(error)
         selectPromise?.fail(error)
         logoutPromise?.fail(error)
+        fetchPromise?.fail(error)
         
         context.close(promise: nil)
     }
@@ -442,6 +735,8 @@ public enum IMAPError: Error, CustomStringConvertible {
     case selectFailed(String)
     case logoutFailed(String)
     case connectionFailed(String)
+    case fetchFailed(String)
+    case invalidArgument(String)
     case timeout
     
     public var description: String {
@@ -456,9 +751,65 @@ public enum IMAPError: Error, CustomStringConvertible {
             return "Logout failed: \(reason)"
         case .connectionFailed(let reason):
             return "Connection failed: \(reason)"
+        case .fetchFailed(let reason):
+            return "Fetch failed: \(reason)"
+        case .invalidArgument(let reason):
+            return "Invalid argument: \(reason)"
         case .timeout:
             return "Operation timed out"
         }
+    }
+}
+
+// MARK: - Email Header
+
+/// Structure to hold email header information
+public struct EmailHeader: Sendable {
+    /// The sequence number of the message
+    public let sequenceNumber: Int
+    
+    /// The UID of the message
+    public var uid: Int = 0
+    
+    /// The subject of the email
+    public var subject: String = ""
+    
+    /// The sender of the email
+    public var from: String = ""
+    
+    /// The recipients of the email
+    public var to: String = ""
+    
+    /// The CC recipients of the email
+    public var cc: String = ""
+    
+    /// The date the email was sent
+    public var date: String = ""
+    
+    /// The message ID
+    public var messageId: String = ""
+    
+    /// The flags set on the message
+    public var flags: [String] = []
+    
+    /// Additional header fields
+    public var additionalFields: [String: String] = [:]
+    
+    /// Initialize a new email header
+    /// - Parameter sequenceNumber: The sequence number of the message
+    public init(sequenceNumber: Int) {
+        self.sequenceNumber = sequenceNumber
+    }
+    
+    /// A string representation of the email header
+    public var description: String {
+        return """
+        Message #\(sequenceNumber) (UID: \(uid > 0 ? String(uid) : "N/A"))
+        Subject: \(subject)
+        From: \(from)
+        Date: \(date)
+        Flags: \(flags.joined(separator: ", "))
+        """
     }
 }
 
@@ -523,5 +874,23 @@ public struct MailboxInfo: Sendable {
         Available Flags: \(availableFlags.joined(separator: ", "))
         Permanent Flags: \(permanentFlags.joined(separator: ", "))
         """
+    }
+}
+
+// MARK: - ByteBuffer Extension
+
+extension ByteBuffer {
+    /// Get a String representation of the ByteBuffer
+    var stringValue: String {
+        getString(at: readerIndex, length: readableBytes) ?? ""
+    }
+}
+
+// MARK: - MessageID Extension
+
+extension MessageID {
+    /// Get a String representation of the MessageID
+    var stringValue: String {
+        String(describing: self)
     }
 } 

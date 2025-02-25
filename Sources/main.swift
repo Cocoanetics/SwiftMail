@@ -73,51 +73,60 @@ do {
             let mailboxInfo = try await server.selectMailbox("INBOX")
             
             // Display mailbox information
-            logger.notice("📬 Mailbox Information 📬")
-            logger.notice("------------------------")
-            logger.notice("Mailbox: \(mailboxInfo.name)")
-            logger.notice("Total Messages: \(mailboxInfo.messageCount)")
-            logger.notice("Recent Messages: \(mailboxInfo.recentCount)")
-            logger.notice("Unseen Messages: \(mailboxInfo.unseenCount)")
-            if mailboxInfo.firstUnseen > 0 {
-                logger.notice("First Unseen Message: \(mailboxInfo.firstUnseen)")
-            }
-            logger.notice("UID Validity: \(mailboxInfo.uidValidity)")
-            logger.notice("Next UID: \(mailboxInfo.uidNext)")
-            logger.notice("Read-Only: \(mailboxInfo.isReadOnly ? "Yes" : "No")")
+            let mailboxSummary = """
+            📬 Mailbox Information 📬
+            ------------------------
+            Mailbox: \(mailboxInfo.name)
+            Total Messages: \(mailboxInfo.messageCount)
+            Recent Messages: \(mailboxInfo.recentCount)
+            Unseen Messages: \(mailboxInfo.unseenCount)
+            First Unseen Message: \(mailboxInfo.firstUnseen > 0 ? String(mailboxInfo.firstUnseen) : "N/A")
+            UID Validity: \(mailboxInfo.uidValidity)
+            Next UID: \(mailboxInfo.uidNext)
+            Read-Only: \(mailboxInfo.isReadOnly ? "Yes" : "No")
+            Available Flags: \(mailboxInfo.availableFlags.joined(separator: ", "))
+            Permanent Flags: \(mailboxInfo.permanentFlags.joined(separator: ", "))
+            """
             
-            if !mailboxInfo.availableFlags.isEmpty {
-                logger.notice("Available Flags: \(mailboxInfo.availableFlags.joined(separator: ", "))")
-            }
+            logger.notice("\(mailboxSummary, privacy: .public)")
+            print("\n\(mailboxSummary)")
             
-            if !mailboxInfo.permanentFlags.isEmpty {
-                logger.notice("Permanent Flags: \(mailboxInfo.permanentFlags.joined(separator: ", "))")
-            }
-            
-            // Also print to console for direct visibility
-            print("\n📬 Mailbox Information 📬")
-            print("------------------------")
-            print("Mailbox: \(mailboxInfo.name)")
-            print("Total Messages: \(mailboxInfo.messageCount)")
-            print("Recent Messages: \(mailboxInfo.recentCount)")
-            print("Unseen Messages: \(mailboxInfo.unseenCount)")
-            if mailboxInfo.firstUnseen > 0 {
-                print("First Unseen Message: \(mailboxInfo.firstUnseen)")
+            // Fetch headers of unseen messages
+            if mailboxInfo.unseenCount > 0 && mailboxInfo.firstUnseen > 0 {
+                logger.notice("Fetching headers of unseen messages...")
+                
+                // Create a range string for unseen messages
+                // If there are too many unseen messages, limit to the first 10
+                let maxUnseenToFetch = min(mailboxInfo.unseenCount, 10)
+                let lastUnseen = mailboxInfo.firstUnseen + maxUnseenToFetch - 1
+                let unseenRange = "\(mailboxInfo.firstUnseen):\(lastUnseen)"
+                
+                do {
+                    let headers = try await server.fetchHeaders(range: unseenRange)
+                    
+                    logger.notice("📧 Unseen Messages (\(headers.count)) 📧")
+                    print("\n📧 Unseen Messages (\(headers.count)) 📧")
+                    print("----------------------------")
+                    
+                    for header in headers {
+                        let headerSummary = """
+                        Message #\(header.sequenceNumber)
+                        Subject: \(header.subject)
+                        From: \(header.from)
+                        Date: \(header.date)
+                        ---
+                        """
+                        logger.notice("\(headerSummary, privacy: .public)")
+                        print(headerSummary)
+                    }
+                } catch {
+                    logger.error("Failed to fetch headers: \(error.localizedDescription)")
+                    print("Failed to fetch headers: \(error.localizedDescription)")
+                }
             } else {
-                print("First Unseen Message: N/A")
+                logger.notice("No unseen messages to fetch")
+                print("No unseen messages to fetch")
             }
-            print("UID Validity: \(mailboxInfo.uidValidity)")
-            print("Next UID: \(mailboxInfo.uidNext)")
-            print("Read-Only: \(mailboxInfo.isReadOnly ? "Yes" : "No")")
-            
-            if !mailboxInfo.availableFlags.isEmpty {
-                print("Available Flags: \(mailboxInfo.availableFlags.joined(separator: ", "))")
-            }
-            
-            if !mailboxInfo.permanentFlags.isEmpty {
-                print("Permanent Flags: \(mailboxInfo.permanentFlags.joined(separator: ", "))")
-            }
-            print()
             
             // Logout from the server
             try await server.logout()
