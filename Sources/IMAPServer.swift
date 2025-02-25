@@ -9,8 +9,13 @@ import NIO
 import NIOSSL
 import NIOConcurrencyHelpers
 
+// Add a file-level extension to make NIOSSLClientHandler conform to Sendable
+// Note: This will generate a warning about conforming an imported type to an imported protocol,
+// but it's necessary to suppress the Sendable warnings in the code
+extension NIOSSLClientHandler: @unchecked @retroactive Sendable {}
+
 /// A class that represents an IMAP server connection
-public class IMAPServer {
+public final class IMAPServer: @unchecked Sendable {
     // MARK: - Properties
     
     /// The hostname of the IMAP server
@@ -27,6 +32,9 @@ public class IMAPServer {
     
     /// The response handler for processing IMAP responses
     private var responseHandler: IMAPResponseHandler?
+    
+    /// Lock for thread-safe access to mutable properties
+    private let lock = NIOLock()
     
     /// Logger for IMAP operations
     /// To view these logs in Console.app:
@@ -63,17 +71,22 @@ public class IMAPServer {
         
         // Create our response handler
         let responseHandler = IMAPResponseHandler()
-        self.responseHandler = responseHandler
+        lock.withLock {
+            self.responseHandler = responseHandler
+        }
+        
+        // Capture the host as a local variable to avoid capturing self
+        let host = self.host
         
         // Set up the channel handlers
         let bootstrap = ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelInitializer { channel in
-                // Add SSL handler first for secure connection
-                let sslHandler = try! NIOSSLClientHandler(context: sslContext, serverHostname: self.host)
+                // Create the SSL handler
+                let sslHandler = try! NIOSSLClientHandler(context: sslContext, serverHostname: host)
                 
+                // Add handlers to the pipeline
                 return channel.pipeline.addHandler(sslHandler).flatMap {
-                    // Add the IMAP client handler to the pipeline
                     channel.pipeline.addHandler(IMAPClientHandler()).flatMap {
                         channel.pipeline.addHandler(responseHandler)
                     }
@@ -82,7 +95,10 @@ public class IMAPServer {
         
         // Connect to the server
         logger.info("Connecting to \(self.host):\(self.port)...")
-        self.channel = try await bootstrap.connect(host: host, port: port).get()
+        let channel = try await bootstrap.connect(host: host, port: port).get()
+        lock.withLock {
+            self.channel = channel
+        }
         logger.info("Connected to server")
         
         // Wait for the server greeting
@@ -94,7 +110,11 @@ public class IMAPServer {
     /// Wait for the server greeting
     /// - Throws: An error if the greeting times out or fails
     private func waitForGreeting() async throws {
-        guard let channel = self.channel, let responseHandler = self.responseHandler else {
+        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
+            return (self.channel, self.responseHandler)
+        }
+        
+        guard let channel = channel, let responseHandler = responseHandler else {
             throw IMAPError.connectionFailed("Channel or response handler not initialized")
         }
         
@@ -102,7 +122,7 @@ public class IMAPServer {
         responseHandler.greetingPromise = channel.eventLoop.makePromise(of: Void.self)
         
         // Set up a timeout for the greeting
-        let greetingTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) {
+        let greetingTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) { [responseHandler] in
             responseHandler.greetingPromise?.fail(IMAPError.timeout)
         }
         
@@ -122,7 +142,11 @@ public class IMAPServer {
     ///   - password: The password for authentication
     /// - Throws: An error if the login fails
     public func login(username: String, password: String) async throws {
-        guard let channel = self.channel, let responseHandler = self.responseHandler else {
+        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
+            return (self.channel, self.responseHandler)
+        }
+        
+        guard let channel = channel, let responseHandler = responseHandler else {
             throw IMAPError.connectionFailed("Channel or response handler not initialized")
         }
         
@@ -139,7 +163,7 @@ public class IMAPServer {
         
         // Set up a timeout for login
         logger.debug("Waiting for login response...")
-        let loginTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) {
+        let loginTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) { [responseHandler] in
             responseHandler.loginPromise?.fail(IMAPError.timeout)
         }
         
@@ -158,7 +182,11 @@ public class IMAPServer {
     /// - Returns: Information about the selected mailbox
     /// - Throws: An error if the select operation fails
     public func selectMailbox(_ mailboxName: String) async throws -> MailboxInfo {
-        guard let channel = self.channel, let responseHandler = self.responseHandler else {
+        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
+            return (self.channel, self.responseHandler)
+        }
+        
+        guard let channel = channel, let responseHandler = responseHandler else {
             throw IMAPError.connectionFailed("Channel or response handler not initialized")
         }
         
@@ -177,7 +205,7 @@ public class IMAPServer {
         
         // Set up a timeout for select
         logger.debug("Waiting for SELECT response...")
-        let selectTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) {
+        let selectTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) { [responseHandler] in
             responseHandler.selectPromise?.fail(IMAPError.timeout)
         }
         
@@ -202,7 +230,11 @@ public class IMAPServer {
     /// Logout from the IMAP server
     /// - Throws: An error if the logout fails
     public func logout() async throws {
-        guard let channel = self.channel, let responseHandler = self.responseHandler else {
+        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
+            return (self.channel, self.responseHandler)
+        }
+        
+        guard let channel = channel, let responseHandler = responseHandler else {
             throw IMAPError.connectionFailed("Channel or response handler not initialized")
         }
         
@@ -219,7 +251,7 @@ public class IMAPServer {
         
         // Set up a timeout for logout
         logger.debug("Waiting for LOGOUT response...")
-        let logoutTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) {
+        let logoutTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) { [responseHandler] in
             responseHandler.logoutPromise?.fail(IMAPError.timeout)
         }
         
@@ -237,7 +269,11 @@ public class IMAPServer {
     /// Close the connection to the IMAP server
     /// - Throws: An error if the close operation fails
     public func close() async throws {
-        guard let channel = self.channel else {
+        let channel = lock.withLock { () -> Channel? in
+            return self.channel
+        }
+        
+        guard let channel = channel else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
         
@@ -259,7 +295,11 @@ public class IMAPServer {
     /// - Returns: An array of email headers
     /// - Throws: An error if the fetch operation fails
     public func fetchHeaders(range: String, limit: Int? = nil) async throws -> [EmailHeader] {
-        guard let channel = self.channel, let responseHandler = self.responseHandler else {
+        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
+            return (self.channel, self.responseHandler)
+        }
+        
+        guard let channel = channel, let responseHandler = responseHandler else {
             throw IMAPError.connectionFailed("Channel or response handler not initialized")
         }
         
@@ -284,7 +324,7 @@ public class IMAPServer {
         
         // Set up a timeout for fetch
         logger.debug("Waiting for FETCH response...")
-        let fetchTimeout = channel.eventLoop.scheduleTask(in: .seconds(10)) {
+        let fetchTimeout = channel.eventLoop.scheduleTask(in: .seconds(10)) { [responseHandler] in
             responseHandler.fetchPromise?.fail(IMAPError.timeout)
         }
         
@@ -333,7 +373,7 @@ public class IMAPServer {
 // MARK: - Response Handler
 
 /// A custom handler to process IMAP responses
-final class IMAPResponseHandler: ChannelInboundHandler {
+final class IMAPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = Response
     
     // Promises for different command responses
@@ -356,6 +396,9 @@ final class IMAPResponseHandler: ChannelInboundHandler {
     // Collected email headers
     private var emailHeaders: [EmailHeader] = []
     
+    // Lock for thread-safe access to mutable properties
+    private let lock = NIOLock()
+    
     // Logger for IMAP responses
     private let logger = Logger(subsystem: "com.example.SwiftIMAP", category: "IMAPResponseHandler")
     
@@ -367,16 +410,21 @@ final class IMAPResponseHandler: ChannelInboundHandler {
         logger.debug("IMAP RESPONSE: \(String(describing: response), privacy: .public)")
         
         // Check if this is an untagged response (server greeting)
-        if case .untagged(_) = response, greetingPromise != nil {
+        if case .untagged(_) = response, let greetingPromise = lock.withLock({ self.greetingPromise }) {
             // Server greeting is typically an untagged OK response
             // The first response from the server is the greeting
-            greetingPromise?.succeed(())
+            greetingPromise.succeed(())
         }
         
         // Process untagged responses for mailbox information during SELECT
-        if case .untagged(let untaggedResponse) = response, selectPromise != nil, let mailboxName = currentMailboxName {
-            if currentMailboxInfo == nil {
-                currentMailboxInfo = MailboxInfo(name: mailboxName)
+        if case .untagged(let untaggedResponse) = response, 
+           lock.withLock({ self.selectPromise != nil }), 
+           let mailboxName = lock.withLock({ self.currentMailboxName }) {
+            
+            lock.withLock {
+                if self.currentMailboxInfo == nil {
+                    self.currentMailboxInfo = MailboxInfo(name: mailboxName)
+                }
             }
             
             // Extract mailbox information from untagged responses
@@ -388,29 +436,41 @@ final class IMAPResponseHandler: ChannelInboundHandler {
                     if let responseCode = responseText.code {
                         switch responseCode {
                         case .unseen(let firstUnseen):
-                            currentMailboxInfo?.firstUnseen = Int(firstUnseen)
+                            lock.withLock {
+                                self.currentMailboxInfo?.firstUnseen = Int(firstUnseen)
+                            }
                             logger.debug("First unseen message: \(Int(firstUnseen))")
                             
                         case .uidValidity(let validity):
                             // Use the BinaryInteger extension to convert UIDValidity to UInt32
-                            currentMailboxInfo?.uidValidity = UInt32(validity)
+                            lock.withLock {
+                                self.currentMailboxInfo?.uidValidity = UInt32(validity)
+                            }
                             logger.debug("UID validity value: \(UInt32(validity), privacy: .public)")
                             
                         case .uidNext(let next):
                             // Use the BinaryInteger extension to convert UID to UInt32
-                            currentMailboxInfo?.uidNext = UInt32(next)
+                            lock.withLock {
+                                self.currentMailboxInfo?.uidNext = UInt32(next)
+                            }
                             logger.debug("Next UID: \(UInt32(next), format: .decimal, privacy: .public)")
                             
                         case .permanentFlags(let flags):
-                            currentMailboxInfo?.permanentFlags = flags.map { String(describing: $0) }
+                            lock.withLock {
+                                self.currentMailboxInfo?.permanentFlags = flags.map { String(describing: $0) }
+                            }
                             logger.debug("Permanent flags: \(flags.map { String(describing: $0) }.joined(separator: ", "), privacy: .public)")
                             
                         case .readOnly:
-                            currentMailboxInfo?.isReadOnly = true
+                            lock.withLock {
+                                self.currentMailboxInfo?.isReadOnly = true
+                            }
                             logger.debug("Mailbox is read-only")
                             
                         case .readWrite:
-                            currentMailboxInfo?.isReadOnly = false
+                            lock.withLock {
+                                self.currentMailboxInfo?.isReadOnly = false
+                            }
                             logger.debug("Mailbox is read-write")
                             
                         default:
@@ -424,15 +484,21 @@ final class IMAPResponseHandler: ChannelInboundHandler {
                 // Extract mailbox information from mailbox data
                 switch mailboxData {
                 case .exists(let count):
-                    currentMailboxInfo?.messageCount = Int(count)
+                    lock.withLock {
+                        self.currentMailboxInfo?.messageCount = Int(count)
+                    }
                     logger.debug("Mailbox has \(count, format: .decimal, privacy: .public) messages")
                     
                 case .recent(let count):
-                    currentMailboxInfo?.recentCount = Int(count)
+                    lock.withLock {
+                        self.currentMailboxInfo?.recentCount = Int(count)
+                    }
                     logger.debug("Mailbox has \(count) recent messages - RECENT FLAG DETAILS")
                     
                 case .flags(let flags):
-                    currentMailboxInfo?.availableFlags = flags.map { String(describing: $0) }
+                    lock.withLock {
+                        self.currentMailboxInfo?.availableFlags = flags.map { String(describing: $0) }
+                    }
                     logger.debug("Available flags: \(flags.map { String(describing: $0) }.joined(separator: ", "), privacy: .public)")
                     
                 default:
@@ -451,7 +517,7 @@ final class IMAPResponseHandler: ChannelInboundHandler {
         }
         
         // Process FETCH responses for email headers
-        if case .fetch(let fetchResponse) = response, fetchPromise != nil {
+        if case .fetch(let fetchResponse) = response, lock.withLock({ self.fetchPromise != nil }) {
             switch fetchResponse {
             case .simpleAttribute(let attribute):
                 // Process the attribute directly
@@ -460,12 +526,14 @@ final class IMAPResponseHandler: ChannelInboundHandler {
             case .start(let sequenceNumber):
                 // Create a new email header for this sequence number
                 let header = EmailHeader(sequenceNumber: Int(sequenceNumber))
-                emailHeaders.append(header)
+                lock.withLock {
+                    self.emailHeaders.append(header)
+                }
                 
             default:
                 break
             }
-        } else if case .untagged(let untaggedResponse) = response, fetchPromise != nil {
+        } else if case .untagged(let untaggedResponse) = response, lock.withLock({ self.fetchPromise != nil }) {
             if case .messageData(let messageData) = untaggedResponse {
                 // Handle other message data if needed
                 logger.debug("Received message data: \(String(describing: messageData), privacy: .public)")
@@ -475,29 +543,35 @@ final class IMAPResponseHandler: ChannelInboundHandler {
         // Check if this is a tagged response that matches one of our commands
         if case .tagged(let taggedResponse) = response {
             // Handle login response
-            if taggedResponse.tag == loginTag {
+            if taggedResponse.tag == lock.withLock({ self.loginTag }) {
                 if case .ok = taggedResponse.state {
-                    loginPromise?.succeed(())
+                    lock.withLock { self.loginPromise?.succeed(()) }
                 } else {
-                    loginPromise?.fail(IMAPError.loginFailed(String(describing: taggedResponse.state)))
+                    lock.withLock { self.loginPromise?.fail(IMAPError.loginFailed(String(describing: taggedResponse.state))) }
                 }
             }
             
             // Handle select response
-            if taggedResponse.tag == selectTag {
+            if taggedResponse.tag == lock.withLock({ self.selectTag }) {
                 if case .ok = taggedResponse.state {
-                    if var mailboxInfo = currentMailboxInfo {
+                    let (mailboxInfo, mailboxName, selectPromise) = lock.withLock { () -> (MailboxInfo?, String?, EventLoopPromise<MailboxInfo>?) in
+                        return (self.currentMailboxInfo, self.currentMailboxName, self.selectPromise)
+                    }
+                    
+                    if var mailboxInfo = mailboxInfo {
                         // If we have a first unseen message but unseen count is 0,
                         // calculate the unseen count as (total messages - first unseen + 1)
                         if mailboxInfo.firstUnseen > 0 && mailboxInfo.unseenCount == 0 {
                             mailboxInfo.unseenCount = mailboxInfo.messageCount - mailboxInfo.firstUnseen + 1
                             logger.debug("Calculated unseen count: \(mailboxInfo.unseenCount)")
                             // Update the current mailbox info with the modified copy
-                            currentMailboxInfo = mailboxInfo
+                            lock.withLock {
+                                self.currentMailboxInfo = mailboxInfo
+                            }
                         }
                         
                         selectPromise?.succeed(mailboxInfo)
-                    } else if let mailboxName = currentMailboxName {
+                    } else if let mailboxName = mailboxName {
                         // If we didn't get any untagged responses with mailbox info, create a basic one
                         selectPromise?.succeed(MailboxInfo(name: mailboxName))
                     } else {
@@ -505,31 +579,40 @@ final class IMAPResponseHandler: ChannelInboundHandler {
                     }
                     
                     // Reset for next select
-                    currentMailboxName = nil
-                    currentMailboxInfo = nil
+                    lock.withLock {
+                        self.currentMailboxName = nil
+                        self.currentMailboxInfo = nil
+                    }
                 } else {
-                    selectPromise?.fail(IMAPError.selectFailed(String(describing: taggedResponse.state)))
+                    lock.withLock {
+                        self.selectPromise?.fail(IMAPError.selectFailed(String(describing: taggedResponse.state)))
+                    }
                 }
             }
             
             // Handle logout response
-            if taggedResponse.tag == logoutTag {
+            if taggedResponse.tag == lock.withLock({ self.logoutTag }) {
                 if case .ok = taggedResponse.state {
-                    logoutPromise?.succeed(())
+                    lock.withLock { self.logoutPromise?.succeed(()) }
                 } else {
-                    logoutPromise?.fail(IMAPError.logoutFailed(String(describing: taggedResponse.state)))
+                    lock.withLock { self.logoutPromise?.fail(IMAPError.logoutFailed(String(describing: taggedResponse.state))) }
                 }
             }
             
             // Handle fetch response
-            if taggedResponse.tag == fetchTag {
+            if taggedResponse.tag == lock.withLock({ self.fetchTag }) {
                 if case .ok = taggedResponse.state {
-                    fetchPromise?.succeed(emailHeaders)
-                    // Reset for next fetch
-                    emailHeaders.removeAll()
+                    let headers = lock.withLock { () -> [EmailHeader] in
+                        let headers = self.emailHeaders
+                        self.emailHeaders.removeAll()
+                        return headers
+                    }
+                    lock.withLock { self.fetchPromise?.succeed(headers) }
                 } else {
-                    fetchPromise?.fail(IMAPError.fetchFailed(String(describing: taggedResponse.state)))
-                    emailHeaders.removeAll()
+                    lock.withLock { 
+                        self.fetchPromise?.fail(IMAPError.fetchFailed(String(describing: taggedResponse.state)))
+                        self.emailHeaders.removeAll()
+                    }
                 }
             }
         }
@@ -605,22 +688,25 @@ final class IMAPResponseHandler: ChannelInboundHandler {
     ///   - value: The field value
     ///   - header: The EmailHeader object to update
     private func processHeaderField(field: String, value: String, header: inout EmailHeader) {
+        // Decode the MIME-encoded value
+        let decodedValue = MIMEHeaderDecoder.decode(value)
+        
         switch field {
         case "subject":
-            header.subject = value
+            header.subject = decodedValue
         case "from":
-            header.from = value
+            header.from = decodedValue
         case "to":
-            header.to = value
+            header.to = decodedValue
         case "cc":
-            header.cc = value
+            header.cc = decodedValue
         case "date":
-            header.date = value
+            header.date = decodedValue
         case "message-id":
-            header.messageId = value
+            header.messageId = decodedValue
         default:
             // Store other fields in the additionalFields dictionary
-            header.additionalFields[field] = value
+            header.additionalFields[field] = decodedValue
         }
     }
     
@@ -632,24 +718,28 @@ final class IMAPResponseHandler: ChannelInboundHandler {
         // If we don't have a sequence number, we can't update a header
         guard let sequenceNumber = sequenceNumber else {
             // For attributes that come without a sequence number, we assume they belong to the last header
-            if let lastIndex = emailHeaders.indices.last {
-                var header = emailHeaders[lastIndex]
-                updateHeader(&header, with: attribute)
-                emailHeaders[lastIndex] = header
+            lock.withLock {
+                if let lastIndex = self.emailHeaders.indices.last {
+                    var header = self.emailHeaders[lastIndex]
+                    updateHeader(&header, with: attribute)
+                    self.emailHeaders[lastIndex] = header
+                }
             }
             return
         }
         
         // Find or create a header for this sequence number
         let seqNum = Int(sequenceNumber)
-        if let index = emailHeaders.firstIndex(where: { $0.sequenceNumber == seqNum }) {
-            var header = emailHeaders[index]
-            updateHeader(&header, with: attribute)
-            emailHeaders[index] = header
-        } else {
-            var header = EmailHeader(sequenceNumber: seqNum)
-            updateHeader(&header, with: attribute)
-            emailHeaders.append(header)
+        lock.withLock {
+            if let index = self.emailHeaders.firstIndex(where: { $0.sequenceNumber == seqNum }) {
+                var header = self.emailHeaders[index]
+                updateHeader(&header, with: attribute)
+                self.emailHeaders[index] = header
+            } else {
+                var header = EmailHeader(sequenceNumber: seqNum)
+                updateHeader(&header, with: attribute)
+                self.emailHeaders.append(header)
+            }
         }
     }
     
@@ -661,14 +751,18 @@ final class IMAPResponseHandler: ChannelInboundHandler {
         switch attribute {
         case .envelope(let envelope):
             // Extract information from envelope
-            header.subject = envelope.subject?.stringValue ?? ""
+            if let subject = envelope.subject?.stringValue {
+                header.subject = MIMEHeaderDecoder.decode(subject)
+            }
             
             if let from = envelope.from.first {
-                header.from = formatAddress(from)
+                let fromAddress = formatAddress(from)
+                header.from = MIMEHeaderDecoder.decode(fromAddress)
             }
             
             if let to = envelope.to.first {
-                header.to = formatAddress(to)
+                let toAddress = formatAddress(to)
+                header.to = MIMEHeaderDecoder.decode(toAddress)
             }
             
             if let date = envelope.date {
@@ -716,11 +810,13 @@ final class IMAPResponseHandler: ChannelInboundHandler {
         logger.error("Error: \(error.localizedDescription, privacy: .public)")
         
         // Fail all pending promises
-        greetingPromise?.fail(error)
-        loginPromise?.fail(error)
-        selectPromise?.fail(error)
-        logoutPromise?.fail(error)
-        fetchPromise?.fail(error)
+        lock.withLock {
+            self.greetingPromise?.fail(error)
+            self.loginPromise?.fail(error)
+            self.selectPromise?.fail(error)
+            self.logoutPromise?.fail(error)
+            self.fetchPromise?.fail(error)
+        }
         
         context.close(promise: nil)
     }
@@ -883,6 +979,108 @@ extension ByteBuffer {
     /// Get a String representation of the ByteBuffer
     var stringValue: String {
         getString(at: readerIndex, length: readableBytes) ?? ""
+    }
+}
+
+// MARK: - MIME Header Decoding
+
+/// Utility functions for decoding MIME-encoded email headers
+enum MIMEHeaderDecoder {
+    /// Decode a MIME-encoded header string
+    /// - Parameter encodedString: The MIME-encoded string to decode
+    /// - Returns: The decoded string
+    static func decode(_ encodedString: String) -> String {
+        // Regular expression to match MIME encoded-word syntax: =?charset?encoding?encoded-text?=
+        let pattern = "=\\?([^?]+)\\?([bBqQ])\\?([^?]*)\\?="
+        
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return encodedString
+        }
+        
+        var result = encodedString
+        
+        // Find all matches and process them in reverse order to avoid index issues
+        let matches = regex.matches(in: encodedString, options: [], range: NSRange(encodedString.startIndex..., in: encodedString))
+        
+        for match in matches.reversed() {
+            guard let charsetRange = Range(match.range(at: 1), in: encodedString),
+                  let encodingRange = Range(match.range(at: 2), in: encodedString),
+                  let textRange = Range(match.range(at: 3), in: encodedString),
+                  let fullRange = Range(match.range, in: encodedString) else {
+                continue
+            }
+            
+            let charset = String(encodedString[charsetRange])
+            let encoding = String(encodedString[encodingRange]).uppercased()
+            let encodedText = String(encodedString[textRange])
+            
+            var decodedText = ""
+            
+            // Decode based on encoding type
+            if encoding == "B" {
+                // Base64 encoding
+                if let data = Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters),
+                   let decoded = String(data: data, encoding: .utf8) {
+                    decodedText = decoded
+                } else {
+                    // Try with the specified charset if UTF-8 fails
+                    let cfEncoding = CFStringConvertIANACharSetNameToEncoding(charset as CFString)
+                    if cfEncoding != kCFStringEncodingInvalidId {
+                        let nsEncoding = CFStringConvertEncodingToNSStringEncoding(cfEncoding)
+                        let encoding = String.Encoding(rawValue: nsEncoding)
+                        if let data = Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters),
+                           let decoded = String(data: data, encoding: encoding) {
+                            decodedText = decoded
+                        }
+                    }
+                }
+            } else if encoding == "Q" {
+                // Quoted-printable encoding
+                decodedText = decodeQuotedPrintable(encodedText)
+            }
+            
+            if !decodedText.isEmpty {
+                result = result.replacingCharacters(in: fullRange, with: decodedText)
+            }
+        }
+        
+        // Handle consecutive encoded words (they should be concatenated without spaces)
+        result = result.replacingOccurrences(of: "?= =?", with: "")
+        
+        return result
+    }
+    
+    /// Decode a quoted-printable encoded string
+    /// - Parameter encodedString: The quoted-printable encoded string
+    /// - Returns: The decoded string
+    private static func decodeQuotedPrintable(_ encodedString: String) -> String {
+        var result = ""
+        var i = encodedString.startIndex
+        
+        while i < encodedString.endIndex {
+            if encodedString[i] == "=" && i < encodedString.index(encodedString.endIndex, offsetBy: -2) {
+                let hexStart = encodedString.index(after: i)
+                let hexEnd = encodedString.index(hexStart, offsetBy: 2)
+                let hexString = String(encodedString[hexStart..<hexEnd])
+                
+                if let hexValue = UInt8(hexString, radix: 16) {
+                    result.append(Character(UnicodeScalar(hexValue)))
+                } else {
+                    result.append(encodedString[i])
+                }
+                
+                i = hexEnd
+            } else if encodedString[i] == "_" {
+                // In Q encoding, underscore represents a space
+                result.append(" ")
+                i = encodedString.index(after: i)
+            } else {
+                result.append(encodedString[i])
+                i = encodedString.index(after: i)
+            }
+        }
+        
+        return result
     }
 }
 
