@@ -2,12 +2,9 @@
 // https://docs.swift.org/swift-book
 
 import Foundation
+import SwiftIMAP
 import os.log
 import SwiftDotenv
-@preconcurrency import NIOIMAP
-import NIOIMAPCore
-import NIO
-import NIOSSL
 
 // Create a logger for the main application
 let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "Main")

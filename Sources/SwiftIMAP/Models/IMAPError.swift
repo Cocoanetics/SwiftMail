@@ -3,7 +3,7 @@
 
 import Foundation
 
-/// Custom IMAP errors
+/// Errors that can occur during IMAP operations
 public enum IMAPError: Error {
     case greetingFailed(String)
     case loginFailed(String)

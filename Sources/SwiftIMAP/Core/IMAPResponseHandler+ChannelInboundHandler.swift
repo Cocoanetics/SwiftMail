@@ -9,7 +9,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 extension IMAPResponseHandler: ChannelInboundHandler {
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = self.unwrapInboundIn(data)
         logger.debug("Received: \(String(describing: response), privacy: .public)")
         
@@ -303,7 +303,7 @@ extension IMAPResponseHandler: ChannelInboundHandler {
         }
     }
     
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
+    public func errorCaught(context: ChannelHandlerContext, error: Error) {
         logger.error("Error: \(error.localizedDescription, privacy: .public)")
         
         // Fail all pending promises

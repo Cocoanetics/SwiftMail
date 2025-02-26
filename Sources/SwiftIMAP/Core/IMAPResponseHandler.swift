@@ -9,8 +9,8 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// A custom handler to process IMAP responses
-final class IMAPResponseHandler: ChannelHandler, @unchecked Sendable {
-    typealias InboundIn = Response
+public final class IMAPResponseHandler: ChannelHandler, @unchecked Sendable {
+    public typealias InboundIn = Response
     
     // Promises for different command responses
     var greetingPromise: EventLoopPromise<Void>?

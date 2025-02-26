@@ -6,7 +6,7 @@ import Foundation
 /// Structure to hold email header information
 public struct EmailHeader: Sendable {
     /// The sequence number of the message
-    public let sequenceNumber: Int
+    public var sequenceNumber: Int
     
     /// The UID of the message (if available)
     public var uid: Int = 0

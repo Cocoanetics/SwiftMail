@@ -8,6 +8,15 @@ let package = Package(
     platforms: [
         .macOS("11.0")
     ],
+    products: [
+        // Products define the executables and libraries a package produces
+        .library(
+            name: "SwiftIMAP",
+            targets: ["SwiftIMAP"]),
+        .executable(
+            name: "SwiftIMAPCLI",
+            targets: ["SwiftIMAPCLI"])
+    ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
         .package(url: "https://github.com/thebarndog/swift-dotenv", from: "2.1.0"),
@@ -17,14 +26,19 @@ let package = Package(
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
-        .executableTarget(
+        .target(
             name: "SwiftIMAP",
             dependencies: [
-                .product(name: "SwiftDotenv", package: "swift-dotenv"),
                 .product(name: "NIOIMAP", package: "swift-nio-imap"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
-            ],
-            path: "Sources"
+            ]
+        ),
+        .executableTarget(
+            name: "SwiftIMAPCLI",
+            dependencies: [
+                "SwiftIMAP",
+                .product(name: "SwiftDotenv", package: "swift-dotenv"),
+            ]
         ),
     ]
 )
