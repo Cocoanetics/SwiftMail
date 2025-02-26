@@ -25,7 +25,7 @@ struct IntUtilitiesTests {
         
         // Test gigabytes
         let gigabytes = 1500000000
-        let gbFormatted = gigabytes.formattedFileSize(
+        let gbFormatted = gigabytes.formattedFileSize()
         #expect(gbFormatted == "1.5 GB")
         
         // Test zero
