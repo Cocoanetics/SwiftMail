@@ -45,7 +45,7 @@ do {
     // Create an IMAP server instance
     let server = IMAPServer(host: host, port: port)
     
-    // Use async/await with a Task
+    // Use Task with await for async operations
     await Task {
         do {
             // Connect to the server
@@ -74,11 +74,11 @@ do {
             """
             
             logger.notice("\(mailboxSummary, privacy: .public)")
-            print("\n\(mailboxSummary)")
+            print(mailboxSummary)
             
-            // Fetch headers of the 10 latest emails
+            // Fetch the 10 latest complete emails including attachments
             if mailboxInfo.messageCount > 0 {
-                logger.notice("Fetching headers of the 10 latest emails...")
+                logger.notice("Fetching the 10 latest emails with all parts and attachments...")
                 
                 // Create a range string for the latest 10 messages
                 let startMessage = max(1, mailboxInfo.messageCount - 9)
@@ -86,26 +86,21 @@ do {
                 let range = "\(startMessage):\(endMessage)"
                 
                 do {
-                    let headers = try await server.fetchHeaders(range: range, limit: 10)
+                    // Use the new fetchEmails method to get complete emails with all parts
+                    let emails = try await server.fetchEmails(range: range, limit: 10)
                     
-                    logger.notice("📧 Latest Messages (\(headers.count)) 📧")
-                    print("\n📧 Latest Messages (\(headers.count)) 📧")
-                    print("----------------------------")
+                    logger.notice("📧 Latest Complete Emails (\(emails.count)) 📧")
+                    print("\n📧 Latest Complete Emails (\(emails.count)) 📧")
                     
-                    for header in headers {
-                        let headerSummary = """
-                        Message #\(header.sequenceNumber)
-                        Subject: \(header.subject)
-                        From: \(header.from)
-                        Date: \(header.date)
-                        ---
-                        """
-                        logger.notice("\(headerSummary, privacy: .public)")
-                        print(headerSummary)
+                    // Display emails using the improved debug description format
+                    for (index, email) in emails.enumerated() {
+                        print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
+                        print("---")
                     }
+                    
                 } catch {
-                    logger.error("Failed to fetch headers: \(error.localizedDescription)")
-                    print("Failed to fetch headers: \(error.localizedDescription)")
+                    logger.error("Failed to fetch emails: \(error.localizedDescription)")
+                    print("Failed to fetch emails: \(error.localizedDescription)")
                 }
             } else {
                 logger.notice("No messages in mailbox")

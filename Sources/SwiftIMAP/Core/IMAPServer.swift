@@ -540,19 +540,8 @@ public final class IMAPServer: @unchecked Sendable {
                 try await processStructure(childPart, partNumber: childPartNumber, sequenceNumber: sequenceNumber, parts: &parts)
             }
             
-            // If this is the root multipart, add an entry for the multipart itself
-            if partNumber.isEmpty {
-                // Create a message part for the multipart container (with empty data)
-                let messagePart = MessagePart(
-                    partNumber: "0",
-                    contentType: "multipart",
-                    contentSubtype: String(multipart.mediaSubtype),
-                    data: Data()
-                )
-                
-                // Add the part to the array
-                parts.append(messagePart)
-            }
+            // We no longer need to add an empty container part for the multipart structure
+            // This was previously adding a part #0 with empty data, which is not useful
         }
     }
     
@@ -662,5 +651,37 @@ public final class IMAPServer: @unchecked Sendable {
         
         // Return the path to the output folder
         return outputFolderURL.path
+    }
+    
+    /// Fetch a complete email with all parts from an email header
+    /// - Parameter header: The email header to fetch the complete email for
+    /// - Returns: A complete Email object with all parts
+    /// - Throws: An error if the fetch operation fails
+    public func fetchEmail(from header: EmailHeader) async throws -> Email {
+        // Fetch all message parts for the email
+        let parts = try await fetchAllMessageParts(sequenceNumber: header.sequenceNumber)
+        
+        // Create and return a new Email object with the header and parts
+        return Email(header: header, parts: parts)
+    }
+    
+    /// Fetch complete emails with all parts for a range of messages
+    /// - Parameters:
+    ///   - range: The range of messages to fetch (e.g., "1:10" for the first 10 messages)
+    ///   - limit: Optional limit on the number of emails to fetch
+    /// - Returns: An array of Email objects with all parts
+    /// - Throws: An error if the fetch operation fails
+    public func fetchEmails(range: String, limit: Int? = nil) async throws -> [Email] {
+        // First fetch the headers
+        let headers = try await fetchHeaders(range: range, limit: limit)
+        
+        // Then fetch the complete email for each header
+        var emails: [Email] = []
+        for header in headers {
+            let email = try await fetchEmail(from: header)
+            emails.append(email)
+        }
+        
+        return emails
     }
 }
