@@ -70,14 +70,14 @@ public struct MessagePart: Sendable {
             return nil
         }
         
-        return data.toUTF8String()
+        return String(data: data, encoding: .utf8)
     }
     
     /// Decode the part content if it's quoted-printable encoded
     /// - Returns: The decoded data, or the original data if not encoded or can't be decoded
     public func decodedContent() -> Data {
         guard contentType.lowercased() == "text", 
-              let textContent = data.toUTF8String() else {
+              let textContent = String(data: data, encoding: .utf8) else {
             return data
         }
         

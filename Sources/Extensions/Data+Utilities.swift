@@ -4,24 +4,11 @@
 import Foundation
 
 extension Data {
-    /// Try to convert the data to a string using UTF-8 encoding
-    /// - Returns: A string representation of the data, or nil if conversion fails
-    func toUTF8String() -> String? {
-        return String(data: self, encoding: .utf8)
-    }
-    
-    /// Try to convert the data to a string using a specific encoding
-    /// - Parameter encoding: The encoding to use for conversion
-    /// - Returns: A string representation of the data, or nil if conversion fails
-    func toString(using encoding: String.Encoding = .utf8) -> String? {
-        return String(data: self, encoding: encoding)
-    }
-    
     /// Create a preview of the data content
     /// - Parameter maxLength: The maximum length of the preview
     /// - Returns: A string preview of the content
     func preview(maxLength: Int = 500) -> String {
-        if let text = self.toUTF8String() {
+        if let text = String(data: self, encoding: .utf8) {
             let truncated = text.prefix(maxLength)
             return String(truncated)
         } else if self.count > 0 {
@@ -35,7 +22,7 @@ extension Data {
     /// - Returns: True if the data appears to be text, false otherwise
     func isTextContent() -> Bool {
         // Check if the data can be converted to a string
-        guard let _ = self.toUTF8String() else {
+        guard let _ = String(data: self, encoding: .utf8) else {
             return false
         }
         
