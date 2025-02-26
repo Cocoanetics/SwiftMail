@@ -311,7 +311,7 @@ public final class IMAPServer: @unchecked Sendable {
         let fetchCommand = CommandStreamPart.tagged(
             TaggedCommand(tag: fetchTag, command: .fetch(
                 .set(sequenceSet),
-                [.envelope, .bodyStructure(extensions: false), .bodySection(peek: true, .header, nil)],
+                [.uid, .envelope, .bodyStructure(extensions: false), .bodySection(peek: true, .header, nil)],
                 []
             ))
         )
