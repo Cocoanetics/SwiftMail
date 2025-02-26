@@ -1,0 +1,10 @@
+From: =?UTF-8?Q?Oliver=20Drobnik?= <oliver@example.com>
+To: =?ISO-8859-1?Q?J=F6rg=20M=FCller?= <joerg@example.com>
+Subject: =?UTF-8?B?VGVzdCBvZiBNSU1FIGVuY29kZWQgaGVhZGVycyDwn5iA?=
+Date: Wed, 26 Feb 2025 10:01:14 -0000
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: quoted-printable
+
+This is a test email with MIME-encoded headers.
+The subject contains an emoji (😀) encoded in Base64.
+The recipient name contains umlauts (Jörg Müller) encoded in Quoted-Printable. 

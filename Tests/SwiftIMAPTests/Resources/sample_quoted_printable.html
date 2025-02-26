@@ -1,0 +1,26 @@
+Content-Type: text/html; charset=iso-8859-1
+Content-Transfer-Encoding: quoted-printable
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset=3D"iso-8859-1">
+    <title>Sample Quoted Printable HTML</title>
+</head>
+<body>
+    <h1>This is a test of quoted-printable encoding</h1>
+    <p>This text contains special characters like =E4=F6=FC=DF (äöüß in ISO-8859-1).</p>
+    <p>Line breaks should be handled properly even when they are=20
+    split across multiple lines with soft breaks.</p>
+    <p>Special HTML characters like &lt; and &gt; should be preserved: &lt;div&gt;test&lt;/div&gt;</p>
+    <p>Equals sign needs to be escaped: 3=3D2+1</p>
+    <div>
+        <h2>Unicode characters in quoted-printable</h2>
+        <p>Euro symbol: =80</p>
+        <p>Copyright: =A9</p>
+        <p>Registered trademark: =AE</p>
+    </div>
+    <p>Long line that exceeds the 76 character limit and should be wrapped with soft line breaks=
+ in quoted-printable encoding but should appear as a single line when decoded.</p>
+</body>
+</html> 

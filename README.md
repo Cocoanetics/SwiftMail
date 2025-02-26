@@ -36,6 +36,10 @@ The project is organized as follows:
 
 - **Sources/SwiftIMAPCLI**: Contains the command-line interface application
 
+- **Tests/SwiftIMAPTests**: Contains unit tests using Swift Testing framework
+  - **QuotedPrintableTests.swift**: Tests for quoted-printable encoding/decoding
+  - **Resources/**: Test resources including sample files for testing
+
 ## Coding Standards
 
 This project follows a set of coding standards defined in the `.cursor.rules` file. Key principles include:
@@ -46,6 +50,7 @@ This project follows a set of coding standards defined in the `.cursor.rules` fi
 - Imports should be kept to the absolute minimum required
 - String conversions should prefer custom initializers (`String(value)`)
 - Single-line functions should be replaced with direct implementation
+- Unit tests should use Swift Testing framework instead of XCTest
 
 For the complete set of coding standards, please refer to the `.cursor.rules` file in the project root.
 
@@ -89,6 +94,29 @@ try await imapServer.logout()
 try await imapServer.close()
 ```
 
+## Testing
+
+The project uses [Swift Testing](https://github.com/apple/swift-testing) for unit tests instead of XCTest. To run the tests:
+
+```bash
+swift test
+```
+
+Test files are organized in the `Tests/SwiftIMAPTests` directory and follow the Swift Testing conventions:
+
+```swift
+import Testing
+@testable import SwiftIMAP
+
+struct MyFeatureTests {
+    @Test
+    func testSomeFeature() {
+        // Test code here
+        #expect(someCondition)
+    }
+}
+```
+
 ## Requirements
 
 - Swift 5.7+
@@ -100,6 +128,7 @@ try await imapServer.close()
 - [SwiftNIOSSL](https://github.com/apple/swift-nio-ssl)
 - [SwiftNIOIMAP](https://github.com/apple/swift-nio-imap)
 - [SwiftDotenv](https://github.com/thebarndog/swift-dotenv) (for CLI only)
+- [Swift Testing](https://github.com/apple/swift-testing) (for tests only)
 
 ## License
 

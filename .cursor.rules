@@ -11,6 +11,8 @@
   - `Sources/SwiftIMAP/Extensions/` - Extensions
   - `Sources/SwiftIMAP/Models/` - Models
   - `Sources/SwiftIMAPCLI/` - CLI application
+  - `Tests/SwiftIMAPTests/` - Test files
+  - `Tests/SwiftIMAPTests/Resources/` - Test resources
 
 ## Swift Style Guidelines
 
@@ -46,4 +48,17 @@
 ## Asynchronous Code
 
 - Use Swift's async/await pattern for asynchronous operations
-- Ensure proper error handling in asynchronous contexts 
+- Ensure proper error handling in asynchronous contexts
+
+## Testing
+
+- Use Swift Testing framework instead of XCTest for all unit tests
+- Test files should be organized in the `Tests/SwiftIMAPTests/` directory
+- Test resources should be placed in the `Tests/SwiftIMAPTests/Resources/` directory
+- Test structs should be named with a suffix of `Tests` (e.g., `QuotedPrintableTests`)
+- Use the `@Test` attribute to mark test methods
+- Use the `#expect` macro for assertions instead of XCTest assertions
+- Throw custom errors (e.g., `TestFailure`) instead of using `XCTFail`
+- Test methods that access resources should be marked as `throws`
+- Organize tests with clear MARK comments to separate different test categories
+- Test files should follow the same naming convention as the files they test (e.g., `String+QuotedPrintable.swift` → `QuotedPrintableTests.swift`) 

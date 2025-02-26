@@ -22,6 +22,7 @@ let package = Package(
         .package(url: "https://github.com/thebarndog/swift-dotenv", from: "2.1.0"),
         .package(url: "https://github.com/apple/swift-nio-imap", branch: "main"),
         .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.0.0"),
+        .package(url: "https://github.com/apple/swift-testing", branch: "main"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
@@ -38,6 +39,16 @@ let package = Package(
             dependencies: [
                 "SwiftIMAP",
                 .product(name: "SwiftDotenv", package: "swift-dotenv"),
+            ]
+        ),
+        .testTarget(
+            name: "SwiftIMAPTests",
+            dependencies: [
+                "SwiftIMAP",
+                .product(name: "Testing", package: "swift-testing")
+            ],
+            resources: [
+                .copy("Resources")
             ]
         ),
     ]
