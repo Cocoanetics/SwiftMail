@@ -8,30 +8,32 @@ struct IntUtilitiesTests {
     
     @Test
     func testFormattedFileSize() {
+        let enUSLocale = Locale(identifier: "en_US")
+        
         // Test bytes
         let bytes = 500
-        let bytesFormatted = bytes.formattedFileSize()
-        #expect(bytesFormatted == "500 bytes")
+        let bytesFormatted = bytes.formattedFileSize(locale: enUSLocale)
+        #expect(bytesFormatted == "500 byte")
         
         // Test kilobytes
         let kilobytes = 1500
-        let kbFormatted = kilobytes.formattedFileSize()
-        #expect(kbFormatted == "1.5 KB")
+        let kbFormatted = kilobytes.formattedFileSize(locale: enUSLocale)
+        #expect(kbFormatted == "1.5 kB")
         
         // Test megabytes
         let megabytes = 1500000
-        let mbFormatted = megabytes.formattedFileSize()
+        let mbFormatted = megabytes.formattedFileSize(locale: enUSLocale)
         #expect(mbFormatted == "1.5 MB")
         
         // Test gigabytes
         let gigabytes = 1500000000
-        let gbFormatted = gigabytes.formattedFileSize()
+        let gbFormatted = gigabytes.formattedFileSize(locale: enUSLocale)
         #expect(gbFormatted == "1.5 GB")
         
         // Test zero
         let zero = 0
-        let zeroFormatted = zero.formattedFileSize()
-        #expect(zeroFormatted == "Zero KB")
+        let zeroFormatted = zero.formattedFileSize(locale: enUSLocale)
+        #expect(zeroFormatted == "0 byte")
         
         // Test with default locale (system locale)
         let defaultBytes = 500
