@@ -362,8 +362,8 @@ public final class IMAPServer: @unchecked Sendable {
         responseHandler.fetchPartPromise = channel.eventLoop.makePromise(of: Data.self)
         
         // Create the sequence set for a single message
-        let seqNum = SequenceNumber(rawValue: UInt32(sequenceNumber))
-        let sequenceSet = MessageIdentifierSetNonEmpty(set: MessageIdentifierSet<SequenceNumber>(seqNum))!
+        let seqNum = SequenceNumber(UInt32(sequenceNumber))
+        let sequenceSet = SequenceNumberSet(seqNum).toNIOSet()!
         
         // Create the FETCH command for the specific part
         // Convert the part number string to a section path
@@ -418,8 +418,8 @@ public final class IMAPServer: @unchecked Sendable {
         responseHandler.fetchStructurePromise = channel.eventLoop.makePromise(of: BodyStructure.self)
         
         // Create the sequence set for a single message
-        let seqNum = SequenceNumber(rawValue: UInt32(sequenceNumber))
-        let sequenceSet = MessageIdentifierSetNonEmpty(set: MessageIdentifierSet<SequenceNumber>(seqNum))!
+        let seqNum = SequenceNumber(UInt32(sequenceNumber))
+        let sequenceSet = SequenceNumberSet(seqNum).toNIOSet()!
         
         // Create the FETCH command for the body structure
         let fetchCommand = CommandStreamPart.tagged(

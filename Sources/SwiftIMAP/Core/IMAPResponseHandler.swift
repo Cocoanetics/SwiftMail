@@ -144,7 +144,7 @@ public final class IMAPResponseHandler: ChannelHandler, @unchecked Sendable {
     /// - Parameters:
     ///   - attribute: The message attribute to process
     ///   - sequenceNumber: The sequence number of the message (if known)
-    internal func processMessageAttribute(_ attribute: MessageAttribute, sequenceNumber: SequenceNumber?) {
+	internal func processMessageAttribute(_ attribute: MessageAttribute, sequenceNumber: NIOIMAPCore.SequenceNumber?) {
         // If we don't have a sequence number, we can't update a header
         guard let sequenceNumber = sequenceNumber else {
             // For attributes that come without a sequence number, we assume they belong to the last header
