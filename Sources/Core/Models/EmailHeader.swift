@@ -8,28 +8,28 @@ public struct EmailHeader: Sendable {
     /// The sequence number of the message
     public let sequenceNumber: Int
     
-    /// The UID of the message
+    /// The UID of the message (if available)
     public var uid: Int = 0
     
-    /// The subject of the email
+    /// The subject of the message
     public var subject: String = ""
     
-    /// The sender of the email
+    /// The sender of the message
     public var from: String = ""
     
-    /// The recipients of the email
+    /// The recipients of the message
     public var to: String = ""
     
-    /// The CC recipients of the email
+    /// The CC recipients of the message
     public var cc: String = ""
     
-    /// The date the email was sent
+    /// The date of the message
     public var date: String = ""
     
     /// The message ID
     public var messageId: String = ""
     
-    /// The flags set on the message
+    /// The flags of the message
     public var flags: [String] = []
     
     /// Additional header fields
@@ -39,16 +39,5 @@ public struct EmailHeader: Sendable {
     /// - Parameter sequenceNumber: The sequence number of the message
     public init(sequenceNumber: Int) {
         self.sequenceNumber = sequenceNumber
-    }
-    
-    /// A string representation of the email header
-    public var description: String {
-        return """
-        Message #\(sequenceNumber) (UID: \(uid > 0 ? String(uid) : "N/A"))
-        Subject: \(subject)
-        From: \(from)
-        Date: \(date)
-        Flags: \(flags.joined(separator: ", "))
-        """
     }
 } 

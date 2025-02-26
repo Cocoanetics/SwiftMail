@@ -49,18 +49,6 @@ public struct MessagePart: Sendable {
 		self.contentId = contentId
 		self.data = data
 	}
-	
-	/// A string representation of the message part
-	public var description: String {
-		return """
-		Part #\(partNumber)
-		Content-Type: \(contentType)/\(contentSubtype)
-		\(disposition != nil ? "Content-Disposition: \(disposition!)" : "")
-		\(filename != nil ? "Filename: \(filename!)" : "")
-		\(contentId != nil ? "Content-ID: \(contentId!)" : "")
-		Size: \(size) bytes
-		"""
-	}
     
     /// Get a suggested filename for the part
     /// - Returns: A filename based on part information

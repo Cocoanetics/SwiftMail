@@ -451,14 +451,6 @@ public final class IMAPServer: @unchecked Sendable {
         }
     }
     
-    /// Parse a string range (e.g., "1:10") into a SequenceSet
-    /// - Parameter range: The range string to parse
-    /// - Returns: A SequenceSet object
-    /// - Throws: An error if the range string is invalid
-    private func parseSequenceSet(_ range: String) throws -> MessageIdentifierSetNonEmpty<SequenceNumber> {
-        return try range.toSequenceSet()
-    }
-    
     /// Fetch all parts of a message
     /// - Parameter sequenceNumber: The sequence number of the message
     /// - Returns: An array of message parts
@@ -670,28 +662,5 @@ public final class IMAPServer: @unchecked Sendable {
         
         // Return the path to the output folder
         return outputFolderURL.path
-    }
-    
-    /// Sanitize a filename to ensure it's valid
-    /// - Parameter filename: The original filename
-    /// - Returns: A sanitized filename
-    private func sanitizeFileName(_ filename: String) -> String {
-        return filename.sanitizedFileName()
-    }
-    
-    /// Get a file extension based on content type
-    /// - Parameters:
-    ///   - contentType: The content type
-    ///   - subtype: The content subtype
-    /// - Returns: An appropriate file extension
-    private func getFileExtension(for contentType: String, subtype: String) -> String {
-        return contentType.fileExtension(subtype: subtype)
-    }
-    
-    /// Format a file size in bytes to a human-readable string
-    /// - Parameter bytes: The size in bytes
-    /// - Returns: A formatted string (e.g., "1.2 KB")
-    private func formatFileSize(_ bytes: Int) -> String {
-        return bytes.formattedFileSize()
     }
 }
