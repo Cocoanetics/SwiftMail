@@ -1,0 +1,49 @@
+# SwiftIMAP Project Coding Standards
+
+## Code Organization
+
+- Protocol conformances for types should always be in a separate file named `Type+Protocol.swift`
+- Group extensions next to their model definitions in the file structure
+- Move files on the file system rather than generating them unnecessarily
+- Maintain a clear directory structure:
+  - `Sources/SwiftIMAP/` - Main module directory
+  - `Sources/SwiftIMAP/Core/` - Core functionality
+  - `Sources/SwiftIMAP/Extensions/` - Extensions
+  - `Sources/SwiftIMAP/Models/` - Models
+  - `Sources/SwiftIMAPCLI/` - CLI application
+
+## Swift Style Guidelines
+
+- Prefer to formulate convenience methods as an extension on the Foundation base type
+- Don't create functions consisting of a single line - replace with the single line directly
+- Don't prefix type names with underscore - Swift has namespaces via modules
+- For string conversion, prefer in this order:
+  1. Custom initializers: `String(value)`
+  2. Properties like `stringValue` or `description` only when a custom initializer isn't available
+  3. `String(describing:)` as a last resort
+
+## Access Control
+
+- Ensure methods called from outside the module are marked as `public`
+- Maintain a clear public interface for public types
+- Methods or properties that should not be visible publicly should be `internal`, `private`, or `fileprivate`
+
+## Imports
+
+- Imports for a file should always be the absolute minimum required
+- Don't import modules that aren't directly used in the file
+
+## Package Structure
+
+- Follow standard Swift Package Manager conventions for directory structure
+- Avoid specifying explicit paths in Package.swift when using standard directory locations
+
+## Error Handling
+
+- Use meaningful error types and descriptive error messages
+- Properly propagate errors up the call stack with appropriate context
+
+## Asynchronous Code
+
+- Use Swift's async/await pattern for asynchronous operations
+- Ensure proper error handling in asynchronous contexts 

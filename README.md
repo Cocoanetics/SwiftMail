@@ -15,16 +15,17 @@ A Swift library for interacting with IMAP servers.
 
 The project is organized as follows:
 
-- **Core**: Contains the main IMAP functionality
+- **Sources/SwiftIMAP/Core**: Contains the main IMAP functionality
   - **IMAPServer.swift**: The main class for IMAP server connections
   - **IMAPResponseHandler.swift**: Handles IMAP server responses
-  - **Models**: Contains data models used throughout the library
-    - **EmailHeader.swift**: Represents an email header
-    - **MailboxInfo.swift**: Contains information about a mailbox
-    - **MessagePart.swift**: Represents a part of an email message
-    - **IMAPError.swift**: Custom error types for IMAP operations
 
-- **Extensions**: Contains Swift extensions for various types
+- **Sources/SwiftIMAP/Models**: Contains data models used throughout the library
+  - **EmailHeader.swift**: Represents an email header
+  - **MailboxInfo.swift**: Contains information about a mailbox
+  - **MessagePart.swift**: Represents a part of an email message
+  - **IMAPError.swift**: Custom error types for IMAP operations
+
+- **Sources/SwiftIMAP/Extensions**: Contains Swift extensions for various types
   - **String+QuotedPrintable.swift**: Extensions for handling quoted-printable encoding
   - **String+Utilities.swift**: Utility extensions for strings
   - **Data+Utilities.swift**: Utility extensions for data
@@ -33,8 +34,20 @@ The project is organized as follows:
   - **MessageID+StringValue.swift**: Extension for MessageID
   - **NIOSSLClientHandler+Sendable.swift**: Extension for NIOSSLClientHandler
 
-- **Utilities**: Contains utility functions
-  - **MIMEHeaderDecoder.swift**: Utilities for decoding MIME headers (deprecated, use String extensions instead)
+- **Sources/SwiftIMAPCLI**: Contains the command-line interface application
+
+## Coding Standards
+
+This project follows a set of coding standards defined in the `.cursor.rules` file. Key principles include:
+
+- Protocol conformances should be in separate files named `Type+Protocol.swift`
+- Convenience methods should be formulated as extensions on Foundation base types
+- Public interfaces should be clearly defined with appropriate access control
+- Imports should be kept to the absolute minimum required
+- String conversions should prefer custom initializers (`String(value)`)
+- Single-line functions should be replaced with direct implementation
+
+For the complete set of coding standards, please refer to the `.cursor.rules` file in the project root.
 
 ## Usage
 
@@ -78,14 +91,15 @@ try await imapServer.close()
 
 ## Requirements
 
-- Swift 5.5+
-- macOS 12.0+ / iOS 15.0+ / tvOS 15.0+ / watchOS 8.0+
+- Swift 5.7+
+- macOS 11.0+
 
 ## Dependencies
 
 - [SwiftNIO](https://github.com/apple/swift-nio)
 - [SwiftNIOSSL](https://github.com/apple/swift-nio-ssl)
 - [SwiftNIOIMAP](https://github.com/apple/swift-nio-imap)
+- [SwiftDotenv](https://github.com/thebarndog/swift-dotenv) (for CLI only)
 
 ## License
 
