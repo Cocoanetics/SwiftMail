@@ -1,6 +1,6 @@
+import Foundation
 import Testing
 @testable import SwiftIMAP
-import Foundation
 
 struct QuotedPrintableTests {
     
