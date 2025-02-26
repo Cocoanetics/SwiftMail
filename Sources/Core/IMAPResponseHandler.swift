@@ -9,7 +9,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// A custom handler to process IMAP responses
-final class IMAPResponseHandler: @unchecked Sendable {
+final class IMAPResponseHandler: ChannelHandler, @unchecked Sendable {
     typealias InboundIn = Response
     
     // Promises for different command responses
@@ -200,7 +200,7 @@ final class IMAPResponseHandler: @unchecked Sendable {
             }
             
             if let messageID = envelope.messageID {
-                header.messageId = messageID.stringValue
+                header.messageId = String(messageID)
             }
             
         case .body(let bodyStructure, _):
@@ -211,7 +211,7 @@ final class IMAPResponseHandler: @unchecked Sendable {
             header.uid = Int(uid)
             
         case .flags(let flags):
-            header.flags = flags.map { String(describing: $0) }
+            header.flags = flags.map { String($0) }
             
         case .internalDate(let date):
             if header.date.isEmpty {

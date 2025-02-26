@@ -490,14 +490,14 @@ public final class IMAPServer: @unchecked Sendable {
             
             switch part.kind {
             case .basic(let mediaType):
-                contentType = String(describing: mediaType.topLevel)
-                contentSubtype = String(describing: mediaType.sub)
+                contentType = String(mediaType.topLevel)
+                contentSubtype = String(mediaType.sub)
             case .text(let text):
                 contentType = "text"
-                contentSubtype = String(describing: text.mediaSubtype)
+                contentSubtype = String(text.mediaSubtype)
             case .message(let message):
                 contentType = "message"
-                contentSubtype = String(describing: message.message)
+                contentSubtype = String(message.message)
             }
             
             // Extract disposition and filename if available
@@ -546,7 +546,7 @@ public final class IMAPServer: @unchecked Sendable {
                 let messagePart = MessagePart(
                     partNumber: "0",
                     contentType: "multipart",
-                    contentSubtype: String(describing: multipart.mediaSubtype),
+                    contentSubtype: String(multipart.mediaSubtype),
                     data: Data()
                 )
                 
