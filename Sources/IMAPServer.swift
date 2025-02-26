@@ -59,7 +59,7 @@ public final class IMAPServer: @unchecked Sendable {
     /// 1. Open Console.app
     /// 2. In the search field, type "subsystem:com.example.SwiftIMAP"
     /// 3. You may need to adjust the "Action" menu to show "Include Debug Messages" and "Include Info Messages"
-    private let logger = Logger(subsystem: "com.example.SwiftIMAP", category: "IMAPServer")
+    private let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAPServer")
     
     // MARK: - Initialization
     

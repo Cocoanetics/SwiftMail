@@ -10,19 +10,7 @@ import NIO
 import NIOSSL
 
 // Create a logger for the main application
-let logger = Logger(subsystem: "com.example.SwiftIMAP", category: "Main")
-
-// Log messages at different levels to demonstrate how they appear in Console.app
-logger.notice("🚀 SwiftIMAP - IMAP Client Starting Up 🚀")
-logger.debug("Debug level message - detailed information for debugging")
-logger.info("Info level message - general information about program execution")
-logger.notice("Notice level message - important information that should be visible by default")
-logger.warning("Warning level message - potential issues that aren't errors")
-logger.error("Error level message - errors that don't prevent the app from running")
-logger.critical("Critical level message - critical errors that may prevent the app from running")
-
-logger.info("SwiftIMAP - IMAP Client using .env credentials")
-logger.info("----------------------------------------------")
+let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "Main")
 
 // Path to the .env file (hardcoded as requested)
 let envFilePath = "/Users/oliver/Developer/.env"
@@ -91,21 +79,20 @@ do {
             logger.notice("\(mailboxSummary, privacy: .public)")
             print("\n\(mailboxSummary)")
             
-            // Fetch headers of unseen messages
-            if mailboxInfo.unseenCount > 0 && mailboxInfo.firstUnseen > 0 {
-                logger.notice("Fetching headers of unseen messages...")
+            // Fetch headers of the 10 latest emails
+            if mailboxInfo.messageCount > 0 {
+                logger.notice("Fetching headers of the 10 latest emails...")
                 
-                // Create a range string for unseen messages
-                // If there are too many unseen messages, limit to the first 10
-                let maxUnseenToFetch = min(mailboxInfo.unseenCount, 100)
-                let lastUnseen = mailboxInfo.firstUnseen + maxUnseenToFetch - 1
-                let unseenRange = "\(mailboxInfo.firstUnseen):\(lastUnseen)"
+                // Create a range string for the latest 10 messages
+                let startMessage = max(1, mailboxInfo.messageCount - 9)
+                let endMessage = mailboxInfo.messageCount
+                let range = "\(startMessage):\(endMessage)"
                 
                 do {
-                    let headers = try await server.fetchHeaders(range: unseenRange)
+                    let headers = try await server.fetchHeaders(range: range, limit: 10)
                     
-                    logger.notice("📧 Unseen Messages (\(headers.count)) 📧")
-                    print("\n📧 Unseen Messages (\(headers.count)) 📧")
+                    logger.notice("📧 Latest Messages (\(headers.count)) 📧")
+                    print("\n📧 Latest Messages (\(headers.count)) 📧")
                     print("----------------------------")
                     
                     for header in headers {
@@ -119,64 +106,13 @@ do {
                         logger.notice("\(headerSummary, privacy: .public)")
                         print(headerSummary)
                     }
-                    
-                    // Example: Fetch all parts of the first unseen message
-                    if let firstHeader = headers.first {
-                        logger.notice("Fetching all parts of message #\(firstHeader.sequenceNumber)...")
-                        print("\nFetching all parts of message #\(firstHeader.sequenceNumber)...")
-                        
-                        do {
-                            let parts = try await server.fetchAllMessageParts(sequenceNumber: firstHeader.sequenceNumber)
-                            
-                            logger.notice("Message has \(parts.count) parts")
-                            print("Message has \(parts.count) parts")
-                            
-                            for part in parts {
-                                let partSummary = """
-                                \(part.description)
-                                """
-                                logger.notice("\(partSummary, privacy: .public)")
-                                print(partSummary)
-                                
-                                // If this is a text part, display the content
-                                if part.contentType.lowercased() == "text" {
-                                    if let textContent = String(data: part.data, encoding: .utf8) {
-                                        // Limit the text content to 200 characters for display
-                                        let limitedContent = textContent.prefix(200)
-                                        print("Content preview: \(limitedContent)...")
-                                        if textContent.count > 200 {
-                                            print("(Content truncated, total length: \(textContent.count) characters)")
-                                        }
-                                    }
-                                }
-                                print("---")
-                            }
-                            
-                            // Save all message parts to the desktop
-                            logger.notice("Saving message #\(firstHeader.sequenceNumber) parts to desktop...")
-                            print("\nSaving message #\(firstHeader.sequenceNumber) parts to desktop...")
-                            
-                            do {
-                                let outputPath = try await server.saveMessagePartsToDesktop(sequenceNumber: firstHeader.sequenceNumber)
-                                logger.notice("Message parts saved to: \(outputPath)")
-                                print("Message parts saved to: \(outputPath)")
-                                print("Open this folder to view all message parts and the index.html file")
-                            } catch {
-                                logger.error("Failed to save message parts to desktop: \(error.localizedDescription)")
-                                print("Failed to save message parts to desktop: \(error.localizedDescription)")
-                            }
-                        } catch {
-                            logger.error("Failed to fetch message parts: \(error.localizedDescription)")
-                            print("Failed to fetch message parts: \(error.localizedDescription)")
-                        }
-                    }
                 } catch {
                     logger.error("Failed to fetch headers: \(error.localizedDescription)")
                     print("Failed to fetch headers: \(error.localizedDescription)")
                 }
             } else {
-                logger.notice("No unseen messages to fetch")
-                print("No unseen messages to fetch")
+                logger.notice("No messages in mailbox")
+                print("No messages in mailbox")
             }
             
             // Logout from the server
@@ -194,8 +130,3 @@ do {
     logger.error("Error: \(error.localizedDescription)")
     exit(1)
 }
-
-// Add a delay to ensure logs are processed and visible in Console.app
-logger.notice("Application completed, waiting for logs to be processed...")
-try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-logger.notice("Application exiting")
