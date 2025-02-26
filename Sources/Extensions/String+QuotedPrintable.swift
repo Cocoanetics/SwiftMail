@@ -98,6 +98,139 @@ extension String {
 
 		return result
 	}
+    
+    /// Decode a MIME-encoded header string
+    /// - Returns: The decoded string
+    func decodeMIMEHeader() -> String {
+        // Regular expression to match MIME encoded-word syntax: =?charset?encoding?encoded-text?=
+        let pattern = "=\\?([^?]+)\\?([bBqQ])\\?([^?]*)\\?="
+        
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return self
+        }
+        
+        var result = self
+        
+        // Find all matches and process them in reverse order to avoid index issues
+        let matches = regex.matches(in: self, options: [], range: NSRange(self.startIndex..., in: self))
+        
+        for match in matches.reversed() {
+            guard let charsetRange = Range(match.range(at: 1), in: self),
+                  let encodingRange = Range(match.range(at: 2), in: self),
+                  let textRange = Range(match.range(at: 3), in: self),
+                  let fullRange = Range(match.range, in: self) else {
+                continue
+            }
+            
+            let charset = String(self[charsetRange])
+            let encoding = String(self[encodingRange]).uppercased()
+            let encodedText = String(self[textRange])
+            
+            var decodedText = ""
+            
+            // Convert charset to String.Encoding
+            let stringEncoding = String.encodingFromCharset(charset)
+            
+            // Decode based on encoding type
+            if encoding == "B" {
+                // Base64 encoding
+                if let data = Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters),
+                   let decoded = String(data: data, encoding: stringEncoding) {
+                    decodedText = decoded
+                } else {
+                    // Try with UTF-8 if the specified charset fails
+                    if let data = Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters),
+                       let decoded = String(data: data, encoding: .utf8) {
+                        decodedText = decoded
+                    }
+                }
+            } else if encoding == "Q" {
+                // Quoted-printable encoding
+                if let decoded = encodedText.decodeQuotedPrintable(encoding: stringEncoding) {
+                    decodedText = decoded
+                } else if let decoded = encodedText.decodeQuotedPrintable() {
+                    // Fallback to UTF-8 if the specified charset fails
+                    decodedText = decoded
+                }
+            }
+            
+            if !decodedText.isEmpty {
+                result = result.replacingCharacters(in: fullRange, with: decodedText)
+            }
+        }
+        
+        // Handle consecutive encoded words (they should be concatenated without spaces)
+        result = result.replacingOccurrences(of: "?= =?", with: "")
+        
+        return result
+    }
+    
+    /// Decode quoted-printable content in message bodies
+    /// - Returns: The decoded content
+    func decodeQuotedPrintableContent() -> String {
+        // Split the content into lines
+        let lines = self.components(separatedBy: .newlines)
+        var inBody = false
+        var bodyContent = ""
+        var headerContent = ""
+        var contentEncoding: String.Encoding = .utf8
+        
+        // Process each line
+        for line in lines {
+            if !inBody {
+                // Check if we've reached the end of headers
+                if line.isEmpty {
+                    inBody = true
+                    headerContent += line + "\n"
+                    continue
+                }
+                
+                // Add header line
+                headerContent += line + "\n"
+                
+                // Check for Content-Type header with charset
+                if line.lowercased().contains("content-type:") && line.lowercased().contains("charset=") {
+                    if let range = line.range(of: "charset=([^\\s;\"']+)", options: .regularExpression) {
+                        let charsetString = line[range].replacingOccurrences(of: "charset=", with: "")
+                            .trimmingCharacters(in: .whitespacesAndNewlines)
+                            .replacingOccurrences(of: "\"", with: "")
+                            .replacingOccurrences(of: "'", with: "")
+                        contentEncoding = String.encodingFromCharset(charsetString)
+                    }
+                }
+                
+                // Check if this is a Content-Transfer-Encoding header
+                if line.lowercased().contains("content-transfer-encoding:") && 
+                   line.lowercased().contains("quoted-printable") {
+                    // Found quoted-printable encoding
+                    inBody = false
+                }
+            } else {
+                // Add body line
+                bodyContent += line + "\n"
+            }
+        }
+        
+        // If we found quoted-printable encoding, decode the body
+        if !bodyContent.isEmpty {
+            // Decode the body content with the detected encoding
+            if let decodedBody = bodyContent.decodeQuotedPrintable(encoding: contentEncoding) {
+                return headerContent + decodedBody
+            } else if let decodedBody = bodyContent.decodeQuotedPrintable() {
+                // Fallback to UTF-8 if the specified charset fails
+                return headerContent + decodedBody
+            }
+        }
+        
+        // If we didn't find quoted-printable encoding or no body content,
+        // try to decode the entire content with the detected charset
+        if let decodedContent = self.decodeQuotedPrintable(encoding: contentEncoding) {
+            return decodedContent
+        }
+        
+        // Last resort: try with UTF-8
+        return self.decodeQuotedPrintable() ?? self
+    }
 }
 
 // MARK: - String.Encoding Helpers

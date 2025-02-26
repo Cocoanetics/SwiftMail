@@ -413,7 +413,7 @@ final class IMAPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
     ///   - header: The EmailHeader object to update
     private func processHeaderField(field: String, value: String, header: inout EmailHeader) {
         // Decode the MIME-encoded value
-        let decodedValue = MIMEHeaderDecoder.decode(value)
+        let decodedValue = value.decodeMIMEHeader()
         
         switch field {
         case "subject":
@@ -476,17 +476,17 @@ final class IMAPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
         case .envelope(let envelope):
             // Extract information from envelope
             if let subject = envelope.subject?.stringValue {
-                header.subject = MIMEHeaderDecoder.decode(subject)
+                header.subject = subject.decodeMIMEHeader()
             }
             
             if let from = envelope.from.first {
                 let fromAddress = formatAddress(from)
-                header.from = MIMEHeaderDecoder.decode(fromAddress)
+                header.from = fromAddress.decodeMIMEHeader()
             }
             
             if let to = envelope.to.first {
                 let toAddress = formatAddress(to)
-                header.to = MIMEHeaderDecoder.decode(toAddress)
+                header.to = toAddress.decodeMIMEHeader()
             }
             
             if let date = envelope.date {

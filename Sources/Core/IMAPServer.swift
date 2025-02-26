@@ -305,7 +305,7 @@ public final class IMAPServer: @unchecked Sendable {
         responseHandler.fetchPromise = channel.eventLoop.makePromise(of: [EmailHeader].self)
         
         // Parse the range string into a sequence set
-        let sequenceSet = try parseSequenceSet(range)
+        let sequenceSet = try range.toSequenceSet()
         
         // Create the FETCH command for headers
         let fetchCommand = CommandStreamPart.tagged(
@@ -456,23 +456,7 @@ public final class IMAPServer: @unchecked Sendable {
     /// - Returns: A SequenceSet object
     /// - Throws: An error if the range string is invalid
     private func parseSequenceSet(_ range: String) throws -> MessageIdentifierSetNonEmpty<SequenceNumber> {
-        // Split the range by colon
-        let parts = range.split(separator: ":")
-        
-        if parts.count == 1, let number = UInt32(parts[0]) {
-            // Single number
-            let sequenceNumber = SequenceNumber(rawValue: number)
-            let set = MessageIdentifierSet<SequenceNumber>(sequenceNumber)
-            return MessageIdentifierSetNonEmpty(set: set)!
-        } else if parts.count == 2, let start = UInt32(parts[0]), let end = UInt32(parts[1]) {
-            // Range
-            let startSeq = SequenceNumber(rawValue: start)
-            let endSeq = SequenceNumber(rawValue: end)
-            let range = MessageIdentifierRange(startSeq...endSeq)
-            return MessageIdentifierSetNonEmpty(range: range)
-        } else {
-            throw IMAPError.invalidArgument("Invalid sequence range: \(range)")
-        }
+        return try range.toSequenceSet()
     }
     
     /// Fetch all parts of a message
@@ -636,61 +620,13 @@ public final class IMAPServer: @unchecked Sendable {
         // Save each part to a file
         for part in parts {
             // Create a filename for the part
-            let partFileName: String
-            if let filename = part.filename, !filename.isEmpty {
-                // Use the original filename if available
-                partFileName = sanitizeFileName(filename)
-            } else {
-                // Create a filename based on part number and content type
-                let fileExtension = getFileExtension(for: part.contentType, subtype: part.contentSubtype)
-                partFileName = "part_\(part.partNumber.replacingOccurrences(of: ".", with: "_")).\(fileExtension)"
-            }
+            let partFileName = part.suggestedFilename()
             
             // Save the part to a file
             let partFileURL = outputFolderURL.appendingPathComponent(partFileName)
             
-            // Check if this is text content that might need decoding
-            var dataToSave = part.data
-            if part.contentType.lowercased() == "text" {
-                if let textContent = String(data: part.data, encoding: .utf8) {
-                    // Check for Content-Transfer-Encoding header in the part data
-                    let isQuotedPrintable = textContent.contains("Content-Transfer-Encoding: quoted-printable") ||
-                                           textContent.contains("Content-Transfer-Encoding:quoted-printable") ||
-                                           textContent.contains("=3D") || // Common quoted-printable pattern
-                                           textContent.contains("=\r\n") || // Soft line break
-                                           textContent.contains("=\n")    // Soft line break
-                    
-                    if isQuotedPrintable {
-                        logger.debug("Decoding quoted-printable content for part #\(part.partNumber)")
-                        
-                        // Extract charset from Content-Type header if available
-                        var charset = "utf-8" // Default charset
-                        let contentTypePattern = "Content-Type:.*?charset=([^\\s;\"']+)"
-                        if let range = textContent.range(of: contentTypePattern, options: .regularExpression, range: nil, locale: nil),
-                           let charsetRange = textContent[range].range(of: "charset=([^\\s;\"']+)", options: .regularExpression) {
-                            charset = String(textContent[charsetRange].replacingOccurrences(of: "charset=", with: ""))
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                                .replacingOccurrences(of: "\"", with: "")
-                                .replacingOccurrences(of: "'", with: "")
-                            logger.debug("Found charset in Content-Type: \(charset)")
-                        }
-                        
-                        // Use the extracted charset for decoding
-                        let encoding = String.encodingFromCharset(charset)
-                        if let decodedContent = textContent.decodeQuotedPrintable(encoding: encoding) {
-                            if let decodedData = decodedContent.data(using: .utf8) {
-                                dataToSave = decodedData
-                            }
-                        } else {
-                            // Fallback to the MIMEHeaderDecoder if specific charset decoding fails
-                            let decodedContent = MIMEHeaderDecoder.decodeQuotedPrintableContent(textContent)
-                            if let decodedData = decodedContent.data(using: .utf8) {
-                                dataToSave = decodedData
-                            }
-                        }
-                    }
-                }
-            }
+            // Get decoded content if needed
+            let dataToSave = part.decodedContent()
             
             try dataToSave.write(to: partFileURL)
             
@@ -698,12 +634,10 @@ public final class IMAPServer: @unchecked Sendable {
             let preview: String
             if part.contentType.lowercased() == "text" {
                 // For text parts, show a preview
-                if let textContent = String(data: dataToSave, encoding: .utf8) {
-                    let truncatedContent = textContent.prefix(500)
-                    preview = "<div class='preview'>\(truncatedContent.replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;"))</div>"
-                } else {
-                    preview = "<a href='\(partFileName)'>View</a>"
-                }
+                let previewContent = part.contentPreview(maxLength: 500)
+                    .replacingOccurrences(of: "<", with: "&lt;")
+                    .replacingOccurrences(of: ">", with: "&gt;")
+                preview = "<div class='preview'>\(previewContent)</div>"
             } else if part.contentType.lowercased() == "image" {
                 // For images, show a thumbnail
                 preview = "<a href='\(partFileName)'><img src='\(partFileName)' height='100'></a>"
@@ -717,7 +651,7 @@ public final class IMAPServer: @unchecked Sendable {
                     <td>\(part.partNumber)</td>
                     <td>\(part.contentType)/\(part.contentSubtype)</td>
                     <td>\(part.filename ?? "")</td>
-                    <td>\(formatFileSize(part.size))</td>
+                    <td>\(part.size.formattedFileSize())</td>
                     <td>\(preview)</td>
                 </tr>
             """
@@ -742,11 +676,7 @@ public final class IMAPServer: @unchecked Sendable {
     /// - Parameter filename: The original filename
     /// - Returns: A sanitized filename
     private func sanitizeFileName(_ filename: String) -> String {
-        let invalidCharacters = CharacterSet(charactersIn: ":/\\?%*|\"<>")
-        return filename
-            .components(separatedBy: invalidCharacters)
-            .joined(separator: "_")
-            .replacingOccurrences(of: " ", with: "_")
+        return filename.sanitizedFileName()
     }
     
     /// Get a file extension based on content type
@@ -755,119 +685,13 @@ public final class IMAPServer: @unchecked Sendable {
     ///   - subtype: The content subtype
     /// - Returns: An appropriate file extension
     private func getFileExtension(for contentType: String, subtype: String) -> String {
-        let type = contentType.lowercased()
-        let sub = subtype.lowercased()
-        
-        switch (type, sub) {
-        case ("text", "plain"):
-            return "txt"
-        case ("text", "html"):
-            return "html"
-        case ("text", _):
-            return "txt"
-        case ("image", "jpeg"), ("image", "jpg"):
-            return "jpg"
-        case ("image", "png"):
-            return "png"
-        case ("image", "gif"):
-            return "gif"
-        case ("image", _):
-            return "img"
-        case ("application", "pdf"):
-            return "pdf"
-        case ("application", "json"):
-            return "json"
-        case ("application", "javascript"):
-            return "js"
-        case ("application", "zip"):
-            return "zip"
-        case ("application", _):
-            return "bin"
-        case ("audio", "mp3"):
-            return "mp3"
-        case ("audio", "wav"):
-            return "wav"
-        case ("audio", _):
-            return "audio"
-        case ("video", "mp4"):
-            return "mp4"
-        case ("video", _):
-            return "video"
-        default:
-            return "dat"
-        }
+        return contentType.fileExtension(subtype: subtype)
     }
     
     /// Format a file size in bytes to a human-readable string
     /// - Parameter bytes: The size in bytes
     /// - Returns: A formatted string (e.g., "1.2 KB")
     private func formatFileSize(_ bytes: Int) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.allowedUnits = [.useKB, .useMB, .useGB]
-        formatter.countStyle = .file
-        return formatter.string(fromByteCount: Int64(bytes))
+        return bytes.formattedFileSize()
     }
 }
-
-// MARK: - Message Part
-
-/// Structure to hold information about a message part
-public struct MessagePart: Sendable {
-    /// The part number (e.g., "1", "1.1", "2", etc.)
-    public let partNumber: String
-    
-    /// The content type of the part
-    public let contentType: String
-    
-    /// The content subtype of the part
-    public let contentSubtype: String
-    
-    /// The content disposition of the part (e.g., "attachment", "inline")
-    public let disposition: String?
-    
-    /// The filename of the part (if available)
-    public let filename: String?
-    
-    /// The content ID of the part (if available)
-    public let contentId: String?
-    
-    /// The content of the part
-    public let data: Data
-    
-    /// The size of the part in bytes
-    public var size: Int {
-        return data.count
-    }
-    
-    /// Initialize a new message part
-    /// - Parameters:
-    ///   - partNumber: The part number
-    ///   - contentType: The content type
-    ///   - contentSubtype: The content subtype
-    ///   - disposition: The content disposition
-    ///   - filename: The filename
-    ///   - contentId: The content ID
-    ///   - data: The content data
-    public init(partNumber: String, contentType: String, contentSubtype: String, disposition: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data) {
-        self.partNumber = partNumber
-        self.contentType = contentType
-        self.contentSubtype = contentSubtype
-        self.disposition = disposition
-        self.filename = filename
-        self.contentId = contentId
-        self.data = data
-    }
-    
-    /// A string representation of the message part
-    public var description: String {
-        return """
-        Part #\(partNumber)
-        Content-Type: \(contentType)/\(contentSubtype)
-        \(disposition != nil ? "Content-Disposition: \(disposition!)" : "")
-        \(filename != nil ? "Filename: \(filename!)" : "")
-        \(contentId != nil ? "Content-ID: \(contentId!)" : "")
-        Size: \(size) bytes
-        """
-    }
-} 
-
