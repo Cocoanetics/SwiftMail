@@ -46,7 +46,13 @@ public final class IMAPResponseHandler: ChannelHandler, @unchecked Sendable {
     internal let lock = NIOLock()
     
     // Logger for IMAP responses
-    internal let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAPResponseHandler")
+    internal let logger: Logger
+    
+    /// Initialize a new response handler
+    /// - Parameter logger: The logger to use for logging responses
+    public init(logger: Logger) {
+        self.logger = logger
+    }
     
     /// Format an address for display
     /// - Parameter address: The address to format

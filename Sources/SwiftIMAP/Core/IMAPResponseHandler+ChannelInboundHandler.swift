@@ -13,7 +13,7 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 		let response = self.unwrapInboundIn(data)
 		
 		// Log all responses for better visibility
-		logger.debug("IMAP RESPONSE: \(String(describing: response), privacy: .public)")
+		logger.notice("IMAP RESPONSE: \(String(describing: response), privacy: .public)")
 		
 		// Check if this is an untagged response (server greeting)
 		if case .untagged(_) = response, let greetingPromise = lock.withLock({ self.greetingPromise }) {
@@ -74,7 +74,6 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 									}
 									
 								default:
-									logger.debug("Unhandled response code: \(String(describing: responseCode))")
 									break
 							}
 						}
@@ -107,7 +106,6 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 					break
 					
 				default:
-					logger.debug("Unhandled untagged response: \(String(describing: untaggedResponse), privacy: .public)")
 					break
 			}
 		}
@@ -287,8 +285,6 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 	}
 	
 	public func errorCaught(context: ChannelHandlerContext, error: Error) {
-		logger.error("Error: \(error.localizedDescription, privacy: .public)")
-		
 		// Fail all pending promises
 		lock.withLock {
 			self.greetingPromise?.fail(error)

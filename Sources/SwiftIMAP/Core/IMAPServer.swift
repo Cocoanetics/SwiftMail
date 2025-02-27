@@ -34,9 +34,15 @@ public final class IMAPServer: @unchecked Sendable {
     /// Logger for IMAP operations
     /// To view these logs in Console.app:
     /// 1. Open Console.app
-    /// 2. In the search field, type "subsystem:com.example.SwiftIMAP"
+    /// 2. In the search field, type "process:com.cocoanetics.SwiftIMAP"
     /// 3. You may need to adjust the "Action" menu to show "Include Debug Messages" and "Include Info Messages"
     private let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAPServer")
+    
+    /// Logger for outgoing IMAP commands
+    private let outboundLogger = Logger(subsystem: "IMAP_OUT", category: "Command")
+    
+    /// Logger for incoming IMAP responses
+    private let inboundLogger = Logger(subsystem: "IMAP_IN", category: "Response")
     
     // MARK: - Initialization
     
@@ -64,14 +70,17 @@ public final class IMAPServer: @unchecked Sendable {
         // Create SSL context for secure connection
         let sslContext = try NIOSSLContext(configuration: TLSConfiguration.makeClientConfiguration())
         
-        // Create our response handler
-        let responseHandler = IMAPResponseHandler()
+        // Create our response handler with the inbound logger
+        let responseHandler = IMAPResponseHandler(logger: inboundLogger)
         lock.withLock {
             self.responseHandler = responseHandler
         }
         
         // Capture the host as a local variable to avoid capturing self
         let host = self.host
+        
+        // Create our outbound logger for command logging
+        let outboundLogger = IMAPOutboundLogger(logger: self.outboundLogger)
         
         // Set up the channel handlers
         let bootstrap = ClientBootstrap(group: group)
@@ -82,24 +91,23 @@ public final class IMAPServer: @unchecked Sendable {
                 
                 // Add handlers to the pipeline
                 return channel.pipeline.addHandler(sslHandler).flatMap {
-                    channel.pipeline.addHandler(IMAPClientHandler()).flatMap {
-                        channel.pipeline.addHandler(responseHandler)
+                    // Add our outbound logger before the IMAP client handler to log outgoing commands
+                    channel.pipeline.addHandler(outboundLogger).flatMap {
+                        channel.pipeline.addHandler(IMAPClientHandler()).flatMap {
+                            channel.pipeline.addHandler(responseHandler)
+                        }
                     }
                 }
             }
         
         // Connect to the server
-        logger.info("Connecting to \(self.host):\(self.port)...")
         let channel = try await bootstrap.connect(host: host, port: port).get()
         lock.withLock {
             self.channel = channel
         }
-        logger.info("Connected to server")
         
         // Wait for the server greeting
-        logger.debug("Waiting for server greeting...")
         try await waitForGreeting()
-        logger.info("Server greeting received!")
     }
     
     /// Wait for the server greeting
@@ -126,7 +134,6 @@ public final class IMAPServer: @unchecked Sendable {
             try await responseHandler.greetingPromise?.futureResult.get()
             greetingTimeout.cancel()
         } catch {
-            logger.error("Failed to receive server greeting: \(error.localizedDescription, privacy: .public)")
             throw error
         }
     }
@@ -146,7 +153,6 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         // Send login command
-        logger.debug("Sending login command...")
         let loginTag = "A001"
         responseHandler.loginTag = loginTag
         responseHandler.loginPromise = channel.eventLoop.makePromise(of: Void.self)
@@ -157,7 +163,6 @@ public final class IMAPServer: @unchecked Sendable {
         try await channel.writeAndFlush(loginCommand).get()
         
         // Set up a timeout for login
-        logger.debug("Waiting for login response...")
         let loginTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) { [responseHandler] in
             responseHandler.loginPromise?.fail(IMAPError.timeout)
         }
@@ -165,9 +170,7 @@ public final class IMAPServer: @unchecked Sendable {
         do {
             try await responseHandler.loginPromise?.futureResult.get()
             loginTimeout.cancel()
-            logger.info("Login successful!")
         } catch {
-            logger.error("Login failed: \(error.localizedDescription, privacy: .public)")
             throw error
         }
     }
@@ -186,7 +189,6 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         // Send select inbox command
-        logger.debug("Sending SELECT \(mailboxName) command...")
         let selectTag = "A002"
         responseHandler.selectTag = selectTag
         responseHandler.currentMailboxName = mailboxName
@@ -199,7 +201,6 @@ public final class IMAPServer: @unchecked Sendable {
         try await channel.writeAndFlush(selectCommand).get()
         
         // Set up a timeout for select
-        logger.debug("Waiting for SELECT response...")
         let selectTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) { [responseHandler] in
             responseHandler.selectPromise?.fail(IMAPError.timeout)
         }
@@ -207,17 +208,13 @@ public final class IMAPServer: @unchecked Sendable {
         do {
             let mailboxInfo = try await responseHandler.selectPromise?.futureResult.get()
             selectTimeout.cancel()
-            logger.info("SELECT successful!")
             
             if let mailboxInfo = mailboxInfo {
-                logger.info("Mailbox information: \(mailboxInfo.description)")
                 return mailboxInfo
             } else {
-                logger.warning("No mailbox information available")
                 throw IMAPError.selectFailed("No mailbox information available")
             }
         } catch {
-            logger.error("SELECT failed: \(error.localizedDescription, privacy: .public)")
             throw error
         }
     }
@@ -234,7 +231,6 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         // Send logout command
-        logger.debug("Sending LOGOUT command...")
         let logoutTag = "A003"
         responseHandler.logoutTag = logoutTag
         responseHandler.logoutPromise = channel.eventLoop.makePromise(of: Void.self)
@@ -245,7 +241,6 @@ public final class IMAPServer: @unchecked Sendable {
         try await channel.writeAndFlush(logoutCommand).get()
         
         // Set up a timeout for logout
-        logger.debug("Waiting for LOGOUT response...")
         let logoutTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) { [responseHandler] in
             responseHandler.logoutPromise?.fail(IMAPError.timeout)
         }
@@ -253,9 +248,7 @@ public final class IMAPServer: @unchecked Sendable {
         do {
             try await responseHandler.logoutPromise?.futureResult.get()
             logoutTimeout.cancel()
-            logger.info("LOGOUT successful!")
         } catch {
-            logger.error("LOGOUT failed: \(error.localizedDescription, privacy: .public)")
             // Continue with closing even if logout fails
             throw error
         }
@@ -273,13 +266,10 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         // Close the connection
-        logger.debug("Closing connection...")
         do {
             try await channel.close().get()
-            logger.info("Connection closed")
         } catch let error as NIOCore.ChannelError where error == .alreadyClosed {
             // Channel is already closed, which is fine
-            logger.info("Connection already closed by server")
         }
     }
     
@@ -304,7 +294,6 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         // Send fetch command
-        logger.debug("Sending FETCH command for \(T.self) set...")
         let fetchTag = "A004"
         responseHandler.fetchTag = fetchTag
         responseHandler.fetchPromise = channel.eventLoop.makePromise(of: [EmailHeader].self)
@@ -336,7 +325,6 @@ public final class IMAPServer: @unchecked Sendable {
         try await channel.writeAndFlush(fetchCommand).get()
         
         // Set up a timeout for fetch
-        logger.debug("Waiting for FETCH response...")
         let fetchTimeout = channel.eventLoop.scheduleTask(in: .seconds(10)) { [responseHandler] in
             responseHandler.fetchPromise?.fail(IMAPError.timeout)
         }
@@ -344,7 +332,6 @@ public final class IMAPServer: @unchecked Sendable {
         do {
             var headers = try await responseHandler.fetchPromise!.futureResult.get()
             fetchTimeout.cancel()
-            logger.info("FETCH successful! Retrieved \(headers.count) headers")
             
             // Apply limit if specified
             if let limit = limit, headers.count > limit {
@@ -354,7 +341,6 @@ public final class IMAPServer: @unchecked Sendable {
             return headers
         } catch {
             fetchTimeout.cancel()
-            logger.error("FETCH failed: \(error)")
             throw error
         }
     }
@@ -377,7 +363,6 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         // Send fetch command
-        logger.debug("Sending FETCH for \(T.self) \(identifier.value), part \(partNumber)...")
         let fetchTag = "A005"
         responseHandler.fetchPartTag = fetchTag
         responseHandler.fetchPartPromise = channel.eventLoop.makePromise(of: Data.self)
@@ -419,7 +404,6 @@ public final class IMAPServer: @unchecked Sendable {
         try await channel.writeAndFlush(fetchCommand).get()
         
         // Set up a timeout for fetch
-        logger.debug("Waiting for FETCH PART response...")
         let fetchTimeout = channel.eventLoop.scheduleTask(in: .seconds(10)) { [responseHandler] in
             responseHandler.fetchPartPromise?.fail(IMAPError.timeout)
         }
@@ -427,11 +411,9 @@ public final class IMAPServer: @unchecked Sendable {
         do {
             let partData = try await responseHandler.fetchPartPromise!.futureResult.get()
             fetchTimeout.cancel()
-            logger.info("FETCH PART successful! Retrieved \(partData.count) bytes")
             return partData
         } catch {
             fetchTimeout.cancel()
-            logger.error("FETCH PART failed: \(error)")
             throw error
         }
     }
@@ -452,7 +434,6 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         // Send fetch command
-        logger.debug("Sending FETCH BODYSTRUCTURE for \(T.self) \(identifier.value)...")
         let fetchTag = "A006"
         responseHandler.fetchStructureTag = fetchTag
         responseHandler.fetchStructurePromise = channel.eventLoop.makePromise(of: BodyStructure.self)
@@ -489,7 +470,6 @@ public final class IMAPServer: @unchecked Sendable {
         try await channel.writeAndFlush(fetchCommand).get()
         
         // Set up a timeout for fetch
-        logger.debug("Waiting for FETCH BODYSTRUCTURE response...")
         let fetchTimeout = channel.eventLoop.scheduleTask(in: .seconds(10)) { [responseHandler] in
             responseHandler.fetchStructurePromise?.fail(IMAPError.timeout)
         }
@@ -497,11 +477,9 @@ public final class IMAPServer: @unchecked Sendable {
         do {
             let structure = try await responseHandler.fetchStructurePromise!.futureResult.get()
             fetchTimeout.cancel()
-            logger.info("FETCH BODYSTRUCTURE successful!")
             return structure
         } catch {
             fetchTimeout.cancel()
-            logger.error("FETCH BODYSTRUCTURE failed: \(error)")
             throw error
         }
     }
