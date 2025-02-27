@@ -9,10 +9,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH HEADERS command
-public final class FetchHeadersHandler: BaseIMAPCommandHandler, @unchecked Sendable {
-    /// Promise for the fetch headers operation
-    private let fetchPromise: EventLoopPromise<[EmailHeader]>
-    
+public final class FetchHeadersHandler: BaseIMAPCommandHandler<[EmailHeader]>, @unchecked Sendable {
     /// Collected email headers
     private var emailHeaders: [EmailHeader] = []
     
@@ -23,20 +20,20 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler, @unchecked Senda
     ///   - timeoutSeconds: The timeout for this command in seconds
     ///   - logger: The logger to use for logging responses
     public init(commandTag: String, fetchPromise: EventLoopPromise<[EmailHeader]>, timeoutSeconds: Int = 10, logger: Logger) {
-        self.fetchPromise = fetchPromise
-        super.init(commandTag: commandTag, timeoutSeconds: timeoutSeconds, logger: logger)
+        super.init(commandTag: commandTag, promise: fetchPromise, timeoutSeconds: timeoutSeconds, logger: logger)
     }
     
-    /// Handle a timeout for this command
-    override public func handleTimeout() {
-        super.handleTimeout()
-        fetchPromise.fail(IMAPError.timeout)
+    /// Handle a tagged OK response by succeeding the promise with the mailbox info
+    /// - Parameter response: The tagged response
+    override public func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Succeed with the collected headers
+        succeedWithResult(lock.withLock { self.emailHeaders })
     }
     
-    /// Handle an error
-    override public func handleError(_ error: Error) {
-        super.handleError(error)
-        fetchPromise.fail(error)
+    /// Handle a tagged error response
+    /// - Parameter response: The tagged response
+    override public func handleTaggedErrorResponse(_ response: TaggedResponse) {
+        failWithError(IMAPError.fetchFailed(String(describing: response.state)))
     }
     
     /// Process an incoming response
@@ -44,27 +41,15 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler, @unchecked Senda
     /// - Returns: Whether the response was handled by this handler
     override public func processResponse(_ response: Response) -> Bool {
         // Call the base class implementation to buffer the response
-        let baseHandled = super.processResponse(response)
-        
-        // First check if this is our tagged response
-        if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
-            if case .ok = taggedResponse.state {
-                // Fetch successful
-                fetchPromise.succeed(lock.withLock { self.emailHeaders })
-            } else {
-                // Fetch failed
-                fetchPromise.fail(IMAPError.fetchFailed(String(describing: taggedResponse.state)))
-            }
-            return true
-        }
+        let handled = super.processResponse(response)
         
         // Process fetch responses
         if case .fetch(let fetchResponse) = response {
             processFetchResponse(fetchResponse)
         }
         
-        // Return the base class result
-        return baseHandled
+        // Return the result from the base class
+        return handled
     }
     
     /// Process a fetch response

@@ -14,4 +14,5 @@ public enum IMAPError: Error {
     case timeout
     case invalidArgument(String)
     case emptyIdentifierSet
+    case commandFailed(String)
 } 

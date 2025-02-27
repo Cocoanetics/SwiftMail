@@ -9,10 +9,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP SELECT command
-public final class SelectHandler: BaseIMAPCommandHandler, @unchecked Sendable {
-    /// Promise for the select operation
-    private let selectPromise: EventLoopPromise<MailboxInfo>
-    
+public final class SelectHandler: BaseIMAPCommandHandler<MailboxInfo>, @unchecked Sendable {
     /// The name of the mailbox being selected
     private let mailboxName: String
     
@@ -27,45 +24,34 @@ public final class SelectHandler: BaseIMAPCommandHandler, @unchecked Sendable {
     ///   - timeoutSeconds: The timeout for this command in seconds
     ///   - logger: The logger to use for logging responses
     public init(commandTag: String, mailboxName: String, selectPromise: EventLoopPromise<MailboxInfo>, timeoutSeconds: Int = 5, logger: Logger) {
-        self.selectPromise = selectPromise
         self.mailboxName = mailboxName
         self.mailboxInfo = MailboxInfo(name: mailboxName)
-        super.init(commandTag: commandTag, timeoutSeconds: timeoutSeconds, logger: logger)
+        super.init(commandTag: commandTag, promise: selectPromise, timeoutSeconds: timeoutSeconds, logger: logger)
     }
     
-    /// Handle a timeout for this command
-    override public func handleTimeout() {
-        selectPromise.fail(IMAPError.timeout)
-    }
-    
-    /// Handle an error
-    override public func handleError(_ error: Error) {
-        selectPromise.fail(error)
-    }
-    
-    /// Process an incoming response
-    /// - Parameter response: The response to process
-    /// - Returns: Whether the response was handled by this handler
-    override public func processResponse(_ response: Response) -> Bool {
-        // Call the superclass method to buffer the response for logging
-        _ = super.processResponse(response)
-        
-        // First check if this is our tagged response
-        if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
-            if case .ok = taggedResponse.state {
-                // If we have a first unseen message but unseen count is 0,
-                // calculate the unseen count as (total messages - first unseen + 1)
-                if mailboxInfo.firstUnseen > 0 && mailboxInfo.unseenCount == 0 {
-                    mailboxInfo.unseenCount = mailboxInfo.messageCount - mailboxInfo.firstUnseen + 1
-                }
-                
-                selectPromise.succeed(mailboxInfo)
-            } else {
-                selectPromise.fail(IMAPError.selectFailed(String(describing: taggedResponse.state)))
-            }
-            return true
+    /// Handle a tagged OK response by succeeding the promise with the mailbox info
+    /// - Parameter response: The tagged response
+    override public func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // If we have a first unseen message but unseen count is 0,
+        // calculate the unseen count as (total messages - first unseen + 1)
+        if mailboxInfo.firstUnseen > 0 && mailboxInfo.unseenCount == 0 {
+            mailboxInfo.unseenCount = mailboxInfo.messageCount - mailboxInfo.firstUnseen + 1
         }
         
+        // Succeed with the mailbox info
+        succeedWithResult(mailboxInfo)
+    }
+    
+    /// Handle a tagged error response
+    /// - Parameter response: The tagged response
+    override public func handleTaggedErrorResponse(_ response: TaggedResponse) {
+        failWithError(IMAPError.selectFailed(String(describing: response.state)))
+    }
+    
+    /// Handle untagged responses to extract mailbox information
+    /// - Parameter response: The response to process
+    /// - Returns: Whether the response was handled by this handler
+    override public func handleUntaggedResponse(_ response: Response) -> Bool {
         // Process untagged responses for mailbox information
         if case .untagged(let untaggedResponse) = response {
             // Extract mailbox information from untagged responses
@@ -139,9 +125,11 @@ public final class SelectHandler: BaseIMAPCommandHandler, @unchecked Sendable {
                 default:
                     break
             }
+            
+            // We've processed the untagged response, but we're not done yet
+            return false
         }
         
-        // Not our tagged response
         return false
     }
 } 

@@ -719,6 +719,11 @@ protocol TimeoutHandler {
     func setupTimeout(on eventLoop: EventLoop)
 }
 
+// Update BaseIMAPCommandHandler to explicitly conform to TimeoutHandler
+extension BaseIMAPCommandHandler: TimeoutHandler {}
+
+// MARK: - IMAPCommandHandler Protocol
+
 /// Protocol for IMAP command handlers
 protocol IMAPCommandHandler: ChannelInboundHandler, TimeoutHandler {
     associatedtype ResultType
@@ -754,7 +759,8 @@ extension GreetingHandler: IMAPCommandHandler {
             timeoutSeconds: timeoutSeconds,
             logger: logger
         )
-        handler.setupTimeout(on: promise.futureResult.eventLoop)
+        let eventLoop: EventLoop = promise.futureResult.eventLoop
+        handler.setupTimeout(on: eventLoop)
         return handler
     }
 }
@@ -774,7 +780,8 @@ extension LoginHandler: IMAPCommandHandler {
             timeoutSeconds: timeoutSeconds,
             logger: logger
         )
-        handler.setupTimeout(on: promise.futureResult.eventLoop)
+        let eventLoop: EventLoop = promise.futureResult.eventLoop
+        handler.setupTimeout(on: eventLoop)
         return handler
     }
 }
@@ -794,7 +801,8 @@ extension LogoutHandler: IMAPCommandHandler {
             timeoutSeconds: timeoutSeconds,
             logger: logger
         )
-        handler.setupTimeout(on: promise.futureResult.eventLoop)
+        let eventLoop: EventLoop = promise.futureResult.eventLoop
+        handler.setupTimeout(on: eventLoop)
         return handler
     }
 }
@@ -815,7 +823,8 @@ extension SelectHandler: IMAPCommandHandler {
             timeoutSeconds: timeoutSeconds,
             logger: logger
         )
-        handler.setupTimeout(on: promise.futureResult.eventLoop)
+        let eventLoop: EventLoop = promise.futureResult.eventLoop
+        handler.setupTimeout(on: eventLoop)
         return handler
     }
 }
@@ -835,7 +844,8 @@ extension FetchHeadersHandler: IMAPCommandHandler {
             timeoutSeconds: timeoutSeconds,
             logger: logger
         )
-        handler.setupTimeout(on: promise.futureResult.eventLoop)
+        let eventLoop: EventLoop = promise.futureResult.eventLoop
+        handler.setupTimeout(on: eventLoop)
         return handler
     }
 }
@@ -855,7 +865,8 @@ extension FetchPartHandler: IMAPCommandHandler {
             timeoutSeconds: timeoutSeconds,
             logger: logger
         )
-        handler.setupTimeout(on: promise.futureResult.eventLoop)
+        let eventLoop: EventLoop = promise.futureResult.eventLoop
+        handler.setupTimeout(on: eventLoop)
         return handler
     }
 }
@@ -875,7 +886,8 @@ extension FetchStructureHandler: IMAPCommandHandler {
             timeoutSeconds: timeoutSeconds,
             logger: logger
         )
-        handler.setupTimeout(on: promise.futureResult.eventLoop)
+        let eventLoop: EventLoop = promise.futureResult.eventLoop
+        handler.setupTimeout(on: eventLoop)
         return handler
     }
 }

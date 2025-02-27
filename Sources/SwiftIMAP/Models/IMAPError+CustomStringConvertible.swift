@@ -21,6 +21,8 @@ extension IMAPError: CustomStringConvertible {
             return "Invalid argument: \(reason)"
         case .emptyIdentifierSet:
             return "Empty identifier set provided"
+        case .commandFailed(let reason):
+            return "Command failed: \(reason)"
         }
     }
 } 
