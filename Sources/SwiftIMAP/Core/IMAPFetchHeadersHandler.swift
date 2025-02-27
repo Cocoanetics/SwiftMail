@@ -29,11 +29,13 @@ public final class IMAPFetchHeadersHandler: BaseIMAPCommandHandler, @unchecked S
     
     /// Handle a timeout for this command
     override public func handleTimeout() {
+        super.handleTimeout()
         fetchPromise.fail(IMAPError.timeout)
     }
     
     /// Handle an error
     override public func handleError(_ error: Error) {
+        super.handleError(error)
         fetchPromise.fail(error)
     }
     
@@ -41,6 +43,9 @@ public final class IMAPFetchHeadersHandler: BaseIMAPCommandHandler, @unchecked S
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override public func processResponse(_ response: Response) -> Bool {
+        // Call the base class implementation to buffer the response
+        let baseHandled = super.processResponse(response)
+        
         // First check if this is our tagged response
         if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
             if case .ok = taggedResponse.state {
@@ -58,8 +63,8 @@ public final class IMAPFetchHeadersHandler: BaseIMAPCommandHandler, @unchecked S
             processFetchResponse(fetchResponse)
         }
         
-        // Not our tagged response
-        return false
+        // Return the base class result
+        return baseHandled
     }
     
     /// Process a fetch response

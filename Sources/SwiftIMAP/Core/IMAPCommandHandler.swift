@@ -55,6 +55,9 @@ public class BaseIMAPCommandHandler: IMAPCommandHandler, RemovableChannelHandler
     /// Lock for thread-safe access to mutable properties
     internal let lock = NIOLock()
     
+    /// Buffer for logging during command processing
+    private var logBuffer: [String] = []
+    
     /// Initialize a new command handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
@@ -84,6 +87,7 @@ public class BaseIMAPCommandHandler: IMAPCommandHandler, RemovableChannelHandler
     /// This method should be overridden by subclasses
     public func handleTimeout() {
         // Default implementation does nothing
+        flushLogBuffer()
     }
     
     /// Handle the completion of this command
@@ -93,6 +97,9 @@ public class BaseIMAPCommandHandler: IMAPCommandHandler, RemovableChannelHandler
             isCompleted = true
         }
         
+        // Flush any remaining logs before removing the handler
+        flushLogBuffer()
+        
         // Remove this handler from the pipeline
         context.pipeline.removeHandler(self, promise: nil)
     }
@@ -101,6 +108,9 @@ public class BaseIMAPCommandHandler: IMAPCommandHandler, RemovableChannelHandler
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     public func processResponse(_ response: Response) -> Bool {
+        // Buffer the response for logging
+        bufferLog(response.debugDescription)
+        
         // Check if this is a tagged response that matches our command tag
         if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
             // This is our response, mark as completed
@@ -111,14 +121,29 @@ public class BaseIMAPCommandHandler: IMAPCommandHandler, RemovableChannelHandler
         return false
     }
     
+    /// Add a message to the log buffer
+    fileprivate func bufferLog(_ message: String) {
+        lock.withLock {
+            logBuffer.append(message)
+        }
+    }
+    
+    /// Flush the log buffer to the logger
+    fileprivate func flushLogBuffer() {
+        lock.withLock {
+            if !logBuffer.isEmpty {
+                let combinedLog = logBuffer.joined(separator: "\n")
+                logger.debug("\(combinedLog, privacy: .public)\n")
+                logBuffer.removeAll()
+            }
+        }
+    }
+    
     /// Channel read method from ChannelInboundHandler
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
         
-        // Log the response
-        logger.debug("\(response.debugDescription, privacy: .public)")
-        
-        // Process the response
+        // Process the response (which will buffer it for logging)
         let handled = processResponse(response)
         
         // If this was our tagged response, handle completion
@@ -142,6 +167,9 @@ public class BaseIMAPCommandHandler: IMAPCommandHandler, RemovableChannelHandler
     /// Handle an error
     /// This method should be overridden by subclasses
     public func handleError(_ error: Error) {
-        // Default implementation does nothing
+        // Flush logs before handling the error
+        flushLogBuffer()
+        
+        // Default implementation does nothing else
     }
 } 

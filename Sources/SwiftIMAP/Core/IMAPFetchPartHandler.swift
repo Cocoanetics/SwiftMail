@@ -16,6 +16,9 @@ public final class IMAPFetchPartHandler: BaseIMAPCommandHandler, @unchecked Send
     /// Collected message part data
     private var partData: Data = Data()
     
+    /// Expected byte count for the streaming data
+    private var expectedByteCount: Int?
+    
     /// Initialize a new fetch part handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
@@ -29,11 +32,13 @@ public final class IMAPFetchPartHandler: BaseIMAPCommandHandler, @unchecked Send
     
     /// Handle a timeout for this command
     override public func handleTimeout() {
+        super.handleTimeout()
         fetchPromise.fail(IMAPError.timeout)
     }
     
     /// Handle an error
     override public func handleError(_ error: Error) {
+        super.handleError(error)
         fetchPromise.fail(error)
     }
     
@@ -41,6 +46,9 @@ public final class IMAPFetchPartHandler: BaseIMAPCommandHandler, @unchecked Send
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override public func processResponse(_ response: Response) -> Bool {
+        // Call the base class implementation to buffer the response
+        let baseHandled = super.processResponse(response)
+        
         // First check if this is our tagged response
         if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
             if case .ok = taggedResponse.state {
@@ -58,8 +66,8 @@ public final class IMAPFetchPartHandler: BaseIMAPCommandHandler, @unchecked Send
             processFetchResponse(fetchResponse)
         }
         
-        // Not our tagged response
-        return false
+        // Return the base class result
+        return baseHandled
     }
     
     /// Process a fetch response
@@ -70,9 +78,9 @@ public final class IMAPFetchPartHandler: BaseIMAPCommandHandler, @unchecked Send
                 // Process simple attributes
                 processMessageAttribute(attribute)
                 
-            case .streamingBegin(let kind, _):
-                // Log the beginning of streaming data
-                logger.debug("Streaming begin for \(String(describing: kind))")
+            case .streamingBegin(_, let byteCount):
+                // Store the expected byte count
+                expectedByteCount = byteCount
                 
             case .streamingBytes(let data):
                 // Collect the streaming body data
@@ -89,10 +97,9 @@ public final class IMAPFetchPartHandler: BaseIMAPCommandHandler, @unchecked Send
     /// - Parameter attribute: The attribute to process
     private func processMessageAttribute(_ attribute: MessageAttribute) {
         switch attribute {
-            case .body(let bodyStructure, _):
+            case .body(_, _):
                 // We're primarily interested in the body data which comes through streaming
-                // but we can log the body structure for debugging
-                logger.debug("Received body structure: \(String(describing: bodyStructure))")
+                break
                 
             default:
                 break
