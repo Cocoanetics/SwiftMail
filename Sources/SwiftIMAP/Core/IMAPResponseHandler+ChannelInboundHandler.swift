@@ -9,13 +9,37 @@ import NIO
 import NIOConcurrencyHelpers
 
 extension IMAPResponseHandler: ChannelInboundHandler {
+	
 	public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
 		let response = self.unwrapInboundIn(data)
 		
-		// Log all responses for better visibility
-		// Use debugDescription for more detailed information about the response
-		logger.notice("\(response.debugDescription, privacy: .public)")
+		// Process the response for IMAP state management
+		processResponse(response)
 		
+		// Buffer the response for logging in channelReadComplete
+		lock.withLock {
+			if self.responseBuffer.isEmpty {
+				self.responseBuffer = response.debugDescription
+			} else {
+				self.responseBuffer += "\n" + response.debugDescription
+			}
+		}
+		
+		// Forward the event to the next handler
+		context.fireChannelRead(data)
+	}
+	
+	private func flushLoggedResponses() {
+		lock.withLock {
+			if !self.responseBuffer.isEmpty {
+				logger.notice("\(self.responseBuffer, privacy: .public)")
+				self.responseBuffer = ""
+			}
+		}
+	}
+	
+	// Process the response for IMAP state management
+	private func processResponse(_ response: Response) {
 		// Check if this is an untagged response (server greeting)
 		if case .untagged(_) = response, let greetingPromise = lock.withLock({ self.greetingPromise }) {
 			// Server greeting is typically an untagged OK response
@@ -178,6 +202,8 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 				} else {
 					lock.withLock { self.loginPromise?.fail(IMAPError.loginFailed(String(describing: taggedResponse.state))) }
 				}
+				
+				flushLoggedResponses()
 			}
 			
 			// Handle select response
@@ -216,6 +242,8 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 					lock.withLock {
 						self.selectPromise?.fail(IMAPError.selectFailed(String(describing: taggedResponse.state))) }
 				}
+				
+				flushLoggedResponses()
 			}
 			
 			// Handle logout response
@@ -225,6 +253,8 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 				} else {
 					lock.withLock { self.logoutPromise?.fail(IMAPError.logoutFailed(String(describing: taggedResponse.state))) }
 				}
+				
+				flushLoggedResponses()
 			}
 			
 			// Handle fetch response
@@ -242,6 +272,8 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 						self.emailHeaders.removeAll()
 					}
 				}
+				
+				flushLoggedResponses()
 			}
 			
 			// Handle fetch part response
@@ -259,6 +291,8 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 						self.partData = Data()
 					}
 				}
+				
+				flushLoggedResponses()
 			}
 			
 			// Handle fetch structure response
@@ -281,6 +315,8 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 						self.bodyStructure = nil
 					}
 				}
+				
+				flushLoggedResponses()
 			}
 		}
 	}
@@ -296,6 +332,8 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 			self.fetchPartPromise?.fail(error)
 			self.fetchStructurePromise?.fail(error)
 		}
+		
+		flushLoggedResponses()
 		
 		context.close(promise: nil)
 	}

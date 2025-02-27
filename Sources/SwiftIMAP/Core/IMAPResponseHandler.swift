@@ -42,6 +42,10 @@ public final class IMAPResponseHandler: ChannelHandler, @unchecked Sendable {
     // Message body structure
     internal var bodyStructure: BodyStructure?
     
+    // Buffer for collecting multi-part responses
+    internal var responseBuffer: String = ""
+    internal var isCollectingResponse: Bool = false
+    
     // Lock for thread-safe access to mutable properties
     internal let lock = NIOLock()
     
