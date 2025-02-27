@@ -77,25 +77,15 @@ public final class IMAPFetchHeadersHandler: BaseIMAPCommandHandler, @unchecked S
                     self.emailHeaders.append(header)
                 }
                 
-            case .streamingBegin(let kind, let sequenceNumber):
-                // Check if this is a BODY[HEADER] response by looking at the kind description
-                let kindString = String(describing: kind)
-                if kindString.contains("BODY[HEADER]") {
-                    // This is a BODY[HEADER] response, don't create a new header
-                    // The byte count that follows is not a sequence number
-                    logger.debug("Received streaming begin for body section, ignoring byte count as sequence number")
-                } else {
-                    // For other kinds, create a header if needed
-                    if let _ = lock.withLock({ self.emailHeaders.firstIndex(where: { $0.sequenceNumber == sequenceNumber }) }) {
-                        // Header already exists
-                    } else {
-                        // Create a new header
-                        let header = EmailHeader(sequenceNumber: sequenceNumber)
-                        lock.withLock {
-                            self.emailHeaders.append(header)
-                        }
-                    }
-                }
+            case .streamingBegin(_, _):
+                // We don't create headers for streamingBegin
+                // This avoids misinterpreting the byte count as a sequence number
+                break
+                
+            case .streamingBytes(_):
+                // Process streaming bytes if needed
+                // For headers, we typically don't need to process the raw header data
+                break
                 
             default:
                 break
