@@ -38,10 +38,13 @@ public final class GreetingHandler: BaseIMAPCommandHandler, @unchecked Sendable 
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override public func processResponse(_ response: Response) -> Bool {
+        // Call the superclass method to buffer the response for logging
+        _ = super.processResponse(response)
+        
         // Server greeting is typically an untagged OK response
-        // The first response from the server is the greeting
         if case .untagged(let untaggedResponse) = response {
             if case .conditionalState(let state) = untaggedResponse, case .ok = state {
+                // Succeed the promise and return true to indicate completion
                 greetingPromise.succeed(())
                 return true
             }

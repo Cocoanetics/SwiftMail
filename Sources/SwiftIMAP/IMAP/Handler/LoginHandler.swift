@@ -38,6 +38,9 @@ public final class LoginHandler: BaseIMAPCommandHandler, @unchecked Sendable {
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override public func processResponse(_ response: Response) -> Bool {
+        // Call the superclass method to buffer the response for logging
+        _ = super.processResponse(response)
+        
         // First check if this is our tagged response
         if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
             if case .ok = taggedResponse.state {
