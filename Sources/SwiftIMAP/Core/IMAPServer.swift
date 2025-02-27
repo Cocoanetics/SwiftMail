@@ -25,12 +25,6 @@ public final class IMAPServer: @unchecked Sendable {
     /// The channel for communication with the server
     private var channel: Channel?
     
-    /// The response handler for processing IMAP responses
-    private var responseHandler: IMAPResponseHandler?
-    
-    /// Lock for thread-safe access to mutable properties
-    private let lock = NIOLock()
-    
     /// Logger for IMAP operations
     /// To view these logs in Console.app:
     /// 1. Open Console.app
@@ -43,6 +37,9 @@ public final class IMAPServer: @unchecked Sendable {
     
     /// Logger for incoming IMAP responses
     private let inboundLogger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAP IN")
+    
+    /// Lock for thread-safe access to mutable properties
+    private let lock = NIOLock()
     
     // MARK: - Initialization
     
@@ -70,69 +67,82 @@ public final class IMAPServer: @unchecked Sendable {
         // Create SSL context for secure connection
         let sslContext = try NIOSSLContext(configuration: TLSConfiguration.makeClientConfiguration())
         
-        // Create our response handler with the inbound logger
-        let responseHandler = IMAPResponseHandler(logger: inboundLogger)
-        lock.withLock {
-            self.responseHandler = responseHandler
-        }
-        
         // Capture the host as a local variable to avoid capturing self
         let host = self.host
         
-        // Create our outbound logger for command logging
-        let outboundLogger = IMAPOutboundLogger(logger: self.outboundLogger)
-        
-        // Set up the channel handlers
+        // Create the bootstrap
         let bootstrap = ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
+            .channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
             .channelInitializer { channel in
-                // Create the SSL handler
                 let sslHandler = try! NIOSSLClientHandler(context: sslContext, serverHostname: host)
                 
-                // Add handlers to the pipeline
-                return channel.pipeline.addHandler(sslHandler).flatMap {
-                    // Add our outbound logger before the IMAP client handler to log outgoing commands
-                    channel.pipeline.addHandler(outboundLogger).flatMap {
-                        channel.pipeline.addHandler(IMAPClientHandler()).flatMap {
-                            channel.pipeline.addHandler(responseHandler)
-                        }
-                    }
-                }
+                // Create the IMAP client pipeline
+                return channel.pipeline.addHandlers([
+                    sslHandler,
+                    IMAPOutboundLogger(logger: self.outboundLogger)
+                ])
             }
         
         // Connect to the server
         let channel = try await bootstrap.connect(host: host, port: port).get()
+        
+        // Store the channel
         lock.withLock {
             self.channel = channel
         }
         
         // Wait for the server greeting
-        try await waitForGreeting()
+        let greetingPromise = channel.eventLoop.makePromise(of: Void.self)
+        
+        // Create a greeting handler
+        let greetingHandler = IMAPGreetingHandler(
+            greetingPromise: greetingPromise,
+            timeoutSeconds: 5,
+            logger: inboundLogger
+        )
+        
+        // Add the greeting handler to the pipeline
+        try await channel.pipeline.addHandler(greetingHandler).get()
+        
+        // Set up the timeout for the greeting
+        greetingHandler.setupTimeout(on: channel.eventLoop)
+        
+        // Wait for the greeting
+        try await greetingPromise.futureResult.get()
     }
     
     /// Wait for the server greeting
     /// - Throws: An error if the greeting times out or fails
     private func waitForGreeting() async throws {
-        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
-            return (self.channel, self.responseHandler)
+        let channel = lock.withLock { () -> Channel? in
+            return self.channel
         }
         
-        guard let channel = channel, let responseHandler = responseHandler else {
-            throw IMAPError.connectionFailed("Channel or response handler not initialized")
+        guard let channel = channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
         }
         
         // Create a promise for the greeting
-        responseHandler.greetingPromise = channel.eventLoop.makePromise(of: Void.self)
+        let greetingPromise = channel.eventLoop.makePromise(of: Void.self)
         
-        // Set up a timeout for the greeting
-        let greetingTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) { [responseHandler] in
-            responseHandler.greetingPromise?.fail(IMAPError.timeout)
-        }
+        // Create a greeting handler
+        let greetingHandler = IMAPGreetingHandler(
+            greetingPromise: greetingPromise,
+            timeoutSeconds: 5,
+            logger: inboundLogger
+        )
+        
+        // Add the greeting handler to the pipeline
+        try await channel.pipeline.addHandler(greetingHandler).get()
+        
+        // Set up the timeout for the greeting
+        greetingHandler.setupTimeout(on: channel.eventLoop)
         
         // Wait for the greeting
         do {
-            try await responseHandler.greetingPromise?.futureResult.get()
-            greetingTimeout.cancel()
+            try await greetingPromise.futureResult.get()
+            greetingHandler.cancelTimeout()
         } catch {
             throw error
         }
@@ -144,35 +154,44 @@ public final class IMAPServer: @unchecked Sendable {
     ///   - password: The password for authentication
     /// - Throws: An error if the login fails
     public func login(username: String, password: String) async throws {
-        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
-            return (self.channel, self.responseHandler)
+        let channel = lock.withLock { () -> Channel? in
+            return self.channel
         }
         
-        guard let channel = channel, let responseHandler = responseHandler else {
-            throw IMAPError.connectionFailed("Channel or response handler not initialized")
+        guard let channel = channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
         }
         
         // Send login command
         let loginTag = "A001"
-        responseHandler.loginTag = loginTag
-        responseHandler.loginPromise = channel.eventLoop.makePromise(of: Void.self)
+        let loginPromise = channel.eventLoop.makePromise(of: Void.self)
         
-        let loginCommand = CommandStreamPart.tagged(
-            TaggedCommand(tag: loginTag, command: .login(username: username, password: password))
+        // Create a login handler
+        let loginHandler = IMAPLoginHandler(
+            commandTag: loginTag,
+            loginPromise: loginPromise,
+            timeoutSeconds: 5,
+            logger: inboundLogger
         )
+        
+        // Add the login handler to the pipeline
+        try await channel.pipeline.addHandler(loginHandler).get()
+        
+        // Set up the timeout for the login
+        loginHandler.setupTimeout(on: channel.eventLoop)
+        
+        // Send the login command
+        let loginCommand = CommandStreamPart.tagged(
+            TaggedCommand(tag: loginTag, command: .login(
+                username: username,
+                password: password
+            ))
+        )
+        
         try await channel.writeAndFlush(loginCommand).get()
         
-        // Set up a timeout for login
-        let loginTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) { [responseHandler] in
-            responseHandler.loginPromise?.fail(IMAPError.timeout)
-        }
-        
-        do {
-            try await responseHandler.loginPromise?.futureResult.get()
-            loginTimeout.cancel()
-        } catch {
-            throw error
-        }
+        // Wait for the login response
+        try await loginPromise.futureResult.get()
     }
     
     /// Select a mailbox
@@ -180,40 +199,45 @@ public final class IMAPServer: @unchecked Sendable {
     /// - Returns: Information about the selected mailbox
     /// - Throws: An error if the select operation fails
     public func selectMailbox(_ mailboxName: String) async throws -> MailboxInfo {
-        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
-            return (self.channel, self.responseHandler)
+        let channel = lock.withLock { () -> Channel? in
+            return self.channel
         }
         
-        guard let channel = channel, let responseHandler = responseHandler else {
-            throw IMAPError.connectionFailed("Channel or response handler not initialized")
+        guard let channel = channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
         }
         
         // Send select inbox command
         let selectTag = "A002"
-        responseHandler.selectTag = selectTag
-        responseHandler.currentMailboxName = mailboxName
-        responseHandler.selectPromise = channel.eventLoop.makePromise(of: MailboxInfo.self)
+        let selectPromise = channel.eventLoop.makePromise(of: MailboxInfo.self)
         
+        // Create a select handler
+        let selectHandler = IMAPSelectHandler(
+            commandTag: selectTag,
+            mailboxName: mailboxName,
+            selectPromise: selectPromise,
+            timeoutSeconds: 5,
+            logger: inboundLogger
+        )
+        
+        // Add the select handler to the pipeline
+        try await channel.pipeline.addHandler(selectHandler).get()
+        
+        // Set up the timeout for the select
+        selectHandler.setupTimeout(on: channel.eventLoop)
+        
+        // Send the select command
         let mailbox = MailboxName(Array(mailboxName.utf8))
         let selectCommand = CommandStreamPart.tagged(
             TaggedCommand(tag: selectTag, command: .select(mailbox, []))
         )
         try await channel.writeAndFlush(selectCommand).get()
         
-        // Set up a timeout for select
-        let selectTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) { [responseHandler] in
-            responseHandler.selectPromise?.fail(IMAPError.timeout)
-        }
-        
+        // Wait for the select response
         do {
-            let mailboxInfo = try await responseHandler.selectPromise?.futureResult.get()
-            selectTimeout.cancel()
-            
-            if let mailboxInfo = mailboxInfo {
-                return mailboxInfo
-            } else {
-                throw IMAPError.selectFailed("No mailbox information available")
-            }
+            let mailboxInfo = try await selectPromise.futureResult.get()
+            selectHandler.cancelTimeout()
+            return mailboxInfo
         } catch {
             throw error
         }
@@ -222,32 +246,42 @@ public final class IMAPServer: @unchecked Sendable {
     /// Logout from the IMAP server
     /// - Throws: An error if the logout fails
     public func logout() async throws {
-        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
-            return (self.channel, self.responseHandler)
+        let channel = lock.withLock { () -> Channel? in
+            return self.channel
         }
         
-        guard let channel = channel, let responseHandler = responseHandler else {
-            throw IMAPError.connectionFailed("Channel or response handler not initialized")
+        guard let channel = channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
         }
         
         // Send logout command
         let logoutTag = "A003"
-        responseHandler.logoutTag = logoutTag
-        responseHandler.logoutPromise = channel.eventLoop.makePromise(of: Void.self)
+        let logoutPromise = channel.eventLoop.makePromise(of: Void.self)
         
+        // Create a logout handler
+        let logoutHandler = IMAPLogoutHandler(
+            commandTag: logoutTag,
+            logoutPromise: logoutPromise,
+            timeoutSeconds: 5,
+            logger: inboundLogger
+        )
+        
+        // Add the logout handler to the pipeline
+        try await channel.pipeline.addHandler(logoutHandler).get()
+        
+        // Set up the timeout for the logout
+        logoutHandler.setupTimeout(on: channel.eventLoop)
+        
+        // Send the logout command
         let logoutCommand = CommandStreamPart.tagged(
             TaggedCommand(tag: logoutTag, command: .logout)
         )
         try await channel.writeAndFlush(logoutCommand).get()
         
-        // Set up a timeout for logout
-        let logoutTimeout = channel.eventLoop.scheduleTask(in: .seconds(5)) { [responseHandler] in
-            responseHandler.logoutPromise?.fail(IMAPError.timeout)
-        }
-        
+        // Wait for the logout response
         do {
-            try await responseHandler.logoutPromise?.futureResult.get()
-            logoutTimeout.cancel()
+            try await logoutPromise.futureResult.get()
+            logoutHandler.cancelTimeout()
         } catch {
             // Continue with closing even if logout fails
             throw error
@@ -285,18 +319,31 @@ public final class IMAPServer: @unchecked Sendable {
 			throw IMAPError.emptyIdentifierSet
 		}
 		
-        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
-            return (self.channel, self.responseHandler)
+        let channel = lock.withLock { () -> Channel? in
+            return self.channel
         }
         
-        guard let channel = channel, let responseHandler = responseHandler else {
-            throw IMAPError.connectionFailed("Channel or response handler not initialized")
+        guard let channel = channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
         }
         
         // Send fetch command
         let fetchTag = "A004"
-        responseHandler.fetchTag = fetchTag
-        responseHandler.fetchPromise = channel.eventLoop.makePromise(of: [EmailHeader].self)
+        let fetchPromise = channel.eventLoop.makePromise(of: [EmailHeader].self)
+        
+        // Create a fetch headers handler
+        let fetchHandler = IMAPFetchHeadersHandler(
+            commandTag: fetchTag,
+            fetchPromise: fetchPromise,
+            timeoutSeconds: 10,
+            logger: inboundLogger
+        )
+        
+        // Add the fetch handler to the pipeline
+        try await channel.pipeline.addHandler(fetchHandler).get()
+        
+        // Set up the timeout for the fetch
+        fetchHandler.setupTimeout(on: channel.eventLoop)
         
         // Create the FETCH command for headers
         let fetchCommand: CommandStreamPart
@@ -324,14 +371,10 @@ public final class IMAPServer: @unchecked Sendable {
         
         try await channel.writeAndFlush(fetchCommand).get()
         
-        // Set up a timeout for fetch
-        let fetchTimeout = channel.eventLoop.scheduleTask(in: .seconds(10)) { [responseHandler] in
-            responseHandler.fetchPromise?.fail(IMAPError.timeout)
-        }
-        
+        // Wait for the fetch response
         do {
-            var headers = try await responseHandler.fetchPromise!.futureResult.get()
-            fetchTimeout.cancel()
+            var headers = try await fetchPromise.futureResult.get()
+            fetchHandler.cancelTimeout()
             
             // Apply limit if specified
             if let limit = limit, headers.count > limit {
@@ -340,7 +383,7 @@ public final class IMAPServer: @unchecked Sendable {
             
             return headers
         } catch {
-            fetchTimeout.cancel()
+            fetchHandler.cancelTimeout()
             throw error
         }
     }
@@ -354,18 +397,31 @@ public final class IMAPServer: @unchecked Sendable {
     public func fetchMessagePart<T: MessageIdentifier>(identifier: T, partNumber: String) async throws -> Data {
         let set = MessageIdentifierSet<T>(identifier)
         
-        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
-            return (self.channel, self.responseHandler)
+        let channel = lock.withLock { () -> Channel? in
+            return self.channel
         }
         
-        guard let channel = channel, let responseHandler = responseHandler else {
-            throw IMAPError.connectionFailed("Channel or response handler not initialized")
+        guard let channel = channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
         }
         
         // Send fetch command
         let fetchTag = "A005"
-        responseHandler.fetchPartTag = fetchTag
-        responseHandler.fetchPartPromise = channel.eventLoop.makePromise(of: Data.self)
+        let fetchPromise = channel.eventLoop.makePromise(of: Data.self)
+        
+        // Create a fetch part handler
+        let fetchPartHandler = IMAPFetchPartHandler(
+            commandTag: fetchTag,
+            fetchPromise: fetchPromise,
+            timeoutSeconds: 10,
+            logger: inboundLogger
+        )
+        
+        // Add the fetch part handler to the pipeline
+        try await channel.pipeline.addHandler(fetchPartHandler).get()
+        
+        // Set up the timeout for the fetch
+        fetchPartHandler.setupTimeout(on: channel.eventLoop)
         
         // Convert the part number string to a section path
         let sectionPath = partNumber.split(separator: ".").map { Int($0)! }
@@ -403,17 +459,10 @@ public final class IMAPServer: @unchecked Sendable {
         
         try await channel.writeAndFlush(fetchCommand).get()
         
-        // Set up a timeout for fetch
-        let fetchTimeout = channel.eventLoop.scheduleTask(in: .seconds(10)) { [responseHandler] in
-            responseHandler.fetchPartPromise?.fail(IMAPError.timeout)
-        }
-        
         do {
-            let partData = try await responseHandler.fetchPartPromise!.futureResult.get()
-            fetchTimeout.cancel()
+            let partData = try await fetchPromise.futureResult.get()
             return partData
         } catch {
-            fetchTimeout.cancel()
             throw error
         }
     }
@@ -425,18 +474,31 @@ public final class IMAPServer: @unchecked Sendable {
     public func fetchMessageStructure<T: MessageIdentifier>(identifier: T) async throws -> BodyStructure {
         let set = MessageIdentifierSet<T>(identifier)
         
-        let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
-            return (self.channel, self.responseHandler)
+        let channel = lock.withLock { () -> Channel? in
+            return self.channel
         }
         
-        guard let channel = channel, let responseHandler = responseHandler else {
-            throw IMAPError.connectionFailed("Channel or response handler not initialized")
+        guard let channel = channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
         }
         
         // Send fetch command
         let fetchTag = "A006"
-        responseHandler.fetchStructureTag = fetchTag
-        responseHandler.fetchStructurePromise = channel.eventLoop.makePromise(of: BodyStructure.self)
+        let fetchPromise = channel.eventLoop.makePromise(of: BodyStructure.self)
+        
+        // Create a fetch structure handler
+        let fetchStructureHandler = IMAPFetchStructureHandler(
+            commandTag: fetchTag,
+            fetchPromise: fetchPromise,
+            timeoutSeconds: 10,
+            logger: inboundLogger
+        )
+        
+        // Add the fetch structure handler to the pipeline
+        try await channel.pipeline.addHandler(fetchStructureHandler).get()
+        
+        // Set up the timeout for the fetch
+        fetchStructureHandler.setupTimeout(on: channel.eventLoop)
         
         // Create the FETCH command for the body structure
         let fetchCommand: CommandStreamPart
@@ -469,17 +531,10 @@ public final class IMAPServer: @unchecked Sendable {
         
         try await channel.writeAndFlush(fetchCommand).get()
         
-        // Set up a timeout for fetch
-        let fetchTimeout = channel.eventLoop.scheduleTask(in: .seconds(10)) { [responseHandler] in
-            responseHandler.fetchStructurePromise?.fail(IMAPError.timeout)
-        }
-        
         do {
-            let structure = try await responseHandler.fetchStructurePromise!.futureResult.get()
-            fetchTimeout.cancel()
+            let structure = try await fetchPromise.futureResult.get()
             return structure
         } catch {
-            fetchTimeout.cancel()
             throw error
         }
     }
