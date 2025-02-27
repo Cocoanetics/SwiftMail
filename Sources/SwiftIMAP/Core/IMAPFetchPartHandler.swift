@@ -70,19 +70,14 @@ public final class IMAPFetchPartHandler: BaseIMAPCommandHandler, @unchecked Send
                 // Process simple attributes
                 processMessageAttribute(attribute)
                 
-            case .streamingBegin(let sequenceNumber, let attribute):
-                // For streaming data, we'll handle it in a different way
-                // This is typically used for body sections
-                logger.debug("Streaming begin for sequence number \(sequenceNumber)")
+            case .streamingBegin(let kind, _):
+                // Log the beginning of streaming data
+                logger.debug("Streaming begin for \(String(describing: kind))")
                 
-            case .streamingBytes(let bytes):
-                // Append streaming bytes to our data
+            case .streamingBytes(let data):
+                // Collect the streaming body data
                 lock.withLock {
-                    // Convert ByteBuffer to Data
-                    var buffer = bytes
-                    if let byteArray = buffer.readBytes(length: buffer.readableBytes) {
-                        self.partData.append(contentsOf: byteArray)
-                    }
+                    self.partData.append(Data(data.readableBytesView))
                 }
                 
             default:
@@ -93,10 +88,12 @@ public final class IMAPFetchPartHandler: BaseIMAPCommandHandler, @unchecked Send
     /// Process a message attribute
     /// - Parameter attribute: The attribute to process
     private func processMessageAttribute(_ attribute: MessageAttribute) {
-        // In the MessageAttribute enum, there's no bodySection case
-        // We're primarily interested in the body data which comes through streaming
-        // This method is kept for compatibility with other handlers
         switch attribute {
+            case .body(let bodyStructure, _):
+                // We're primarily interested in the body data which comes through streaming
+                // but we can log the body structure for debugging
+                logger.debug("Received body structure: \(String(describing: bodyStructure))")
+                
             default:
                 break
         }

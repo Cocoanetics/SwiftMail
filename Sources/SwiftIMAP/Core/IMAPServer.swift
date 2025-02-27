@@ -80,6 +80,7 @@ public final class IMAPServer: @unchecked Sendable {
                 // Create the IMAP client pipeline
                 return channel.pipeline.addHandlers([
                     sslHandler,
+                    IMAPClientHandler(),
                     IMAPOutboundLogger(logger: self.outboundLogger)
                 ])
             }
