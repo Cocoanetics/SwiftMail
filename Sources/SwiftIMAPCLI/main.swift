@@ -80,14 +80,14 @@ do {
             if mailboxInfo.messageCount > 0 {
                 logger.notice("Fetching the 10 latest emails with all parts and attachments...")
                 
-                // Create a range string for the latest 10 messages
+                // Create a SequenceNumberSet for the latest messages
                 let startMessage = max(1, mailboxInfo.messageCount - 9)
                 let endMessage = mailboxInfo.messageCount
-                let range = "\(startMessage):\(endMessage)"
-                
+				let sequenceSet = SequenceNumberSet(startMessage...endMessage)
+
                 do {
-                    // Use the new fetchEmails method to get complete emails with all parts
-                    let emails = try await server.fetchEmails(range: range, limit: 10)
+                    // Use the fetchEmails method with the sequence number set
+                    let emails = try await server.fetchEmails(using: sequenceSet)
                     
                     logger.notice("📧 Latest Complete Emails (\(emails.count)) 📧")
                     print("\n📧 Latest Complete Emails (\(emails.count)) 📧")

@@ -11,7 +11,6 @@ import NIOConcurrencyHelpers
 extension IMAPResponseHandler: ChannelInboundHandler {
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = self.unwrapInboundIn(data)
-        logger.debug("Received: \(String(describing: response), privacy: .public)")
         
         // Log all responses for better visibility
         logger.debug("IMAP RESPONSE: \(String(describing: response), privacy: .public)")
@@ -46,39 +45,33 @@ extension IMAPResponseHandler: ChannelInboundHandler {
                             lock.withLock {
                                 self.currentMailboxInfo?.firstUnseen = Int(firstUnseen)
                             }
-                            logger.debug("First unseen message: \(Int(firstUnseen))")
                             
                         case .uidValidity(let validity):
                             // Use the BinaryInteger extension to convert UIDValidity to UInt32
                             lock.withLock {
                                 self.currentMailboxInfo?.uidValidity = UInt32(validity)
                             }
-                            logger.debug("UID validity value: \(UInt32(validity), privacy: .public)")
                             
                         case .uidNext(let next):
                             // Use the BinaryInteger extension to convert UID to UInt32
                             lock.withLock {
                                 self.currentMailboxInfo?.uidNext = UInt32(next)
                             }
-                            logger.debug("Next UID: \(UInt32(next), format: .decimal, privacy: .public)")
                             
                         case .permanentFlags(let flags):
                             lock.withLock {
                                 self.currentMailboxInfo?.permanentFlags = flags.map { String(describing: $0) }
                             }
-                            logger.debug("Permanent flags: \(flags.map { String(describing: $0) }.joined(separator: ", "), privacy: .public)")
                             
                         case .readOnly:
                             lock.withLock {
                                 self.currentMailboxInfo?.isReadOnly = true
                             }
-                            logger.debug("Mailbox is read-only")
                             
                         case .readWrite:
                             lock.withLock {
                                 self.currentMailboxInfo?.isReadOnly = false
                             }
-                            logger.debug("Mailbox is read-write")
                             
                         default:
                             logger.debug("Unhandled response code: \(String(describing: responseCode))")
@@ -94,28 +87,24 @@ extension IMAPResponseHandler: ChannelInboundHandler {
                     lock.withLock {
                         self.currentMailboxInfo?.messageCount = Int(count)
                     }
-                    logger.debug("Mailbox has \(count, format: .decimal, privacy: .public) messages")
                     
                 case .recent(let count):
                     lock.withLock {
                         self.currentMailboxInfo?.recentCount = Int(count)
                     }
-                    logger.debug("Mailbox has \(count) recent messages - RECENT FLAG DETAILS")
                     
                 case .flags(let flags):
                     lock.withLock {
                         self.currentMailboxInfo?.availableFlags = flags.map { String(describing: $0) }
                     }
-                    logger.debug("Available flags: \(flags.map { String(describing: $0) }.joined(separator: ", "), privacy: .public)")
                     
                 default:
-                    logger.debug("Unhandled mailbox data: \(String(describing: mailboxData), privacy: .public)")
                     break
                 }
                 
-            case .messageData(let messageData):
+            case .messageData(_):
                 // Handle message data if needed
-                logger.debug("Received message data: \(String(describing: messageData), privacy: .public)")
+					break
                 
             default:
                 logger.debug("Unhandled untagged response: \(String(describing: untaggedResponse), privacy: .public)")
@@ -141,9 +130,7 @@ extension IMAPResponseHandler: ChannelInboundHandler {
                 break
             }
         } else if case .untagged(let untaggedResponse) = response, lock.withLock({ self.fetchPromise != nil }) {
-            if case .messageData(let messageData) = untaggedResponse {
-                // Handle other message data if needed
-                logger.debug("Received message data: \(String(describing: messageData), privacy: .public)")
+            if case .messageData(_) = untaggedResponse {
             }
         }
         
@@ -152,13 +139,9 @@ extension IMAPResponseHandler: ChannelInboundHandler {
             switch fetchResponse {
             case .simpleAttribute(let attribute):
                 if case .body(_, _) = attribute {
-                    // This is a body structure response, not what we're looking for
-                    logger.debug("Received body structure in part fetch")
                 }
-            case .streamingBegin(let kind, let size):
+            case .streamingBegin(let kind, _):
                 if case .body(_, _) = kind {
-                    logger.debug("Received streaming body data of size \(size)")
-                    // We'll collect the data in the streamingBytes case
                 }
             case .streamingBytes(let data):
                 // Collect the streaming body data
@@ -210,8 +193,8 @@ extension IMAPResponseHandler: ChannelInboundHandler {
                         // calculate the unseen count as (total messages - first unseen + 1)
                         if mailboxInfo.firstUnseen > 0 && mailboxInfo.unseenCount == 0 {
                             mailboxInfo.unseenCount = mailboxInfo.messageCount - mailboxInfo.firstUnseen + 1
-                            logger.debug("Calculated unseen count: \(mailboxInfo.unseenCount)")
-                            // Update the current mailbox info with the modified copy
+
+							// Update the current mailbox info with the modified copy
                             lock.withLock {
                                 self.currentMailboxInfo = mailboxInfo
                             }

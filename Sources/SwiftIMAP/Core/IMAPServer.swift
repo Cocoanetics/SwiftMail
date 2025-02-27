@@ -510,18 +510,15 @@ public final class IMAPServer: @unchecked Sendable {
     /// - Parameter sequenceNumber: The sequence number of the message
     /// - Returns: An array of message parts
     /// - Throws: An error if the fetch operation fails
-    public func fetchAllMessageParts(sequenceNumber: Int) async throws -> [MessagePart] {
-        // Convert Int to SequenceNumber
-        let seqNum = SequenceNumber(UInt32(sequenceNumber))
-        
+    public func fetchAllMessageParts(sequenceNumber: SequenceNumber) async throws -> [MessagePart] {
         // First, fetch the message structure to determine the parts
-        let structure = try await fetchMessageStructure(identifier: seqNum)
+        let structure = try await fetchMessageStructure(identifier: sequenceNumber)
         
         // Parse the structure and fetch each part
         var parts: [MessagePart] = []
         
         // Process the structure recursively
-        try await processStructure(structure, partNumber: "", sequenceNumber: seqNum, parts: &parts)
+        try await processStructure(structure, partNumber: "", sequenceNumber: sequenceNumber, parts: &parts)
         
         return parts
     }
@@ -610,8 +607,11 @@ public final class IMAPServer: @unchecked Sendable {
     /// - Returns: The path to the saved files
     /// - Throws: An error if the save operation fails
     public func saveMessagePartsToDesktop(sequenceNumber: Int, folderName: String = "IMAPParts") async throws -> String {
+        // Convert Int to SequenceNumber
+        let seqNum = SequenceNumber(UInt32(sequenceNumber))
+        
         // Fetch all parts of the message
-        let parts = try await fetchAllMessageParts(sequenceNumber: sequenceNumber)
+        let parts = try await fetchAllMessageParts(sequenceNumber: seqNum)
         
         // Get the path to the desktop
         let fileManager = FileManager.default
@@ -716,8 +716,11 @@ public final class IMAPServer: @unchecked Sendable {
     /// - Returns: A complete Email object with all parts
     /// - Throws: An error if the fetch operation fails
     public func fetchEmail(from header: EmailHeader) async throws -> Email {
+        // Use the sequence number from the header
+        let sequenceNumber = SequenceNumber(UInt32(header.sequenceNumber))
+        
         // Fetch all message parts for the email
-        let parts = try await fetchAllMessageParts(sequenceNumber: header.sequenceNumber)
+        let parts = try await fetchAllMessageParts(sequenceNumber: sequenceNumber)
         
         // Create and return a new Email object with the header and parts
         return Email(header: header, parts: parts)
@@ -733,7 +736,7 @@ public final class IMAPServer: @unchecked Sendable {
         // Parse the range string into a sequence set
         let nioSequenceSet = try range.toSequenceSet()
         
-        // Convert NIO set to our SequenceNumberSet
+        // Create our SequenceNumberSet from the NIO set
         var sequenceSet = SequenceNumberSet()
         for range in nioSequenceSet.set.ranges {
             let start = SequenceNumber(nio: range.range.lowerBound)
@@ -741,8 +744,27 @@ public final class IMAPServer: @unchecked Sendable {
             sequenceSet.insert(range: start...end)
         }
         
+        guard !sequenceSet.isEmpty else {
+            throw IMAPError.emptyIdentifierSet
+        }
+        
+        // Use the generic method with our sequence number set
+        return try await fetchEmails(using: sequenceSet, limit: limit)
+    }
+    
+    /// Fetch complete emails with all parts using a message identifier set
+    /// - Parameters:
+    ///   - identifierSet: The set of message identifiers to fetch
+    ///   - limit: Optional limit on the number of emails to fetch
+    /// - Returns: An array of Email objects with all parts
+    /// - Throws: An error if the fetch operation fails
+    public func fetchEmails<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [Email] {
+        guard !identifierSet.isEmpty else {
+            throw IMAPError.emptyIdentifierSet
+        }
+        
         // First fetch the headers
-        let headers = try await fetchHeaders(using: sequenceSet, limit: limit)
+        let headers = try await fetchHeaders(using: identifierSet, limit: limit)
         
         // Then fetch the complete email for each header
         var emails: [Email] = []

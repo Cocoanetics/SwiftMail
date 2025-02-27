@@ -82,6 +82,12 @@ public struct MessageIdentifierSet<Identifier: MessageIdentifier> {
         self.indexSet = Foundation.IndexSet(integersIn: range)
     }
     
+    /// Creates a set containing integers from a lower bound to the maximum value
+    public init(_ range: PartialRangeFrom<Int>) {
+        // Use Int.max as the upper bound for partial ranges
+        self.indexSet = Foundation.IndexSet(integersIn: range.lowerBound...Int(UInt32.max))
+    }
+    
     /// Creates a set containing integers in the given ranges
     public init(ranges: ClosedRange<Int>...) {
         self.indexSet = Foundation.IndexSet()
@@ -121,6 +127,12 @@ public struct MessageIdentifierSet<Identifier: MessageIdentifier> {
         self.indexSet = Foundation.IndexSet(integersIn: Int(range.lowerBound.value)...Int(range.upperBound.value))
     }
     
+    /// Creates a set containing identifiers from a lower bound to the maximum value
+    public init(_ range: PartialRangeFrom<Identifier>) {
+        // Use the type's 'latest' value as the upper bound
+        self.indexSet = Foundation.IndexSet(integersIn: Int(range.lowerBound.value)...Int(UInt32.max))
+    }
+    
     /// Inserts the given integer into the set
     public mutating func insert(_ value: Int) {
         indexSet.insert(value)
@@ -136,9 +148,19 @@ public struct MessageIdentifierSet<Identifier: MessageIdentifier> {
         indexSet.insert(integersIn: range)
     }
     
+    /// Inserts integers from a lower bound to the maximum value
+    public mutating func insert(range: PartialRangeFrom<Int>) {
+        indexSet.insert(integersIn: range.lowerBound...Int.max)
+    }
+    
     /// Inserts identifiers in the given range into the set
     public mutating func insert(range: ClosedRange<Identifier>) {
         indexSet.insert(integersIn: Int(range.lowerBound.value)...Int(range.upperBound.value))
+    }
+    
+    /// Inserts identifiers from a lower bound to the maximum value
+    public mutating func insert(range: PartialRangeFrom<Identifier>) {
+        indexSet.insert(integersIn: Int(range.lowerBound.value)...Int(UInt32.max))
     }
     
     /// Inserts integers in the given ranges into the set
