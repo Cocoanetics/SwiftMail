@@ -12,6 +12,19 @@ let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "Main")
 // Path to the .env file (hardcoded as requested)
 let envFilePath = "/Users/oliver/Developer/.env"
 
+// Helper function to format flags more compactly
+func formatFlags(_ flags: [String]) -> String {
+    return flags.compactMap { flag -> String? in
+        // Extract just the flag name from format like 'Flag(stringValue: "\\Answered")'
+        if let range = flag.range(of: "\"(.+?)\"", options: .regularExpression) {
+            return String(flag[range]).replacingOccurrences(of: "\"", with: "")
+        } else if flag == "wildcard" {
+            return "*"  // Special case for wildcard
+        }
+        return flag
+    }.joined(separator: ", ")
+}
+
 do {
     // Configure SwiftDotenv with the specified path
     try Dotenv.configure(atPath: envFilePath)
@@ -57,6 +70,10 @@ do {
             // Select the INBOX mailbox and get mailbox information
             let mailboxInfo = try await server.selectMailbox("INBOX")
             
+            // Format the flags for more compact display
+            let availableFlagsFormatted = formatFlags(mailboxInfo.availableFlags)
+            let permanentFlagsFormatted = formatFlags(mailboxInfo.permanentFlags)
+            
             // Display mailbox information
             let mailboxSummary = """
             📬 Mailbox Information 📬
@@ -69,8 +86,8 @@ do {
             UID Validity: \(mailboxInfo.uidValidity)
             Next UID: \(mailboxInfo.uidNext)
             Read-Only: \(mailboxInfo.isReadOnly ? "Yes" : "No")
-            Available Flags: \(mailboxInfo.availableFlags.joined(separator: ", "))
-            Permanent Flags: \(mailboxInfo.permanentFlags.joined(separator: ", "))
+            Available Flags: \(availableFlagsFormatted)
+            Permanent Flags: \(permanentFlagsFormatted)
             """
             
             logger.notice("\(mailboxSummary, privacy: .public)")

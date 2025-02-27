@@ -203,9 +203,8 @@ public final class IMAPResponseHandler: ChannelHandler, @unchecked Sendable {
                 header.messageId = String(messageID)
             }
             
-        case .body(let bodyStructure, _):
-            // Extract information from body structure if needed
-            logger.debug("Received body structure: \(String(describing: bodyStructure), privacy: .public)")
+        case .body(_, _):
+				break
             
         case .uid(let uid):
             header.uid = Int(uid)
@@ -220,12 +219,6 @@ public final class IMAPResponseHandler: ChannelHandler, @unchecked Sendable {
             
         default:
             break
-        }
-        
-        // Only keep headers that have at least some basic information
-        if !header.subject.isEmpty || !header.from.isEmpty {
-            let seqNum = header.sequenceNumber // Create a copy to use in the autoclosure
-            logger.debug("Processed header for message #\(seqNum, format: .decimal, privacy: .public)")
         }
     }
 } 
