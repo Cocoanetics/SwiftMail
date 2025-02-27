@@ -2,6 +2,7 @@
 // Structure to hold information about a message part
 
 import Foundation
+import UniformTypeIdentifiers
 
 /// Structure to hold information about a message part
 public struct MessagePart: Sendable {
@@ -58,7 +59,8 @@ public struct MessagePart: Sendable {
             return filename.sanitizedFileName()
         } else {
             // Create a filename based on part number and content type
-            let fileExtension = contentType.fileExtension(subtype: contentSubtype)
+            let mimeType = "\(contentType)/\(contentSubtype)"
+            let fileExtension = String.fileExtension(for: mimeType) ?? "dat"
             return "part_\(partNumber.replacingOccurrences(of: ".", with: "_")).\(fileExtension)"
         }
     }

@@ -3,6 +3,7 @@
 
 import Foundation
 import NIOIMAPCore
+import UniformTypeIdentifiers
 
 extension String {
     /// Sanitize a filename to ensure it's valid
@@ -15,53 +16,21 @@ extension String {
             .replacingOccurrences(of: " ", with: "_")
     }
     
-    /// Get a file extension based on content type and subtype
-    /// - Parameter subtype: The content subtype
-    /// - Returns: An appropriate file extension
-    func fileExtension(subtype: String) -> String {
-        let type = self.lowercased()
-        let sub = subtype.lowercased()
-        
-        switch (type, sub) {
-        case ("text", "plain"):
-            return "txt"
-        case ("text", "html"):
-            return "html"
-        case ("text", _):
-            return "txt"
-        case ("image", "jpeg"), ("image", "jpg"):
-            return "jpg"
-        case ("image", "png"):
-            return "png"
-        case ("image", "gif"):
-            return "gif"
-        case ("image", _):
-            return "img"
-        case ("application", "pdf"):
-            return "pdf"
-        case ("application", "json"):
-            return "json"
-        case ("application", "javascript"):
-            return "js"
-        case ("application", "zip"):
-            return "zip"
-        case ("application", _):
-            return "bin"
-        case ("audio", "mp3"):
-            return "mp3"
-        case ("audio", "wav"):
-            return "wav"
-        case ("audio", _):
-            return "audio"
-        case ("video", "mp4"):
-            return "mp4"
-        case ("video", _):
-            return "video"
-        default:
-            return "dat"
-        }
-    }
-    
+    /// Get a file extension for a given MIME type
+    /// - Parameter mimeType: The full MIME type (e.g., "text/plain", "image/jpeg")
+    /// - Returns: An appropriate file extension (without the dot)
+	static func fileExtension(for mimeType: String) -> String? {
+		// Try to get the UTType from the MIME type
+		if let utType = UTType(mimeType: mimeType) {
+			// Get the preferred file extension
+			if let preferredExtension = utType.preferredFilenameExtension {
+				return preferredExtension
+			}
+		}
+		
+		return nil
+	}
+	
     /// Parse a string range (e.g., "1:10") into a SequenceSet
     /// - Returns: A SequenceSet object
     /// - Throws: An error if the range string is invalid
