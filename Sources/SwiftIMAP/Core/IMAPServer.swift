@@ -39,10 +39,10 @@ public final class IMAPServer: @unchecked Sendable {
     private let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAPServer")
     
     /// Logger for outgoing IMAP commands
-    private let outboundLogger = Logger(subsystem: "IMAP_OUT", category: "Command")
+    private let outboundLogger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAP OUT")
     
     /// Logger for incoming IMAP responses
-    private let inboundLogger = Logger(subsystem: "IMAP_IN", category: "Response")
+    private let inboundLogger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAP IN")
     
     // MARK: - Initialization
     

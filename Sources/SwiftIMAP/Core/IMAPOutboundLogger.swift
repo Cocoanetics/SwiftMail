@@ -25,8 +25,24 @@ public final class IMAPOutboundLogger: ChannelOutboundHandler, @unchecked Sendab
         // Try to extract the command from the data
         let command = unwrapOutboundIn(data)
         
-        // Log the command with notice level for better visibility
-        logger.notice("IMAP COMMAND: \(String(describing: command), privacy: .public)")
+        // Check if this is an IOData type (which contains raw bytes)
+        if let ioData = command as? IOData {
+            // Extract the ByteBuffer from IOData and convert to string
+            switch ioData {
+            case .byteBuffer(let buffer):
+                // Use the ByteBuffer extension to get a string value
+                let commandString = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) ?? "<Binary data>"
+                logger.debug("\(commandString, privacy: .public)")
+            case .fileRegion:
+                logger.debug("<File region data>")
+            }
+        } else if let debuggable = command as? CustomDebugStringConvertible {
+            // Use debugDescription for more detailed information about the command
+            logger.notice("\(debuggable.debugDescription, privacy: .public)")
+        } else {
+            // Fallback to standard description
+            logger.notice("\(String(describing: command), privacy: .public)")
+        }
         
         // Forward the data to the next handler
         context.write(data, promise: promise)

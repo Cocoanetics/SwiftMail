@@ -13,7 +13,8 @@ extension IMAPResponseHandler: ChannelInboundHandler {
 		let response = self.unwrapInboundIn(data)
 		
 		// Log all responses for better visibility
-		logger.notice("IMAP RESPONSE: \(String(describing: response), privacy: .public)")
+		// Use debugDescription for more detailed information about the response
+		logger.notice("\(response.debugDescription, privacy: .public)")
 		
 		// Check if this is an untagged response (server greeting)
 		if case .untagged(_) = response, let greetingPromise = lock.withLock({ self.greetingPromise }) {
