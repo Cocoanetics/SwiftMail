@@ -184,9 +184,44 @@ public typealias SequenceNumberSet = MessageIdentifierSet<SequenceNumber>
 
 // MARK: - NIO Conversion Extensions
 
-extension MessageIdentifierSet where Identifier == UID {
+extension MessageIdentifierSet {
     /// Converts to NIO MessageIdentifierSetNonEmpty
+    /// This method uses type constraints to determine the correct NIO type
+    internal func toNIOSet<NIOType>() -> NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOType> {
+		
+		precondition(!self.isEmpty, "Cannot convert an empty set to NIO")
+		
+        // Create an empty NIO set
+        var nioSet = NIOIMAPCore.MessageIdentifierSet<NIOType>()
+        
+        // Convert each range to a NIO range and add it to the set
+        for range in self.ranges {
+            if Identifier.self == UID.self && NIOType.self == NIOIMAPCore.UID.self {
+                let startUID = NIOIMAPCore.UID(rawValue: UInt32(range.lowerBound))
+                let endUID = NIOIMAPCore.UID(rawValue: UInt32(range.upperBound))
+                let nioRange = NIOIMAPCore.MessageIdentifierRange(startUID...endUID)
+                nioSet.formUnion(NIOIMAPCore.MessageIdentifierSet<NIOType>(nioRange as! NIOIMAPCore.MessageIdentifierRange<NIOType>))
+            } else if Identifier.self == SequenceNumber.self && NIOType.self == NIOIMAPCore.SequenceNumber.self {
+                let startSeq = NIOIMAPCore.SequenceNumber(rawValue: UInt32(range.lowerBound))
+                let endSeq = NIOIMAPCore.SequenceNumber(rawValue: UInt32(range.upperBound))
+                let nioRange = NIOIMAPCore.MessageIdentifierRange(startSeq...endSeq)
+                nioSet.formUnion(NIOIMAPCore.MessageIdentifierSet<NIOType>(nioRange as! NIOIMAPCore.MessageIdentifierRange<NIOType>))
+            } else {
+				preconditionFailure("Unsupported type combination")
+            }
+        }
+        
+        return NIOIMAPCore.MessageIdentifierSetNonEmpty(set: nioSet)!
+    }
+}
+
+extension MessageIdentifierSet where Identifier == UID {
+    /// Converts to NIO MessageIdentifierSetNonEmpty for UID
     internal func toNIOSet() -> NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOIMAPCore.UID>? {
+        if self.isEmpty {
+            return nil
+        }
+        
         var nioSet = NIOIMAPCore.MessageIdentifierSet<NIOIMAPCore.UID>()
         
         for range in self.ranges {
@@ -201,8 +236,12 @@ extension MessageIdentifierSet where Identifier == UID {
 }
 
 extension MessageIdentifierSet where Identifier == SequenceNumber {
-    /// Converts to NIO MessageIdentifierSetNonEmpty
+    /// Converts to NIO MessageIdentifierSetNonEmpty for SequenceNumber
     internal func toNIOSet() -> NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOIMAPCore.SequenceNumber>? {
+        if self.isEmpty {
+            return nil
+        }
+        
         var nioSet = NIOIMAPCore.MessageIdentifierSet<NIOIMAPCore.SequenceNumber>()
         
         for range in self.ranges {

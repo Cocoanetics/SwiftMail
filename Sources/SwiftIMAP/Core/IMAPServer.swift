@@ -289,7 +289,12 @@ public final class IMAPServer: @unchecked Sendable {
     ///   - limit: Optional limit on the number of headers to return
     /// - Returns: An array of email headers
     /// - Throws: An error if the fetch operation fails
-    public func fetchHeaders(range: String, limit: Int? = nil) async throws -> [EmailHeader] {
+    public func fetchHeaders<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [EmailHeader] {
+		
+		guard !identifierSet.isEmpty else {
+			throw IMAPError.emptyIdentifierSet
+		}
+		
         let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
             return (self.channel, self.responseHandler)
         }
@@ -299,22 +304,35 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         // Send fetch command
-        logger.debug("Sending FETCH \(range) command...")
+        logger.debug("Sending FETCH command for \(T.self) set...")
         let fetchTag = "A004"
         responseHandler.fetchTag = fetchTag
         responseHandler.fetchPromise = channel.eventLoop.makePromise(of: [EmailHeader].self)
         
-        // Parse the range string into a sequence set
-        let sequenceSet = try range.toSequenceSet()
-        
         // Create the FETCH command for headers
-        let fetchCommand = CommandStreamPart.tagged(
-            TaggedCommand(tag: fetchTag, command: .fetch(
-                .set(sequenceSet),
-                [.uid, .envelope, .bodyStructure(extensions: false), .bodySection(peek: true, .header, nil)],
-                []
-            ))
-        )
+        let fetchCommand: CommandStreamPart
+        
+        let attributes: [FetchAttribute] = [
+            .uid,
+            .envelope,
+            .bodyStructure(extensions: false),
+            .bodySection(peek: true, .header, nil)
+        ]
+        
+        if T.self == UID.self {
+            fetchCommand = CommandStreamPart.tagged(
+                TaggedCommand(tag: fetchTag, command: .uidFetch(
+					.set(identifierSet.toNIOSet()), attributes, []
+                ))
+            )
+        } else {
+            fetchCommand = CommandStreamPart.tagged(
+                TaggedCommand(tag: fetchTag, command: .fetch(
+					.set(identifierSet.toNIOSet()), attributes, []
+                ))
+            )
+        }
+        
         try await channel.writeAndFlush(fetchCommand).get()
         
         // Set up a timeout for fetch
@@ -324,7 +342,7 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         do {
-            var headers = try await responseHandler.fetchPromise?.futureResult.get() ?? []
+            var headers = try await responseHandler.fetchPromise!.futureResult.get()
             fetchTimeout.cancel()
             logger.info("FETCH successful! Retrieved \(headers.count) headers")
             
@@ -335,7 +353,8 @@ public final class IMAPServer: @unchecked Sendable {
             
             return headers
         } catch {
-            logger.error("FETCH failed: \(error.localizedDescription, privacy: .public)")
+            fetchTimeout.cancel()
+            logger.error("FETCH failed: \(error)")
             throw error
         }
     }
@@ -346,7 +365,9 @@ public final class IMAPServer: @unchecked Sendable {
     ///   - partNumber: The part number to fetch (e.g., "1", "1.1", "2", etc.)
     /// - Returns: The content of the message part as Data
     /// - Throws: An error if the fetch operation fails
-    public func fetchMessagePart(sequenceNumber: Int, partNumber: String) async throws -> Data {
+    public func fetchMessagePart<T: MessageIdentifier>(identifier: T, partNumber: String) async throws -> Data {
+        let set = MessageIdentifierSet<T>(identifier)
+        
         let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
             return (self.channel, self.responseHandler)
         }
@@ -356,28 +377,45 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         // Send fetch command
-        logger.debug("Sending FETCH for message #\(sequenceNumber), part \(partNumber)...")
+        logger.debug("Sending FETCH for \(T.self) \(identifier.value), part \(partNumber)...")
         let fetchTag = "A005"
         responseHandler.fetchPartTag = fetchTag
         responseHandler.fetchPartPromise = channel.eventLoop.makePromise(of: Data.self)
         
-        // Create the sequence set for a single message
-        let seqNum = SequenceNumber(UInt32(sequenceNumber))
-        let sequenceSet = SequenceNumberSet(seqNum).toNIOSet()!
-        
-        // Create the FETCH command for the specific part
         // Convert the part number string to a section path
         let sectionPath = partNumber.split(separator: ".").map { Int($0)! }
         let part = SectionSpecifier.Part(sectionPath)
         let section = SectionSpecifier(part: part)
         
-        let fetchCommand = CommandStreamPart.tagged(
-            TaggedCommand(tag: fetchTag, command: .fetch(
-                .set(sequenceSet),
-                [.bodySection(peek: true, section, nil)],
-                []
-            ))
-        )
+        // Create the FETCH command for the specific part
+        let fetchCommand: CommandStreamPart
+        
+        let attributes: [FetchAttribute] = [
+            .bodySection(peek: true, section, nil)
+        ]
+        
+        if T.self == UID.self {
+            guard let nioSet = (set as! UIDSet).toNIOSet() else {
+                throw IMAPError.emptyIdentifierSet
+            }
+            
+            fetchCommand = CommandStreamPart.tagged(
+                TaggedCommand(tag: fetchTag, command: .uidFetch(
+                    .set(nioSet), attributes, []
+                ))
+            )
+        } else {
+            guard let nioSet = (set as! SequenceNumberSet).toNIOSet() else {
+                throw IMAPError.emptyIdentifierSet
+            }
+            
+            fetchCommand = CommandStreamPart.tagged(
+                TaggedCommand(tag: fetchTag, command: .fetch(
+                    .set(nioSet), attributes, []
+                ))
+            )
+        }
+        
         try await channel.writeAndFlush(fetchCommand).get()
         
         // Set up a timeout for fetch
@@ -387,13 +425,13 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         do {
-            let partData = try await responseHandler.fetchPartPromise?.futureResult.get() ?? Data()
+            let partData = try await responseHandler.fetchPartPromise!.futureResult.get()
             fetchTimeout.cancel()
             logger.info("FETCH PART successful! Retrieved \(partData.count) bytes")
-            
             return partData
         } catch {
-            logger.error("FETCH PART failed: \(error.localizedDescription, privacy: .public)")
+            fetchTimeout.cancel()
+            logger.error("FETCH PART failed: \(error)")
             throw error
         }
     }
@@ -402,7 +440,9 @@ public final class IMAPServer: @unchecked Sendable {
     /// - Parameter sequenceNumber: The sequence number of the message
     /// - Returns: The body structure of the message
     /// - Throws: An error if the fetch operation fails
-    public func fetchMessageStructure(sequenceNumber: Int) async throws -> BodyStructure {
+    public func fetchMessageStructure<T: MessageIdentifier>(identifier: T) async throws -> BodyStructure {
+        let set = MessageIdentifierSet<T>(identifier)
+        
         let (channel, responseHandler) = lock.withLock { () -> (Channel?, IMAPResponseHandler?) in
             return (self.channel, self.responseHandler)
         }
@@ -412,23 +452,40 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         // Send fetch command
-        logger.debug("Sending FETCH BODYSTRUCTURE for message #\(sequenceNumber)...")
+        logger.debug("Sending FETCH BODYSTRUCTURE for \(T.self) \(identifier.value)...")
         let fetchTag = "A006"
         responseHandler.fetchStructureTag = fetchTag
         responseHandler.fetchStructurePromise = channel.eventLoop.makePromise(of: BodyStructure.self)
         
-        // Create the sequence set for a single message
-        let seqNum = SequenceNumber(UInt32(sequenceNumber))
-        let sequenceSet = SequenceNumberSet(seqNum).toNIOSet()!
-        
         // Create the FETCH command for the body structure
-        let fetchCommand = CommandStreamPart.tagged(
-            TaggedCommand(tag: fetchTag, command: .fetch(
-                .set(sequenceSet),
-                [.bodyStructure(extensions: true)],
-                []
-            ))
-        )
+        let fetchCommand: CommandStreamPart
+        
+        let attributes: [FetchAttribute] = [
+            .bodyStructure(extensions: true)
+        ]
+        
+        if T.self == UID.self {
+            guard let nioSet = (set as! UIDSet).toNIOSet() else {
+                throw IMAPError.emptyIdentifierSet
+            }
+            
+            fetchCommand = CommandStreamPart.tagged(
+                TaggedCommand(tag: fetchTag, command: .uidFetch(
+                    .set(nioSet), attributes, []
+                ))
+            )
+        } else {
+            guard let nioSet = (set as! SequenceNumberSet).toNIOSet() else {
+                throw IMAPError.emptyIdentifierSet
+            }
+            
+            fetchCommand = CommandStreamPart.tagged(
+                TaggedCommand(tag: fetchTag, command: .fetch(
+                    .set(nioSet), attributes, []
+                ))
+            )
+        }
+        
         try await channel.writeAndFlush(fetchCommand).get()
         
         // Set up a timeout for fetch
@@ -438,15 +495,13 @@ public final class IMAPServer: @unchecked Sendable {
         }
         
         do {
-            guard let structure = try await responseHandler.fetchStructurePromise?.futureResult.get() else {
-                throw IMAPError.fetchFailed("No body structure returned")
-            }
+            let structure = try await responseHandler.fetchStructurePromise!.futureResult.get()
             fetchTimeout.cancel()
             logger.info("FETCH BODYSTRUCTURE successful!")
-            
             return structure
         } catch {
-            logger.error("FETCH BODYSTRUCTURE failed: \(error.localizedDescription, privacy: .public)")
+            fetchTimeout.cancel()
+            logger.error("FETCH BODYSTRUCTURE failed: \(error)")
             throw error
         }
     }
@@ -456,14 +511,17 @@ public final class IMAPServer: @unchecked Sendable {
     /// - Returns: An array of message parts
     /// - Throws: An error if the fetch operation fails
     public func fetchAllMessageParts(sequenceNumber: Int) async throws -> [MessagePart] {
+        // Convert Int to SequenceNumber
+        let seqNum = SequenceNumber(UInt32(sequenceNumber))
+        
         // First, fetch the message structure to determine the parts
-        let structure = try await fetchMessageStructure(sequenceNumber: sequenceNumber)
+        let structure = try await fetchMessageStructure(identifier: seqNum)
         
         // Parse the structure and fetch each part
         var parts: [MessagePart] = []
         
         // Process the structure recursively
-        try await processStructure(structure, partNumber: "", sequenceNumber: sequenceNumber, parts: &parts)
+        try await processStructure(structure, partNumber: "", sequenceNumber: seqNum, parts: &parts)
         
         return parts
     }
@@ -475,14 +533,14 @@ public final class IMAPServer: @unchecked Sendable {
     ///   - sequenceNumber: The sequence number of the message
     ///   - parts: The array to store the parts in
     /// - Throws: An error if the fetch operation fails
-    private func processStructure(_ structure: BodyStructure, partNumber: String, sequenceNumber: Int, parts: inout [MessagePart]) async throws {
+    private func processStructure(_ structure: BodyStructure, partNumber: String, sequenceNumber: SequenceNumber, parts: inout [MessagePart]) async throws {
         switch structure {
         case .singlepart(let part):
             // Determine the part number
             let currentPartNumber = partNumber.isEmpty ? "1" : partNumber
             
             // Fetch the part content
-            let partData = try await fetchMessagePart(sequenceNumber: sequenceNumber, partNumber: currentPartNumber)
+            let partData = try await fetchMessagePart(identifier: sequenceNumber, partNumber: currentPartNumber)
             
             // Extract content type and other metadata
             var contentType = ""
@@ -672,8 +730,19 @@ public final class IMAPServer: @unchecked Sendable {
     /// - Returns: An array of Email objects with all parts
     /// - Throws: An error if the fetch operation fails
     public func fetchEmails(range: String, limit: Int? = nil) async throws -> [Email] {
+        // Parse the range string into a sequence set
+        let nioSequenceSet = try range.toSequenceSet()
+        
+        // Convert NIO set to our SequenceNumberSet
+        var sequenceSet = SequenceNumberSet()
+        for range in nioSequenceSet.set.ranges {
+            let start = SequenceNumber(nio: range.range.lowerBound)
+            let end = SequenceNumber(nio: range.range.upperBound)
+            sequenceSet.insert(range: start...end)
+        }
+        
         // First fetch the headers
-        let headers = try await fetchHeaders(range: range, limit: limit)
+        let headers = try await fetchHeaders(using: sequenceSet, limit: limit)
         
         // Then fetch the complete email for each header
         var emails: [Email] = []

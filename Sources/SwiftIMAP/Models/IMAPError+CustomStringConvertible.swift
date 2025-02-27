@@ -19,6 +19,8 @@ extension IMAPError: CustomStringConvertible {
             return "Greeting failed: \(reason)"
         case .invalidArgument(let reason):
             return "Invalid argument: \(reason)"
+        case .emptyIdentifierSet:
+            return "Empty identifier set provided"
         }
     }
 } 
