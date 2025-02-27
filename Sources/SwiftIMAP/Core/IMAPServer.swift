@@ -9,45 +9,49 @@ import NIO
 import NIOSSL
 import NIOConcurrencyHelpers
 
-/// A class that represents an IMAP server connection
-public final class IMAPServer: @unchecked Sendable {
+/** An actor that represents an IMAP server connection */
+public actor IMAPServer {
     // MARK: - Properties
     
-    /// The hostname of the IMAP server
+    /** The hostname of the IMAP server */
     private let host: String
     
-    /// The port number of the IMAP server
+    /** The port number of the IMAP server */
     private let port: Int
     
-    /// The event loop group for handling asynchronous operations
+    /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
     
-    /// The channel for communication with the server
+    /** The channel for communication with the server */
     private var channel: Channel?
     
-    /// Logger for IMAP operations
-    /// To view these logs in Console.app:
-    /// 1. Open Console.app
-    /// 2. In the search field, type "process:com.cocoanetics.SwiftIMAP"
-    /// 3. You may need to adjust the "Action" menu to show "Include Debug Messages" and "Include Info Messages"
+    /** Counter for generating unique command tags */
+    private var commandTagCounter: Int = 0
+    
+    /**
+     Logger for IMAP operations
+     To view these logs in Console.app:
+     1. Open Console.app
+     2. In the search field, type "process:com.cocoanetics.SwiftIMAP"
+     3. You may need to adjust the "Action" menu to show "Include Debug Messages" and "Include Info Messages"
+     */
     private let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAPServer")
     
-    /// Logger for outgoing IMAP commands
+    /** Logger for outgoing IMAP commands */
     private let outboundLogger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAP OUT")
     
-    /// Logger for incoming IMAP responses
+    /** Logger for incoming IMAP responses */
     private let inboundLogger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAP IN")
-    
-    /// Lock for thread-safe access to mutable properties
-    private let lock = NIOLock()
     
     // MARK: - Initialization
     
-    /// Initialize a new IMAP server connection
-    /// - Parameters:
-    ///   - host: The hostname of the IMAP server
-    ///   - port: The port number of the IMAP server
-    ///   - numberOfThreads: The number of threads to use for the event loop group
+    /**
+     Initialize a new IMAP server connection
+     - Parameters:
+       - host: The hostname of the IMAP server
+       - port: The port number of the IMAP server
+       - numberOfThreads: The number of threads to use for the event loop group
+     */
     public init(host: String, port: Int, numberOfThreads: Int = 1) {
         self.host = host
         self.port = port
@@ -58,11 +62,13 @@ public final class IMAPServer: @unchecked Sendable {
         try? group.syncShutdownGracefully()
     }
     
-	// MARK: - Commands
+    // MARK: - Commands
     
-    /// Connect to the IMAP server
-    /// - Returns: A boolean indicating whether the connection was successful
-    /// - Throws: An error if the connection fails
+    /**
+     Connect to the IMAP server
+     - Returns: A boolean indicating whether the connection was successful
+     - Throws: An error if the connection fails
+     */
     public func connect() async throws {
         // Create SSL context for secure connection
         let sslContext = try NIOSSLContext(configuration: TLSConfiguration.makeClientConfiguration())
@@ -89,19 +95,19 @@ public final class IMAPServer: @unchecked Sendable {
         let channel = try await bootstrap.connect(host: host, port: port).get()
         
         // Store the channel
-        lock.withLock {
-            self.channel = channel
-        }
+        self.channel = channel
         
         // Wait for the server greeting using our generic handler execution pattern
         try await executeHandlerOnly(handlerType: GreetingHandler.self, timeoutSeconds: 5)
     }
     
-    /// Login to the IMAP server
-    /// - Parameters:
-    ///   - username: The username for authentication
-    ///   - password: The password for authentication
-    /// - Throws: An error if the login fails
+    /**
+     Login to the IMAP server
+     - Parameters:
+       - username: The username for authentication
+       - password: The password for authentication
+     - Throws: An error if the login fails
+     */
     public func login(username: String, password: String) async throws {
         let tag = generateCommandTag()
         let command = TaggedCommand(tag: tag, command: .login(
@@ -112,10 +118,12 @@ public final class IMAPServer: @unchecked Sendable {
         try await executeCommand(command, handlerType: LoginHandler.self)
     }
     
-    /// Select a mailbox
-    /// - Parameter mailboxName: The name of the mailbox to select
-    /// - Returns: Information about the selected mailbox
-    /// - Throws: An error if the select operation fails
+    /**
+     Select a mailbox
+     - Parameter mailboxName: The name of the mailbox to select
+     - Returns: Information about the selected mailbox
+     - Throws: An error if the select operation fails
+     */
     public func selectMailbox(_ mailboxName: String) async throws -> MailboxInfo {
         let tag = generateCommandTag()
         let mailbox = MailboxName(Array(mailboxName.utf8))
@@ -124,8 +132,10 @@ public final class IMAPServer: @unchecked Sendable {
         return try await executeCommand(command, handlerType: SelectHandler.self)
     }
     
-    /// Logout from the IMAP server
-    /// - Throws: An error if the logout fails
+    /**
+     Logout from the IMAP server
+     - Throws: An error if the logout fails
+     */
     public func logout() async throws {
         let tag = generateCommandTag()
         let command = TaggedCommand(tag: tag, command: .logout)
@@ -133,14 +143,12 @@ public final class IMAPServer: @unchecked Sendable {
         try await executeCommand(command, handlerType: LogoutHandler.self)
     }
     
-    /// Close the connection to the IMAP server
-    /// - Throws: An error if the close operation fails
+    /**
+     Close the connection to the IMAP server
+     - Throws: An error if the close operation fails
+     */
     public func close() async throws {
-        let channel = lock.withLock { () -> Channel? in
-            return self.channel
-        }
-        
-        guard let channel = channel else {
+        guard let channel = self.channel else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
         
@@ -152,12 +160,14 @@ public final class IMAPServer: @unchecked Sendable {
         }
     }
     
-    /// Fetch headers for messages in the selected mailbox
-    /// - Parameters:
-    ///   - range: The range of message sequence numbers to fetch (e.g., "1:10" for first 10 messages)
-    ///   - limit: Optional limit on the number of headers to return
-    /// - Returns: An array of email headers
-    /// - Throws: An error if the fetch operation fails
+    /**
+     Fetch headers for messages in the selected mailbox
+     - Parameters:
+       - identifierSet: The set of message identifiers to fetch
+       - limit: Optional limit on the number of headers to return
+     - Returns: An array of email headers
+     - Throws: An error if the fetch operation fails
+     */
     public func fetchHeaders<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [EmailHeader] {
         guard !identifierSet.isEmpty else {
             throw IMAPError.emptyIdentifierSet
@@ -192,12 +202,14 @@ public final class IMAPServer: @unchecked Sendable {
         return headers
     }
     
-    /// Fetch a specific part of a message
-    /// - Parameters:
-    ///   - sequenceNumber: The sequence number of the message
-    ///   - partNumber: The part number to fetch (e.g., "1", "1.1", "2", etc.)
-    /// - Returns: The content of the message part as Data
-    /// - Throws: An error if the fetch operation fails
+    /**
+     Fetch a specific part of a message
+     - Parameters:
+       - identifier: The message identifier (SequenceNumber or UID)
+       - partNumber: The part number to fetch (e.g., "1", "1.1", "2", etc.)
+     - Returns: The content of the message part as Data
+     - Throws: An error if the fetch operation fails
+     */
     public func fetchMessagePart<T: MessageIdentifier>(identifier: T, partNumber: String) async throws -> Data {
         let set = MessageIdentifierSet<T>(identifier)
         
@@ -233,10 +245,12 @@ public final class IMAPServer: @unchecked Sendable {
         return try await executeCommand(command, handlerType: FetchPartHandler.self, timeoutSeconds: 10)
     }
     
-    /// Fetch the structure of a message to determine its parts
-    /// - Parameter sequenceNumber: The sequence number of the message
-    /// - Returns: The body structure of the message
-    /// - Throws: An error if the fetch operation fails
+    /**
+     Fetch the structure of a message to determine its parts
+     - Parameter identifier: The message identifier (SequenceNumber or UID)
+     - Returns: The body structure of the message
+     - Throws: An error if the fetch operation fails
+     */
     public func fetchMessageStructure<T: MessageIdentifier>(identifier: T) async throws -> BodyStructure {
         let set = MessageIdentifierSet<T>(identifier)
         
@@ -267,10 +281,12 @@ public final class IMAPServer: @unchecked Sendable {
         return try await executeCommand(command, handlerType: FetchStructureHandler.self, timeoutSeconds: 10)
     }
     
-    /// Fetch all parts of a message
-    /// - Parameter identifier: The message identifier (SequenceNumber or UID)
-    /// - Returns: An array of message parts
-    /// - Throws: An error if the fetch operation fails
+    /**
+     Fetch all parts of a message
+     - Parameter identifier: The message identifier (SequenceNumber or UID)
+     - Returns: An array of message parts
+     - Throws: An error if the fetch operation fails
+     */
     public func fetchAllMessageParts<T: MessageIdentifier>(identifier: T) async throws -> [MessagePart] {
         // First, fetch the message structure to determine the parts
         let structure = try await fetchMessageStructure(identifier: identifier)
@@ -284,10 +300,12 @@ public final class IMAPServer: @unchecked Sendable {
         return parts
     }
     
-    /// Fetch a complete email with all parts from an email header
-    /// - Parameter header: The email header to fetch the complete email for
-    /// - Returns: A complete Email object with all parts
-    /// - Throws: An error if the fetch operation fails
+    /**
+     Fetch a complete email with all parts from an email header
+     - Parameter header: The email header to fetch the complete email for
+     - Returns: A complete Email object with all parts
+     - Throws: An error if the fetch operation fails
+     */
     public func fetchEmail(from header: EmailHeader) async throws -> Email {
         // Use the UID from the header if available (non-zero), otherwise fall back to sequence number
         if header.uid > 0 {
@@ -303,12 +321,14 @@ public final class IMAPServer: @unchecked Sendable {
         }
     }
     
-    /// Fetch complete emails with all parts using a message identifier set
-    /// - Parameters:
-    ///   - identifierSet: The set of message identifiers to fetch
-    ///   - limit: Optional limit on the number of emails to fetch
-    /// - Returns: An array of Email objects with all parts
-    /// - Throws: An error if the fetch operation fails
+    /**
+     Fetch complete emails with all parts using a message identifier set
+     - Parameters:
+       - identifierSet: The set of message identifiers to fetch
+       - limit: Optional limit on the number of emails to fetch
+     - Returns: An array of Email objects with all parts
+     - Throws: An error if the fetch operation fails
+     */
     public func fetchEmails<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [Email] {
         guard !identifierSet.isEmpty else {
             throw IMAPError.emptyIdentifierSet
@@ -326,252 +346,243 @@ public final class IMAPServer: @unchecked Sendable {
         
         return emails
     }
-	
-	
-	// MARK: - Helpers
-	
-	/// Process a body structure recursively to fetch all parts
-	/// - Parameters:
-	///   - structure: The body structure to process
-	///   - partNumber: The current part number prefix
-	///   - identifier: The message identifier (SequenceNumber or UID)
-	///   - parts: The array to store the parts in
-	/// - Throws: An error if the fetch operation fails
-	private func processStructure<T: MessageIdentifier>(_ structure: BodyStructure, partNumber: String, identifier: T, parts: inout [MessagePart]) async throws {
-		switch structure {
-		case .singlepart(let part):
-			// Determine the part number
-			let currentPartNumber = partNumber.isEmpty ? "1" : partNumber
-			
-			// Fetch the part content
-			let partData = try await fetchMessagePart(identifier: identifier, partNumber: currentPartNumber)
-			
-			// Extract content type and other metadata
-			var contentType = ""
-			var contentSubtype = ""
-			
-			switch part.kind {
-			case .basic(let mediaType):
-				contentType = String(mediaType.topLevel)
-				contentSubtype = String(mediaType.sub)
-			case .text(let text):
-				contentType = "text"
-				contentSubtype = String(text.mediaSubtype)
-			case .message(let message):
-				contentType = "message"
-				contentSubtype = String(message.message)
-			}
-			
-			// Extract disposition and filename if available
-			var disposition: String? = nil
-			var filename: String? = nil
-			
-			if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
-				if let disp = dispAndLang.disposition {
-					disposition = String(describing: disp)
-					
-					for (key, value) in disp.parameters {
-						if key.lowercased() == "filename" {
-							filename = value
-						}
-					}
-				}
-			}
-			
-			// Set content ID if available
-			let contentId = part.fields.id
-			
-			// Create a message part
-			let messagePart = MessagePart(
-				partNumber: currentPartNumber,
-				contentType: contentType,
-				contentSubtype: contentSubtype,
-				disposition: disposition,
-				filename: filename,
-				contentId: contentId,
-				data: partData
-			)
-			
-			// Add the part to the array
-			parts.append(messagePart)
-			
-		case .multipart(let multipart):
-			// For multipart messages, process each child part
-			for (index, childPart) in multipart.parts.enumerated() {
-				let childPartNumber = partNumber.isEmpty ? "\(index + 1)" : "\(partNumber).\(index + 1)"
-				try await processStructure(childPart, partNumber: childPartNumber, identifier: identifier, parts: &parts)
-			}
-			
-			// We no longer need to add an empty container part for the multipart structure
-			// This was previously adding a part #0 with empty data, which is not useful
-		}
-	}
-	
-	/// Execute an IMAP command with proper error handling and timeout management
-	/// - Parameters:
-	///   - commandTag: The tag for the IMAP command
-	///   - timeoutSeconds: The timeout in seconds for the command
-	///   - createHandler: A closure that creates the handler for the command
-	///   - createCommand: A closure that creates the command to send
-	/// - Returns: The result of the command execution
-	/// - Throws: An error if the command execution fails
-	private func executeCommand<T, H: ChannelInboundHandler>(
-		commandTag: String,
-		timeoutSeconds: Int = 5,
-		createHandler: (EventLoopPromise<T>, String, Int, Logger) -> H,
-		createCommand: (String) -> CommandStreamPart
-	) async throws -> T {
-		let channel = lock.withLock { () -> Channel? in
-			return self.channel
-		}
-		
-		guard let channel = channel else {
-			throw IMAPError.connectionFailed("Channel not initialized")
-		}
-		
-		// Create a promise for the command result
-		let commandPromise = channel.eventLoop.makePromise(of: T.self)
-		
-		// Create the handler for the command
-		let handler = createHandler(
-			commandPromise,
-			commandTag,
-			timeoutSeconds,
-			inboundLogger
-		)
-		
-		// Add the handler to the pipeline
-		try await channel.pipeline.addHandler(handler).get()
-		
-		// Create and send the command
-		let command = createCommand(commandTag)
-		try await channel.writeAndFlush(command).get()
-		
-		// Wait for the command result
-		do {
-			let result = try await commandPromise.futureResult.get()
-			// If the handler has a cancelTimeout method, call it
-			if let timeoutHandler = handler as? any TimeoutHandler {
-				timeoutHandler.cancelTimeout()
-			}
-			return result
-		} catch {
-			// If the handler has a cancelTimeout method, call it
-			if let timeoutHandler = handler as? any TimeoutHandler {
-				timeoutHandler.cancelTimeout()
-			}
-			throw error
-		}
-	}
-	
-	/// Execute an IMAP command with a simplified interface
-	/// - Parameters:
-	///   - command: The IMAP command to execute
-	///   - handlerType: The type of handler to use for this command
-	///   - timeoutSeconds: The timeout in seconds for the command
-	/// - Returns: The result of the command execution
-	/// - Throws: An error if the command execution fails
-	private func executeCommand<T, HandlerType: IMAPCommandHandler>(
-		_ command: TaggedCommand,
-		handlerType: HandlerType.Type,
-		timeoutSeconds: Int = 5
-	) async throws -> T where HandlerType.ResultType == T {
-		let channel = lock.withLock { () -> Channel? in
-			return self.channel
-		}
-		
-		guard let channel = channel else {
-			throw IMAPError.connectionFailed("Channel not initialized")
-		}
-		
-		// Create a promise for the command result
-		let commandPromise = channel.eventLoop.makePromise(of: T.self)
-		
-		// Create the handler for the command
-		let handler = HandlerType.createHandler(
-			commandTag: command.tag,
-			promise: commandPromise,
-			timeoutSeconds: timeoutSeconds,
-			logger: inboundLogger
-		)
-		
-		// Add the handler to the pipeline
-		try await channel.pipeline.addHandler(handler).get()
-		
-		// Send the command
-		let commandStreamPart = CommandStreamPart.tagged(command)
-		try await channel.writeAndFlush(commandStreamPart).get()
-		
-		// Wait for the command result
-		do {
-			let result = try await commandPromise.futureResult.get()
-			handler.cancelTimeout()
-			return result
-		} catch {
-			handler.cancelTimeout()
-			throw error
-		}
-	}
-	
-	/// Execute a handler without sending a command (for server-initiated responses like greeting)
-	/// - Parameters:
-	///   - handlerType: The type of handler to use
-	///   - timeoutSeconds: The timeout in seconds
-	/// - Returns: The result from the handler
-	/// - Throws: An error if the operation fails
-	private func executeHandlerOnly<T, HandlerType: IMAPCommandHandler>(
-		handlerType: HandlerType.Type,
-		timeoutSeconds: Int = 5
-	) async throws -> T where HandlerType.ResultType == T {
-		let channel = lock.withLock { () -> Channel? in
-			return self.channel
-		}
-		
-		guard let channel = channel else {
-			throw IMAPError.connectionFailed("Channel not initialized")
-		}
-		
-		// Create a promise for the result
-		let resultPromise = channel.eventLoop.makePromise(of: T.self)
-		
-		// Create the handler
-		let handler = HandlerType.createHandler(
-			commandTag: "",  // No command tag needed for server-initiated responses
-			promise: resultPromise,
-			timeoutSeconds: timeoutSeconds,
-			logger: inboundLogger
-		)
-		
-		// Add the handler to the pipeline
-		try await channel.pipeline.addHandler(handler).get()
-		
-		// Wait for the result
-		do {
-			let result = try await resultPromise.futureResult.get()
-			handler.cancelTimeout()
-			return result
-		} catch {
-			handler.cancelTimeout()
-			throw error
-		}
-	}
-	
-	/// Generate a unique command tag
-	/// - Returns: A unique command tag string
-	private func generateCommandTag() -> String {
-		// Simple implementation - in a real app you might want to use a more sophisticated approach
-		let tagPrefix = "A"
-		
-		// Use a static counter outside the lock closure
-		struct Counter {
-			static var value = 0
-		}
-		
-		let tagNumber = lock.withLock {
-			Counter.value += 1
-			return Counter.value
-		}
-		
-		return "\(tagPrefix)\(String(format: "%03d", tagNumber))"
-	}
+    
+    
+    // MARK: - Helpers
+    
+    /**
+     Process a body structure recursively to fetch all parts
+     - Parameters:
+       - structure: The body structure to process
+       - partNumber: The current part number prefix
+       - identifier: The message identifier (SequenceNumber or UID)
+       - parts: The array to store the parts in
+     - Throws: An error if the fetch operation fails
+     */
+    private func processStructure<T: MessageIdentifier>(_ structure: BodyStructure, partNumber: String, identifier: T, parts: inout [MessagePart]) async throws {
+        switch structure {
+        case .singlepart(let part):
+            // Determine the part number
+            let currentPartNumber = partNumber.isEmpty ? "1" : partNumber
+            
+            // Fetch the part content
+            let partData = try await fetchMessagePart(identifier: identifier, partNumber: currentPartNumber)
+            
+            // Extract content type and other metadata
+            var contentType = ""
+            var contentSubtype = ""
+            
+            switch part.kind {
+            case .basic(let mediaType):
+                contentType = String(mediaType.topLevel)
+                contentSubtype = String(mediaType.sub)
+            case .text(let text):
+                contentType = "text"
+                contentSubtype = String(text.mediaSubtype)
+            case .message(let message):
+                contentType = "message"
+                contentSubtype = String(message.message)
+            }
+            
+            // Extract disposition and filename if available
+            var disposition: String? = nil
+            var filename: String? = nil
+            
+            if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
+                if let disp = dispAndLang.disposition {
+                    disposition = String(describing: disp)
+                    
+                    for (key, value) in disp.parameters {
+                        if key.lowercased() == "filename" {
+                            filename = value
+                        }
+                    }
+                }
+            }
+            
+            // Set content ID if available
+            let contentId = part.fields.id
+            
+            // Create a message part
+            let messagePart = MessagePart(
+                partNumber: currentPartNumber,
+                contentType: contentType,
+                contentSubtype: contentSubtype,
+                disposition: disposition,
+                filename: filename,
+                contentId: contentId,
+                data: partData
+            )
+            
+            // Add the part to the array
+            parts.append(messagePart)
+            
+        case .multipart(let multipart):
+            // For multipart messages, process each child part
+            for (index, childPart) in multipart.parts.enumerated() {
+                let childPartNumber = partNumber.isEmpty ? "\(index + 1)" : "\(partNumber).\(index + 1)"
+                try await processStructure(childPart, partNumber: childPartNumber, identifier: identifier, parts: &parts)
+            }
+            
+            // We no longer need to add an empty container part for the multipart structure
+            // This was previously adding a part #0 with empty data, which is not useful
+        }
+    }
+    
+    /**
+     Execute an IMAP command with proper error handling and timeout management
+     - Parameters:
+       - commandTag: The tag for the IMAP command
+       - timeoutSeconds: The timeout in seconds for the command
+       - createHandler: A closure that creates the handler for the command
+       - createCommand: A closure that creates the command to send
+     - Returns: The result of the command execution
+     - Throws: An error if the command execution fails
+     */
+    private func executeCommand<T, H: ChannelInboundHandler>(
+        commandTag: String,
+        timeoutSeconds: Int = 5,
+        createHandler: (EventLoopPromise<T>, String, Int, Logger) -> H,
+        createCommand: (String) -> CommandStreamPart
+    ) async throws -> T {
+        guard let channel = self.channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
+        }
+        
+        // Create a promise for the command result
+        let commandPromise = channel.eventLoop.makePromise(of: T.self)
+        
+        // Create the handler for the command
+        let handler = createHandler(
+            commandPromise,
+            commandTag,
+            timeoutSeconds,
+            inboundLogger
+        )
+        
+        // Add the handler to the pipeline
+        try await channel.pipeline.addHandler(handler).get()
+        
+        // Create and send the command
+        let command = createCommand(commandTag)
+        try await channel.writeAndFlush(command).get()
+        
+        // Wait for the command result
+        do {
+            let result = try await commandPromise.futureResult.get()
+            // If the handler has a cancelTimeout method, call it
+            if let timeoutHandler = handler as? any TimeoutHandler {
+                timeoutHandler.cancelTimeout()
+            }
+            return result
+        } catch {
+            // If the handler has a cancelTimeout method, call it
+            if let timeoutHandler = handler as? any TimeoutHandler {
+                timeoutHandler.cancelTimeout()
+            }
+            throw error
+        }
+    }
+    
+    /**
+     Execute an IMAP command with a simplified interface
+     - Parameters:
+       - command: The IMAP command to execute
+       - handlerType: The type of handler to use for this command
+       - timeoutSeconds: The timeout in seconds for the command
+     - Returns: The result of the command execution
+     - Throws: An error if the command execution fails
+     */
+    private func executeCommand<T, HandlerType: IMAPCommandHandler>(
+        _ command: TaggedCommand,
+        handlerType: HandlerType.Type,
+        timeoutSeconds: Int = 5
+    ) async throws -> T where HandlerType.ResultType == T {
+        guard let channel = self.channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
+        }
+        
+        // Create a promise for the command result
+        let commandPromise = channel.eventLoop.makePromise(of: T.self)
+        
+        // Create the handler for the command
+        let handler = HandlerType.createHandler(
+            commandTag: command.tag,
+            promise: commandPromise,
+            timeoutSeconds: timeoutSeconds,
+            logger: inboundLogger
+        )
+        
+        // Add the handler to the pipeline
+        try await channel.pipeline.addHandler(handler).get()
+        
+        // Send the command
+        let commandStreamPart = CommandStreamPart.tagged(command)
+        try await channel.writeAndFlush(commandStreamPart).get()
+        
+        // Wait for the command result
+        do {
+            let result = try await commandPromise.futureResult.get()
+            handler.cancelTimeout()
+            return result
+        } catch {
+            handler.cancelTimeout()
+            throw error
+        }
+    }
+    
+    /**
+     Execute a handler without sending a command (for server-initiated responses like greeting)
+     - Parameters:
+       - handlerType: The type of handler to use
+       - timeoutSeconds: The timeout in seconds
+     - Returns: The result from the handler
+     - Throws: An error if the operation fails
+     */
+    private func executeHandlerOnly<T, HandlerType: IMAPCommandHandler>(
+        handlerType: HandlerType.Type,
+        timeoutSeconds: Int = 5
+    ) async throws -> T where HandlerType.ResultType == T {
+        guard let channel = self.channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
+        }
+        
+        // Create a promise for the result
+        let resultPromise = channel.eventLoop.makePromise(of: T.self)
+        
+        // Create the handler
+        let handler = HandlerType.createHandler(
+            commandTag: "",  // No command tag needed for server-initiated responses
+            promise: resultPromise,
+            timeoutSeconds: timeoutSeconds,
+            logger: inboundLogger
+        )
+        
+        // Add the handler to the pipeline
+        try await channel.pipeline.addHandler(handler).get()
+        
+        // Wait for the result
+        do {
+            let result = try await resultPromise.futureResult.get()
+            handler.cancelTimeout()
+            return result
+        } catch {
+            handler.cancelTimeout()
+            throw error
+        }
+    }
+    
+    /**
+     Generate a unique command tag
+     - Returns: A unique command tag string
+     */
+    private func generateCommandTag() -> String {
+        // Simple implementation with a consistent prefix
+        let tagPrefix = "A"
+        
+        // Increment the counter directly - actor isolation ensures thread safety
+        commandTagCounter += 1
+        
+        return "\(tagPrefix)\(String(format: "%03d", commandTagCounter))"
+    }
 }
