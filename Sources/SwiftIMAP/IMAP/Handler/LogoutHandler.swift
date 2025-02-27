@@ -1,4 +1,4 @@
-// IMAPLogoutHandler.swift
+// LogoutHandler.swift
 // Handler for IMAP LOGOUT command
 
 import Foundation
@@ -9,7 +9,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP LOGOUT command
-public final class IMAPLogoutHandler: BaseIMAPCommandHandler, @unchecked Sendable {
+public final class LogoutHandler: BaseIMAPCommandHandler, @unchecked Sendable {
     /// Promise for the logout operation
     private let logoutPromise: EventLoopPromise<Void>
     

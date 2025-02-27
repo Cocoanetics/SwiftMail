@@ -1,5 +1,5 @@
-// IMAPFetchStructureHandler.swift
-// A specialized handler for IMAP fetch structure operations
+// FetchPartHandler.swift
+// A specialized handler for IMAP fetch part operations
 
 import Foundation
 import os.log
@@ -8,21 +8,24 @@ import NIOIMAPCore
 import NIO
 import NIOConcurrencyHelpers
 
-/// Handler for IMAP FETCH STRUCTURE command
-public final class IMAPFetchStructureHandler: BaseIMAPCommandHandler, @unchecked Sendable {
-    /// Promise for the fetch structure operation
-    private let fetchPromise: EventLoopPromise<BodyStructure>
+/// Handler for IMAP FETCH PART command
+public final class FetchPartHandler: BaseIMAPCommandHandler, @unchecked Sendable {
+    /// Promise for the fetch part operation
+    private let fetchPromise: EventLoopPromise<Data>
     
-    /// The body structure from the response
-    private var bodyStructure: BodyStructure?
+    /// Collected message part data
+    private var partData: Data = Data()
     
-    /// Initialize a new fetch structure handler
+    /// Expected byte count for the streaming data
+    private var expectedByteCount: Int?
+    
+    /// Initialize a new fetch part handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - fetchPromise: The promise to fulfill when the fetch completes
     ///   - timeoutSeconds: The timeout for this command in seconds
     ///   - logger: The logger to use for logging responses
-    public init(commandTag: String, fetchPromise: EventLoopPromise<BodyStructure>, timeoutSeconds: Int = 10, logger: Logger) {
+    public init(commandTag: String, fetchPromise: EventLoopPromise<Data>, timeoutSeconds: Int = 10, logger: Logger) {
         self.fetchPromise = fetchPromise
         super.init(commandTag: commandTag, timeoutSeconds: timeoutSeconds, logger: logger)
     }
@@ -50,13 +53,7 @@ public final class IMAPFetchStructureHandler: BaseIMAPCommandHandler, @unchecked
         if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
             if case .ok = taggedResponse.state {
                 // Fetch successful
-                lock.withLock {
-                    if let structure = self.bodyStructure {
-                        fetchPromise.succeed(structure)
-                    } else {
-                        fetchPromise.fail(IMAPError.fetchFailed("No body structure received"))
-                    }
-                }
+                fetchPromise.succeed(lock.withLock { self.partData })
             } else {
                 // Fetch failed
                 fetchPromise.fail(IMAPError.fetchFailed(String(describing: taggedResponse.state)))
@@ -81,6 +78,16 @@ public final class IMAPFetchStructureHandler: BaseIMAPCommandHandler, @unchecked
                 // Process simple attributes
                 processMessageAttribute(attribute)
                 
+            case .streamingBegin(_, let byteCount):
+                // Store the expected byte count
+                expectedByteCount = byteCount
+                
+            case .streamingBytes(let data):
+                // Collect the streaming body data
+                lock.withLock {
+                    self.partData.append(Data(data.readableBytesView))
+                }
+                
             default:
                 break
         }
@@ -90,12 +97,9 @@ public final class IMAPFetchStructureHandler: BaseIMAPCommandHandler, @unchecked
     /// - Parameter attribute: The attribute to process
     private func processMessageAttribute(_ attribute: MessageAttribute) {
         switch attribute {
-            case .body(let bodyStructure, _):
-                if case .valid(let structure) = bodyStructure {
-                    lock.withLock {
-                        self.bodyStructure = structure
-                    }
-                }
+            case .body(_, _):
+                // We're primarily interested in the body data which comes through streaming
+                break
                 
             default:
                 break

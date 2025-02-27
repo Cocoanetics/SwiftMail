@@ -1,4 +1,4 @@
-// IMAPSelectHandler.swift
+// SelectHandler.swift
 // Handler for IMAP SELECT command
 
 import Foundation
@@ -9,7 +9,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP SELECT command
-public final class IMAPSelectHandler: BaseIMAPCommandHandler, @unchecked Sendable {
+public final class SelectHandler: BaseIMAPCommandHandler, @unchecked Sendable {
     /// Promise for the select operation
     private let selectPromise: EventLoopPromise<MailboxInfo>
     

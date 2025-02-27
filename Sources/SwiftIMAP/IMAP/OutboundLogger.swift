@@ -1,4 +1,4 @@
-// IMAPOutboundLogger.swift
+// OutboundLogger.swift
 // A channel handler that logs outgoing IMAP commands
 
 import Foundation
@@ -8,7 +8,7 @@ import NIOIMAPCore
 import NIO
 
 /// A channel handler that logs outgoing IMAP commands
-public final class IMAPOutboundLogger: ChannelOutboundHandler, @unchecked Sendable {
+public final class OutboundLogger: ChannelOutboundHandler, @unchecked Sendable {
     public typealias OutboundIn = Any
     public typealias OutboundOut = Any
     

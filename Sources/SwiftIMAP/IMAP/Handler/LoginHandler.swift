@@ -1,4 +1,4 @@
-// IMAPLoginHandler.swift
+// LoginHandler.swift
 // A specialized handler for IMAP login operations
 
 import Foundation
@@ -9,7 +9,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP LOGIN command
-public final class IMAPLoginHandler: BaseIMAPCommandHandler, @unchecked Sendable {
+public final class LoginHandler: BaseIMAPCommandHandler, @unchecked Sendable {
     /// Promise for the login operation
     private let loginPromise: EventLoopPromise<Void>
     

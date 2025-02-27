@@ -81,7 +81,7 @@ public final class IMAPServer: @unchecked Sendable {
                 return channel.pipeline.addHandlers([
                     sslHandler,
                     IMAPClientHandler(),
-                    IMAPOutboundLogger(logger: self.outboundLogger)
+                    OutboundLogger(logger: self.outboundLogger)
                 ])
             }
         
@@ -97,7 +97,7 @@ public final class IMAPServer: @unchecked Sendable {
         let greetingPromise = channel.eventLoop.makePromise(of: Void.self)
         
         // Create a greeting handler
-        let greetingHandler = IMAPGreetingHandler(
+        let greetingHandler = GreetingHandler(
             greetingPromise: greetingPromise,
             timeoutSeconds: 5,
             logger: inboundLogger
@@ -128,7 +128,7 @@ public final class IMAPServer: @unchecked Sendable {
         let greetingPromise = channel.eventLoop.makePromise(of: Void.self)
         
         // Create a greeting handler
-        let greetingHandler = IMAPGreetingHandler(
+        let greetingHandler = GreetingHandler(
             greetingPromise: greetingPromise,
             timeoutSeconds: 5,
             logger: inboundLogger
@@ -168,7 +168,7 @@ public final class IMAPServer: @unchecked Sendable {
         let loginPromise = channel.eventLoop.makePromise(of: Void.self)
         
         // Create a login handler
-        let loginHandler = IMAPLoginHandler(
+        let loginHandler = LoginHandler(
             commandTag: loginTag,
             loginPromise: loginPromise,
             timeoutSeconds: 5,
@@ -213,7 +213,7 @@ public final class IMAPServer: @unchecked Sendable {
         let selectPromise = channel.eventLoop.makePromise(of: MailboxInfo.self)
         
         // Create a select handler
-        let selectHandler = IMAPSelectHandler(
+        let selectHandler = SelectHandler(
             commandTag: selectTag,
             mailboxName: mailboxName,
             selectPromise: selectPromise,
@@ -260,7 +260,7 @@ public final class IMAPServer: @unchecked Sendable {
         let logoutPromise = channel.eventLoop.makePromise(of: Void.self)
         
         // Create a logout handler
-        let logoutHandler = IMAPLogoutHandler(
+        let logoutHandler = LogoutHandler(
             commandTag: logoutTag,
             logoutPromise: logoutPromise,
             timeoutSeconds: 5,
@@ -333,7 +333,7 @@ public final class IMAPServer: @unchecked Sendable {
         let fetchPromise = channel.eventLoop.makePromise(of: [EmailHeader].self)
         
         // Create a fetch headers handler
-        let fetchHandler = IMAPFetchHeadersHandler(
+        let fetchHandler = FetchHeadersHandler(
             commandTag: fetchTag,
             fetchPromise: fetchPromise,
             timeoutSeconds: 10,
@@ -411,7 +411,7 @@ public final class IMAPServer: @unchecked Sendable {
         let fetchPromise = channel.eventLoop.makePromise(of: Data.self)
         
         // Create a fetch part handler
-        let fetchPartHandler = IMAPFetchPartHandler(
+        let fetchPartHandler = FetchPartHandler(
             commandTag: fetchTag,
             fetchPromise: fetchPromise,
             timeoutSeconds: 10,
@@ -488,7 +488,7 @@ public final class IMAPServer: @unchecked Sendable {
         let fetchPromise = channel.eventLoop.makePromise(of: BodyStructure.self)
         
         // Create a fetch structure handler
-        let fetchStructureHandler = IMAPFetchStructureHandler(
+        let fetchStructureHandler = FetchStructureHandler(
             commandTag: fetchTag,
             fetchPromise: fetchPromise,
             timeoutSeconds: 10,

@@ -1,4 +1,4 @@
-// IMAPFetchHeadersHandler.swift
+// FetchHeadersHandler.swift
 // A specialized handler for IMAP fetch headers operations
 
 import Foundation
@@ -9,7 +9,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH HEADERS command
-public final class IMAPFetchHeadersHandler: BaseIMAPCommandHandler, @unchecked Sendable {
+public final class FetchHeadersHandler: BaseIMAPCommandHandler, @unchecked Sendable {
     /// Promise for the fetch headers operation
     private let fetchPromise: EventLoopPromise<[EmailHeader]>
     
