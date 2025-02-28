@@ -362,8 +362,8 @@ public actor IMAPServer {
         let tag = generateCommandTag()
 		let mailbox = MailboxName(ByteBuffer(string: destinationMailbox))
         let command: TaggedCommand
-		
-        if T.self == UID.self {
+        
+		if T.self == UID.self {
             command = TaggedCommand(tag: tag, command: .uidMove(.set(identifierSet.toNIOSet()), mailbox))
         } else {
             command = TaggedCommand(tag: tag, command: .move(.set(identifierSet.toNIOSet()), mailbox))
