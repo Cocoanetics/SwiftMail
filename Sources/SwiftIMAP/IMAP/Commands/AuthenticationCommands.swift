@@ -9,7 +9,7 @@ import NIO
 
 /// Command for logging into an IMAP server
 public struct LoginCommand: IMAPCommand {
-    public typealias ResultType = Void
+    public typealias ResultType = [Capability]
     public typealias HandlerType = LoginHandler
     
     /// The username for authentication

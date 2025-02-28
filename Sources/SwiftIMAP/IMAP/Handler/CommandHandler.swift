@@ -136,6 +136,7 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
                 // Subclasses should override handleTaggedOKResponse to handle the OK response
                 handleTaggedOKResponse(taggedResponse)
             } else {
+                logger.debug("Tagged response is an error: \(String(describing: taggedResponse.state))")
                 // Failed response, fail the promise with an error
                 handleTaggedErrorResponse(taggedResponse)
             }
@@ -143,7 +144,8 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
         }
         
         // Not our tagged response, see if subclasses want to handle untagged responses
-        return handleUntaggedResponse(response)
+        let handled = handleUntaggedResponse(response)
+        return handled
     }
     
     /// Handle a tagged OK response

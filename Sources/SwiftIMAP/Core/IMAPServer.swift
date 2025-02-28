@@ -101,21 +101,28 @@ public actor IMAPServer {
         self.channel = channel
         
         // Wait for the server greeting using our generic handler execution pattern
-        try await executeHandlerOnly(handlerType: GreetingHandler.self, timeoutSeconds: 5)
+        // The greeting handler now returns capabilities if they were in the greeting
+        let greetingCapabilities: [Capability] = try await executeHandlerOnly(handlerType: GreetingHandler.self, timeoutSeconds: 5)
         
-        // Fetch initial capabilities
-        try await fetchCapabilities()
+        // If we got capabilities from the greeting, use them
+        if !greetingCapabilities.isEmpty {
+            self.capabilities = Set(greetingCapabilities)
+        } else {
+            // Otherwise, fetch capabilities explicitly
+            _ = try await fetchCapabilities()
+        }
     }
     
     /**
      Fetch server capabilities
      - Throws: An error if the capability command fails
+     - Returns: An array of server capabilities
      */
-    private func fetchCapabilities() async throws {
+    public func fetchCapabilities() async throws -> [Capability] {
         let command = CapabilityCommand()
         let serverCapabilities = try await executeCommand(command)
         self.capabilities = Set(serverCapabilities)
-        logger.info("Server capabilities: \(serverCapabilities.map { String(describing: $0) }.joined(separator: ", "))")
+        return serverCapabilities
     }
     
     /**
@@ -123,7 +130,7 @@ public actor IMAPServer {
      - Parameter capability: The capability to check for
      - Returns: True if the server supports the capability
      */
-    private func supportsCapability(_ check: (NIOIMAPCore.Capability) -> Bool) -> Bool {
+    private func supportsCapability(_ check: (Capability) -> Bool) -> Bool {
         return capabilities.contains(where: check)
     }
     
@@ -136,10 +143,15 @@ public actor IMAPServer {
      */
     public func login(username: String, password: String) async throws {
         let command = LoginCommand(username: username, password: password)
-        try await executeCommand(command)
+        let loginCapabilities = try await executeCommand(command)
         
-        // Fetch capabilities again after login as they may have changed
-        try await fetchCapabilities()
+        // If we got capabilities from the login response, use them
+        if !loginCapabilities.isEmpty {
+            self.capabilities = Set(loginCapabilities)
+        } else {
+            // Otherwise, fetch capabilities explicitly
+            _ = try await fetchCapabilities()
+        }
     }
 	
 	/**
@@ -314,19 +326,10 @@ public actor IMAPServer {
         
         if canUseMoveCommand {
             // Use the MOVE command
-            logger.info("Using MOVE command to move messages to \(destinationMailbox)")
             let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
             try await executeCommand(command)
         } else {
             // Fall back to COPY + DELETE + EXPUNGE
-            if isUidOperation && !supportsMoveCapability {
-                logger.info("Server doesn't support MOVE capability, falling back to COPY + DELETE + EXPUNGE")
-            } else if isUidOperation {
-                logger.info("Server doesn't support UIDPLUS capability for UID MOVE, falling back to COPY + DELETE + EXPUNGE")
-            } else {
-                logger.info("Server doesn't support MOVE capability, falling back to COPY + DELETE + EXPUNGE")
-            }
-            
             // Step 1: Copy the messages to the destination mailbox
             let copyCommand = CopyCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
             try await executeCommand(copyCommand)

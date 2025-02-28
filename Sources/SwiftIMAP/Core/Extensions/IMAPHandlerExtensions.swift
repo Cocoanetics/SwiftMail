@@ -9,11 +9,11 @@ import NIOIMAPCore
 // MARK: - GreetingHandler Extension
 
 extension GreetingHandler: IMAPCommandHandler {
-    public typealias ResultType = Void
+    public typealias ResultType = [Capability]
     
     public static func createHandler(
         commandTag: String,
-        promise: EventLoopPromise<Void>,
+        promise: EventLoopPromise<[Capability]>,
         timeoutSeconds: Int,
         logger: Logger
     ) -> GreetingHandler {
@@ -31,11 +31,11 @@ extension GreetingHandler: IMAPCommandHandler {
 // MARK: - LoginHandler Extension
 
 extension LoginHandler: IMAPCommandHandler {
-    public typealias ResultType = Void
+    public typealias ResultType = [Capability]
     
     public static func createHandler(
         commandTag: String,
-        promise: EventLoopPromise<Void>,
+        promise: EventLoopPromise<[Capability]>,
         timeoutSeconds: Int,
         logger: Logger
     ) -> LoginHandler {
