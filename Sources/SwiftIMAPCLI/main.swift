@@ -104,7 +104,7 @@ do {
 
                 do {
                     // Use the fetchEmails method with the sequence number set
-                    let emails = try await server.fetchEmails(using: sequenceSet)
+                    let emails = try await server.fetchMessages(using: sequenceSet)
                     
                     logger.notice("📧 Latest Complete Emails (\(emails.count)) 📧")
                     print("\n📧 Latest Complete Emails (\(emails.count)) 📧")
@@ -128,7 +128,7 @@ do {
             try await server.logout()
             
             // Close the connection
-            try await server.close()
+            try await server.disconnect()
         } catch {
             logger.error("Error: \(error.localizedDescription)")
             exit(1)

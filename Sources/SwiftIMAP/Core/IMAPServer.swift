@@ -62,7 +62,7 @@ public actor IMAPServer {
         try? group.syncShutdownGracefully()
     }
     
-    // MARK: - Commands
+    // MARK: - Connection and Login Commands
     
     /**
      Connect to the IMAP server
@@ -100,6 +100,23 @@ public actor IMAPServer {
         // Wait for the server greeting using our generic handler execution pattern
         try await executeHandlerOnly(handlerType: GreetingHandler.self, timeoutSeconds: 5)
     }
+	
+	/**
+	 Close the connection to the IMAP server
+	 - Throws: An error if the close operation fails
+	 */
+	public func disconnect() async throws {
+		guard let channel = self.channel else {
+			throw IMAPError.connectionFailed("Channel not initialized")
+		}
+		
+		// Close the connection
+		do {
+			try await channel.close().get()
+		} catch let error as NIOCore.ChannelError where error == .alreadyClosed {
+			// Channel is already closed, which is fine
+		}
+	}
     
     /**
      Login to the IMAP server
@@ -112,6 +129,17 @@ public actor IMAPServer {
         let command = LoginCommand(username: username, password: password)
         try await executeCommand(command)
     }
+	
+	/**
+	 Logout from the IMAP server
+	 - Throws: An error if the logout fails
+	 */
+	public func logout() async throws {
+		let command = LogoutCommand()
+		try await executeCommand(command)
+	}
+	
+	// MARK: - Mailbox Commands
     
     /**
      Select a mailbox
@@ -123,32 +151,8 @@ public actor IMAPServer {
         let command = SelectMailboxCommand(mailboxName: mailboxName)
         return try await executeCommand(command)
     }
-    
-    /**
-     Logout from the IMAP server
-     - Throws: An error if the logout fails
-     */
-    public func logout() async throws {
-        let command = LogoutCommand()
-        try await executeCommand(command)
-    }
-    
-    /**
-     Close the connection to the IMAP server
-     - Throws: An error if the close operation fails
-     */
-    public func close() async throws {
-        guard let channel = self.channel else {
-            throw IMAPError.connectionFailed("Channel not initialized")
-        }
-        
-        // Close the connection
-        do {
-            try await channel.close().get()
-        } catch let error as NIOCore.ChannelError where error == .alreadyClosed {
-            // Channel is already closed, which is fine
-        }
-    }
+	
+	// MARK: - Message Commands
     
     /**
      Fetch headers for messages in the selected mailbox
@@ -209,14 +213,107 @@ public actor IMAPServer {
     }
     
     /**
-     Process a body structure recursively to fetch all parts
-     - Parameters:
-       - structure: The body structure to process
-       - sectionPath: Array of integers representing the hierarchical section path
-       - identifier: The message identifier (SequenceNumber or UID)
-     - Returns: An array of message parts
+     Fetch a complete email with all parts from an email header
+     - Parameter header: The email header to fetch the complete email for
+     - Returns: A complete Email object with all parts
      - Throws: An error if the fetch operation fails
      */
+    public func fetchMessage(from header: EmailHeader) async throws -> Email {
+        // Use the UID from the header if available (non-zero), otherwise fall back to sequence number
+        if header.uid > 0 {
+            // Use UID for fetching
+            let uid = UID(UInt32(header.uid))
+            let parts = try await fetchAllMessageParts(identifier: uid)
+            return Email(header: header, parts: parts)
+        } else {
+            // Fall back to sequence number
+            let sequenceNumber = SequenceNumber(UInt32(header.sequenceNumber))
+            let parts = try await fetchAllMessageParts(identifier: sequenceNumber)
+            return Email(header: header, parts: parts)
+        }
+    }
+    
+    /**
+     Fetch complete emails with all parts using a message identifier set
+     - Parameters:
+       - identifierSet: The set of message identifiers to fetch
+       - limit: Optional limit on the number of emails to fetch
+     - Returns: An array of Email objects with all parts
+     - Throws: An error if the fetch operation fails
+     */
+    public func fetchMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [Email] {
+        guard !identifierSet.isEmpty else {
+            throw IMAPError.emptyIdentifierSet
+        }
+        
+        // First fetch the headers
+        let headers = try await fetchHeaders(using: identifierSet, limit: limit)
+        
+        // Then fetch the complete email for each header
+        var emails: [Email] = []
+        for header in headers {
+            let email = try await fetchMessage(from: header)
+            emails.append(email)
+        }
+        
+        return emails
+    }
+    
+    /**
+     Move messages from the current mailbox to another mailbox
+     - Parameters:
+       - identifierSet: The set of message identifiers to move
+       - destinationMailbox: The name of the destination mailbox
+     - Throws: An error if the move operation fails
+     */
+    public func moveMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
+        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+        try await executeCommand(command)
+    }
+    
+    /**
+     Move a single message from the current mailbox to another mailbox
+     - Parameters:
+       - identifier: The message identifier to move
+       - destinationMailbox: The name of the destination mailbox
+     - Throws: An error if the move operation fails
+     */
+    public func moveMessage<T: MessageIdentifier>(identifier: T, to destinationMailbox: String) async throws {
+        let set = MessageIdentifierSet<T>(identifier)
+        try await moveMessages(using: set, to: destinationMailbox)
+    }
+    
+    /**
+     Move an email identified by its header from the current mailbox to another mailbox
+     - Parameters:
+       - header: The email header of the message to move
+       - destinationMailbox: The name of the destination mailbox
+     - Throws: An error if the move operation fails
+     */
+    public func moveMessage(from header: EmailHeader, to destinationMailbox: String) async throws {
+        // Use the UID from the header if available (non-zero), otherwise fall back to sequence number
+        if header.uid > 0 {
+            // Use UID for moving
+            let uid = UID(UInt32(header.uid))
+            try await moveMessage(identifier: uid, to: destinationMailbox)
+        } else {
+            // Fall back to sequence number
+            let sequenceNumber = SequenceNumber(UInt32(header.sequenceNumber))
+            try await moveMessage(identifier: sequenceNumber, to: destinationMailbox)
+        }
+    }
+	
+	// MARK: - Sub-Commands
+	
+	/**
+	 Process a body structure recursively to fetch all parts
+	 - Parameters:
+	   - structure: The body structure to process
+	   - sectionPath: Array of integers representing the hierarchical section path
+	   - identifier: The message identifier (SequenceNumber or UID)
+	 - Returns: An array of message parts
+	 - Throws: An error if the fetch operation fails
+	 */
 	private func recursivelyFetchParts<T: MessageIdentifier>(_ structure: BodyStructure, sectionPath: [Int], identifier: T) async throws -> [MessagePart] {
 		switch structure {
 			case .singlepart(let part):
@@ -290,98 +387,7 @@ public actor IMAPServer {
 		}
 	}
     
-    /**
-     Fetch a complete email with all parts from an email header
-     - Parameter header: The email header to fetch the complete email for
-     - Returns: A complete Email object with all parts
-     - Throws: An error if the fetch operation fails
-     */
-    public func fetchEmail(from header: EmailHeader) async throws -> Email {
-        // Use the UID from the header if available (non-zero), otherwise fall back to sequence number
-        if header.uid > 0 {
-            // Use UID for fetching
-            let uid = UID(UInt32(header.uid))
-            let parts = try await fetchAllMessageParts(identifier: uid)
-            return Email(header: header, parts: parts)
-        } else {
-            // Fall back to sequence number
-            let sequenceNumber = SequenceNumber(UInt32(header.sequenceNumber))
-            let parts = try await fetchAllMessageParts(identifier: sequenceNumber)
-            return Email(header: header, parts: parts)
-        }
-    }
-    
-    /**
-     Fetch complete emails with all parts using a message identifier set
-     - Parameters:
-       - identifierSet: The set of message identifiers to fetch
-       - limit: Optional limit on the number of emails to fetch
-     - Returns: An array of Email objects with all parts
-     - Throws: An error if the fetch operation fails
-     */
-    public func fetchEmails<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [Email] {
-        guard !identifierSet.isEmpty else {
-            throw IMAPError.emptyIdentifierSet
-        }
-        
-        // First fetch the headers
-        let headers = try await fetchHeaders(using: identifierSet, limit: limit)
-        
-        // Then fetch the complete email for each header
-        var emails: [Email] = []
-        for header in headers {
-            let email = try await fetchEmail(from: header)
-            emails.append(email)
-        }
-        
-        return emails
-    }
-    
-    /**
-     Move messages from the current mailbox to another mailbox
-     - Parameters:
-       - identifierSet: The set of message identifiers to move
-       - destinationMailbox: The name of the destination mailbox
-     - Throws: An error if the move operation fails
-     */
-    public func moveMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
-        try await executeCommand(command)
-    }
-    
-    /**
-     Move a single message from the current mailbox to another mailbox
-     - Parameters:
-       - identifier: The message identifier to move
-       - destinationMailbox: The name of the destination mailbox
-     - Throws: An error if the move operation fails
-     */
-    public func moveMessage<T: MessageIdentifier>(identifier: T, to destinationMailbox: String) async throws {
-        let set = MessageIdentifierSet<T>(identifier)
-        try await moveMessages(using: set, to: destinationMailbox)
-    }
-    
-    /**
-     Move an email identified by its header from the current mailbox to another mailbox
-     - Parameters:
-       - header: The email header of the message to move
-       - destinationMailbox: The name of the destination mailbox
-     - Throws: An error if the move operation fails
-     */
-    public func moveEmail(from header: EmailHeader, to destinationMailbox: String) async throws {
-        // Use the UID from the header if available (non-zero), otherwise fall back to sequence number
-        if header.uid > 0 {
-            // Use UID for moving
-            let uid = UID(UInt32(header.uid))
-            try await moveMessage(identifier: uid, to: destinationMailbox)
-        } else {
-            // Fall back to sequence number
-            let sequenceNumber = SequenceNumber(UInt32(header.sequenceNumber))
-            try await moveMessage(identifier: sequenceNumber, to: destinationMailbox)
-        }
-    }
-    
-    // MARK: - Helpers
+    // MARK: - Command Helpers
     
     /**
      Execute an IMAP command
