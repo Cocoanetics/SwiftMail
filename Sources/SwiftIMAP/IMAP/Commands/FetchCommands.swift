@@ -71,8 +71,8 @@ public struct FetchMessagePartCommand<T: MessageIdentifier>: IMAPCommand {
     /// The message identifier to fetch
     public let identifier: T
     
-    /// The part number to fetch (e.g., "1", "1.1", "2", etc.)
-    public let partNumber: String
+    /// The section path to fetch (e.g., [1], [1, 1], [2], etc.)
+    public let sectionPath: [Int]
     
     /// The handler type for processing this command
     public var handlerType: HandlerType.Type { FetchPartHandler.self }
@@ -83,10 +83,10 @@ public struct FetchMessagePartCommand<T: MessageIdentifier>: IMAPCommand {
     /// Initialize a new fetch message part command
     /// - Parameters:
     ///   - identifier: The message identifier to fetch
-    ///   - partNumber: The part number to fetch
-    public init(identifier: T, partNumber: String) {
+    ///   - sectionPath: The section path to fetch as an array of integers
+    public init(identifier: T, sectionPath: [Int]) {
         self.identifier = identifier
-        self.partNumber = partNumber
+        self.sectionPath = sectionPath
     }
     
     /// Convert to an IMAP tagged command
@@ -95,8 +95,7 @@ public struct FetchMessagePartCommand<T: MessageIdentifier>: IMAPCommand {
     public func toTaggedCommand(tag: String) -> TaggedCommand {
         let set = MessageIdentifierSet<T>(identifier)
         
-        // Convert the part number string to a section path
-        let sectionPath = partNumber.split(separator: ".").map { Int($0)! }
+        // Create the section path directly from the array
         let part = SectionSpecifier.Part(sectionPath)
         let section = SectionSpecifier(part: part)
         
