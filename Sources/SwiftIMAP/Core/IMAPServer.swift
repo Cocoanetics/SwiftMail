@@ -109,13 +109,8 @@ public actor IMAPServer {
      - Throws: An error if the login fails
      */
     public func login(username: String, password: String) async throws {
-        let tag = generateCommandTag()
-        let command = TaggedCommand(tag: tag, command: .login(
-            username: username,
-            password: password
-        ))
-        
-        try await executeCommand(command, handlerType: LoginHandler.self)
+        let command = LoginCommand(username: username, password: password)
+        try await executeCommand(command)
     }
     
     /**
@@ -125,11 +120,8 @@ public actor IMAPServer {
      - Throws: An error if the select operation fails
      */
     public func selectMailbox(_ mailboxName: String) async throws -> MailboxInfo {
-        let tag = generateCommandTag()
-        let mailbox = MailboxName(Array(mailboxName.utf8))
-        let command = TaggedCommand(tag: tag, command: .select(mailbox, []))
-        
-        return try await executeCommand(command, handlerType: SelectHandler.self)
+        let command = SelectMailboxCommand(mailboxName: mailboxName)
+        return try await executeCommand(command)
     }
     
     /**
@@ -137,10 +129,8 @@ public actor IMAPServer {
      - Throws: An error if the logout fails
      */
     public func logout() async throws {
-        let tag = generateCommandTag()
-        let command = TaggedCommand(tag: tag, command: .logout)
-        
-        try await executeCommand(command, handlerType: LogoutHandler.self)
+        let command = LogoutCommand()
+        try await executeCommand(command)
     }
     
     /**
@@ -169,30 +159,8 @@ public actor IMAPServer {
      - Throws: An error if the fetch operation fails
      */
     public func fetchHeaders<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [EmailHeader] {
-        guard !identifierSet.isEmpty else {
-            throw IMAPError.emptyIdentifierSet
-        }
-        
-        let tag = generateCommandTag()
-        let attributes: [FetchAttribute] = [
-            .uid,
-            .envelope,
-            .bodyStructure(extensions: false),
-            .bodySection(peek: true, .header, nil)
-        ]
-        
-        let command: TaggedCommand
-        if T.self == UID.self {
-            command = TaggedCommand(tag: tag, command: .uidFetch(
-                .set(identifierSet.toNIOSet()), attributes, []
-            ))
-        } else {
-            command = TaggedCommand(tag: tag, command: .fetch(
-                .set(identifierSet.toNIOSet()), attributes, []
-            ))
-        }
-        
-        var headers = try await executeCommand(command, handlerType: FetchHeadersHandler.self, timeoutSeconds: 10)
+        let command = FetchHeadersCommand(identifierSet: identifierSet, limit: limit)
+        var headers = try await executeCommand(command)
         
         // Apply limit if specified
         if let limit = limit, headers.count > limit {
@@ -211,38 +179,8 @@ public actor IMAPServer {
      - Throws: An error if the fetch operation fails
      */
     public func fetchMessagePart<T: MessageIdentifier>(identifier: T, partNumber: String) async throws -> Data {
-        let set = MessageIdentifierSet<T>(identifier)
-        
-        // Convert the part number string to a section path
-        let sectionPath = partNumber.split(separator: ".").map { Int($0)! }
-        let part = SectionSpecifier.Part(sectionPath)
-        let section = SectionSpecifier(part: part)
-        
-        let tag = generateCommandTag()
-        let attributes: [FetchAttribute] = [
-            .bodySection(peek: true, section, nil)
-        ]
-        
-        let command: TaggedCommand
-        if T.self == UID.self {
-            guard let nioSet = (set as! UIDSet).toNIOSet() else {
-                throw IMAPError.emptyIdentifierSet
-            }
-            
-            command = TaggedCommand(tag: tag, command: .uidFetch(
-                .set(nioSet), attributes, []
-            ))
-        } else {
-            guard let nioSet = (set as! SequenceNumberSet).toNIOSet() else {
-                throw IMAPError.emptyIdentifierSet
-            }
-            
-            command = TaggedCommand(tag: tag, command: .fetch(
-                .set(nioSet), attributes, []
-            ))
-        }
-        
-        return try await executeCommand(command, handlerType: FetchPartHandler.self, timeoutSeconds: 10)
+        let command = FetchMessagePartCommand(identifier: identifier, partNumber: partNumber)
+        return try await executeCommand(command)
     }
     
     /**
@@ -252,33 +190,8 @@ public actor IMAPServer {
      - Throws: An error if the fetch operation fails
      */
     public func fetchMessageStructure<T: MessageIdentifier>(identifier: T) async throws -> BodyStructure {
-        let set = MessageIdentifierSet<T>(identifier)
-        
-        let tag = generateCommandTag()
-        let attributes: [FetchAttribute] = [
-            .bodyStructure(extensions: true)
-        ]
-        
-        let command: TaggedCommand
-        if T.self == UID.self {
-            guard let nioSet = (set as! UIDSet).toNIOSet() else {
-                throw IMAPError.emptyIdentifierSet
-            }
-            
-            command = TaggedCommand(tag: tag, command: .uidFetch(
-                .set(nioSet), attributes, []
-            ))
-        } else {
-            guard let nioSet = (set as! SequenceNumberSet).toNIOSet() else {
-                throw IMAPError.emptyIdentifierSet
-            }
-            
-            command = TaggedCommand(tag: tag, command: .fetch(
-                .set(nioSet), attributes, []
-            ))
-        }
-        
-        return try await executeCommand(command, handlerType: FetchStructureHandler.self, timeoutSeconds: 10)
+        let command = FetchStructureCommand(identifier: identifier)
+        return try await executeCommand(command)
     }
     
     /**
@@ -355,21 +268,8 @@ public actor IMAPServer {
      - Throws: An error if the move operation fails
      */
     public func moveMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        guard !identifierSet.isEmpty else {
-            throw IMAPError.emptyIdentifierSet
-        }
-        
-        let tag = generateCommandTag()
-		let mailbox = MailboxName(ByteBuffer(string: destinationMailbox))
-        let command: TaggedCommand
-        
-		if T.self == UID.self {
-            command = TaggedCommand(tag: tag, command: .uidMove(.set(identifierSet.toNIOSet()), mailbox))
-        } else {
-            command = TaggedCommand(tag: tag, command: .move(.set(identifierSet.toNIOSet()), mailbox))
-        }
-        
-        try await executeCommand(command, handlerType: MoveHandler.self)
+        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+        try await executeCommand(command)
     }
     
     /**
@@ -486,99 +386,45 @@ public actor IMAPServer {
     }
     
     /**
-     Execute an IMAP command with proper error handling and timeout management
-     - Parameters:
-       - commandTag: The tag for the IMAP command
-       - timeoutSeconds: The timeout in seconds for the command
-       - createHandler: A closure that creates the handler for the command
-       - createCommand: A closure that creates the command to send
-     - Returns: The result of the command execution
+     Execute an IMAP command
+     - Parameter command: The command to execute
+     - Returns: The result of executing the command
      - Throws: An error if the command execution fails
      */
-    private func executeCommand<T, H: ChannelInboundHandler>(
-        commandTag: String,
-        timeoutSeconds: Int = 5,
-        createHandler: (EventLoopPromise<T>, String, Int, Logger) -> H,
-        createCommand: (String) -> CommandStreamPart
-    ) async throws -> T {
+	private func executeCommand<CommandType: IMAPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+        // Validate the command before execution
+        try command.validate()
+
         guard let channel = self.channel else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
-        
-        // Create a promise for the command result
-        let commandPromise = channel.eventLoop.makePromise(of: T.self)
-        
-        // Create the handler for the command
-        let handler = createHandler(
-            commandPromise,
-            commandTag,
-            timeoutSeconds,
-            inboundLogger
-        )
-        
-        // Add the handler to the pipeline
-        try await channel.pipeline.addHandler(handler).get()
-        
-        // Create and send the command
-        let command = createCommand(commandTag)
-        try await channel.writeAndFlush(command).get()
-        
-        // Wait for the command result
-        do {
-            let result = try await commandPromise.futureResult.get()
-            // If the handler has a cancelTimeout method, call it
-            if let timeoutHandler = handler as? any TimeoutHandler {
-                timeoutHandler.cancelTimeout()
-            }
-            return result
-        } catch {
-            // If the handler has a cancelTimeout method, call it
-            if let timeoutHandler = handler as? any TimeoutHandler {
-                timeoutHandler.cancelTimeout()
-            }
-            throw error
-        }
-    }
-    
-    /**
-     Execute an IMAP command with a simplified interface
-     - Parameters:
-       - command: The IMAP command to execute
-       - handlerType: The type of handler to use for this command
-       - timeoutSeconds: The timeout in seconds for the command
-     - Returns: The result of the command execution
-     - Throws: An error if the command execution fails
-     */
-    private func executeCommand<T, HandlerType: IMAPCommandHandler>(
-        _ command: TaggedCommand,
-        handlerType: HandlerType.Type,
-        timeoutSeconds: Int = 5
-    ) async throws -> T where HandlerType.ResultType == T {
-        guard let channel = self.channel else {
-            throw IMAPError.connectionFailed("Channel not initialized")
-        }
-        
-        // Create a promise for the command result
-        let commandPromise = channel.eventLoop.makePromise(of: T.self)
-        
-        // Create the handler for the command
-        let handler = HandlerType.createHandler(
-            commandTag: command.tag,
-            promise: commandPromise,
-            timeoutSeconds: timeoutSeconds,
+
+        // Generate a unique command tag
+        let tag = generateCommandTag()
+
+        // Convert the command into a TaggedCommand
+        let taggedCommand = command.toTaggedCommand(tag: tag)
+
+        // Create a promise for the command's result
+        let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
+
+        // Instantiate the appropriate handler for the command
+        let handler = command.handlerType.createHandler(
+            commandTag: tag,
+            promise: resultPromise,
+            timeoutSeconds: command.timeoutSeconds,
             logger: inboundLogger
         )
-        
-        // Add the handler to the pipeline
+
+        // Add the handler to the channel pipeline
         try await channel.pipeline.addHandler(handler).get()
-        
-        // Send the command
-        let commandStreamPart = CommandStreamPart.tagged(command)
-        try await channel.writeAndFlush(commandStreamPart).get()
-        
-        // Wait for the command result
+
+        // Write the command to the channel wrapped as CommandStreamPart
+        try await channel.writeAndFlush(CommandStreamPart.tagged(taggedCommand)).get()
+
+        // Await the result from the promise
         do {
-            let result = try await commandPromise.futureResult.get()
+            let result = try await resultPromise.futureResult.get()
             handler.cancelTimeout()
             return result
         } catch {
