@@ -23,6 +23,14 @@ extension IMAPError: CustomStringConvertible {
             return "Empty identifier set provided"
         case .commandFailed(let reason):
             return "Command failed: \(reason)"
+        case .copyFailed(let reason):
+            return "Copy failed: \(reason)"
+        case .storeFailed(let reason):
+            return "Store failed: \(reason)"
+        case .expungeFailed(let reason):
+            return "Expunge failed: \(reason)"
+        case .moveFailed(let reason):
+            return "Move failed: \(reason)"
         }
     }
 } 

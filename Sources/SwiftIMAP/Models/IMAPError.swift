@@ -15,4 +15,8 @@ public enum IMAPError: Error {
     case invalidArgument(String)
     case emptyIdentifierSet
     case commandFailed(String)
+    case copyFailed(String)
+    case storeFailed(String)
+    case expungeFailed(String)
+    case moveFailed(String)
 } 

@@ -28,6 +28,9 @@ public actor IMAPServer {
     /** Counter for generating unique command tags */
     private var commandTagCounter: Int = 0
     
+    /** Server capabilities */
+    private var capabilities: Set<NIOIMAPCore.Capability> = []
+    
     /**
      Logger for IMAP operations
      To view these logs in Console.app:
@@ -99,6 +102,44 @@ public actor IMAPServer {
         
         // Wait for the server greeting using our generic handler execution pattern
         try await executeHandlerOnly(handlerType: GreetingHandler.self, timeoutSeconds: 5)
+        
+        // Fetch initial capabilities
+        try await fetchCapabilities()
+    }
+    
+    /**
+     Fetch server capabilities
+     - Throws: An error if the capability command fails
+     */
+    private func fetchCapabilities() async throws {
+        let command = CapabilityCommand()
+        let serverCapabilities = try await executeCommand(command)
+        self.capabilities = Set(serverCapabilities)
+        logger.info("Server capabilities: \(serverCapabilities.map { String(describing: $0) }.joined(separator: ", "))")
+    }
+    
+    /**
+     Check if the server supports a specific capability
+     - Parameter capability: The capability to check for
+     - Returns: True if the server supports the capability
+     */
+    private func supportsCapability(_ check: (NIOIMAPCore.Capability) -> Bool) -> Bool {
+        return capabilities.contains(where: check)
+    }
+    
+    /**
+     Login to the IMAP server
+     - Parameters:
+       - username: The username for authentication
+       - password: The password for authentication
+     - Throws: An error if the login fails
+     */
+    public func login(username: String, password: String) async throws {
+        let command = LoginCommand(username: username, password: password)
+        try await executeCommand(command)
+        
+        // Fetch capabilities again after login as they may have changed
+        try await fetchCapabilities()
     }
 	
 	/**
@@ -116,27 +157,6 @@ public actor IMAPServer {
 		} catch let error as NIOCore.ChannelError where error == .alreadyClosed {
 			// Channel is already closed, which is fine
 		}
-	}
-    
-    /**
-     Login to the IMAP server
-     - Parameters:
-       - username: The username for authentication
-       - password: The password for authentication
-     - Throws: An error if the login fails
-     */
-    public func login(username: String, password: String) async throws {
-        let command = LoginCommand(username: username, password: password)
-        try await executeCommand(command)
-    }
-	
-	/**
-	 Logout from the IMAP server
-	 - Throws: An error if the logout fails
-	 */
-	public func logout() async throws {
-		let command = LogoutCommand()
-		try await executeCommand(command)
 	}
 	
 	// MARK: - Mailbox Commands
@@ -260,6 +280,15 @@ public actor IMAPServer {
     }
     
     /**
+     Logout from the IMAP server
+     - Throws: An error if the logout fails
+     */
+    public func logout() async throws {
+        let command = LogoutCommand()
+        try await executeCommand(command)
+    }
+    
+    /**
      Move messages from the current mailbox to another mailbox
      - Parameters:
        - identifierSet: The set of message identifiers to move
@@ -267,8 +296,50 @@ public actor IMAPServer {
      - Throws: An error if the move operation fails
      */
     public func moveMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
-        try await executeCommand(command)
+        // For UID-based operations, we need to check if the server supports UIDPLUS
+        let isUidOperation = T.self == UID.self
+        
+        // Determine if we can use MOVE or need to fall back
+        let supportsMoveCapability = supportsCapability { capability in
+            if case .move = capability { return true }
+            return false
+        }
+        
+        let supportsUidPlus = supportsCapability { capability in
+            if case .uidPlus = capability { return true }
+            return false
+        }
+        
+        let canUseMoveCommand = supportsMoveCapability && (!isUidOperation || supportsUidPlus)
+        
+        if canUseMoveCommand {
+            // Use the MOVE command
+            logger.info("Using MOVE command to move messages to \(destinationMailbox)")
+            let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+            try await executeCommand(command)
+        } else {
+            // Fall back to COPY + DELETE + EXPUNGE
+            if isUidOperation && !supportsMoveCapability {
+                logger.info("Server doesn't support MOVE capability, falling back to COPY + DELETE + EXPUNGE")
+            } else if isUidOperation {
+                logger.info("Server doesn't support UIDPLUS capability for UID MOVE, falling back to COPY + DELETE + EXPUNGE")
+            } else {
+                logger.info("Server doesn't support MOVE capability, falling back to COPY + DELETE + EXPUNGE")
+            }
+            
+            // Step 1: Copy the messages to the destination mailbox
+            let copyCommand = CopyCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+            try await executeCommand(copyCommand)
+            
+            // Step 2: Mark the original messages as deleted
+            let storeData = StoreData.flags([.deleted], .replace)
+            let storeCommand = StoreCommand(identifierSet: identifierSet, data: storeData)
+            try await executeCommand(storeCommand)
+            
+            // Step 3: Expunge the deleted messages
+            let expungeCommand = ExpungeCommand()
+            try await executeCommand(expungeCommand)
+        }
     }
     
     /**
