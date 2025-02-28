@@ -217,78 +217,78 @@ public actor IMAPServer {
      - Returns: An array of message parts
      - Throws: An error if the fetch operation fails
      */
-    private func recursivelyFetchParts<T: MessageIdentifier>(_ structure: BodyStructure, sectionPath: [Int], identifier: T) async throws -> [MessagePart] {
-        switch structure {
-        case .singlepart(let part):
-            // Determine the part number string for IMAP (e.g., "1.2.3")
-            let partNumberString = sectionPath.isEmpty ? "1" : sectionPath.map { String($0) }.joined(separator: ".")
-            
-            // Fetch the part content
-            let partData = try await fetchMessagePart(identifier: identifier, sectionPath: sectionPath.isEmpty ? [1] : sectionPath)
-            
-            // Extract content type and other metadata
-            var contentType = ""
-            var contentSubtype = ""
-            
-            switch part.kind {
-            case .basic(let mediaType):
-                contentType = String(mediaType.topLevel)
-                contentSubtype = String(mediaType.sub)
-            case .text(let text):
-                contentType = "text"
-                contentSubtype = String(text.mediaSubtype)
-            case .message(let message):
-                contentType = "message"
-                contentSubtype = String(message.message)
-            }
-            
-            // Extract disposition and filename if available
-            var disposition: String? = nil
-            var filename: String? = nil
-            
-            if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
-                if let disp = dispAndLang.disposition {
-                    disposition = String(describing: disp)
-                    
-                    for (key, value) in disp.parameters {
-                        if key.lowercased() == "filename" {
-                            filename = value
-                        }
-                    }
-                }
-            }
-            
-            // Set content ID if available
-            let contentId = part.fields.id
-            
-            // Create a message part
-            let messagePart = MessagePart(
-                partNumber: partNumberString,
-                contentType: contentType,
-                contentSubtype: contentSubtype,
-                disposition: disposition,
-                filename: filename,
-                contentId: contentId,
-                data: partData
-            )
-            
-            // Return a single-element array with this part
-            return [messagePart]
-            
-        case .multipart(let multipart):
-            // For multipart messages, process each child part and collect results
-            var allParts: [MessagePart] = []
-            
-            for (index, childPart) in multipart.parts.enumerated() {
-                // Create a new section path array by appending the current index + 1
-                let childSectionPath = sectionPath.isEmpty ? [index + 1] : sectionPath + [index + 1]
-                let childParts = try await recursivelyFetchParts(childPart, sectionPath: childSectionPath, identifier: identifier)
-                allParts.append(contentsOf: childParts)
-            }
-            
-            return allParts
-        }
-    }
+	private func recursivelyFetchParts<T: MessageIdentifier>(_ structure: BodyStructure, sectionPath: [Int], identifier: T) async throws -> [MessagePart] {
+		switch structure {
+			case .singlepart(let part):
+				// Determine the part number string for IMAP (e.g., "1.2.3")
+				let partNumberString = sectionPath.isEmpty ? "1" : sectionPath.map { String($0) }.joined(separator: ".")
+				
+				// Fetch the part content
+				let partData = try await fetchMessagePart(identifier: identifier, sectionPath: sectionPath.isEmpty ? [1] : sectionPath)
+				
+				// Extract content type and other metadata
+				var contentType = ""
+				var contentSubtype = ""
+				
+				switch part.kind {
+					case .basic(let mediaType):
+						contentType = String(mediaType.topLevel)
+						contentSubtype = String(mediaType.sub)
+					case .text(let text):
+						contentType = "text"
+						contentSubtype = String(text.mediaSubtype)
+					case .message(let message):
+						contentType = "message"
+						contentSubtype = String(message.message)
+				}
+				
+				// Extract disposition and filename if available
+				var disposition: String? = nil
+				var filename: String? = nil
+				
+				if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
+					if let disp = dispAndLang.disposition {
+						disposition = String(describing: disp)
+						
+						for (key, value) in disp.parameters {
+							if key.lowercased() == "filename" {
+								filename = value
+							}
+						}
+					}
+				}
+				
+				// Set content ID if available
+				let contentId = part.fields.id
+				
+				// Create a message part
+				let messagePart = MessagePart(
+					partNumber: partNumberString,
+					contentType: contentType,
+					contentSubtype: contentSubtype,
+					disposition: disposition,
+					filename: filename,
+					contentId: contentId,
+					data: partData
+				)
+				
+				// Return a single-element array with this part
+				return [messagePart]
+				
+			case .multipart(let multipart):
+				// For multipart messages, process each child part and collect results
+				var allParts: [MessagePart] = []
+				
+				for (index, childPart) in multipart.parts.enumerated() {
+					// Create a new section path array by appending the current index + 1
+					let childSectionPath = sectionPath.isEmpty ? [index + 1] : sectionPath + [index + 1]
+					let childParts = try await recursivelyFetchParts(childPart, sectionPath: childSectionPath, identifier: identifier)
+					allParts.append(contentsOf: childParts)
+				}
+				
+				return allParts
+		}
+	}
     
     /**
      Fetch a complete email with all parts from an email header
