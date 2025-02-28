@@ -114,11 +114,11 @@ do {
                         print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
                         print("---")
 						
-//						if index == 0
-//						{
-//							try await server.moveMessage(from: email.header, to: "Archive")
-//							print("hier")
-//						}
+						if index == 0
+						{
+							try await server.moveMessage(from: email.header, to: "Archive")
+							print("hier")
+						}
                     }
                     
                 } catch {

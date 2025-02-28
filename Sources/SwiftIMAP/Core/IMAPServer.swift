@@ -308,23 +308,8 @@ public actor IMAPServer {
      - Throws: An error if the move operation fails
      */
     public func moveMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        // For UID-based operations, we need to check if the server supports UIDPLUS
-        let isUidOperation = T.self == UID.self
-        
-        // Determine if we can use MOVE or need to fall back
-        let supportsMoveCapability = supportsCapability { capability in
-            if case .move = capability { return true }
-            return false
-        }
-        
-        let supportsUidPlus = supportsCapability { capability in
-            if case .uidPlus = capability { return true }
-            return false
-        }
-        
-        let canUseMoveCommand = supportsMoveCapability && (!isUidOperation || supportsUidPlus)
-        
-        if canUseMoveCommand {
+
+        if capabilities.contains(.move) && (T.self != UID.self || capabilities.contains(.uidPlus)) {
             // Use the MOVE command
             let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
             try await executeCommand(command)
