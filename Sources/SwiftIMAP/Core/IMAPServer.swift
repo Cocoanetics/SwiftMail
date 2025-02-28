@@ -347,6 +347,62 @@ public actor IMAPServer {
         return emails
     }
     
+    /**
+     Move messages from the current mailbox to another mailbox
+     - Parameters:
+       - identifierSet: The set of message identifiers to move
+       - destinationMailbox: The name of the destination mailbox
+     - Throws: An error if the move operation fails
+     */
+    public func moveMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
+        guard !identifierSet.isEmpty else {
+            throw IMAPError.emptyIdentifierSet
+        }
+        
+        let tag = generateCommandTag()
+		let mailbox = MailboxName(ByteBuffer(string: destinationMailbox))
+        let command: TaggedCommand
+		
+        if T.self == UID.self {
+            command = TaggedCommand(tag: tag, command: .uidMove(.set(identifierSet.toNIOSet()), mailbox))
+        } else {
+            command = TaggedCommand(tag: tag, command: .move(.set(identifierSet.toNIOSet()), mailbox))
+        }
+        
+        try await executeCommand(command, handlerType: MoveHandler.self)
+    }
+    
+    /**
+     Move a single message from the current mailbox to another mailbox
+     - Parameters:
+       - identifier: The message identifier to move
+       - destinationMailbox: The name of the destination mailbox
+     - Throws: An error if the move operation fails
+     */
+    public func moveMessage<T: MessageIdentifier>(identifier: T, to destinationMailbox: String) async throws {
+        let set = MessageIdentifierSet<T>(identifier)
+        try await moveMessages(using: set, to: destinationMailbox)
+    }
+    
+    /**
+     Move an email identified by its header from the current mailbox to another mailbox
+     - Parameters:
+       - header: The email header of the message to move
+       - destinationMailbox: The name of the destination mailbox
+     - Throws: An error if the move operation fails
+     */
+    public func moveEmail(from header: EmailHeader, to destinationMailbox: String) async throws {
+        // Use the UID from the header if available (non-zero), otherwise fall back to sequence number
+        if header.uid > 0 {
+            // Use UID for moving
+            let uid = UID(UInt32(header.uid))
+            try await moveMessage(identifier: uid, to: destinationMailbox)
+        } else {
+            // Fall back to sequence number
+            let sequenceNumber = SequenceNumber(UInt32(header.sequenceNumber))
+            try await moveMessage(identifier: sequenceNumber, to: destinationMailbox)
+        }
+    }
     
     // MARK: - Helpers
     
