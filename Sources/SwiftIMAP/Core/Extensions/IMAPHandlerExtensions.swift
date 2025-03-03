@@ -74,27 +74,6 @@ extension LogoutHandler: IMAPCommandHandler {
     }
 }
 
-// MARK: - SelectHandler Extension
-
-extension SelectHandler: IMAPCommandHandler {
-    public typealias ResultType = MailboxStatus
-    
-    public static func createHandler(
-        commandTag: String,
-        promise: EventLoopPromise<MailboxStatus>,
-        timeoutSeconds: Int,
-        logger: Logger
-    ) -> SelectHandler {
-        return SelectHandler(
-            commandTag: commandTag,
-            mailboxName: "", // This will be set separately
-            selectPromise: promise,
-            timeoutSeconds: timeoutSeconds,
-            logger: logger
-        )
-    }
-}
-
 // MARK: - FetchHeadersHandler Extension
 
 extension FetchHeadersHandler: IMAPCommandHandler {

@@ -6,7 +6,7 @@ import os.log
 
 /// Command to list all available mailboxes
 struct ListCommand: IMAPCommand {
-    typealias ResultType = [MailboxInfo]
+    typealias ResultType = [Mailbox.Info]
     typealias HandlerType = ListCommandHandler
     
     let timeoutSeconds: Int = 30
@@ -29,18 +29,18 @@ struct ListCommand: IMAPCommand {
 
 /// Handler for processing LIST command responses
 final class ListCommandHandler: IMAPCommandHandler, RemovableChannelHandler {
-    typealias ResultType = [MailboxInfo]
+    typealias ResultType = [Mailbox.Info]
     typealias InboundIn = Response
     typealias InboundOut = Never
     
     private var mailboxes: [NIOIMAPCore.MailboxInfo] = []
-    private let promise: EventLoopPromise<[MailboxInfo]>
+    private let promise: EventLoopPromise<[Mailbox.Info]>
     private let logger: Logger
     private var timeoutTask: Scheduled<Void>?
     private let commandTag: String
     private let timeoutSeconds: Int
     
-    required init(commandTag: String, promise: EventLoopPromise<[MailboxInfo]>, timeoutSeconds: Int, logger: Logger?) {
+    required init(commandTag: String, promise: EventLoopPromise<[Mailbox.Info]>, timeoutSeconds: Int, logger: Logger?) {
         self.commandTag = commandTag
         self.promise = promise
         self.timeoutSeconds = timeoutSeconds
@@ -85,8 +85,8 @@ final class ListCommandHandler: IMAPCommandHandler, RemovableChannelHandler {
     private func handleTaggedResponse(_ response: TaggedResponse) {
         switch response.state {
         case .ok:
-            // Convert NIOIMAPCore.MailboxInfo to our MailboxInfo
-            let convertedMailboxes = mailboxes.map { MailboxInfo(from: $0) }
+            // Convert NIOIMAPCore.MailboxInfo to our Mailbox.Info
+            let convertedMailboxes = mailboxes.map { Mailbox.Info(from: $0) }
             promise.succeed(convertedMailboxes)
         case .no, .bad:
             promise.fail(IMAPError.commandFailed("List command failed"))

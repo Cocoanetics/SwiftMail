@@ -32,7 +32,7 @@ public actor IMAPServer {
 	private var capabilities: Set<NIOIMAPCore.Capability> = []
 	
 	/** Currently selected mailbox */
-	public private(set) var selectedMailbox: MailboxStatus?
+	public private(set) var selectedMailbox: Mailbox?
 	
 	/** The current folder configuration */
 	private var folderConfig: FolderConfiguration = .default
@@ -194,11 +194,16 @@ public actor IMAPServer {
 	 - Returns: Information about the selected mailbox
 	 - Throws: An error if the select operation fails
 	 */
-	@discardableResult public func selectMailbox(_ mailboxName: String) async throws -> MailboxStatus {
+	public func selectMailbox(_ mailboxName: String) async throws -> Mailbox {
 		let command = SelectMailboxCommand(mailboxName: mailboxName)
-		let mailboxStatus = try await executeCommand(command)
-		selectedMailbox = mailboxStatus
-		return mailboxStatus
+		let status = try await executeCommand(command)
+		
+		// Create a new mailbox with the status
+		let info = Mailbox.Info(name: mailboxName, attributes: [], hierarchyDelimiter: nil)
+		var mailbox = Mailbox(info: info)
+		mailbox.status = status
+		selectedMailbox = mailbox
+		return mailbox
 	}
 	
 	/**
@@ -700,14 +705,23 @@ extension IMAPServer {
 		self.folderConfig = config
 	}
 	
-	/**
-	 List all available mailboxes
-	 - Returns: Array of mailbox information
-	 - Throws: An error if the operation fails
-	 */
-	public func listMailboxes() async throws -> [MailboxInfo] {
+	/// List all available mailboxes
+	/// - Returns: Array of mailbox information
+	/// - Throws: An error if the operation fails
+	public func listMailboxes() async throws -> [Mailbox] {
 		let command = ListCommand()
-		return try await executeCommand(command)
+		let mailboxInfos = try await executeCommand(command)
+		return mailboxInfos.map { info in
+			// If this is our currently selected mailbox, include its status
+			if let selected = selectedMailbox, selected.name == info.name {
+				var mailbox = Mailbox(info: info)
+				if let status = selected.status {
+					mailbox.status = status
+				}
+				return mailbox
+			}
+			return Mailbox(info: info)
+		}
 	}
 	
 	/**

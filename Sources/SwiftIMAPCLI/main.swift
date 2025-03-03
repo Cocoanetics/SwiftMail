@@ -88,20 +88,19 @@ do {
             print("")
             
             // Select the INBOX mailbox and get mailbox information
-            let mailboxInfo = try await server.selectMailbox("INBOX")
+            let mailbox = try await server.selectMailbox("INBOX")
             
-            // Fetch the 10 latest complete emails including attachments
-            if mailboxInfo.messageCount > 0 {
-                logger.notice("Fetching the 10 latest emails with all parts and attachments...")
+            // Print mailbox information
+            if mailbox.status?.messageCount ?? 0 > 0 {
+                // Fetch the 10 latest complete emails including attachments
+                logger.notice("Fetching latest emails...")
                 
-                // Create a SequenceNumberSet for the latest messages
-                let startMessage = max(1, mailboxInfo.messageCount - 9)
-                let endMessage = mailboxInfo.messageCount
-				let sequenceSet = SequenceNumberSet(startMessage...endMessage)
+                let startMessage = max(1, mailbox.status?.messageCount ?? 0 - 9)
+                let endMessage = mailbox.status?.messageCount ?? 0
 
                 do {
                     // Use the fetchEmails method with the sequence number set
-                    let emails = try await server.fetchMessages(using: sequenceSet)
+                    let emails = try await server.fetchMessages(using: SequenceNumberSet(startMessage...endMessage))
                     
                     logger.notice("📧 Latest Complete Emails (\(emails.count)) 📧")
                     print("\n📧 Latest Complete Emails (\(emails.count)) 📧")
