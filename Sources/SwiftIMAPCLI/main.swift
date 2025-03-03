@@ -74,6 +74,8 @@ do {
             
             // Login with credentials
             try await server.login(username: username, password: password)
+			
+			// try await server.fetchCapabilities()
             
             // Detect standard folders
             logger.notice("Detecting standard folders...")

@@ -130,7 +130,7 @@ public actor IMAPServer {
 	 - Throws: An error if the capability command fails
 	 - Returns: An array of server capabilities
 	 */
-	public func fetchCapabilities() async throws -> [Capability] {
+	@discardableResult public func fetchCapabilities() async throws -> [Capability] {
 		let command = CapabilityCommand()
 		let serverCapabilities = try await executeCommand(command)
 		self.capabilities = Set(serverCapabilities)
