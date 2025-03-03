@@ -121,7 +121,7 @@ public actor IMAPServer {
 			self.capabilities = Set(greetingCapabilities)
 		} else {
 			// Otherwise, fetch capabilities explicitly
-			_ = try await fetchCapabilities()
+			// _ = try await fetchCapabilities()
 		}
 	}
 	

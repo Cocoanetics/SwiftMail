@@ -42,9 +42,7 @@ public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAP
     /// Handle a tagged OK response by succeeding the promise with the capabilities
     /// - Parameter response: The tagged response
     override public func handleTaggedOKResponse(_ response: TaggedResponse) {
-        logger.debug("Received tagged OK response for CAPABILITY command: \(response.tag)")
         let caps = lock.withLock { self.capabilities }
-        logger.debug("Succeeding with \(caps.count) capabilities")
         succeedWithResult(caps)
     }
     
@@ -55,48 +53,21 @@ public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAP
         failWithError(IMAPError.commandFailed(String(describing: response.state)))
     }
     
-    /// Process an incoming response
-    /// - Parameter response: The response to process
+    /// Handle an untagged response
+    /// - Parameter response: The untagged response
     /// - Returns: Whether the response was handled by this handler
-    override public func processResponse(_ response: Response) -> Bool {
-        // First check if this is a tagged response for our command
-        if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
-            return super.processResponse(response)
-        }
-        
-        // Then check for untagged capability data
+    override public func handleUntaggedResponse(_ response: Response) -> Bool {
         if case .untagged(.capabilityData(let capabilities)) = response {
             lock.withLock {
                 self.capabilities = capabilities
             }
-            return true
+            
+            // We've processed the untagged response, but we're not done yet
+            // Return false to indicate we haven't completed processing
+            return false
         }
         
-        logger.debug("Ignoring unrelated response")
         return false
-    }
-    
-    /// Override channelRead to ensure we see all responses
-    override public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let response = unwrapInboundIn(data)
-        
-        // Let the base handler's processResponse method handle the response
-        // This will call handleTaggedOKResponse or handleTaggedErrorResponse for tagged responses
-        // and will call handleCompletion if the response is handled
-        let handled = super.processResponse(response)
-        
-        // If not handled by the base handler's processResponse, check if it's an untagged capability response
-        if !handled {
-            if case .untagged(.capabilityData(let capabilities)) = response {
-                lock.withLock {
-                    self.capabilities = capabilities
-                }
-                // Don't call handleCompletion here as we're still waiting for the tagged OK response
-            }
-        }
-        
-        // Always forward the response to the next handler
-        context.fireChannelRead(data)
     }
 }
 
