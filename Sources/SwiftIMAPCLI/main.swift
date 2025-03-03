@@ -13,15 +13,22 @@ let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "Main")
 let envFilePath = "/Users/oliver/Developer/.env"
 
 // Helper function to format flags more compactly
-func formatFlags(_ flags: [String]) -> String {
-    return flags.compactMap { flag -> String? in
-        // Extract just the flag name from format like 'Flag(stringValue: "\\Answered")'
-        if let range = flag.range(of: "\"(.+?)\"", options: .regularExpression) {
-            return String(flag[range]).replacingOccurrences(of: "\"", with: "")
-        } else if flag == "wildcard" {
-            return "*"  // Special case for wildcard
+func formatFlags(_ flags: [MessageFlag]) -> String {
+    return flags.map { flag -> String in
+        switch flag {
+        case .seen:
+            return "\\Seen"
+        case .answered:
+            return "\\Answered"
+        case .flagged:
+            return "\\Flagged"
+        case .deleted:
+            return "\\Deleted"
+        case .draft:
+            return "\\Draft"
+        case .custom(let name):
+            return name
         }
-        return flag
     }.joined(separator: ", ")
 }
 
@@ -73,6 +80,9 @@ do {
             // Format the flags for more compact display
             let availableFlagsFormatted = formatFlags(mailboxInfo.availableFlags)
             let permanentFlagsFormatted = formatFlags(mailboxInfo.permanentFlags)
+            
+            print("Available flags: \(availableFlagsFormatted)")
+            print("Permanent flags: \(permanentFlagsFormatted)")
             
             // Fetch the 10 latest complete emails including attachments
             if mailboxInfo.messageCount > 0 {

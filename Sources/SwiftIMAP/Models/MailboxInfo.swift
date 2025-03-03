@@ -31,16 +31,16 @@ public struct MailboxInfo: Sendable {
     public var uidValidity: UInt32 = 0
     
     /// The next UID value for the mailbox
-    public var uidNext: UInt32 = 0
+    public var uidNext: UID = UID(0)
     
     /// Whether the mailbox is read-only
     public var isReadOnly: Bool = false
     
     /// The flags available in the mailbox
-    public var availableFlags: [String] = []
+    public var availableFlags: [MessageFlag] = []
     
     /// The flags that can be permanently stored
-    public var permanentFlags: [String] = []
+    public var permanentFlags: [MessageFlag] = []
     
     /// Initialize a new mailbox info structure
     /// - Parameter name: The name of the mailbox

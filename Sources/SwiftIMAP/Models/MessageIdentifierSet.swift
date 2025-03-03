@@ -26,7 +26,7 @@ extension MessageIdentifier {
 // MARK: - UID Implementation
 
 /// Represents a Unique Identifier (UID) in IMAP
-public struct UID: MessageIdentifier {
+public struct UID: MessageIdentifier, Sendable {
     public let value: UInt32
     
     public init(_ value: UInt32) {

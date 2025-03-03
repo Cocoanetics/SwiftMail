@@ -31,6 +31,9 @@ public actor IMAPServer {
     /** Server capabilities */
     private var capabilities: Set<NIOIMAPCore.Capability> = []
     
+    /** Currently selected mailbox */
+    private var selectedMailbox: MailboxInfo?
+    
     /**
      Logger for IMAP operations
      To view these logs in Console.app:
@@ -181,9 +184,43 @@ public actor IMAPServer {
      */
     public func selectMailbox(_ mailboxName: String) async throws -> MailboxInfo {
         let command = SelectMailboxCommand(mailboxName: mailboxName)
-        return try await executeCommand(command)
+        let mailboxInfo = try await executeCommand(command)
+        selectedMailbox = mailboxInfo
+        return mailboxInfo
     }
-	
+    
+    /**
+     Get the currently selected mailbox
+     - Returns: Information about the currently selected mailbox, if any
+     */
+    public func getSelectedMailbox() -> MailboxInfo? {
+        return selectedMailbox
+    }
+    
+    /**
+     Close the currently selected mailbox
+     - Throws: An error if the close operation fails
+     */
+    public func closeMailbox() async throws {
+        guard selectedMailbox != nil else {
+            return // No mailbox selected, nothing to close
+        }
+        
+        let command = CloseCommand()
+        try await executeCommand(command)
+        selectedMailbox = nil
+    }
+    
+    /**
+     Logout from the IMAP server
+     - Throws: An error if the logout fails
+     */
+    public func logout() async throws {
+        let command = LogoutCommand()
+        try await executeCommand(command)
+        selectedMailbox = nil
+    }
+    
 	// MARK: - Message Commands
     
     /**
@@ -292,53 +329,80 @@ public actor IMAPServer {
     }
     
     /**
-     Logout from the IMAP server
-     - Throws: An error if the logout fails
+     Copy messages from the current mailbox to another mailbox
+     - Parameters:
+       - messages: The set of message identifiers to copy
+       - destinationMailbox: The name of the destination mailbox
+     - Throws: An error if the copy operation fails
      */
-    public func logout() async throws {
-        let command = LogoutCommand()
+    public func copy<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
+        let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
         try await executeCommand(command)
     }
-    
+
     /**
-     Move messages from the current mailbox to another mailbox
+     Copy a single message from the current mailbox to another mailbox
      - Parameters:
-       - identifierSet: The set of message identifiers to move
+       - message: The message identifier to copy
+       - destinationMailbox: The name of the destination mailbox
+     - Throws: An error if the copy operation fails
+     */
+    public func copy<T: MessageIdentifier>(message identifier: T, to destinationMailbox: String) async throws {
+        let set = MessageIdentifierSet<T>(identifier)
+        try await copy(messages: set, to: destinationMailbox)
+    }
+
+    /**
+     Expunge deleted messages from the selected mailbox
+     - Throws: An error if the expunge operation fails
+     */
+    public func expunge() async throws {
+        let command = ExpungeCommand()
+        try await executeCommand(command)
+    }
+
+    /**
+     Internal function to execute the MOVE command
+     - Parameters:
+       - messages: The set of message identifiers to move
        - destinationMailbox: The name of the destination mailbox
      - Throws: An error if the move operation fails
      */
-    public func moveMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
+    private func executeMove<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
+        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+        try await executeCommand(command)
+    }
 
+    /**
+     Move messages from the current mailbox to another mailbox
+     If the server supports the MOVE command and UIDPLUS (when using UIDs), it will use that.
+     Otherwise, it will fall back to copy + delete + expunge.
+     - Parameters:
+       - messages: The set of message identifiers to move
+       - destinationMailbox: The name of the destination mailbox
+     - Throws: An error if the move operation fails
+     */
+    public func move<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
         if capabilities.contains(.move) && (T.self != UID.self || capabilities.contains(.uidPlus)) {
-            // Use the MOVE command
-            let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
-            try await executeCommand(command)
+            try await executeMove(messages: identifierSet, to: destinationMailbox)
         } else {
             // Fall back to COPY + DELETE + EXPUNGE
-			
-            // Step 1: Copy the messages to the destination mailbox
-            let copyCommand = CopyCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
-            try await executeCommand(copyCommand)
-            
-            // Step 2: Mark the original messages as deleted
-			try await toggleFlags([.deleted], on: identifierSet, add: true)
-            
-            // Step 3: Expunge the deleted messages
-            let expungeCommand = ExpungeCommand()
-            try await executeCommand(expungeCommand)
+            try await copy(messages: identifierSet, to: destinationMailbox)
+            try await store(flags: [.deleted], on: identifierSet, operation: .add)
+            try await expunge()
         }
     }
     
     /**
      Move a single message from the current mailbox to another mailbox
      - Parameters:
-       - identifier: The message identifier to move
+       - message: The message identifier to move
        - destinationMailbox: The name of the destination mailbox
      - Throws: An error if the move operation fails
      */
-    public func moveMessage<T: MessageIdentifier>(identifier: T, to destinationMailbox: String) async throws {
+    public func move<T: MessageIdentifier>(message identifier: T, to destinationMailbox: String) async throws {
         let set = MessageIdentifierSet<T>(identifier)
-        try await moveMessages(using: set, to: destinationMailbox)
+        try await move(messages: set, to: destinationMailbox)
     }
     
     /**
@@ -348,116 +412,121 @@ public actor IMAPServer {
        - destinationMailbox: The name of the destination mailbox
      - Throws: An error if the move operation fails
      */
-    public func moveMessage(from header: EmailHeader, to destinationMailbox: String) async throws {
+    public func move(header: EmailHeader, to destinationMailbox: String) async throws {
         // Use the UID from the header if available (non-zero), otherwise fall back to sequence number
         if header.uid > 0 {
             // Use UID for moving
             let uid = UID(UInt32(header.uid))
-            try await moveMessage(identifier: uid, to: destinationMailbox)
+            try await move(message: uid, to: destinationMailbox)
         } else {
             // Fall back to sequence number
             let sequenceNumber = SequenceNumber(UInt32(header.sequenceNumber))
-            try await moveMessage(identifier: sequenceNumber, to: destinationMailbox)
+            try await move(message: sequenceNumber, to: destinationMailbox)
         }
     }
 	
-	/**
-	 Toggle message flags
-	 - Parameters:
-	   - flags: The flags to toggle
-	   - identifierSet: The set of message identifiers to update
-	   - add: Whether to add or remove the flags
-	 - Throws: An error if the operation fails
-	 */
-	public func toggleFlags<T: MessageIdentifier>(_ flags: [MessageFlag], on identifierSet: MessageIdentifierSet<T>, add: Bool) async throws {
-		let storeData = StoreData.flags(flags, add ? .add : .remove)
-		let storeCommand = StoreCommand(identifierSet: identifierSet, data: storeData)
-		try await executeCommand(storeCommand)
-	}
-	
-	// MARK: - Sub-Commands
-	
-	/**
-	 Process a body structure recursively to fetch all parts
-	 - Parameters:
-	   - structure: The body structure to process
-	   - sectionPath: Array of integers representing the hierarchical section path
-	   - identifier: The message identifier (SequenceNumber or UID)
-	 - Returns: An array of message parts
-	 - Throws: An error if the fetch operation fails
-	 */
-	private func recursivelyFetchParts<T: MessageIdentifier>(_ structure: BodyStructure, sectionPath: [Int], identifier: T) async throws -> [MessagePart] {
-		switch structure {
-			case .singlepart(let part):
-				// Determine the part number string for IMAP (e.g., "1.2.3")
-				let partNumberString = sectionPath.isEmpty ? "1" : sectionPath.map { String($0) }.joined(separator: ".")
-				
-				// Fetch the part content
-				let partData = try await fetchMessagePart(identifier: identifier, sectionPath: sectionPath.isEmpty ? [1] : sectionPath)
-				
-				// Extract content type and other metadata
-				var contentType = ""
-				var contentSubtype = ""
-				
-				switch part.kind {
-					case .basic(let mediaType):
-						contentType = String(mediaType.topLevel)
-						contentSubtype = String(mediaType.sub)
-					case .text(let text):
-						contentType = "text"
-						contentSubtype = String(text.mediaSubtype)
-					case .message(let message):
-						contentType = "message"
-						contentSubtype = String(message.message)
-				}
-				
-				// Extract disposition and filename if available
-				var disposition: String? = nil
-				var filename: String? = nil
-				
-				if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
-					if let disp = dispAndLang.disposition {
-						disposition = String(describing: disp)
-						
-						for (key, value) in disp.parameters {
-							if key.lowercased() == "filename" {
-								filename = value
-							}
-						}
-					}
-				}
-				
-				// Set content ID if available
-				let contentId = part.fields.id
-				
-				// Create a message part
-				let messagePart = MessagePart(
-					partNumber: partNumberString,
-					contentType: contentType,
-					contentSubtype: contentSubtype,
-					disposition: disposition,
-					filename: filename,
-					contentId: contentId,
-					data: partData
-				)
-				
-				// Return a single-element array with this part
-				return [messagePart]
-				
-			case .multipart(let multipart):
-				// For multipart messages, process each child part and collect results
-				var allParts: [MessagePart] = []
-				
-				for (index, childPart) in multipart.parts.enumerated() {
-					// Create a new section path array by appending the current index + 1
-					let childSectionPath = sectionPath.isEmpty ? [index + 1] : sectionPath + [index + 1]
-					let childParts = try await recursivelyFetchParts(childPart, sectionPath: childSectionPath, identifier: identifier)
-					allParts.append(contentsOf: childParts)
-				}
-				
-				return allParts
-		}
-	}
+    /**
+     Store flags on messages
+     - Parameters:
+       - flags: The flags to store
+       - messages: The set of message identifiers to update
+       - operation: The store operation (.add or .remove)
+     - Throws: An error if the operation fails
+     */
+    public func store<T: MessageIdentifier>(flags: [MessageFlag], on identifierSet: MessageIdentifierSet<T>, operation: StoreOperation) async throws {
+        let storeData = StoreData.flags(flags, operation == .add ? .add : .remove)
+        let command = StoreCommand(identifierSet: identifierSet, data: storeData)
+        try await executeCommand(command)
+    }
+
+    public enum StoreOperation {
+        case add
+        case remove
+    }
+    
+    // MARK: - Sub-Commands
+    
+    /**
+     Process a body structure recursively to fetch all parts
+     - Parameters:
+       - structure: The body structure to process
+       - sectionPath: Array of integers representing the hierarchical section path
+       - identifier: The message identifier (SequenceNumber or UID)
+     - Returns: An array of message parts
+     - Throws: An error if the fetch operation fails
+     */
+    private func recursivelyFetchParts<T: MessageIdentifier>(_ structure: BodyStructure, sectionPath: [Int], identifier: T) async throws -> [MessagePart] {
+        switch structure {
+            case .singlepart(let part):
+                // Determine the part number string for IMAP (e.g., "1.2.3")
+                let partNumberString = sectionPath.isEmpty ? "1" : sectionPath.map { String($0) }.joined(separator: ".")
+                
+                // Fetch the part content
+                let partData = try await fetchMessagePart(identifier: identifier, sectionPath: sectionPath.isEmpty ? [1] : sectionPath)
+                
+                // Extract content type and other metadata
+                var contentType = ""
+                var contentSubtype = ""
+                
+                switch part.kind {
+                    case .basic(let mediaType):
+                        contentType = String(mediaType.topLevel)
+                        contentSubtype = String(mediaType.sub)
+                    case .text(let text):
+                        contentType = "text"
+                        contentSubtype = String(text.mediaSubtype)
+                    case .message(let message):
+                        contentType = "message"
+                        contentSubtype = String(message.message)
+                }
+                
+                // Extract disposition and filename if available
+                var disposition: String? = nil
+                var filename: String? = nil
+                
+                if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
+                    if let disp = dispAndLang.disposition {
+                        disposition = String(describing: disp)
+                        
+                        for (key, value) in disp.parameters {
+                            if key.lowercased() == "filename" {
+                                filename = value
+                            }
+                        }
+                    }
+                }
+                
+                // Set content ID if available
+                let contentId = part.fields.id
+                
+                // Create a message part
+                let messagePart = MessagePart(
+                    partNumber: partNumberString,
+                    contentType: contentType,
+                    contentSubtype: contentSubtype,
+                    disposition: disposition,
+                    filename: filename,
+                    contentId: contentId,
+                    data: partData
+                )
+                
+                // Return a single-element array with this part
+                return [messagePart]
+                
+            case .multipart(let multipart):
+                // For multipart messages, process each child part and collect results
+                var allParts: [MessagePart] = []
+                
+                for (index, childPart) in multipart.parts.enumerated() {
+                    // Create a new section path array by appending the current index + 1
+                    let childSectionPath = sectionPath.isEmpty ? [index + 1] : sectionPath + [index + 1]
+                    let childParts = try await recursivelyFetchParts(childPart, sectionPath: childSectionPath, identifier: identifier)
+                    allParts.append(contentsOf: childParts)
+                }
+                
+                return allParts
+        }
+    }
     
     // MARK: - Command Helpers
     

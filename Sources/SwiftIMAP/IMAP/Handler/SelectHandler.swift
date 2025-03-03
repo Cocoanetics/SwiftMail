@@ -74,14 +74,14 @@ public final class SelectHandler: BaseIMAPCommandHandler<MailboxInfo>, @unchecke
                                     }
                                     
                                 case .uidNext(let next):
-                                    // Use the BinaryInteger extension to convert UID to UInt32
+                                    // Convert NIOIMAPCore.UID to SwiftIMAP.UID
                                     lock.withLock {
-                                        mailboxInfo.uidNext = UInt32(next)
+                                        mailboxInfo.uidNext = UID(UInt32(next))
                                     }
                                     
                                 case .permanentFlags(let flags):
                                     lock.withLock {
-                                        mailboxInfo.permanentFlags = flags.map { String(describing: $0) }
+                                        mailboxInfo.permanentFlags = flags.map(self.convertFlag)
                                     }
                                     
                                 case .readOnly:
@@ -115,7 +115,7 @@ public final class SelectHandler: BaseIMAPCommandHandler<MailboxInfo>, @unchecke
                             
                         case .flags(let flags):
                             lock.withLock {
-                                mailboxInfo.availableFlags = flags.map { String(describing: $0) }
+                                mailboxInfo.availableFlags = flags.map(self.convertFlag)
                             }
                             
                         default:
@@ -131,5 +131,36 @@ public final class SelectHandler: BaseIMAPCommandHandler<MailboxInfo>, @unchecke
         }
         
         return false
+    }
+    
+    /// Convert a NIOIMAPCore.Flag to our MessageFlag type
+    private func convertFlag(_ flag: Flag) -> MessageFlag {
+        let flagString = String(flag)
+        return convertFlagString(flagString)
+    }
+    
+    /// Convert a NIOIMAPCore.PermanentFlag to our MessageFlag type
+    private func convertFlag(_ flag: PermanentFlag) -> MessageFlag {
+        let flagString = String(describing: flag)
+        return convertFlagString(flagString)
+    }
+    
+    /// Convert a flag string to our MessageFlag type
+    private func convertFlagString(_ flagString: String) -> MessageFlag {
+        switch flagString.uppercased() {
+            case "\\SEEN":
+                return .seen
+            case "\\ANSWERED":
+                return .answered
+            case "\\FLAGGED":
+                return .flagged
+            case "\\DELETED":
+                return .deleted
+            case "\\DRAFT":
+                return .draft
+            default:
+                // For any other flag, treat it as a custom flag
+                return .custom(flagString)
+        }
     }
 } 
