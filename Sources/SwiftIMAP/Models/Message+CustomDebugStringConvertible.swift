@@ -12,6 +12,7 @@ extension Message: CustomDebugStringConvertible {
         From: \(from.truncated(maxLength: 100))
         To: \(to.truncated(maxLength: 100))
         Subject: \(subject.truncated(maxLength: 200))
+        Flags: \(flags.isEmpty ? "none" : flags.map(String.init(describing:)).sorted().joined(separator: " "))
         """
         
         // Build the complete debug description

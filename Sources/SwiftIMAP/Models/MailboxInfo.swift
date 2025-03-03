@@ -1,10 +1,10 @@
 // MailboxInfo.swift
-// Structure to hold information about a mailbox
+// Structure to hold status information about a mailbox
 
 import Foundation
 
-/// Structure to hold information about a mailbox
-public struct MailboxInfo: Sendable {
+/// Structure to hold status information about a mailbox
+public struct MailboxStatus: Sendable {
     /// The name of the mailbox
     public let name: String
     
@@ -42,7 +42,7 @@ public struct MailboxInfo: Sendable {
     /// The flags that can be permanently stored
     public var permanentFlags: [Flag] = []
     
-    /// Initialize a new mailbox info structure
+    /// Initialize a new mailbox status structure
     /// - Parameter name: The name of the mailbox
     public init(name: String) {
         self.name = name

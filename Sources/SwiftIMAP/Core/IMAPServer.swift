@@ -32,7 +32,10 @@ public actor IMAPServer {
 	private var capabilities: Set<NIOIMAPCore.Capability> = []
 	
 	/** Currently selected mailbox */
-	private var selectedMailbox: MailboxInfo?
+	public private(set) var selectedMailbox: MailboxStatus?
+	
+	/** The current folder configuration */
+	private var folderConfig: FolderConfiguration = .default
 	
 	/**
 	 Logger for IMAP operations
@@ -48,6 +51,15 @@ public actor IMAPServer {
 	
 	/** Logger for incoming IMAP responses */
 	private let inboundLogger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAP IN")
+	
+	/// Error thrown when a standard folder is not defined
+	public struct UndefinedFolderError: Error, CustomStringConvertible {
+		public let folderType: String
+		
+		public var description: String {
+			return "Standard folder '\(folderType)' is not defined. Call detectStandardFolders() first or set a custom folder configuration."
+		}
+	}
 	
 	// MARK: - Initialization
 	
@@ -182,19 +194,11 @@ public actor IMAPServer {
 	 - Returns: Information about the selected mailbox
 	 - Throws: An error if the select operation fails
 	 */
-	public func selectMailbox(_ mailboxName: String) async throws -> MailboxInfo {
+	@discardableResult public func selectMailbox(_ mailboxName: String) async throws -> MailboxStatus {
 		let command = SelectMailboxCommand(mailboxName: mailboxName)
-		let mailboxInfo = try await executeCommand(command)
-		selectedMailbox = mailboxInfo
-		return mailboxInfo
-	}
-	
-	/**
-	 Get the currently selected mailbox
-	 - Returns: Information about the currently selected mailbox, if any
-	 */
-	public func getSelectedMailbox() -> MailboxInfo? {
-		return selectedMailbox
+		let mailboxStatus = try await executeCommand(command)
+		selectedMailbox = mailboxStatus
+		return mailboxStatus
 	}
 	
 	/**
@@ -631,5 +635,205 @@ public actor IMAPServer {
 		commandTagCounter += 1
 		
 		return "\(tagPrefix)\(String(format: "%03d", commandTagCounter))"
+	}
+}
+
+// MARK: - Common Mail Operations
+extension IMAPServer {
+	/// Configuration for standard IMAP folders
+	public struct FolderConfiguration {
+		/// The name of the trash folder
+		public var trash: String
+		/// The name of the archive folder
+		public var archive: String
+		/// The name of the sent folder
+		public var sent: String
+		/// The name of the drafts folder
+		public var drafts: String
+		/// The name of the junk/spam folder
+		public var junk: String
+		
+		/// Default folder configuration
+		public static let `default` = FolderConfiguration(
+			trash: "Trash",
+			archive: "Archive",
+			sent: "Sent",
+			drafts: "Drafts",
+			junk: "Junk"
+		)
+		
+		/// Gmail-style folder configuration
+		public static let gmail = FolderConfiguration(
+			trash: "[Gmail]/Trash",
+			archive: "[Gmail]/All Mail",
+			sent: "[Gmail]/Sent Mail",
+			drafts: "[Gmail]/Drafts",
+			junk: "[Gmail]/Spam"
+		)
+		
+		/// Apple Mail-style folder configuration
+		public static let apple = FolderConfiguration(
+			trash: "Deleted Messages",
+			archive: "Archive",
+			sent: "Sent Messages",
+			drafts: "Drafts",
+			junk: "Junk"
+		)
+		
+		/// Outlook-style folder configuration
+		public static let outlook = FolderConfiguration(
+			trash: "Deleted Items",
+			archive: "Archive",
+			sent: "Sent Items",
+			drafts: "Drafts",
+			junk: "Junk Email"
+		)
+	}
+	
+	/// Get the current folder configuration
+	public func getFolderConfiguration() -> FolderConfiguration {
+		return folderConfig
+	}
+	
+	/// Set a custom folder configuration
+	public func setFolderConfiguration(_ config: FolderConfiguration) {
+		self.folderConfig = config
+	}
+	
+	/**
+	 List all available mailboxes
+	 - Returns: Array of mailbox information
+	 - Throws: An error if the operation fails
+	 */
+	public func listMailboxes() async throws -> [MailboxInfo] {
+		let command = ListCommand()
+		return try await executeCommand(command)
+	}
+	
+	/**
+	 Attempt to detect the server's standard folder names by checking common variations
+	 This method will update the folder configuration automatically if standard folders are found
+	 - Returns: The detected folder configuration
+	 - Throws: An error if the operation fails
+	 */
+	public func detectStandardFolders() async throws -> FolderConfiguration {
+		// Common variations of standard folder names
+		let trashVariations = ["Trash", "[Gmail]/Trash", "Deleted Messages", "Deleted Items", "Deleted", "Papierkorb"]
+		let archiveVariations = ["Archive", "[Gmail]/All Mail", "Archives", "Archived", "Archiv"]
+		let sentVariations = ["Sent", "[Gmail]/Sent Mail", "Sent Messages", "Sent Items", "Gesendet"]
+		let draftsVariations = ["Drafts", "[Gmail]/Drafts", "Draft", "Entwürfe"]
+		let junkVariations = ["Junk", "[Gmail]/Spam", "Spam", "Junk Email", "Junk Mail", "Spam-E-Mail"]
+		
+		// Get list of available mailboxes
+		let mailboxInfos = try await listMailboxes()
+		let mailboxNames = mailboxInfos.map { $0.name }
+		var config = FolderConfiguration.default
+		
+		// Helper function to find first matching folder
+		func findFolder(variations: [String], type: String) -> String? {
+			let found = variations.first { variation in
+				mailboxNames.contains { $0.caseInsensitiveCompare(variation) == .orderedSame }
+			}
+			if found == nil {
+				logger.warning("Could not detect standard folder: \(type). Available variations: \(variations.joined(separator: ", "))")
+			}
+			return found
+		}
+		
+		// Try to detect each standard folder
+		if let trash = findFolder(variations: trashVariations, type: "Trash") {
+			config.trash = trash
+		}
+		
+		if let archive = findFolder(variations: archiveVariations, type: "Archive") {
+			config.archive = archive
+		}
+		
+		if let sent = findFolder(variations: sentVariations, type: "Sent") {
+			config.sent = sent
+		}
+		
+		if let drafts = findFolder(variations: draftsVariations, type: "Drafts") {
+			config.drafts = drafts
+		}
+		
+		if let junk = findFolder(variations: junkVariations, type: "Junk") {
+			config.junk = junk
+		}
+		
+		// Update the configuration
+		self.folderConfig = config
+		return config
+	}
+	
+	/// Get the current trash folder name or throw if undefined
+	public var trashFolder: String {
+		get throws {
+			guard !folderConfig.trash.isEmpty else {
+				throw UndefinedFolderError(folderType: "Trash")
+			}
+			return folderConfig.trash
+		}
+	}
+	
+	/// Get the current archive folder name or throw if undefined
+	public var archiveFolder: String {
+		get throws {
+			guard !folderConfig.archive.isEmpty else {
+				throw UndefinedFolderError(folderType: "Archive")
+			}
+			return folderConfig.archive
+		}
+	}
+	
+	/// Get the current sent folder name or throw if undefined
+	public var sentFolder: String {
+		get throws {
+			guard !folderConfig.sent.isEmpty else {
+				throw UndefinedFolderError(folderType: "Sent")
+			}
+			return folderConfig.sent
+		}
+	}
+	
+	/// Get the current drafts folder name or throw if undefined
+	public var draftsFolder: String {
+		get throws {
+			guard !folderConfig.drafts.isEmpty else {
+				throw UndefinedFolderError(folderType: "Drafts")
+			}
+			return folderConfig.drafts
+		}
+	}
+	
+	/// Get the current junk folder name or throw if undefined
+	public var junkFolder: String {
+		get throws {
+			guard !folderConfig.junk.isEmpty else {
+				throw UndefinedFolderError(folderType: "Junk")
+			}
+			return folderConfig.junk
+		}
+	}
+}
+
+// Update the existing methods to use the throwing getters
+extension IMAPServer {
+	public func moveToTrash<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+		try await move(messages: identifierSet, to: try trashFolder)
+	}
+	
+	public func archive<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+		try await store(flags: [.seen], on: identifierSet, operation: .add)
+		try await move(messages: identifierSet, to: try archiveFolder)
+	}
+	
+	public func markAsJunk<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+		try await move(messages: identifierSet, to: try junkFolder)
+	}
+	
+	public func saveAsDraft<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+		try await store(flags: [.draft], on: identifierSet, operation: .add)
+		try await move(messages: identifierSet, to: try draftsFolder)
 	}
 }

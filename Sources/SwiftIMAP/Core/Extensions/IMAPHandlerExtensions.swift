@@ -77,24 +77,21 @@ extension LogoutHandler: IMAPCommandHandler {
 // MARK: - SelectHandler Extension
 
 extension SelectHandler: IMAPCommandHandler {
-    public typealias ResultType = MailboxInfo
+    public typealias ResultType = MailboxStatus
     
     public static func createHandler(
         commandTag: String,
-        promise: EventLoopPromise<MailboxInfo>,
+        promise: EventLoopPromise<MailboxStatus>,
         timeoutSeconds: Int,
         logger: Logger
     ) -> SelectHandler {
-        let handler = SelectHandler(
+        return SelectHandler(
             commandTag: commandTag,
             mailboxName: "", // This will be set separately
             selectPromise: promise,
             timeoutSeconds: timeoutSeconds,
             logger: logger
         )
-        let eventLoop: EventLoop = promise.futureResult.eventLoop
-        handler.setupTimeout(on: eventLoop)
-        return handler
     }
 }
 

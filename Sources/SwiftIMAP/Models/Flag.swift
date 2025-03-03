@@ -40,4 +40,17 @@ public enum Flag: Sendable {
             }
         }
     }
+}
+
+extension Flag: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        switch self {
+            case .seen: return "👁️"
+            case .answered: return "↩️ "
+            case .flagged: return "🚩"
+            case .deleted: return "🗑️ "
+            case .draft: return "📝"
+            case .custom(let value): return value
+        }
+    }
 } 

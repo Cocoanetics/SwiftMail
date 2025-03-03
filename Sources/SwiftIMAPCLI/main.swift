@@ -74,15 +74,21 @@ do {
             // Login with credentials
             try await server.login(username: username, password: password)
             
+            // Detect standard folders
+            logger.notice("Detecting standard folders...")
+            let detectedConfig = try await server.detectStandardFolders()
+            
+            // Print detected folder configuration
+            print("\n📁 Detected Standard Folders:")
+            print("Trash:   \(detectedConfig.trash)")
+            print("Archive: \(detectedConfig.archive)")
+            print("Sent:    \(detectedConfig.sent)")
+            print("Drafts:  \(detectedConfig.drafts)")
+            print("Junk:    \(detectedConfig.junk)")
+            print("")
+            
             // Select the INBOX mailbox and get mailbox information
             let mailboxInfo = try await server.selectMailbox("INBOX")
-            
-            // Format the flags for more compact display
-            let availableFlagsFormatted = formatFlags(mailboxInfo.availableFlags)
-            let permanentFlagsFormatted = formatFlags(mailboxInfo.permanentFlags)
-            
-            print("Available flags: \(availableFlagsFormatted)")
-            print("Permanent flags: \(permanentFlagsFormatted)")
             
             // Fetch the 10 latest complete emails including attachments
             if mailboxInfo.messageCount > 0 {
@@ -104,15 +110,6 @@ do {
                     for (index, email) in emails.enumerated() {
                         print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
                         print("---")
-						
-//						try await server.toggleFlags([.seen], on: MessageIdentifierSet<UID>(email.uid), add: true)
-//						if index == 0
-//						{
-//
-//							
-//							try await server.moveMessage(from: email.header, to: "Archive")
-//							print("hier")
-//						}
                     }
                     
                 } catch {

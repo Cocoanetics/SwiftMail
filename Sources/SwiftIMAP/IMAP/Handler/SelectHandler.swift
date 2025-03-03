@@ -9,12 +9,12 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP SELECT command
-public final class SelectHandler: BaseIMAPCommandHandler<MailboxInfo>, @unchecked Sendable {
+public final class SelectHandler: BaseIMAPCommandHandler<MailboxStatus>, @unchecked Sendable {
     /// The name of the mailbox being selected
     private let mailboxName: String
     
     /// Current mailbox information being built from responses
-    private var mailboxInfo: MailboxInfo
+    private var mailboxInfo: MailboxStatus
     
     /// Initialize a new select handler
     /// - Parameters:
@@ -23,9 +23,9 @@ public final class SelectHandler: BaseIMAPCommandHandler<MailboxInfo>, @unchecke
     ///   - selectPromise: The promise to fulfill when the select completes
     ///   - timeoutSeconds: The timeout for this command in seconds
     ///   - logger: The logger to use for logging responses
-    public init(commandTag: String, mailboxName: String, selectPromise: EventLoopPromise<MailboxInfo>, timeoutSeconds: Int = 5, logger: Logger) {
+    public init(commandTag: String, mailboxName: String, selectPromise: EventLoopPromise<MailboxStatus>, timeoutSeconds: Int = 5, logger: Logger) {
         self.mailboxName = mailboxName
-        self.mailboxInfo = MailboxInfo(name: mailboxName)
+        self.mailboxInfo = MailboxStatus(name: mailboxName)
         super.init(commandTag: commandTag, promise: selectPromise, timeoutSeconds: timeoutSeconds, logger: logger)
     }
     
