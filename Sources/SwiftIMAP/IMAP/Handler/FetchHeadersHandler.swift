@@ -9,9 +9,9 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH HEADERS command
-public final class FetchHeadersHandler: BaseIMAPCommandHandler<[EmailHeader]>, @unchecked Sendable {
+public final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, @unchecked Sendable {
     /// Collected email headers
-    private var emailHeaders: [EmailHeader] = []
+    private var emailHeaders: [Header] = []
     
     /// Initialize a new fetch headers handler
     /// - Parameters:
@@ -19,7 +19,7 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler<[EmailHeader]>, @
     ///   - fetchPromise: The promise to fulfill when the fetch completes
     ///   - timeoutSeconds: The timeout for this command in seconds
     ///   - logger: The logger to use for logging responses
-    public init(commandTag: String, fetchPromise: EventLoopPromise<[EmailHeader]>, timeoutSeconds: Int = 10, logger: Logger) {
+    public init(commandTag: String, fetchPromise: EventLoopPromise<[Header]>, timeoutSeconds: Int = 10, logger: Logger) {
         super.init(commandTag: commandTag, promise: fetchPromise, timeoutSeconds: timeoutSeconds, logger: logger)
     }
     
@@ -62,7 +62,7 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler<[EmailHeader]>, @
                 
             case .start(let sequenceNumber):
                 // Create a new header for this sequence number
-                let header = EmailHeader(sequenceNumber: Int(sequenceNumber.rawValue))
+                let header = Header(sequenceNumber: Int(sequenceNumber.rawValue))
                 lock.withLock {
                     self.emailHeaders.append(header)
                 }
@@ -108,7 +108,7 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler<[EmailHeader]>, @
                 updateHeader(&header, with: attribute)
                 self.emailHeaders[index] = header
             } else {
-                var header = EmailHeader(sequenceNumber: seqNum)
+                var header = Header(sequenceNumber: seqNum)
                 updateHeader(&header, with: attribute)
                 self.emailHeaders.append(header)
             }
@@ -119,7 +119,7 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler<[EmailHeader]>, @
     /// - Parameters:
     ///   - header: The header to update
     ///   - attribute: The attribute containing the information
-    private func updateHeader(_ header: inout EmailHeader, with attribute: MessageAttribute) {
+    private func updateHeader(_ header: inout Header, with attribute: MessageAttribute) {
         switch attribute {
         case .envelope(let envelope):
             // Extract information from envelope
@@ -184,7 +184,7 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler<[EmailHeader]>, @
     }
     
 	/// Convert a NIOIMAPCore.Flag to our MessageFlag type
-	private func convertFlag(_ flag: Flag) -> MessageFlag {
+	private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {
 		let flagString = String(flag)
 		
 		switch flagString.uppercased() {

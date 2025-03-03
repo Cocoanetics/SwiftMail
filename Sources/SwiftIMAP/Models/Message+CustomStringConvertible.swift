@@ -4,7 +4,7 @@
 import Foundation
 
 // Standard description - simple and concise
-extension Email: CustomStringConvertible {
+extension Message: CustomStringConvertible {
     public var description: String {
         return "Email #\(sequenceNumber) | \(subject.truncated(maxLength: 50)) | From: \(from.truncated(maxLength: 30))"
     }

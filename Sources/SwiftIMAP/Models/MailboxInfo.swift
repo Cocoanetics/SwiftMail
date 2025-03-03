@@ -37,10 +37,10 @@ public struct MailboxInfo: Sendable {
     public var isReadOnly: Bool = false
     
     /// The flags available in the mailbox
-    public var availableFlags: [MessageFlag] = []
+    public var availableFlags: [Flag] = []
     
     /// The flags that can be permanently stored
-    public var permanentFlags: [MessageFlag] = []
+    public var permanentFlags: [Flag] = []
     
     /// Initialize a new mailbox info structure
     /// - Parameter name: The name of the mailbox

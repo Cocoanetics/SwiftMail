@@ -231,7 +231,7 @@ public actor IMAPServer {
 	 - Returns: An array of email headers
 	 - Throws: An error if the fetch operation fails
 	 */
-	public func fetchHeaders<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [EmailHeader] {
+	public func fetchHeaders<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [Header] {
 		let command = FetchHeadersCommand(identifierSet: identifierSet, limit: limit)
 		var headers = try await executeCommand(command)
 		
@@ -287,18 +287,18 @@ public actor IMAPServer {
 	 - Returns: A complete Email object with all parts
 	 - Throws: An error if the fetch operation fails
 	 */
-	public func fetchMessage(from header: EmailHeader) async throws -> Email {
+	public func fetchMessage(from header: Header) async throws -> Message {
 		// Use the UID from the header if available (non-zero), otherwise fall back to sequence number
 		if header.uid > 0 {
 			// Use UID for fetching
 			let uid = UID(UInt32(header.uid))
 			let parts = try await fetchAllMessageParts(identifier: uid)
-			return Email(header: header, parts: parts)
+			return Message(header: header, parts: parts)
 		} else {
 			// Fall back to sequence number
 			let sequenceNumber = SequenceNumber(UInt32(header.sequenceNumber))
 			let parts = try await fetchAllMessageParts(identifier: sequenceNumber)
-			return Email(header: header, parts: parts)
+			return Message(header: header, parts: parts)
 		}
 	}
 	
@@ -310,7 +310,7 @@ public actor IMAPServer {
 	 - Returns: An array of Email objects with all parts
 	 - Throws: An error if the fetch operation fails
 	 */
-	public func fetchMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [Email] {
+	public func fetchMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [Message] {
 		guard !identifierSet.isEmpty else {
 			throw IMAPError.emptyIdentifierSet
 		}
@@ -319,7 +319,7 @@ public actor IMAPServer {
 		let headers = try await fetchHeaders(using: identifierSet, limit: limit)
 		
 		// Then fetch the complete email for each header
-		var emails: [Email] = []
+		var emails: [Message] = []
 		for header in headers {
 			let email = try await fetchMessage(from: header)
 			emails.append(email)
@@ -412,7 +412,7 @@ public actor IMAPServer {
 	 - destinationMailbox: The name of the destination mailbox
 	 - Throws: An error if the move operation fails
 	 */
-	public func move(header: EmailHeader, to destinationMailbox: String) async throws {
+	public func move(header: Header, to destinationMailbox: String) async throws {
 		// Use the UID from the header if available (non-zero), otherwise fall back to sequence number
 		if header.uid > 0 {
 			// Use UID for moving
@@ -433,7 +433,7 @@ public actor IMAPServer {
 	 - operation: The store operation (.add or .remove)
 	 - Throws: An error if the operation fails
 	 */
-	public func store<T: MessageIdentifier>(flags: [MessageFlag], on identifierSet: MessageIdentifierSet<T>, operation: StoreOperation) async throws {
+	public func store<T: MessageIdentifier>(flags: [Flag], on identifierSet: MessageIdentifierSet<T>, operation: StoreOperation) async throws {
 		let storeData = StoreData.flags(flags, operation == .add ? .add : .remove)
 		let command = StoreCommand(identifierSet: identifierSet, data: storeData)
 		try await executeCommand(command)

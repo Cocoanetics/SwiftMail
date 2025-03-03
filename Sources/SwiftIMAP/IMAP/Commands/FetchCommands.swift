@@ -9,7 +9,7 @@ import NIO
 
 /// Command for fetching message headers
 public struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
-    public typealias ResultType = [EmailHeader]
+    public typealias ResultType = [Header]
     public typealias HandlerType = FetchHeadersHandler
     
     /// The set of message identifiers to fetch

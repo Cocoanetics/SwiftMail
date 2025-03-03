@@ -1,12 +1,12 @@
-// Email.swift
+// Message.swift
 // Structure to represent a complete email with all parts
 
 import Foundation
 
 /// Structure to represent a complete email with all parts
-public struct Email: Sendable {
+public struct Message: Sendable {
     /// The email header information
-    public let header: EmailHeader
+    public let header: Header
     
     /// The UID of the message
     public var uid: Int {
@@ -44,7 +44,7 @@ public struct Email: Sendable {
     }
     
     /// The flags of the message
-    public var flags: [MessageFlag] {
+    public var flags: [Flag] {
         return header.flags
     }
     
@@ -75,7 +75,7 @@ public struct Email: Sendable {
     /// - Parameters:
     ///   - header: The email header
     ///   - parts: The message parts
-    public init(header: EmailHeader, parts: [MessagePart]) {
+    public init(header: Header, parts: [MessagePart]) {
         self.header = header
         self.parts = parts
     }

@@ -4,7 +4,7 @@
 import Foundation
 
 // Detailed debug description - comprehensive information for debugging
-extension Email: CustomDebugStringConvertible {
+extension Message: CustomDebugStringConvertible {
     public var debugDescription: String {
         // Compact header information
         let headerInfo = """

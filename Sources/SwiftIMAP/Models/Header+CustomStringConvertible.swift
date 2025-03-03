@@ -1,6 +1,6 @@
 import Foundation
 
-extension EmailHeader: CustomStringConvertible {
+extension Header: CustomStringConvertible {
     public var description: String {
         """
         From: \(from)

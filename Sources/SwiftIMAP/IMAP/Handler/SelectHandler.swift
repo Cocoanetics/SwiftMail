@@ -134,19 +134,19 @@ public final class SelectHandler: BaseIMAPCommandHandler<MailboxInfo>, @unchecke
     }
     
     /// Convert a NIOIMAPCore.Flag to our MessageFlag type
-    private func convertFlag(_ flag: Flag) -> MessageFlag {
+    private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {
         let flagString = String(flag)
         return convertFlagString(flagString)
     }
     
     /// Convert a NIOIMAPCore.PermanentFlag to our MessageFlag type
-    private func convertFlag(_ flag: PermanentFlag) -> MessageFlag {
+    private func convertFlag(_ flag: PermanentFlag) -> Flag {
         let flagString = String(describing: flag)
         return convertFlagString(flagString)
     }
     
     /// Convert a flag string to our MessageFlag type
-    private func convertFlagString(_ flagString: String) -> MessageFlag {
+    private func convertFlagString(_ flagString: String) -> Flag {
         switch flagString.uppercased() {
             case "\\SEEN":
                 return .seen

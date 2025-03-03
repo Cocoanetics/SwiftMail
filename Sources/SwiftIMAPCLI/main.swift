@@ -13,7 +13,7 @@ let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "Main")
 let envFilePath = "/Users/oliver/Developer/.env"
 
 // Helper function to format flags more compactly
-func formatFlags(_ flags: [MessageFlag]) -> String {
+func formatFlags(_ flags: [Flag]) -> String {
     return flags.map { flag -> String in
         switch flag {
         case .seen:

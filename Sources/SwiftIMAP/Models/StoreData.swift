@@ -26,7 +26,7 @@ public struct StoreData {
     }
     
     /// The flags to store
-    public let flags: [MessageFlag]
+    public let flags: [Flag]
     
     /// The type of store operation
     public let storeType: StoreType
@@ -35,7 +35,7 @@ public struct StoreData {
     /// - Parameters:
     ///   - flags: The flags to store
     ///   - storeType: The type of store operation
-    public init(flags: [MessageFlag], storeType: StoreType) {
+    public init(flags: [Flag], storeType: StoreType) {
         self.flags = flags
         self.storeType = storeType
     }
@@ -45,7 +45,7 @@ public struct StoreData {
     ///   - flags: The flags to store
     ///   - storeType: The type of store operation
     /// - Returns: A new StoreData instance
-    public static func flags(_ flags: [MessageFlag], _ storeType: StoreType) -> StoreData {
+    public static func flags(_ flags: [Flag], _ storeType: StoreType) -> StoreData {
         return StoreData(flags: flags, storeType: storeType)
     }
     
@@ -68,37 +68,3 @@ public struct StoreData {
         return .flags(storeFlags)
     }
 }
-
-/// Represents an IMAP message flag
-public enum MessageFlag: Sendable {
-    case seen
-    case answered
-    case flagged
-    case deleted
-    case draft
-    // Note: Recent flag is not allowed in STORE commands
-    case custom(String)
-    
-    /// Convert to NIO Flag
-    internal func toNIO() -> NIOIMAPCore.Flag {
-        switch self {
-        case .seen:
-            return .seen
-        case .answered:
-            return .answered
-        case .flagged:
-            return .flagged
-        case .deleted:
-            return .deleted
-        case .draft:
-            return .draft
-        case .custom(let name):
-            if let keyword = Flag.Keyword(name) {
-                return .keyword(keyword)
-            } else {
-                // Fallback to a safe default if the keyword is invalid
-                return .keyword(Flag.Keyword("CUSTOM")!)
-            }
-        }
-    }
-} 

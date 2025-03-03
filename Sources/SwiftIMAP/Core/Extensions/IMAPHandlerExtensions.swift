@@ -101,11 +101,11 @@ extension SelectHandler: IMAPCommandHandler {
 // MARK: - FetchHeadersHandler Extension
 
 extension FetchHeadersHandler: IMAPCommandHandler {
-    public typealias ResultType = [EmailHeader]
+    public typealias ResultType = [Header]
     
     public static func createHandler(
         commandTag: String,
-        promise: EventLoopPromise<[EmailHeader]>,
+        promise: EventLoopPromise<[Header]>,
         timeoutSeconds: Int,
         logger: Logger
     ) -> FetchHeadersHandler {

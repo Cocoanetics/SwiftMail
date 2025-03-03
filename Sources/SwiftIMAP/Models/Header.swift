@@ -1,10 +1,10 @@
-// EmailHeader.swift
+// Header.swift
 // Structure to hold email header information
 
 import Foundation
 
 /// Structure to hold email header information
-public struct EmailHeader: Sendable {
+public struct Header: Sendable {
     /// The sequence number of the message
     public var sequenceNumber: Int
     
@@ -30,7 +30,7 @@ public struct EmailHeader: Sendable {
     public var messageId: String = ""
     
     /// The flags of the message
-    public var flags: [MessageFlag] = []
+    public var flags: [Flag] = []
     
     /// Additional header fields
     public var additionalFields: [String: String] = [:]
