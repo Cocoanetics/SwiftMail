@@ -7,14 +7,14 @@ import NIOIMAPCore
 // MARK: - MessageIdentifier Protocol
 
 /// Protocol for message identifiers (UID and SequenceNumber)
-public protocol MessageIdentifier: Hashable, Comparable, ExpressibleByIntegerLiteral {
+public protocol MessageIdentifier: Hashable, Comparable {
     var value: UInt32 { get }
     init(_ value: UInt32)
     static var latest: Self { get }
 }
 
 extension MessageIdentifier {
-    public init(integerLiteral value: Int) {
+    public init(_ value: Int) {
         self.init(UInt32(value))
     }
     

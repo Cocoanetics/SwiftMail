@@ -1,8 +1,8 @@
 import Foundation
 import NIOIMAPCore
 
-/// Represents an IMAP mailbox
-public struct Mailbox {
+/// Represents an IMAP mailbox namespace
+public enum Mailbox {
     /// Information about a mailbox from a LIST command
     public struct Info: Sendable {
         /// Attributes of a mailbox from a LIST command
@@ -131,56 +131,10 @@ public struct Mailbox {
         
         /// The flags that can be permanently stored
         public var permanentFlags: [Flag] = []
-        
-        /// Initialize a new mailbox status
-        public init() {}
-    }
-    
-    /// The name of the mailbox
-    public let name: String
-    
-    /// Basic information about the mailbox (from LIST command)
-    public let info: Info
-    
-    /// Current status of the mailbox (from SELECT command), if selected
-    public var status: Status?
-    
-    /// Initialize with just LIST information
-    public init(info: Info) {
-        self.name = info.name
-        self.info = info
-        self.status = nil
-    }
-    
-    /// Whether this mailbox is currently selected
-    public var isSelected: Bool {
-        return status != nil
     }
 }
 
 // MARK: - CustomStringConvertible
-extension Mailbox: CustomStringConvertible {
-    public var description: String {
-        var desc = "Mailbox(\(name)"
-        
-        if !info.attributes.isEmpty {
-            desc += ", attributes: \(info.attributes)"
-        }
-        if let delimiter = info.hierarchyDelimiter {
-            desc += ", delimiter: \(delimiter)"
-        }
-        if let status = status {
-            desc += ", selected: messages=\(status.messageCount)"
-            if status.unseenCount > 0 {
-                desc += ", unseen=\(status.unseenCount)"
-            }
-        }
-        
-        desc += ")"
-        return desc
-    }
-}
-
 extension Mailbox.Info: CustomStringConvertible {
     public var description: String {
         var desc = "Info(\(name)"
@@ -212,6 +166,7 @@ extension Mailbox.Info.Attributes: CustomStringConvertible {
 extension Mailbox.Status: CustomStringConvertible {
     public var description: String {
         var desc = "Status("
+
         desc += "messages=\(messageCount)"
         if unseenCount > 0 {
             desc += ", unseen=\(unseenCount)"

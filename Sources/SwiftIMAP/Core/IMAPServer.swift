@@ -31,9 +31,6 @@ public actor IMAPServer {
 	/** Server capabilities */
 	private var capabilities: Set<NIOIMAPCore.Capability> = []
 	
-	/** Currently selected mailbox */
-	public private(set) var selectedMailbox: Mailbox?
-	
 	/** The current folder configuration */
 	private var folderConfig: FolderConfiguration = .default
 	
@@ -191,19 +188,12 @@ public actor IMAPServer {
 	/**
 	 Select a mailbox
 	 - Parameter mailboxName: The name of the mailbox to select
-	 - Returns: Information about the selected mailbox
+	 - Returns: Status information about the selected mailbox
 	 - Throws: An error if the select operation fails
 	 */
-	public func selectMailbox(_ mailboxName: String) async throws -> Mailbox {
+	public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Status {
 		let command = SelectMailboxCommand(mailboxName: mailboxName)
-		let status = try await executeCommand(command)
-		
-		// Create a new mailbox with the status
-		let info = Mailbox.Info(name: mailboxName, attributes: [], hierarchyDelimiter: nil)
-		var mailbox = Mailbox(info: info)
-		mailbox.status = status
-		selectedMailbox = mailbox
-		return mailbox
+		return try await executeCommand(command)
 	}
 	
 	/**
@@ -211,13 +201,8 @@ public actor IMAPServer {
 	 - Throws: An error if the close operation fails
 	 */
 	public func closeMailbox() async throws {
-		guard selectedMailbox != nil else {
-			return // No mailbox selected, nothing to close
-		}
-		
 		let command = CloseCommand()
 		try await executeCommand(command)
-		selectedMailbox = nil
 	}
 	
 	/**
@@ -227,7 +212,6 @@ public actor IMAPServer {
 	public func logout() async throws {
 		let command = LogoutCommand()
 		try await executeCommand(command)
-		selectedMailbox = nil
 	}
 	
 	// MARK: - Message Commands
@@ -708,20 +692,9 @@ extension IMAPServer {
 	/// List all available mailboxes
 	/// - Returns: Array of mailbox information
 	/// - Throws: An error if the operation fails
-	public func listMailboxes() async throws -> [Mailbox] {
+	public func listMailboxes() async throws -> [Mailbox.Info] {
 		let command = ListCommand()
-		let mailboxInfos = try await executeCommand(command)
-		return mailboxInfos.map { info in
-			// If this is our currently selected mailbox, include its status
-			if let selected = selectedMailbox, selected.name == info.name {
-				var mailbox = Mailbox(info: info)
-				if let status = selected.status {
-					mailbox.status = status
-				}
-				return mailbox
-			}
-			return Mailbox(info: info)
-		}
+		return try await executeCommand(command)
 	}
 	
 	/**

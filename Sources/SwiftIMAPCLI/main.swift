@@ -88,15 +88,15 @@ do {
             print("")
             
             // Select the INBOX mailbox and get mailbox information
-            let mailbox = try await server.selectMailbox("INBOX")
+            let mailboxStatus = try await server.selectMailbox("INBOX")
             
             // Print mailbox information
-            if mailbox.status?.messageCount ?? 0 > 0 {
+            if mailboxStatus.messageCount > 0 {
                 // Fetch the 10 latest complete emails including attachments
                 logger.notice("Fetching latest emails...")
                 
-                let startMessage = max(1, mailbox.status?.messageCount ?? 0 - 9)
-                let endMessage = mailbox.status?.messageCount ?? 0
+				let startMessage = SequenceNumber(max(1, mailboxStatus.messageCount - 9))
+				let endMessage = SequenceNumber(mailboxStatus.messageCount)
 
                 do {
                     // Use the fetchEmails method with the sequence number set

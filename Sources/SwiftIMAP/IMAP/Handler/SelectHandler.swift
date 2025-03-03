@@ -16,6 +16,15 @@ public final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCo
     /// Current mailbox information being built from responses
     private var mailboxInfo: Mailbox.Status
     
+    /// Static property to hold the mailbox name between command creation and handler initialization
+    private static var pendingMailboxName: String = ""
+    
+    /// Prepare the handler for a specific mailbox
+    /// - Parameter mailboxName: The name of the mailbox to select
+    public static func prepareForMailbox(_ mailboxName: String) {
+        pendingMailboxName = mailboxName
+    }
+    
     /// Create a new handler instance
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
@@ -152,8 +161,12 @@ public final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCo
     
     /// Convert a NIOIMAPCore.PermanentFlag to our MessageFlag type
     private func convertFlag(_ flag: PermanentFlag) -> Flag {
-        let flagString = String(describing: flag)
-        return convertFlagString(flagString)
+        switch flag {
+        case .flag(let coreFlag):
+            return convertFlag(coreFlag)
+        case .wildcard:
+            return .custom("wildcard")
+        }
     }
     
     /// Convert a flag string to our MessageFlag type
