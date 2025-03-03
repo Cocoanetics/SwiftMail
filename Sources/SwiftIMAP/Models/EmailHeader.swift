@@ -30,7 +30,7 @@ public struct EmailHeader: Sendable {
     public var messageId: String = ""
     
     /// The flags of the message
-    public var flags: [String] = []
+    public var flags: [MessageFlag] = []
     
     /// Additional header fields
     public var additionalFields: [String: String] = [:]

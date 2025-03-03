@@ -315,14 +315,13 @@ public actor IMAPServer {
             try await executeCommand(command)
         } else {
             // Fall back to COPY + DELETE + EXPUNGE
+			
             // Step 1: Copy the messages to the destination mailbox
             let copyCommand = CopyCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
             try await executeCommand(copyCommand)
             
             // Step 2: Mark the original messages as deleted
-            let storeData = StoreData.flags([.deleted], .replace)
-            let storeCommand = StoreCommand(identifierSet: identifierSet, data: storeData)
-            try await executeCommand(storeCommand)
+			try await toggleFlags([.deleted], on: identifierSet, add: true)
             
             // Step 3: Expunge the deleted messages
             let expungeCommand = ExpungeCommand()
@@ -361,6 +360,20 @@ public actor IMAPServer {
             try await moveMessage(identifier: sequenceNumber, to: destinationMailbox)
         }
     }
+	
+	/**
+	 Toggle message flags
+	 - Parameters:
+	   - flags: The flags to toggle
+	   - identifierSet: The set of message identifiers to update
+	   - add: Whether to add or remove the flags
+	 - Throws: An error if the operation fails
+	 */
+	public func toggleFlags<T: MessageIdentifier>(_ flags: [MessageFlag], on identifierSet: MessageIdentifierSet<T>, add: Bool) async throws {
+		let storeData = StoreData.flags(flags, add ? .add : .remove)
+		let storeCommand = StoreCommand(identifierSet: identifierSet, data: storeData)
+		try await executeCommand(storeCommand)
+	}
 	
 	// MARK: - Sub-Commands
 	

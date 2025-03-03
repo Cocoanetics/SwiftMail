@@ -70,7 +70,7 @@ public struct StoreData {
 }
 
 /// Represents an IMAP message flag
-public enum MessageFlag {
+public enum MessageFlag: Sendable {
     case seen
     case answered
     case flagged

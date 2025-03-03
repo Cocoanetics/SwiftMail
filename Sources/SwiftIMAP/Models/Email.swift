@@ -44,7 +44,7 @@ public struct Email: Sendable {
     }
     
     /// The flags of the message
-    public var flags: [String] {
+    public var flags: [MessageFlag] {
         return header.flags
     }
     

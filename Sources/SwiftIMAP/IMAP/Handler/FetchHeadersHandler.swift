@@ -149,12 +149,33 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler<[EmailHeader]>, @
             header.uid = Int(uid)
             
         case .flags(let flags):
-            header.flags = flags.map { String($0) }
-				
+            header.flags = flags.map(self.convertFlag)
+            
         default:
             break
         }
     }
+    
+	/// Convert a NIOIMAPCore.Flag to our MessageFlag type
+	private func convertFlag(_ flag: Flag) -> MessageFlag {
+		let flagString = String(flag)
+		
+		switch flagString.uppercased() {
+			case "\\SEEN":
+				return .seen
+			case "\\ANSWERED":
+				return .answered
+			case "\\FLAGGED":
+				return .flagged
+			case "\\DELETED":
+				return .deleted
+			case "\\DRAFT":
+				return .draft
+			default:
+				// For any other flag, treat it as a custom flag
+				return .custom(flagString)
+		}
+	}
     
     /// Format an address for display
     /// - Parameter address: The address to format

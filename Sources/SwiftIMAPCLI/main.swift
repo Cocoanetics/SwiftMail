@@ -81,7 +81,7 @@ do {
                 // Create a SequenceNumberSet for the latest messages
                 let startMessage = max(1, mailboxInfo.messageCount - 9)
                 let endMessage = mailboxInfo.messageCount
-				let sequenceSet = SequenceNumberSet(endMessage...endMessage)
+				let sequenceSet = SequenceNumberSet(startMessage...endMessage)
 
                 do {
                     // Use the fetchEmails method with the sequence number set
@@ -95,11 +95,14 @@ do {
                         print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
                         print("---")
 						
-						if index == 0
-						{
-							try await server.moveMessage(from: email.header, to: "Archive")
-							print("hier")
-						}
+						try await server.toggleFlags([.seen], on: MessageIdentifierSet<UID>(email.uid), add: true)
+//						if index == 0
+//						{
+//
+//							
+//							try await server.moveMessage(from: email.header, to: "Archive")
+//							print("hier")
+//						}
                     }
                     
                 } catch {
