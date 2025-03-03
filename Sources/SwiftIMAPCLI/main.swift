@@ -5,6 +5,7 @@ import Foundation
 import SwiftIMAP
 import os.log
 import SwiftDotenv
+import NIOIMAP
 
 // Create a logger for the main application
 let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "Main")
@@ -13,7 +14,7 @@ let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "Main")
 let envFilePath = "/Users/oliver/Developer/.env"
 
 // Helper function to format flags more compactly
-func formatFlags(_ flags: [Flag]) -> String {
+func formatFlags(_ flags: [SwiftIMAP.Flag]) -> String {
     return flags.map { flag -> String in
         switch flag {
         case .seen:
@@ -125,7 +126,14 @@ do {
             
             // Close the connection
             try await server.disconnect()
-        } catch {
+        }
+		catch let error as NIOIMAP.IMAPDecoderError {
+			
+			let string = String(buffer: error.buffer)
+			print(string)
+			
+		}
+		catch {
             logger.error("Error: \(error.localizedDescription)")
             exit(1)
         }

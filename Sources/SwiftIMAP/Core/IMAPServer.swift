@@ -162,7 +162,7 @@ public actor IMAPServer {
 			self.capabilities = Set(loginCapabilities)
 		} else {
 			// Otherwise, fetch capabilities explicitly
-			_ = try await fetchCapabilities()
+			// _ = try await fetchCapabilities()
 		}
 	}
 	
@@ -171,16 +171,16 @@ public actor IMAPServer {
 	 - Throws: An error if the close operation fails
 	 */
 	public func disconnect() async throws {
-		guard let channel = self.channel else {
+		guard let _ = self.channel else {
 			throw IMAPError.connectionFailed("Channel not initialized")
 		}
 		
-		// Close the connection
-		do {
-			try await channel.close().get()
-		} catch let error as NIOCore.ChannelError where error == .alreadyClosed {
-			// Channel is already closed, which is fine
-		}
+		// Use the same command execution pattern as other commands
+		let command = DisconnectCommand()
+		try await executeCommand(command)
+		
+		// After successful disconnect, set channel to nil
+		self.channel = nil
 	}
 	
 	// MARK: - Mailbox Commands
