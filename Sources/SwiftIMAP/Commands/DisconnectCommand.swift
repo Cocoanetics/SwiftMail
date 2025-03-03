@@ -34,7 +34,7 @@ public struct DisconnectCommand: IMAPCommand {
     /// Convert to a tagged command
     public func toTaggedCommand(tag: String) -> TaggedCommand {
         // Disconnect doesn't actually send a command, but we need to conform to the protocol
-        // This will never be sent to the server as we handle it specially
+        // This will never be sent to the server as we handle it specially in executeCommand
         return TaggedCommand(tag: tag, command: .noop)
     }
 }

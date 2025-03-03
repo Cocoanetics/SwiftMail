@@ -121,7 +121,7 @@ public actor IMAPServer {
 			self.capabilities = Set(greetingCapabilities)
 		} else {
 			// Otherwise, fetch capabilities explicitly
-			// _ = try await fetchCapabilities()
+			try await fetchCapabilities()
 		}
 	}
 	
@@ -162,24 +162,19 @@ public actor IMAPServer {
 			self.capabilities = Set(loginCapabilities)
 		} else {
 			// Otherwise, fetch capabilities explicitly
-			// _ = try await fetchCapabilities()
+			try await fetchCapabilities()
 		}
 	}
 	
 	/**
-	 Close the connection to the IMAP server
-	 - Throws: An error if the close operation fails
+	 Disconnect from the server without sending a command
+	 - Throws: An error if the disconnection fails
 	 */
 	public func disconnect() async throws {
-		guard let _ = self.channel else {
-			throw IMAPError.connectionFailed("Channel not initialized")
-		}
+		// Use executeHandlerOnly with DisconnectHandler instead of executeCommand
+		try await executeHandlerOnly(handlerType: DisconnectHandler.self, timeoutSeconds: 10)
 		
-		// Use the same command execution pattern as other commands
-		let command = DisconnectCommand()
-		try await executeCommand(command)
-		
-		// After successful disconnect, set channel to nil
+		// Set the channel to nil
 		self.channel = nil
 	}
 	
