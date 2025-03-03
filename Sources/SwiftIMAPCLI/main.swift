@@ -95,7 +95,7 @@ do {
                         print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
                         print("---")
 						
-						try await server.toggleFlags([.seen], on: MessageIdentifierSet<UID>(email.uid), add: true)
+//						try await server.toggleFlags([.seen], on: MessageIdentifierSet<UID>(email.uid), add: true)
 //						if index == 0
 //						{
 //

@@ -8,7 +8,7 @@ extension Email: CustomDebugStringConvertible {
     public var debugDescription: String {
         // Compact header information
         let headerInfo = """
-        Email #\(sequenceNumber) (UID: \(uid)) | \(date)
+        Email #\(sequenceNumber) (UID: \(uid)) | \(date.formattedForDisplay())
         From: \(from.truncated(maxLength: 100))
         To: \(to.truncated(maxLength: 100))
         Subject: \(subject.truncated(maxLength: 200))
@@ -49,13 +49,22 @@ extension Email: CustomDebugStringConvertible {
             debugInfo += "\n\nAttachments:\n\(attachmentsInfo)"
         }
         
-        // Add preview of the email content
-        let textPreview = preview(maxLength: 200).trimmingCharacters(in: .whitespacesAndNewlines)
-        if !textPreview.isEmpty {
-            debugInfo += "\n\n\(textPreview)"
-        }
+//        // Add preview of the email content
+//        let textPreview = preview(maxLength: 200).trimmingCharacters(in: .whitespacesAndNewlines)
+//        if !textPreview.isEmpty {
+//            debugInfo += "\n\n\(textPreview)"
+//        }
         
         return debugInfo
+    }
+
+    /// Format the date for display
+    private func formatDate() -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .medium
+        formatter.locale = Locale.current
+        return formatter.string(from: date)
     }
 }
 

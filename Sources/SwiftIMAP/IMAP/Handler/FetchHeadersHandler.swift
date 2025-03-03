@@ -138,7 +138,34 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler<[EmailHeader]>, @
             }
             
             if let date = envelope.date {
-                header.date = String(date)
+                let dateString = String(date)
+                
+                // Remove timezone comments in parentheses
+                let cleanDateString = dateString.replacingOccurrences(of: "\\s*\\([^)]+\\)\\s*$", with: "", options: .regularExpression)
+                
+                // Create a date formatter for RFC 5322 dates
+                let formatter = DateFormatter()
+                formatter.locale = Locale(identifier: "en_US_POSIX")
+                formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                
+                // Try different date formats commonly used in email headers
+                let formats = [
+                    "EEE, dd MMM yyyy HH:mm:ss Z",       // RFC 5322
+                    "EEE, d MMM yyyy HH:mm:ss Z",        // RFC 5322 with single-digit day
+                    "d MMM yyyy HH:mm:ss Z",             // Without day of week
+                    "EEE, dd MMM yy HH:mm:ss Z"          // Two-digit year
+                ]
+                
+                for format in formats {
+                    formatter.dateFormat = format
+                    if let parsedDate = formatter.date(from: cleanDateString) {
+                        header.date = parsedDate
+                        return
+                    }
+                }
+                
+                // If we get here, none of the formats worked
+                fatalError("Failed to parse email date: \(dateString)")
             }
             
             if let messageID = envelope.messageID {

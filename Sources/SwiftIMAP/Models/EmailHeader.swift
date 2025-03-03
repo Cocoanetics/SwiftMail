@@ -24,7 +24,7 @@ public struct EmailHeader: Sendable {
     public var cc: String = ""
     
     /// The date of the message
-    public var date: String = ""
+    public var date: Date = .distantPast
     
     /// The message ID
     public var messageId: String = ""

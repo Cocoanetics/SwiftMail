@@ -39,7 +39,7 @@ public struct Email: Sendable {
     }
     
     /// The date of the message
-    public var date: String {
+    public var date: Date {
         return header.date
     }
     
