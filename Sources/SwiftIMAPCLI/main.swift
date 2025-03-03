@@ -74,25 +74,6 @@ do {
             let availableFlagsFormatted = formatFlags(mailboxInfo.availableFlags)
             let permanentFlagsFormatted = formatFlags(mailboxInfo.permanentFlags)
             
-            // Display mailbox information
-            let mailboxSummary = """
-            📬 Mailbox Information 📬
-            ------------------------
-            Mailbox: \(mailboxInfo.name)
-            Total Messages: \(mailboxInfo.messageCount)
-            Recent Messages: \(mailboxInfo.recentCount)
-            Unseen Messages: \(mailboxInfo.unseenCount)
-            First Unseen Message: \(mailboxInfo.firstUnseen > 0 ? String(mailboxInfo.firstUnseen) : "N/A")
-            UID Validity: \(mailboxInfo.uidValidity)
-            Next UID: \(mailboxInfo.uidNext)
-            Read-Only: \(mailboxInfo.isReadOnly ? "Yes" : "No")
-            Available Flags: \(availableFlagsFormatted)
-            Permanent Flags: \(permanentFlagsFormatted)
-            """
-            
-            logger.notice("\(mailboxSummary, privacy: .public)")
-            print(mailboxSummary)
-            
             // Fetch the 10 latest complete emails including attachments
             if mailboxInfo.messageCount > 0 {
                 logger.notice("Fetching the 10 latest emails with all parts and attachments...")
@@ -100,7 +81,7 @@ do {
                 // Create a SequenceNumberSet for the latest messages
                 let startMessage = max(1, mailboxInfo.messageCount - 9)
                 let endMessage = mailboxInfo.messageCount
-				let sequenceSet = SequenceNumberSet(startMessage...endMessage)
+				let sequenceSet = SequenceNumberSet(endMessage...endMessage)
 
                 do {
                     // Use the fetchEmails method with the sequence number set

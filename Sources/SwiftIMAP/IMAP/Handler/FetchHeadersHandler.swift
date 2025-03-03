@@ -124,7 +124,7 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler<[EmailHeader]>, @
         case .envelope(let envelope):
             // Extract information from envelope
             if let subject = envelope.subject?.stringValue {
-                header.subject = subject
+                header.subject = subject.decodeMIMEHeader()
             }
             
             // Handle from addresses - check if array is not empty
@@ -149,8 +149,8 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler<[EmailHeader]>, @
             header.uid = Int(uid)
             
         case .flags(let flags):
-            header.flags = flags.map { String(describing: $0) }
-            
+            header.flags = flags.map { String($0) }
+				
         default:
             break
         }

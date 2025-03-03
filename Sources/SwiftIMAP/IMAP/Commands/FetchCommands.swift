@@ -47,8 +47,9 @@ public struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
         let attributes: [FetchAttribute] = [
             .uid,
             .envelope,
-            .bodyStructure(extensions: false),
-            .bodySection(peek: true, .header, nil)
+            .bodyStructure(extensions: true),
+            .bodySection(peek: true, .header, nil),
+            .flags
         ]
         
         if T.self == UID.self {

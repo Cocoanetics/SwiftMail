@@ -59,17 +59,13 @@ public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAP
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override public func processResponse(_ response: Response) -> Bool {
-        logger.debug("Processing response in CapabilityHandler: \(String(describing: response))")
-        
         // First check if this is a tagged response for our command
         if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
-            logger.debug("Received tagged response for our command: \(taggedResponse.tag)")
             return super.processResponse(response)
         }
         
         // Then check for untagged capability data
         if case .untagged(.capabilityData(let capabilities)) = response {
-            logger.debug("Received capability data with \(capabilities.count) capabilities")
             lock.withLock {
                 self.capabilities = capabilities
             }
@@ -83,7 +79,6 @@ public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAP
     /// Override channelRead to ensure we see all responses
     override public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
-        logger.debug("CapabilityHandler channelRead: \(String(describing: response))")
         
         // Let the base handler's processResponse method handle the response
         // This will call handleTaggedOKResponse or handleTaggedErrorResponse for tagged responses
@@ -93,7 +88,6 @@ public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAP
         // If not handled by the base handler's processResponse, check if it's an untagged capability response
         if !handled {
             if case .untagged(.capabilityData(let capabilities)) = response {
-                logger.debug("Received capability data with \(capabilities.count) capabilities")
                 lock.withLock {
                     self.capabilities = capabilities
                 }
