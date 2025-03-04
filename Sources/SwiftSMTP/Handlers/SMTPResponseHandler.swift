@@ -1,0 +1,188 @@
+import Foundation
+import NIOCore
+import Logging
+import NIOSSL
+
+/**
+ A channel handler for processing SMTP responses and forwarding them to the appropriate command handler
+ */
+public final class SMTPResponseHandler: ChannelInboundHandler {
+    public typealias InboundIn = String
+    
+    /// Reference to the server that owns this handler
+    private weak var server: SMTPServer?
+    
+    /// Current accumulated response lines
+    private var currentResponse = ""
+    
+    /// Current response code
+    private var currentCode: Int = 0
+    
+    /// Logger for response processing
+    private let logger = Logger(label: "com.cocoanetics.SwiftSMTP.ResponseHandler")
+    
+    /**
+     Initialize a new response handler
+     - Parameter server: The SMTP server that owns this handler
+     */
+    public init(server: SMTPServer) {
+        self.server = server
+    }
+    
+    /**
+     Handle an incoming response line
+     - Parameters:
+        - context: The channel handler context
+        - data: The incoming data (response line)
+     */
+    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        let line = unwrapInboundIn(data)
+        processLine(line, context: context)
+    }
+    
+    /**
+     Handle channel errors
+     - Parameters:
+        - context: The channel handler context
+        - error: The error that occurred
+     */
+    public func errorCaught(context: ChannelHandlerContext, error: Error) {
+        // Forward the error to the server - need to use Task for async calls
+        if let server = server {
+            Task {
+                await server.handleChannelError(error)
+            }
+        }
+        
+        // Log errors locally
+        if let sslError = error as? NIOSSLError, case .uncleanShutdown = sslError {
+            logger.notice("SSL unclean shutdown in SMTP channel (this is normal during disconnection)")
+        } else {
+            logger.error("Error in SMTP channel: \(error.localizedDescription)")
+        }
+        
+        // Close the channel
+        context.close(promise: nil)
+    }
+    
+    /**
+     Process a response line from the server
+     - Parameter line: The response line to process
+     */
+    private func processLine(_ line: String, context: ChannelHandlerContext) {
+        // Add the line to the current response
+        currentResponse += line + "\n"
+        
+        // Try to extract a response code
+        if line.count >= 3, let code = Int(line.prefix(3)), code >= 200 && code < 600 {
+            currentCode = code
+        }
+        
+        // Check if this is the end of the response
+        // SMTP responses end with a space after the code (for the last line of a multi-line response)
+        // or if it's a single-line response with a 3-digit code
+        let isEndOfResponse = (line.count >= 4 && line[line.index(line.startIndex, offsetBy: 3)] == " ") || 
+                              (currentCode > 0 && line.count == 3)
+        
+        // If we have a response code and it's the end of the response
+        if isEndOfResponse && currentCode > 0 {
+            // Parse the response
+            let message = currentResponse.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            // Create the response object
+            let response = SMTPResponse(code: currentCode, message: message)
+            
+            // Forward the response to the server - need to use Task for async calls
+            if let server = server {
+                Task {
+                    await server.processResponse(response)
+                }
+            }
+            
+            // Reset the current response
+            currentResponse = ""
+            currentCode = 0
+        }
+        // Special case for "220 ESMTP" without proper line ending
+        else if line.hasPrefix("220 ") && currentResponse.count <= line.count + 1 {
+            // Create the response object
+            let response = SMTPResponse(code: 220, message: line)
+            
+            // Forward the response to the server - need to use Task for async calls
+            if let server = server {
+                Task {
+                    await server.processResponse(response)
+                }
+            }
+            
+            // Reset the current response
+            currentResponse = ""
+            currentCode = 0
+        }
+    }
+}
+
+/**
+ A frame decoder for SMTP responses that extracts individual response lines
+ */
+public final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
+    public typealias InboundIn = ByteBuffer
+    public typealias InboundOut = String
+    
+    /// Maximum line length (to prevent memory issues)
+    private let maxLength: Int
+    
+    /// Whether to strip the delimiter from the output
+    private let stripDelimiter: Bool
+    
+    /**
+     Initialize a new line-based frame decoder
+     - Parameters:
+        - maxLength: Maximum allowed line length
+        - stripDelimiter: Whether to strip the delimiter from the output
+     */
+    public init(maxLength: Int = 8192, stripDelimiter: Bool = true) {
+        self.maxLength = maxLength
+        self.stripDelimiter = stripDelimiter
+    }
+    
+    /**
+     Decode incoming data into lines
+     - Parameters:
+        - context: The channel handler context
+        - buffer: The incoming data buffer
+     - Returns: Decoding result
+     */
+    public func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
+        // Check if we can find a line delimiter
+        guard let delimiterIndex = buffer.readableBytesView.firstIndex(where: { $0 == 0x0A /* \n */ }) else {
+            return .needMoreData
+        }
+        
+        let length = delimiterIndex - buffer.readerIndex + (stripDelimiter ? 0 : 1)
+        
+        if length > maxLength {
+            // Line is too long, skip it
+            buffer.moveReaderIndex(forwardBy: length + 1)
+            return .continue
+        }
+        
+        let line = buffer.readString(length: length)!
+        
+        // Skip the delimiter
+        buffer.moveReaderIndex(forwardBy: 1)
+        
+        // Remove carriage return if present (handle \r\n)
+        let cleanedLine = line.hasSuffix("\r") ? String(line.dropLast()) : line
+        
+        // Write the decoded line to the next handler
+        context.fireChannelRead(self.wrapInboundOut(cleanedLine))
+        
+        return .continue
+    }
+    
+    public func decodeLast(context: ChannelHandlerContext, buffer: inout ByteBuffer, seenEOF: Bool) throws -> DecodingState {
+        // Just use the normal decode for the last bytes
+        return try decode(context: context, buffer: &buffer)
+    }
+} 
