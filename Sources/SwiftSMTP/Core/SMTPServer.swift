@@ -4,6 +4,7 @@
 import Foundation
 import os.log
 import NIO
+import NIOCore
 import NIOSSL
 import Logging
 import SwiftMailCore
@@ -259,16 +260,25 @@ public actor SMTPServer {
      */
     public func disconnect() async throws {
         guard let channel = channel else {
+            logger.notice("Already disconnected from SMTP server")
             return
         }
         
         logger.info("Disconnecting from SMTP server")
         
-        // Send QUIT command
-        _ = try await sendCommand("QUIT")
-        
-        // Close the connection
-        try await channel.close().get()
+        do {
+            // Send QUIT command
+            _ = try await sendCommand("QUIT")
+            
+            // Close the connection
+            try await channel.close().get()
+        } catch let error as ChannelError where error == .alreadyClosed {
+            // Channel is already closed, which is fine
+            logger.notice("Channel was already closed")
+        } catch {
+            // Log the error but don't rethrow it
+            logger.error("Error during disconnect: \(error.localizedDescription)")
+        }
         
         // Set the channel to nil
         self.channel = nil
@@ -284,7 +294,7 @@ public actor SMTPServer {
      - Throws: An error if the send operation fails
      */
     public func sendEmail(_ email: Email) async throws {
-        guard let channel = channel else {
+        guard let _ = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
         
@@ -430,7 +440,7 @@ public actor SMTPServer {
      Process a line of response from the server
      - Parameter line: The response line
      */
-    fileprivate func processResponseLine(_ line: String) {
+    internal func processResponseLine(_ line: String) {
         // Add the line to the current response without logging each line
         currentResponse += line + "\n"
         
@@ -567,196 +577,5 @@ public actor SMTPServer {
         }, onTimeout: {
             throw SMTPError.connectionFailed("Greeting timeout")
         })
-    }
-}
-
-// MARK: - SMTP Line Based Frame Decoder
-
-/**
- A custom line-based frame decoder for SMTP
- */
-private final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
-    typealias InboundIn = ByteBuffer
-    typealias InboundOut = ByteBuffer
-    
-    private var buffer = ""
-    private var waitingTime: TimeInterval = 0
-    private let checkInterval: TimeInterval = 0.1
-    private let logger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTPDecoder")
-    
-    func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
-        // Read the buffer as a string
-        guard let string = buffer.readString(length: buffer.readableBytes) else {
-            return .needMoreData
-        }
-        
-        logger.trace("Decoder received raw data")
-        
-        // Add the string to the buffer
-        self.buffer += string
-        
-        // If we have a buffer with content, process it
-        if !self.buffer.isEmpty {
-            // Check if the buffer contains a complete SMTP response with \r\n
-            if self.buffer.contains("\r\n") {
-                processCompleteLines(context: context)
-                return .continue
-            } 
-            // Special case for responses without proper line endings
-            else if self.buffer.count >= 3 {
-                // Check if it starts with a 3-digit code (SMTP response code)
-                let prefix = self.buffer.prefix(3)
-                if let code = Int(prefix), code >= 200 && code < 600 {
-                    // This looks like a valid SMTP response code
-                    logger.trace("Found valid SMTP response code: \(code)")
-                    
-                    // Create a new buffer with the line
-                    var outputBuffer = context.channel.allocator.buffer(capacity: self.buffer.utf8.count)
-                    outputBuffer.writeString(self.buffer)
-                    
-                    // Fire the decoded message
-                    context.fireChannelRead(self.wrapInboundOut(outputBuffer))
-                    
-                    // Clear the buffer
-                    self.buffer = ""
-                    return .continue
-                }
-            }
-            
-            // If we've been waiting for a while with data in the buffer, process it anyway
-            waitingTime += checkInterval
-            if waitingTime > 1.0 && !self.buffer.isEmpty {
-                logger.trace("Processing buffer after waiting")
-                
-                // Create a new buffer with the content
-                var outputBuffer = context.channel.allocator.buffer(capacity: self.buffer.utf8.count)
-                outputBuffer.writeString(self.buffer)
-                
-                // Fire the decoded message
-                context.fireChannelRead(self.wrapInboundOut(outputBuffer))
-                
-                // Clear the buffer and reset waiting time
-                self.buffer = ""
-                waitingTime = 0
-                return .continue
-            }
-        }
-        
-        // Need more data
-        return .needMoreData
-    }
-    
-    private func processCompleteLines(context: ChannelHandlerContext) {
-        let lines = self.buffer.components(separatedBy: "\r\n")
-        
-        // Process all complete lines
-        var processedLines = 0
-        for line in lines.dropLast() { // Skip the last element which might be incomplete
-            if !line.isEmpty {
-                logger.trace("Processing complete line")
-                
-                // Create a new buffer with the line
-                var outputBuffer = context.channel.allocator.buffer(capacity: line.utf8.count)
-                outputBuffer.writeString(line)
-                
-                // Fire the decoded message
-                context.fireChannelRead(self.wrapInboundOut(outputBuffer))
-                
-                processedLines += 1
-            }
-        }
-        
-        // Remove processed lines from the buffer
-        if processedLines > 0 {
-            let remainingBuffer = lines.dropFirst(processedLines).joined(separator: "\r\n")
-            self.buffer = remainingBuffer.isEmpty ? "" : remainingBuffer + "\r\n"
-        }
-    }
-    
-    func decodeLast(context: ChannelHandlerContext, buffer: inout ByteBuffer, seenEOF: Bool) throws -> DecodingState {
-        // If we have any data left in the buffer when the connection is closed, process it
-        if !self.buffer.isEmpty {
-            logger.trace("Processing remaining buffer at EOF")
-            
-            var outputBuffer = context.channel.allocator.buffer(capacity: self.buffer.utf8.count)
-            outputBuffer.writeString(self.buffer)
-            context.fireChannelRead(self.wrapInboundOut(outputBuffer))
-            self.buffer = ""
-            return .continue
-        }
-        
-        // Try to decode any remaining data in the input buffer
-        return try decode(context: context, buffer: &buffer)
-    }
-}
-
-// MARK: - SMTP Response Handler
-
-/**
- A channel handler that processes SMTP responses
- */
-private class SMTPResponseHandler: ChannelInboundHandler {
-    typealias InboundIn = ByteBuffer
-    
-    private weak var server: SMTPServer?
-    private let logger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTPResponseHandler")
-    
-    init(server: SMTPServer) {
-        self.server = server
-    }
-    
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let buffer = self.unwrapInboundIn(data)
-        
-        // Convert the buffer to a string
-        if let string = buffer.getString(at: 0, length: buffer.readableBytes) {
-            // Process the response line
-            Task {
-                await server?.processResponseLine(string)
-            }
-        }
-    }
-    
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
-        // Log the error
-        logger.error("Error in SMTP channel: \(error)")
-        
-        // Close the channel
-        context.close(promise: nil)
-    }
-}
-
-// MARK: - SMTP Response
-
-/**
- A struct representing an SMTP server response
- */
-public struct SMTPResponse: Sendable {
-    /** The response code */
-    public let code: Int
-    
-    /** The response message */
-    public let message: String
-}
-
-// MARK: - Error Types
-
-public enum SMTPError: Error, LocalizedError {
-    case connectionFailed(String)
-    case authenticationFailed(String)
-    case sendFailed(String)
-    case tlsFailed(String)
-    
-    public var errorDescription: String? {
-        switch self {
-        case .connectionFailed(let message):
-            return "SMTP connection failed: \(message)"
-        case .authenticationFailed(let message):
-            return "SMTP authentication failed: \(message)"
-        case .sendFailed(let message):
-            return "SMTP send failed: \(message)"
-        case .tlsFailed(let message):
-            return "SMTP TLS negotiation failed: \(message)"
-        }
     }
 } 
