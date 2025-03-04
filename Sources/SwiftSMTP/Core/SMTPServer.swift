@@ -431,10 +431,7 @@ public actor SMTPServer {
      - Parameter line: The response line
      */
     fileprivate func processResponseLine(_ line: String) {
-        // Log the incoming response
-        inboundLogger.debug("\(line)")
-        
-        // Add the line to the current response
+        // Add the line to the current response without logging each line
         currentResponse += line + "\n"
         
         // Try to extract a response code
@@ -458,6 +455,9 @@ public actor SMTPServer {
             // Create the response object
             let response = SMTPResponse(code: responseCode, message: message)
             
+            // Log the complete response
+            inboundLogger.debug("\(message)")
+            
             logger.debug("Completing SMTP response with code \(responseCode)")
             
             // Fulfill the promise
@@ -469,6 +469,9 @@ public actor SMTPServer {
         // Special case for "220 ESMTP" without proper line ending
         else if line.hasPrefix("220 ") {
             logger.debug("Detected greeting response: \(line)")
+            
+            // Log the greeting response
+            inboundLogger.debug("\(line)")
             
             // Create the response object
             let response = SMTPResponse(code: 220, message: line)
