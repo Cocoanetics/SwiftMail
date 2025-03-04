@@ -143,7 +143,7 @@ public actor SMTPServer {
                     logger.error("STARTTLS failed for Gmail SMTP: \(error.localizedDescription). Cannot continue without encryption.")
                     throw SMTPError.tlsFailed("Gmail requires encryption: \(error.localizedDescription)")
                 } else {
-                    logger.warning("STARTTLS failed: \(error.localizedDescription). Continuing without encryption.")
+                logger.warning("STARTTLS failed: \(error.localizedDescription). Continuing without encryption.")
                 }
             }
         }
@@ -183,29 +183,35 @@ public actor SMTPServer {
         // Create the handler for this command
         var handler: (any SMTPCommandHandler)?
         
+        // Determine timeout for this command type
+        let timeoutSeconds = getTimeoutForCommand(command)
+        
         // Check if the command is an AuthCommand
         if let authCommand = command as? AuthCommand, 
            CommandType.ResultType.self == AuthResult.self {
             print("DEBUG - Creating AuthHandler for AuthCommand")
             logger.debug("Creating AuthHandler for AuthCommand")
-            // Use the command's createHandler method
-            let authHandler = authCommand.createHandler(
-                channel: channel,
+            // Use the initializer directly
+            let authHandler = AuthHandler(
                 commandTag: commandTag,
                 promise: resultPromise as! EventLoopPromise<AuthResult>,
-                timeoutSeconds: command.timeoutSeconds
+                method: authCommand.method,
+                username: authCommand.username,
+                password: authCommand.password,
+                channel: channel
             )
             handler = authHandler
-            print("DEBUG - AuthHandler created successfully")
+            print("DEBUG - AuthHandler initialized with method: \(authCommand.method), username: \(authCommand.username), channel: \(channel)")
             logger.debug("AuthHandler created successfully")
         } else {
-            print("DEBUG - Creating handler using static createHandler method")
-            logger.debug("Creating handler using static createHandler method")
-            // Use the static createHandler method
-            handler = CommandType.HandlerType.createHandler(
+            print("DEBUG - Creating handler using initializer")
+            logger.debug("Creating handler using initializer")
+
+            // All command handlers are initialized directly with the required parameters.
+            // This modern approach avoids the need for a createHandler method on each command.
+            handler = CommandType.HandlerType(
                 commandTag: commandTag,
-                promise: resultPromise,
-                timeoutSeconds: command.timeoutSeconds
+                promise: resultPromise
             )
             print("DEBUG - Handler created successfully: \(type(of: handler))")
             logger.debug("Handler created successfully: \(type(of: handler))")
@@ -234,9 +240,9 @@ public actor SMTPServer {
         }
         
         // Create a timeout for the command
-        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(command.timeoutSeconds))) {
-            print("DEBUG - Command timed out after \(command.timeoutSeconds) seconds")
-            self.logger.warning("Command timed out after \(command.timeoutSeconds) seconds")
+        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+            print("DEBUG - Command timed out after \(timeoutSeconds) seconds")
+            self.logger.warning("Command timed out after \(timeoutSeconds) seconds")
             resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
         }
         
@@ -291,10 +297,30 @@ public actor SMTPServer {
     }
     
     /**
+     Determine the appropriate timeout for a command
+     - Parameter command: The command to get a timeout for
+     - Returns: The timeout in seconds
+     */
+    private func getTimeoutForCommand<T: SMTPCommand>(_ command: T) -> Int {
+        switch T.self {
+        case is SendContentCommand.Type:
+            return 120  // Content sending may be large and take more time
+        case is QuitCommand.Type:
+            return 10   // Shorter timeout for QUIT command
+        case is AuthCommand.Type:
+            return 30   // Authentication may need more time
+        case is StartTLSCommand.Type:
+            return 30   // TLS negotiation may take time
+        default:
+            return 30   // Default timeout for most commands
+        }
+    }
+    
+    /**
      Authenticate with the SMTP server
      - Parameters:
-       - username: The username for authentication
-       - password: The password for authentication
+     - username: The username for authentication
+     - password: The password for authentication
      - Returns: Boolean indicating if authentication was successful
      - Throws: SMTPError if authentication fails
      */
@@ -399,18 +425,24 @@ public actor SMTPServer {
             return
         }
         
-        // Try to send QUIT command but don't wait for response
+        logger.debug("Sending QUIT command...")
+        
         do {
-            let buffer = channel.allocator.buffer(string: "QUIT\r\n")
-            try await channel.writeAndFlush(buffer).get()
-            logger.debug("QUIT command sent")
-        } catch {
-            logger.debug("Failed to send QUIT command: \(error.localizedDescription)")
+            // Use QuitCommand instead of directly sending a string
+            let quitCommand = QuitCommand()
+            
+            do {
+                // Execute the QUIT command - it has its own timeout set to 10 seconds
+                let result = try await executeCommand(quitCommand)
+                logger.debug("QUIT command completed with result: \(result)")
+            } catch {
+                // If the QUIT command fails, just log it and continue with disconnection
+                // This could happen if the server doesn't respond or responds with an error
+                logger.warning("QUIT command failed: \(error.localizedDescription)")
+            }
         }
         
-        // Simply close the channel without waiting for response
-        // Note: This may result in an "SSL unclean shutdown" message in the logs,
-        // which is normal behavior when closing SSL/TLS connections and can be safely ignored
+        // Close the channel regardless of QUIT command result
         channel.close(promise: nil)
         self.channel = nil
         
@@ -431,171 +463,51 @@ public actor SMTPServer {
         
         logger.info("Sending email from \(email.sender.formatted) to \(email.recipients.count) recipients")
         
-        // Send MAIL FROM command
-        let mailFromResponse = try await sendCommand("MAIL FROM:<\(email.sender.address)>")
+        // Send MAIL FROM command using the new command class
+        let mailFromCommand = MailFromCommand(senderAddress: email.sender.address)
+        let mailFromSuccess = try await executeCommand(mailFromCommand)
         
         // Check if MAIL FROM was accepted
-        guard mailFromResponse.code >= 200 && mailFromResponse.code < 300 else {
-            throw SMTPError.sendFailed("Server rejected sender: \(mailFromResponse.message)")
+        guard mailFromSuccess else {
+            throw SMTPError.sendFailed("Server rejected sender")
         }
         
-        // Send RCPT TO command for each recipient
+        // Send RCPT TO command for each recipient using the new command class
         for recipient in email.recipients {
-            let rcptToResponse = try await sendCommand("RCPT TO:<\(recipient.address)>")
+            let rcptToCommand = RcptToCommand(recipientAddress: recipient.address)
+            let rcptToSuccess = try await executeCommand(rcptToCommand)
             
             // Check if RCPT TO was accepted
-            guard rcptToResponse.code >= 200 && rcptToResponse.code < 300 else {
-                throw SMTPError.sendFailed("Server rejected recipient \(recipient.address): \(rcptToResponse.message)")
+            guard rcptToSuccess else {
+                throw SMTPError.sendFailed("Server rejected recipient \(recipient.address)")
             }
         }
         
-        // Send DATA command
-        let dataResponse = try await sendCommand("DATA")
+        // Send DATA command using the new command class
+        let dataCommand = DataCommand()
+        let dataSuccess = try await executeCommand(dataCommand)
         
         // Check if DATA was accepted
-        guard dataResponse.code >= 300 && dataResponse.code < 400 else {
-            throw SMTPError.sendFailed("Server rejected DATA command: \(dataResponse.message)")
+        guard dataSuccess else {
+            throw SMTPError.sendFailed("Server rejected DATA command")
         }
         
         // Construct email content
         let emailContent = constructEmailContent(email)
         
-        // Send email content
-        let contentResponse = try await sendCommand(emailContent + "\r\n.")
+        // Send email content using the new command class
+        let contentCommand = SendContentCommand(content: emailContent)
+        let contentSuccess = try await executeCommand(contentCommand)
         
         // Check if email content was accepted
-        guard contentResponse.code >= 200 && contentResponse.code < 300 else {
-            throw SMTPError.sendFailed("Server rejected email content: \(contentResponse.message)")
+        guard contentSuccess else {
+            throw SMTPError.sendFailed("Server rejected email content")
         }
         
         logger.info("Email sent successfully")
     }
     
     // MARK: - Helper Methods
-    
-    /**
-     Send a command to the SMTP server
-     - Parameter command: The command to send
-     - Returns: The server's response
-     - Throws: An error if the command fails
-     */
-    private func sendCommand(_ command: String) async throws -> SMTPResponse {
-        guard let channel = channel else {
-            throw SMTPError.connectionFailed("Not connected to SMTP server")
-        }
-        
-        // Log the outgoing command (except for AUTH commands which contain sensitive data)
-        if !command.hasPrefix("AUTH") && !command.contains("LOGIN") {
-            outboundLogger.debug("\(command)")
-            logger.debug("Sending SMTP command")
-        } else {
-            outboundLogger.debug("[AUTH COMMAND]")
-        }
-        
-        // Create a promise for the response
-        let promise = channel.eventLoop.makePromise(of: SMTPResponse.self)
-        responsePromise = promise
-        
-        do {
-            // Send the command
-            let buffer = channel.allocator.buffer(string: command + "\r\n")
-            try await channel.writeAndFlush(buffer).get()
-            
-            logger.debug("SMTP command sent, waiting for response")
-            
-            // Wait for the response with a timeout
-            return try await withTimeout(seconds: 30.0, operation: {
-                try await promise.futureResult.get()
-            }, onTimeout: {
-                // Fulfill the promise with an error response to prevent leaks
-                promise.fail(SMTPError.connectionFailed("Response timeout"))
-                throw SMTPError.connectionFailed("Response timeout")
-            })
-        } catch {
-            // If any error occurs, fail the promise to prevent leaks
-            promise.fail(error)
-            throw error
-        }
-    }
-    
-    /**
-     Execute an async operation with a timeout
-     - Parameters:
-        - seconds: The timeout in seconds
-        - operation: The async operation to execute
-        - onTimeout: The closure to execute on timeout
-     - Returns: The result of the operation
-     - Throws: An error if the operation fails or times out
-     */
-    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T, onTimeout: @escaping () throws -> Void) async throws -> T {
-        return try await withThrowingTaskGroup(of: T.self) { group in
-            // Add the main operation
-            group.addTask {
-                return try await operation()
-            }
-            
-            // Add a timeout task
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                try onTimeout()
-                throw SMTPError.connectionFailed("Timeout")
-            }
-            
-            // Wait for the first task to complete
-            let result = try await group.next()!
-            
-            // Cancel the remaining tasks
-            group.cancelAll()
-            
-            return result
-        }
-    }
-    
-    /**
-     Execute a handler for an SMTP command
-     - Parameters:
-        - handler: The handler to execute
-        - command: The command to send
-     - Returns: The result of the handler
-     - Throws: An error if the command fails
-     */
-    private func executeHandler<H: SMTPCommandHandler>(_ handler: H, command: String? = nil) async throws -> H.ResultType {
-        guard let channel = channel else {
-            throw SMTPError.connectionFailed("Not connected to SMTP server")
-        }
-        
-        // Set the current handler
-        currentHandler = handler
-        
-        // Send the command if provided
-        if let command = command {
-            // Log the outgoing command (except for AUTH commands which contain sensitive data)
-            if !command.hasPrefix("AUTH") && !command.contains("LOGIN") {
-                outboundLogger.debug("\(command)")
-            } else {
-                outboundLogger.debug("[AUTH COMMAND]")
-            }
-            
-            // Send the command
-            let buffer = channel.allocator.buffer(string: command + "\r\n")
-            try await channel.writeAndFlush(buffer).get()
-        }
-        
-        do {
-            // Wait for the handler to complete with a timeout
-            return try await withTimeout(seconds: Double(handler.timeoutSeconds), operation: {
-                try await handler.promise.futureResult.get()
-            }, onTimeout: {
-                // Fulfill the promise with an error to prevent leaks
-                handler.promise.fail(SMTPError.connectionFailed("Response timeout"))
-                throw SMTPError.connectionFailed("Response timeout")
-            })
-        } catch {
-            // If any error occurs, fail the promise to prevent leaks
-            handler.promise.fail(error)
-            throw error
-        }
-    }
     
     /**
      Execute a handler for an SMTP command without sending a command
@@ -617,7 +529,7 @@ public actor SMTPServer {
         let promise = channel.eventLoop.makePromise(of: T.self)
         
         // Create the handler directly using initializer
-        let handler = HandlerType.init(commandTag: "", promise: promise, timeoutSeconds: timeoutSeconds)
+        let handler = HandlerType.init(commandTag: "", promise: promise)
         
         // Set the logger on the handler if it has one
         if var loggable = handler as? LoggableHandler {
@@ -825,12 +737,13 @@ public actor SMTPServer {
      - Throws: An error if the TLS negotiation fails
      */
     private func startTLS() async throws {
-        // Send STARTTLS command
-        let response = try await sendCommand("STARTTLS")
+        // Send STARTTLS command using the modernized command approach
+        let command = StartTLSCommand()
+        let success = try await executeCommand(command)
         
         // Check if STARTTLS was accepted
-        guard response.code >= 200 && response.code < 300 else {
-            throw SMTPError.tlsFailed("Server rejected STARTTLS: \(response.message)")
+        guard success else {
+            throw SMTPError.tlsFailed("Server rejected STARTTLS")
         }
         
         guard let channel = channel else {
@@ -852,8 +765,11 @@ public actor SMTPServer {
         isTLSEnabled = true
         
         // Send EHLO again after STARTTLS and update capabilities
-        let ehloResponse = try await sendCommand("EHLO \(getLocalHostname())")
-        parseCapabilities(from: ehloResponse.message)
+        let ehloCommand = EHLOCommand(hostname: getLocalHostname())
+        let capabilities = try await executeCommand(ehloCommand)
+        
+        // Store capabilities for later use
+        self.capabilities = capabilities
     }
     
     /**
@@ -916,5 +832,38 @@ public actor SMTPServer {
         logger.debug("Received server capabilities: \(serverCapabilities.joined(separator: ", "))")
         
         return serverCapabilities
+    }
+    
+    /**
+     Execute an async operation with a timeout
+     - Parameters:
+        - seconds: The timeout in seconds
+        - operation: The async operation to execute
+        - onTimeout: The closure to execute on timeout
+     - Returns: The result of the operation
+     - Throws: An error if the operation fails or times out
+     */
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T, onTimeout: @escaping () throws -> Void) async throws -> T {
+        return try await withThrowingTaskGroup(of: T.self) { group in
+            // Add the main operation
+            group.addTask {
+                return try await operation()
+            }
+            
+            // Add a timeout task
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                try onTimeout()
+                throw SMTPError.connectionFailed("Timeout")
+            }
+            
+            // Wait for the first task to complete
+            let result = try await group.next()!
+            
+            // Cancel the remaining tasks
+            group.cancelAll()
+            
+            return result
+        }
     }
 } 

@@ -66,25 +66,4 @@ public struct AuthCommand: SMTPCommand {
             throw SMTPError.authenticationFailed("Password cannot be empty")
         }
     }
-    
-    /**
-     Create a handler for this command
-     - Parameters:
-       - channel: The channel to use for sending commands
-       - commandTag: Optional tag for the command
-       - promise: The promise to fulfill when the command completes
-       - timeoutSeconds: The timeout in seconds for this command
-     - Returns: A handler for this command
-     */
-    public func createHandler(channel: Channel, commandTag: String?, promise: EventLoopPromise<AuthResult>, timeoutSeconds: Int) -> AuthHandler {
-        return AuthHandler(
-            commandTag: commandTag,
-            promise: promise,
-            timeoutSeconds: timeoutSeconds,
-            method: method,
-            username: username,
-            password: password,
-            channel: channel
-        )
-    }
 } 

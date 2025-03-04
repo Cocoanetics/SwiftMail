@@ -14,9 +14,6 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     /// The promise that will be fulfilled when the command completes
     public let promise: EventLoopPromise<ResultType>
     
-    /// The timeout in seconds for this command
-    public let timeoutSeconds: Int
-    
     /// Logger for handler operations
     public var logger: Logger
     
@@ -24,11 +21,9 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     /// - Parameters:
     ///   - commandTag: Optional tag for the command (not commonly used in SMTP but included for consistency)
     ///   - promise: The promise to fulfill when the command completes
-    ///   - timeoutSeconds: The timeout in seconds for this command
-    public required init(commandTag: String?, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int = 30) {
+    public required init(commandTag: String?, promise: EventLoopPromise<ResultType>) {
         self.commandTag = commandTag
         self.promise = promise
-        self.timeoutSeconds = timeoutSeconds
         self.logger = Logger(label: "com.cocoanetics.SwiftSMTP.Handler.\(String(describing: type(of: self)))")
     }
     
@@ -64,11 +59,6 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     open func handleError(response: SMTPResponse) {
         // Default implementation, subclasses should override
         promise.fail(SMTPError.connectionFailed("SMTP error: \(response.code) \(response.message)"))
-    }
-    
-    /// Default implementation for createHandler
-    public static func createHandler(commandTag: String?, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int) -> Self {
-        return Self(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
     /// Cancel any active timeout

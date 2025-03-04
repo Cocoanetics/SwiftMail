@@ -12,9 +12,6 @@ public protocol SMTPCommand {
     /// The type of handler that will process responses for this command
     associatedtype HandlerType: SMTPCommandHandler where HandlerType.ResultType == ResultType
     
-    /// The timeout in seconds for this command
-    var timeoutSeconds: Int { get }
-    
     /// Convert this command to a string that can be sent to the SMTP server
     /// This method should be the primary method used to generate the command string
     func toCommandString() -> String
@@ -35,9 +32,6 @@ extension SMTPCommand {
     public func validate() throws {
         // No validation by default
     }
-    
-    /// Default timeout (30 seconds)
-    public var timeoutSeconds: Int { return 30 }
     
     /// Default implementation that calls toString with the hostname
     /// Subclasses should override this for commands that don't need a hostname

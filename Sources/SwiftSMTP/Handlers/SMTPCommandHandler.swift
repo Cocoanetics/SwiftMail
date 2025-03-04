@@ -13,28 +13,16 @@ public protocol SMTPCommandHandler {
     /// The promise that will be fulfilled when the command completes
     var promise: EventLoopPromise<ResultType> { get }
     
-    /// The timeout in seconds for this command
-    var timeoutSeconds: Int { get }
-    
     /// Process a response from the server
     /// - Parameter response: The response to process
     /// - Returns: Whether the handler is complete
     func processResponse(_ response: SMTPResponse) -> Bool
     
-    /// Create a handler with the specified parameters
-    /// - Parameters:
-    ///   - commandTag: Optional tag for the command
-    ///   - promise: The promise to fulfill when the command completes
-    ///   - timeoutSeconds: The timeout in seconds for this command
-    /// - Returns: A new handler instance
-    static func createHandler(commandTag: String?, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int) -> Self
-    
     /// Required initializer for creating handler instances
     /// - Parameters:
     ///   - commandTag: Optional tag for the command
     ///   - promise: The promise to fulfill when the command completes
-    ///   - timeoutSeconds: The timeout in seconds for this command
-    init(commandTag: String?, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int)
+    init(commandTag: String?, promise: EventLoopPromise<ResultType>)
 }
 
 /// Protocol for handlers that can have a logger set

@@ -30,32 +30,23 @@ public class AuthHandler: BaseSMTPHandler<AuthResult> {
     /// - Parameters:
     ///   - commandTag: Optional tag for the command
     ///   - promise: The promise to fulfill when the command completes
-    ///   - timeoutSeconds: The timeout in seconds for this command
-    ///   - method: Authentication method to use
-    ///   - username: Username for authentication
-    ///   - password: Password for authentication
-    ///   - channel: Channel for sending commands
-    public required init(commandTag: String?, promise: EventLoopPromise<AuthResult>, timeoutSeconds: Int = 30) {
+    public required convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
         // These will be set in the designated initializer
-        self.method = .plain
-        self.username = ""
-        self.password = ""
-        self.channel = nil
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
+        self.init(commandTag: commandTag, promise: promise, method: .plain, username: "", password: "", channel: nil)
         print("DEBUG - AuthHandler initialized with required initializer (incomplete)")
         logger.debug("AuthHandler initialized with required initializer (incomplete)")
     }
     
     /// Designated initializer
-    public init(commandTag: String?, promise: EventLoopPromise<AuthResult>, timeoutSeconds: Int = 30, 
-               method: AuthMethod, username: String, password: String, channel: Channel) {
+    public init(commandTag: String?, promise: EventLoopPromise<AuthResult>,
+               method: AuthMethod, username: String, password: String, channel: Channel?) {
         self.method = method
         self.username = username
         self.password = password
         self.channel = channel
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
-        print("DEBUG - AuthHandler initialized with method: \(method), username: \(username), channel: \(channel)")
-        logger.debug("AuthHandler initialized with method: \(method), username: \(username), channel: \(channel)")
+        super.init(commandTag: commandTag, promise: promise)
+        print("DEBUG - AuthHandler initialized with method: \(method), username: \(username), channel: \(String(describing: channel))")
+        logger.debug("AuthHandler initialized with method: \(method), username: \(username)")
     }
     
     /// Process a response line from the server
