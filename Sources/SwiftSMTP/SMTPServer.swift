@@ -161,19 +161,25 @@ public actor SMTPServer {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
         
-        // Create the handler promise
+        logger.debug("Sending EHLO command to get server capabilities")
+        
+        // Build the EHLO command with the local hostname
+        let command = "EHLO \(getLocalHostname())"
+        
+        // Create a promise for the result
         let promise = channel.eventLoop.makePromise(of: [String].self)
         
-        // Create the handler
-		let handler = EHLOHandler.init(commandTag: "", promise: promise)
-        
-        // Execute the handler with the EHLO command
-        let newCapabilities = try await executeHandler(handler, command: "EHLO \(getLocalHostname())")
+        // Create and execute the handler
+        let capabilities = try await executeHandler(
+            EHLOHandler(commandTag: "EHLO", promise: promise, timeoutSeconds: 30), 
+            command: command
+        )
         
         // Store capabilities for later use
-        capabilities = newCapabilities
+        self.capabilities = capabilities
+        logger.debug("Received capabilities: \(capabilities.joined(separator: ", "))")
         
-        return newCapabilities
+        return capabilities
     }
     
     /**
