@@ -33,6 +33,9 @@ public actor SMTPServer {
     /** Flag indicating whether TLS is enabled */
     private var isTLSEnabled = false
     
+    /** Server capabilities reported by EHLO command */
+    private var capabilities: [String] = []
+    
     /**
      Logger for SMTP operations
      */
@@ -119,11 +122,12 @@ public actor SMTPServer {
             throw SMTPError.connectionFailed("Server rejected connection: \(greeting.message)")
         }
         
-        // Send EHLO command
-        _ = try await sendCommand("EHLO \(getLocalHostname())")
+        // Send EHLO command and store capabilities
+        let ehloResponse = try await sendCommand("EHLO \(getLocalHostname())")
+        parseCapabilities(from: ehloResponse.message)
         
         // If not using SSL and port is standard SMTP port, try STARTTLS
-        if !useSSL && port == 587 {
+        if !useSSL && port == 587 && capabilities.contains("STARTTLS") {
             do {
                 try await startTLS()
             } catch {
@@ -132,6 +136,36 @@ public actor SMTPServer {
         }
         
         logger.info("Connected to SMTP server \(self.host):\(self.port)")
+    }
+    
+    /**
+     Parse server capabilities from EHLO response
+     - Parameter response: The EHLO response message
+     */
+    private func parseCapabilities(from response: String) {
+        // Clear existing capabilities
+        capabilities.removeAll()
+        
+        // Split the response into lines
+        let lines = response.split(separator: "\n")
+        
+        // Process each line (skip the first line which is the greeting)
+        for line in lines.dropFirst() {
+            // Extract the capability (remove the response code prefix if present)
+            let capabilityLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if capabilityLine.count > 4 && capabilityLine.prefix(4).allSatisfy({ $0.isNumber || $0 == "-" }) {
+                // This is a line with a response code prefix (e.g., "250-SIZE 20480000")
+                let capability = String(capabilityLine.dropFirst(4)).trimmingCharacters(in: .whitespaces)
+                
+                // Extract the base capability (before any parameters)
+                let baseCapability = capability.split(separator: " ").first.map(String.init) ?? capability
+                capabilities.append(baseCapability)
+                
+                logger.debug("Detected server capability: \(baseCapability)")
+            }
+        }
+        
+        logger.info("Server capabilities: \(capabilities.joined(separator: ", "))")
     }
     
     /**
@@ -161,8 +195,9 @@ public actor SMTPServer {
         // Set TLS flag
         isTLSEnabled = true
         
-        // Send EHLO again after STARTTLS
-        _ = try await sendCommand("EHLO \(getLocalHostname())")
+        // Send EHLO again after STARTTLS and update capabilities
+        let ehloResponse = try await sendCommand("EHLO \(getLocalHostname())")
+        parseCapabilities(from: ehloResponse.message)
     }
     
     /**
@@ -177,6 +212,12 @@ public actor SMTPServer {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
         
+        // Check if authentication is supported
+        if !capabilities.contains("AUTH") && !capabilities.contains("AUTH=LOGIN") && !capabilities.contains("AUTH=PLAIN") {
+            logger.notice("Authentication not supported by server, skipping login")
+            return
+        }
+        
         logger.info("Authenticating with SMTP server")
         
         // Send AUTH LOGIN command
@@ -184,6 +225,10 @@ public actor SMTPServer {
         
         // Check if AUTH LOGIN was accepted
         guard response.code >= 300 && response.code < 400 else {
+            if response.code == 503 && response.message.contains("authentication not enabled") {
+                logger.notice("Server reported authentication not enabled, continuing without authentication")
+                return
+            }
             throw SMTPError.authenticationFailed("Server rejected AUTH LOGIN: \(response.message)")
         }
         
@@ -243,7 +288,6 @@ public actor SMTPServer {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
         
-        print("Sending email from \(email.sender.formatted) to \(email.recipients.map { $0.formatted }.joined(separator: ", "))")
         logger.info("Sending email from \(email.sender.formatted) to \(email.recipients.count) recipients")
         
         // Send MAIL FROM command
@@ -301,11 +345,10 @@ public actor SMTPServer {
         
         // Log the outgoing command (except for AUTH commands which contain sensitive data)
         if !command.hasPrefix("AUTH") && !command.contains("LOGIN") {
-            outboundLogger.debug(">>> \(command)")
-            print("Sending SMTP command: \"\(command)\"")
+            outboundLogger.debug("\(command)")
+            logger.debug("Sending SMTP command")
         } else {
-            outboundLogger.debug(">>> [AUTH COMMAND]")
-            print("Sending SMTP auth command")
+            outboundLogger.debug("[AUTH COMMAND]")
         }
         
         // Create a promise for the response
@@ -316,13 +359,12 @@ public actor SMTPServer {
         let buffer = channel.allocator.buffer(string: command + "\r\n")
         try await channel.writeAndFlush(buffer).get()
         
-        print("SMTP command sent, waiting for response...")
+        logger.debug("SMTP command sent, waiting for response")
         
         // Wait for the response with a timeout
         return try await withTimeout(seconds: 30, operation: {
             try await promise.futureResult.get()
         }, onTimeout: {
-            print("SMTP response timed out after 30 seconds")
             throw SMTPError.connectionFailed("Response timeout")
         })
     }
@@ -370,7 +412,7 @@ public actor SMTPServer {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
         
-        print("Waiting for SMTP server response...")
+        logger.debug("Waiting for SMTP server response")
         
         // Create a promise for the response
         let promise = channel.eventLoop.makePromise(of: SMTPResponse.self)
@@ -380,7 +422,6 @@ public actor SMTPServer {
         return try await withTimeout(seconds: 30, operation: {
             try await promise.futureResult.get()
         }, onTimeout: {
-            print("SMTP response timed out after 30 seconds")
             throw SMTPError.connectionFailed("Response timeout")
         })
     }
@@ -391,8 +432,7 @@ public actor SMTPServer {
      */
     fileprivate func processResponseLine(_ line: String) {
         // Log the incoming response
-        inboundLogger.debug("<<< \(line)")
-        print("Received SMTP response: \"\(line)\"")
+        inboundLogger.debug("\(line)")
         
         // Add the line to the current response
         currentResponse += line + "\n"
@@ -401,7 +441,7 @@ public actor SMTPServer {
         var responseCode = 0
         if line.count >= 3, let code = Int(line.prefix(3)), code >= 200 && code < 600 {
             responseCode = code
-            print("Found valid SMTP response code: \(responseCode)")
+            logger.debug("Found valid SMTP response code: \(responseCode)")
         }
         
         // Check if this is the end of the response
@@ -418,7 +458,7 @@ public actor SMTPServer {
             // Create the response object
             let response = SMTPResponse(code: responseCode, message: message)
             
-            print("Completing SMTP response with code \(responseCode): \(message)")
+            logger.debug("Completing SMTP response with code \(responseCode)")
             
             // Fulfill the promise
             responsePromise?.succeed(response)
@@ -428,7 +468,7 @@ public actor SMTPServer {
         }
         // Special case for "220 ESMTP" without proper line ending
         else if line.hasPrefix("220 ") {
-            print("Detected greeting response: \(line)")
+            logger.debug("Detected greeting response: \(line)")
             
             // Create the response object
             let response = SMTPResponse(code: 220, message: line)
@@ -512,7 +552,7 @@ public actor SMTPServer {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
         
-        print("Waiting for SMTP server greeting...")
+        logger.debug("Waiting for SMTP server greeting")
         
         // Create a promise for the response
         let promise = channel.eventLoop.makePromise(of: SMTPResponse.self)
@@ -522,7 +562,6 @@ public actor SMTPServer {
         return try await withTimeout(seconds: 30, operation: {
             try await promise.futureResult.get()
         }, onTimeout: {
-            print("SMTP greeting timed out after 30 seconds")
             throw SMTPError.connectionFailed("Greeting timeout")
         })
     }
@@ -540,6 +579,7 @@ private final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
     private var buffer = ""
     private var waitingTime: TimeInterval = 0
     private let checkInterval: TimeInterval = 0.1
+    private let logger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTPDecoder")
     
     func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
         // Read the buffer as a string
@@ -547,7 +587,7 @@ private final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
             return .needMoreData
         }
         
-        print("Decoder received raw data: \"\(string)\"")
+        logger.trace("Decoder received raw data")
         
         // Add the string to the buffer
         self.buffer += string
@@ -565,7 +605,7 @@ private final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
                 let prefix = self.buffer.prefix(3)
                 if let code = Int(prefix), code >= 200 && code < 600 {
                     // This looks like a valid SMTP response code
-                    print("Found valid SMTP response code: \(code)")
+                    logger.trace("Found valid SMTP response code: \(code)")
                     
                     // Create a new buffer with the line
                     var outputBuffer = context.channel.allocator.buffer(capacity: self.buffer.utf8.count)
@@ -583,7 +623,7 @@ private final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
             // If we've been waiting for a while with data in the buffer, process it anyway
             waitingTime += checkInterval
             if waitingTime > 1.0 && !self.buffer.isEmpty {
-                print("Processing buffer after waiting: \"\(self.buffer)\"")
+                logger.trace("Processing buffer after waiting")
                 
                 // Create a new buffer with the content
                 var outputBuffer = context.channel.allocator.buffer(capacity: self.buffer.utf8.count)
@@ -610,7 +650,7 @@ private final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
         var processedLines = 0
         for line in lines.dropLast() { // Skip the last element which might be incomplete
             if !line.isEmpty {
-                print("Processing complete line: \"\(line)\"")
+                logger.trace("Processing complete line")
                 
                 // Create a new buffer with the line
                 var outputBuffer = context.channel.allocator.buffer(capacity: line.utf8.count)
@@ -633,7 +673,7 @@ private final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
     func decodeLast(context: ChannelHandlerContext, buffer: inout ByteBuffer, seenEOF: Bool) throws -> DecodingState {
         // If we have any data left in the buffer when the connection is closed, process it
         if !self.buffer.isEmpty {
-            print("Processing remaining buffer at EOF: \"\(self.buffer)\"")
+            logger.trace("Processing remaining buffer at EOF")
             
             var outputBuffer = context.channel.allocator.buffer(capacity: self.buffer.utf8.count)
             outputBuffer.writeString(self.buffer)
@@ -656,6 +696,7 @@ private class SMTPResponseHandler: ChannelInboundHandler {
     typealias InboundIn = ByteBuffer
     
     private weak var server: SMTPServer?
+    private let logger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTPResponseHandler")
     
     init(server: SMTPServer) {
         self.server = server
@@ -675,7 +716,7 @@ private class SMTPResponseHandler: ChannelInboundHandler {
     
     func errorCaught(context: ChannelHandlerContext, error: Error) {
         // Log the error
-        print("Error in SMTP channel: \(error)")
+        logger.error("Error in SMTP channel: \(error)")
         
         // Close the channel
         context.close(promise: nil)
