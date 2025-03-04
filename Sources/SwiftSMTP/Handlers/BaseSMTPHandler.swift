@@ -56,14 +56,14 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     /// - Parameter response: The parsed SMTP response
     open func handleSuccess(response: SMTPResponse) {
         // Default implementation, subclasses should override
-        failPromise(SMTPError.connectionFailed("BaseSMTPHandler.handleSuccess not implemented"))
+        promise.fail(SMTPError.connectionFailed("BaseSMTPHandler.handleSuccess not implemented"))
     }
     
     /// Handle an error response
     /// - Parameter response: The parsed SMTP response
     open func handleError(response: SMTPResponse) {
         // Default implementation, subclasses should override
-        failPromise(SMTPError.connectionFailed("SMTP error: \(response.code) \(response.message)"))
+        promise.fail(SMTPError.connectionFailed("SMTP error: \(response.code) \(response.message)"))
     }
     
     /// Default implementation for createHandler
@@ -106,10 +106,9 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     /// Handle channel inactive events
     /// - Parameter context: The channel handler context
     public func channelInactive(context: ChannelHandlerContext) {
-        // If the channel becomes inactive and we still have a promise, fail it
-        if !isFulfilled {
-            failPromise(SMTPError.connectionFailed("Connection closed"))
-        }
+        // If the channel becomes inactive, fail the promise with connection closed error
+        // No need to check if it's fulfilled - Swift's promise system will ignore second attempts
+        promise.fail(SMTPError.connectionFailed("Connection closed"))
     }
     
     /// Handle errors caught in the channel pipeline
@@ -117,10 +116,9 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     ///   - context: The channel handler context
     ///   - error: The error caught
     public func errorCaught(context: ChannelHandlerContext, error: Error) {
-        // If we get an error and we still have a promise, fail it
-        if !isFulfilled {
-            failPromise(error)
-        }
+        // If we get an error, fail the promise with the error
+        // No need to check if it's fulfilled - Swift's promise system will ignore second attempts
+        promise.fail(error)
         
         // Forward the error to the next handler
         context.fireErrorCaught(error)
@@ -128,54 +126,27 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     
     // MARK: - Helper Methods
     
-    /// Check if the future result is fulfilled
-    /// - Parameter future: The future to check
-    /// - Returns: Whether the future is fulfilled
-    private var isFulfilled: Bool {
-        // Using a property to track if the promise has been fulfilled
-        // Instead of trying to call wait() which is unsafe on the EventLoop
-        return fulfilled
-    }
-    
-    // Track whether the promise has been fulfilled
-    private var fulfilled: Bool = false
-    
-    // Override the promise fulfillment methods to track the state
-    private func fulfillPromise(_ value: T) {
-        fulfilled = true
+    /// Fulfill the promise with the result
+    /// - Parameter value: The value to fulfill the promise with
+    internal func fulfill(_ value: T) {
         promise.succeed(value)
     }
     
-    private func failPromise(_ error: Error) {
-        fulfilled = true
+    /// Fail the promise with an error
+    /// - Parameter error: The error to fail the promise with
+    internal func fail(_ error: Error) {
         promise.fail(error)
-    }
-    
-    /// Fulfill the promise with the result and remove the handler from the pipeline if needed
-    /// - Parameters:
-    ///   - value: The value to fulfill the promise with
-    ///   - removeHandler: Whether to remove the handler from the pipeline
-    internal func fulfill(_ value: T, removeHandler: Bool = true) {
-        fulfillPromise(value)
-    }
-    
-    /// Fail the promise with an error and remove the handler from the pipeline if needed
-    /// - Parameters:
-    ///   - error: The error to fail the promise with
-    ///   - removeHandler: Whether to remove the handler from the pipeline
-    internal func fail(_ error: Error, removeHandler: Bool = true) {
-        failPromise(error)
     }
     
     /// Called when the handler's future is successful
     /// Simply an interface to standardize our handler architecture
     public func onSuccess(_ value: T) {
-        fulfillPromise(value)
+        promise.succeed(value)
     }
     
     /// Called when the handler's future fails
     /// Simply an interface to standardize our handler architecture
     public func onFailure(_ error: Error) {
-        failPromise(error)
+        promise.fail(error)
     }
 } 
