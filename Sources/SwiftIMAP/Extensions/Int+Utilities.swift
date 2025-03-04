@@ -12,6 +12,7 @@ extension Int {
         let formatter = MeasurementFormatter()
         formatter.unitOptions = .providedUnit
         formatter.numberFormatter.maximumFractionDigits = 1
+		formatter.locale = locale
         
         // Convert to the most appropriate unit
         let converted: Measurement<UnitInformationStorage>

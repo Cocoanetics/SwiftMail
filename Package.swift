@@ -13,6 +13,9 @@ let package = Package(
         .library(
             name: "SwiftIMAP",
             targets: ["SwiftIMAP"]),
+        .library(
+            name: "SwiftSMTP",
+            targets: ["SwiftSMTP"]),
         .executable(
             name: "SwiftIMAPCLI",
             targets: ["SwiftIMAPCLI"])
@@ -34,6 +37,12 @@ let package = Package(
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
             ]
         ),
+        .target(
+            name: "SwiftSMTP",
+            dependencies: [
+                .product(name: "NIOSSL", package: "swift-nio-ssl"),
+            ]
+        ),
         .executableTarget(
             name: "SwiftIMAPCLI",
             dependencies: [
@@ -49,6 +58,13 @@ let package = Package(
             ],
             resources: [
                 .copy("Resources")
+            ]
+        ),
+        .testTarget(
+            name: "SwiftSMTPTests",
+            dependencies: [
+                "SwiftSMTP",
+                .product(name: "Testing", package: "swift-testing")
             ]
         ),
     ]

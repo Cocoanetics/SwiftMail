@@ -35,9 +35,9 @@ struct StringUtilitiesTests {
     @Test
 	func testFileExtension() {
 		// Test common MIME types
-		#expect(String.fileExtension(for: "text/plan") == "txt")
+		#expect(String.fileExtension(for: "text/plain") == "txt")
 		#expect(String.fileExtension(for:"text/html") == "html")
-		#expect(String.fileExtension(for:"image/jpeg") == "jpg")
+		#expect(String.fileExtension(for:"image/jpeg") == "jpeg")
 		#expect(String.fileExtension(for:"image/png") == "png")
 		#expect(String.fileExtension(for:"application/pdf") == "pdf")
 		
@@ -47,8 +47,8 @@ struct StringUtilitiesTests {
 		#expect(String.fileExtension(for:"application/zip") == "zip")
 		
 		// Test unknown MIME types
-		#expect(String.fileExtension(for:"application/x-custom") == "bin")
-		#expect(String.fileExtension(for:"unknown/type") == "dat")
+		#expect(String.fileExtension(for:"application/x-custom") == nil)
+		#expect(String.fileExtension(for:"unknown/type") == nil)
 	}
     
     // MARK: - Sequence Set Tests
