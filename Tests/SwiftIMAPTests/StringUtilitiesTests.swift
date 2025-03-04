@@ -33,23 +33,23 @@ struct StringUtilitiesTests {
     // MARK: - File Extension Tests
     
     @Test
-    func testFileExtension() {
-        // Test common MIME types
-        #expect("text".fileExtension(subtype: "plain") == "txt")
-        #expect("text".fileExtension(subtype: "html") == "html")
-        #expect("image".fileExtension(subtype: "jpeg") == "jpg")
-        #expect("image".fileExtension(subtype: "png") == "png")
-        #expect("application".fileExtension(subtype: "pdf") == "pdf")
-        
-        // Test less common MIME types
-        #expect("audio".fileExtension(subtype: "mp3") == "mp3")
-        #expect("video".fileExtension(subtype: "mp4") == "mp4")
-        #expect("application".fileExtension(subtype: "zip") == "zip")
-        
-        // Test unknown MIME types
-        #expect("application".fileExtension(subtype: "x-custom") == "bin")
-        #expect("unknown".fileExtension(subtype: "type") == "dat")
-    }
+	func testFileExtension() {
+		// Test common MIME types
+		#expect(String.fileExtension(for: "text/plan") == "txt")
+		#expect(String.fileExtension(for:"text/html") == "html")
+		#expect(String.fileExtension(for:"image/jpeg") == "jpg")
+		#expect(String.fileExtension(for:"image/png") == "png")
+		#expect(String.fileExtension(for:"application/pdf") == "pdf")
+		
+		// Test less common MIME types
+		#expect(String.fileExtension(for:"audio/mp3") == "mp3")
+		#expect(String.fileExtension(for:"video/mp4") == "mp4")
+		#expect(String.fileExtension(for:"application/zip") == "zip")
+		
+		// Test unknown MIME types
+		#expect(String.fileExtension(for:"application/x-custom") == "bin")
+		#expect(String.fileExtension(for:"unknown/type") == "dat")
+	}
     
     // MARK: - Sequence Set Tests
     
