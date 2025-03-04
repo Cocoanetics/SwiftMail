@@ -17,16 +17,6 @@ public protocol CommandHandler: ChannelInboundHandler where InboundIn == Respons
     /// Whether this handler has completed processing
     var isCompleted: Bool { get }
     
-    /// The timeout for this command in seconds
-    var timeoutSeconds: Int { get }
-    
-    /// Set up the timeout for this command
-    /// - Parameter eventLoop: The event loop to schedule the timeout on
-    func setupTimeout(on eventLoop: EventLoop)
-    
-    /// Cancel the timeout for this command
-    func cancelTimeout()
-    
     /// Handle the completion of this command
     /// - Parameter context: The channel handler context
     func handleCompletion(context: ChannelHandlerContext)
@@ -42,12 +32,6 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
     
     /// Whether this handler has completed processing
     public private(set) var isCompleted: Bool = false
-    
-    /// The timeout for this command in seconds
-    public let timeoutSeconds: Int
-    
-    /// The timeout task
-    private var timeoutTask: Scheduled<Void>?
     
     /// Logger for IMAP responses
     public var logger: Logger?
@@ -65,33 +49,9 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the command completes
-    ///   - timeoutSeconds: The timeout for this command in seconds
-    public init(commandTag: String, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int = 10) {
+    public init(commandTag: String, promise: EventLoopPromise<ResultType>) {
         self.commandTag = commandTag
         self.promise = promise
-        self.timeoutSeconds = timeoutSeconds
-    }
-    
-    /// Set up the timeout for this command
-    /// - Parameter eventLoop: The event loop to schedule the timeout on
-    public func setupTimeout(on eventLoop: EventLoop) {
-        timeoutTask = eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) { [weak self] in
-            self?.handleTimeout()
-        }
-    }
-    
-    /// Cancel the timeout for this command
-    public func cancelTimeout() {
-        timeoutTask?.cancel()
-        timeoutTask = nil
-    }
-    
-    /// Handle a timeout for this command
-    /// This method should be overridden by subclasses
-    public func handleTimeout() {
-        // Default implementation fails the promise with a timeout error
-        flushLogBuffer()
-        failWithError(IMAPError.timeout)
     }
     
     /// Handle the completion of this command

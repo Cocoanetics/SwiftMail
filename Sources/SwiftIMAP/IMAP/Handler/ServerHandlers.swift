@@ -17,9 +17,8 @@ public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAP
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the command completes
-    ///   - timeoutSeconds: The timeout for this command in seconds
-    override public init(commandTag: String, promise: EventLoopPromise<[Capability]>, timeoutSeconds: Int = 5) {
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
+    override public init(commandTag: String, promise: EventLoopPromise<[Capability]>) {
+        super.init(commandTag: commandTag, promise: promise)
     }
     
     /// Handle a tagged OK response by succeeding the promise with the capabilities
@@ -50,6 +49,7 @@ public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAP
             return false
         }
         
+        // Not a capability response
         return false
     }
 }
@@ -60,9 +60,8 @@ public final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the command completes
-    ///   - timeoutSeconds: The timeout for this command in seconds
-    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int = 5) {
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
+    override public init(commandTag: String, promise: EventLoopPromise<Void>) {
+        super.init(commandTag: commandTag, promise: promise)
     }
     
     /// Handle a tagged OK response by succeeding the promise
@@ -84,9 +83,8 @@ public final class StoreHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandle
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the command completes
-    ///   - timeoutSeconds: The timeout for this command in seconds
-    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int = 5) {
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
+    override public init(commandTag: String, promise: EventLoopPromise<Void>) {
+        super.init(commandTag: commandTag, promise: promise)
     }
     
     /// Handle a tagged OK response by succeeding the promise
@@ -108,9 +106,8 @@ public final class ExpungeHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHand
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the command completes
-    ///   - timeoutSeconds: The timeout for this command in seconds
-    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int = 5) {
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
+    override public init(commandTag: String, promise: EventLoopPromise<Void>) {
+        super.init(commandTag: commandTag, promise: promise)
     }
     
     /// Handle a tagged OK response by succeeding the promise

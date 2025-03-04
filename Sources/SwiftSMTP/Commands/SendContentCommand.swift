@@ -13,6 +13,9 @@ public struct SendContentCommand: SMTPCommand {
     
     /// The email content to send
     private let content: String
+	
+	/// Default timeout in seconds
+	public let timeoutSeconds: Int = 10
     
     /**
      Initialize a new SendContent command

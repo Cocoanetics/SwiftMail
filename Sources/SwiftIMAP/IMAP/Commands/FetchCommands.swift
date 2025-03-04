@@ -20,7 +20,7 @@ public struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
     public var handlerType: HandlerType.Type { FetchHeadersHandler.self }
     
     /// Custom timeout for this operation
-    public var timeoutSeconds: Int { return 10 }
+    public let timeoutSeconds = 10
     
     /// Initialize a new fetch headers command
     /// - Parameters:

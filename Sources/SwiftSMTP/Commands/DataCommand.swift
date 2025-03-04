@@ -10,6 +10,9 @@ public struct DataCommand: SMTPCommand {
     
     /// The handler type that will process responses for this command
     public typealias HandlerType = DataHandler
+	
+	/// Default timeout in seconds
+	public let timeoutSeconds: Int = 30
     
     /**
      Initialize a new DATA command

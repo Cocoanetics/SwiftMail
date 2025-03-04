@@ -29,11 +29,10 @@ public final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCo
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the select completes
-    ///   - timeoutSeconds: The timeout for this command in seconds
-    override public init(commandTag: String, promise: EventLoopPromise<Mailbox.Status>, timeoutSeconds: Int = 5) {
+    override public init(commandTag: String, promise: EventLoopPromise<Mailbox.Status>) {
         // Initialize with default values
         mailboxInfo = Mailbox.Status()
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
+        super.init(commandTag: commandTag, promise: promise)
     }
     
     /// Handle a tagged OK response by succeeding the promise with the mailbox info

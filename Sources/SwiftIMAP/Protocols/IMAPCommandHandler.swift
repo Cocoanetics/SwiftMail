@@ -6,7 +6,7 @@ import NIO
 import Logging
 
 /// Protocol for IMAP command handlers
-public protocol IMAPCommandHandler: ChannelInboundHandler, TimeoutHandler {
+public protocol IMAPCommandHandler: ChannelInboundHandler {
     associatedtype ResultType
     
     /// Logger for IMAP responses
@@ -16,6 +16,5 @@ public protocol IMAPCommandHandler: ChannelInboundHandler, TimeoutHandler {
     /// - Parameters:
     ///   - commandTag: The tag for the command (optional)
     ///   - promise: The promise to fulfill with the result
-    ///   - timeoutSeconds: The timeout in seconds
-    init(commandTag: String, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int)
+    init(commandTag: String, promise: EventLoopPromise<ResultType>)
 }

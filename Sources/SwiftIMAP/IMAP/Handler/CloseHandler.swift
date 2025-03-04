@@ -9,10 +9,6 @@ public final class CloseHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandle
     public typealias InboundIn = Response
     public typealias InboundOut = Never
     
-    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int) {
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
-    }
-    
     override public func processResponse(_ response: Response) -> Bool {
         // Call the base class implementation to buffer the response
         let handled = super.processResponse(response)

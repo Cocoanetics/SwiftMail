@@ -13,6 +13,9 @@ public struct MailFromCommand: SMTPCommand {
     
     /// The email address of the sender
     private let senderAddress: String
+	
+	/// Default timeout in seconds
+	public let timeoutSeconds: Int = 30
     
     /**
      Initialize a new MAIL FROM command

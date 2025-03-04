@@ -541,34 +541,45 @@ public actor IMAPServer {
 			throw IMAPError.connectionFailed("Channel not initialized")
 		}
 		
-		// Generate a unique command tag
-		let tag = generateCommandTag()
-		
-		// Convert the command into a TaggedCommand
-		let taggedCommand = command.toTaggedCommand(tag: tag)
-		
-		// Create a promise for the command's result
+		// Create a promise for the command result
 		let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
 		
-		// Create the handler of the correct type for this command
-		let handler = command.handlerType.init(commandTag: tag, promise: resultPromise, timeoutSeconds: command.timeoutSeconds)
+		// Generate a unique tag for the command
+		let tag = generateCommandTag()
+		
+		// Create the handler for this command
+		let handler = command.handlerType.init(commandTag: tag, promise: resultPromise)
 		
 		// Set the logger on the handler
 		handler.logger = inboundLogger
 		
-		// Add the handler to the channel pipeline
-		try await channel.pipeline.addHandler(handler).get()
+		// Get timeout value for this command
+		let timeoutSeconds = command.timeoutSeconds
 		
-		// Write the command to the channel wrapped as CommandStreamPart
-		try await channel.writeAndFlush(CommandStreamPart.tagged(taggedCommand)).get()
+		// Create a timeout for the command
+		let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+			self.logger.warning("Command timed out after \(timeoutSeconds) seconds")
+			resultPromise.fail(IMAPError.timeout)
+		}
 		
-		// Await the result from the promise
 		do {
+			// Add the handler to the channel pipeline
+			try await channel.pipeline.addHandler(handler).get()
+			
+			// Write the command to the channel wrapped as CommandStreamPart
+			try await channel.writeAndFlush(CommandStreamPart.tagged(command.toTaggedCommand(tag: tag))).get()
+			
+			// Wait for the result
 			let result = try await resultPromise.futureResult.get()
-			handler.cancelTimeout()
+			
+			// Cancel the timeout
+			scheduledTask.cancel()
+			
 			return result
 		} catch {
-			handler.cancelTimeout()
+			// Cancel the timeout
+			scheduledTask.cancel()
+			
 			throw error
 		}
 	}
@@ -589,25 +600,33 @@ public actor IMAPServer {
 			throw IMAPError.connectionFailed("Channel not initialized")
 		}
 		
-		// Create a promise for the result
+		// Create the handler promise
 		let resultPromise = channel.eventLoop.makePromise(of: T.self)
 		
-		// create the handler of the correct type for this command
-		let handler = HandlerType.init(commandTag: "", promise: resultPromise, timeoutSeconds: timeoutSeconds)
+		// Create the handler directly
+		let handler = HandlerType.init(commandTag: "", promise: resultPromise)
 		
-		// Set the logger on the handler
-		handler.logger = inboundLogger
+		// Create a timeout for the handler
+		let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+			self.logger.warning("Handler execution timed out after \(timeoutSeconds) seconds")
+			resultPromise.fail(IMAPError.timeout)
+		}
 		
-		// Add the handler to the pipeline
-		try await channel.pipeline.addHandler(handler).get()
-		
-		// Wait for the result
 		do {
+			// Add the handler to the pipeline
+			try await channel.pipeline.addHandler(handler).get()
+			
+			// Wait for the result
 			let result = try await resultPromise.futureResult.get()
-			handler.cancelTimeout()
+			
+			// Cancel the timeout
+			scheduledTask.cancel()
+			
 			return result
 		} catch {
-			handler.cancelTimeout()
+			// Cancel the timeout
+			scheduledTask.cancel()
+			
 			throw error
 		}
 	}

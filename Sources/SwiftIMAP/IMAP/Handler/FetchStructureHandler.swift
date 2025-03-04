@@ -13,15 +13,6 @@ public final class FetchStructureHandler: BaseIMAPCommandHandler<BodyStructure>,
     /// The body structure from the response
     private var bodyStructure: BodyStructure?
     
-    /// Initialize a new fetch structure handler
-    /// - Parameters:
-    ///   - commandTag: The tag associated with this command
-    ///   - promise: The promise to fulfill when the fetch completes
-    ///   - timeoutSeconds: The timeout for this command in seconds
-    override public init(commandTag: String, promise: EventLoopPromise<BodyStructure>, timeoutSeconds: Int = 10) {
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
-    }
-    
     /// Handle a tagged OK response by succeeding the promise with the body structure
     /// - Parameter response: The tagged response
     override public func handleTaggedOKResponse(_ response: TaggedResponse) {

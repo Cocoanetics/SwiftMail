@@ -10,6 +10,9 @@ public struct StartTLSCommand: SMTPCommand {
     
     /// The handler type that will process responses for this command
     public typealias HandlerType = StartTLSHandler
+	
+	/// Default timeout in seconds
+	public let timeoutSeconds: Int = 10
     
     /**
      Initialize a new STARTTLS command

@@ -183,9 +183,6 @@ public actor SMTPServer {
         // Create the handler for this command
         var handler: (any SMTPCommandHandler)?
         
-        // Determine timeout for this command type
-        let timeoutSeconds = getTimeoutForCommand(command)
-        
         // Check if the command is an AuthCommand
         if let authCommand = command as? AuthCommand, 
            CommandType.ResultType.self == AuthResult.self {
@@ -240,7 +237,9 @@ public actor SMTPServer {
         }
         
         // Create a timeout for the command
-        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+		let timeoutSeconds = command.timeoutSeconds
+		
+		let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
             print("DEBUG - Command timed out after \(timeoutSeconds) seconds")
             self.logger.warning("Command timed out after \(timeoutSeconds) seconds")
             resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
@@ -293,26 +292,6 @@ public actor SMTPServer {
             self.currentHandler = nil
             
             throw error
-        }
-    }
-    
-    /**
-     Determine the appropriate timeout for a command
-     - Parameter command: The command to get a timeout for
-     - Returns: The timeout in seconds
-     */
-    private func getTimeoutForCommand<T: SMTPCommand>(_ command: T) -> Int {
-        switch T.self {
-        case is SendContentCommand.Type:
-            return 120  // Content sending may be large and take more time
-        case is QuitCommand.Type:
-            return 10   // Shorter timeout for QUIT command
-        case is AuthCommand.Type:
-            return 30   // Authentication may need more time
-        case is StartTLSCommand.Type:
-            return 30   // TLS negotiation may take time
-        default:
-            return 30   // Default timeout for most commands
         }
     }
     

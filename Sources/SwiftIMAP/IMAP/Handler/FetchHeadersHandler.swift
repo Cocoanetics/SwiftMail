@@ -13,15 +13,6 @@ public final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCo
     /// Collected email headers
     private var emailHeaders: [Header] = []
     
-    /// Initialize a new fetch headers handler
-    /// - Parameters:
-    ///   - commandTag: The tag associated with this command
-    ///   - promise: The promise to fulfill when the fetch completes
-    ///   - timeoutSeconds: The timeout for this command in seconds
-    override public init(commandTag: String, promise: EventLoopPromise<[Header]>, timeoutSeconds: Int = 10) {
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
-    }
-    
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
     override public func handleTaggedOKResponse(_ response: TaggedResponse) {
