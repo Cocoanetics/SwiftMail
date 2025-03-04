@@ -3,7 +3,7 @@ import NIOCore
 import Logging
 
 /// Base class for SMTP command handlers that provides common functionality
-open class BaseSMTPHandler<T>: SMTPCommandHandler {
+open class BaseSMTPHandler<T>: SMTPCommandHandler, LoggableHandler {
     public typealias ResultType = T
     
     /// The command tag (optional for SMTP)
@@ -16,7 +16,7 @@ open class BaseSMTPHandler<T>: SMTPCommandHandler {
     public let timeoutSeconds: Int
     
     /// Logger for handler operations
-    internal let logger: Logger
+    public var logger: Logger
     
     /// Initialize a new handler
     /// - Parameters:
@@ -66,5 +66,11 @@ open class BaseSMTPHandler<T>: SMTPCommandHandler {
     /// Default implementation for createHandler
     public static func createHandler(commandTag: String?, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int) -> Self {
         return Self(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
+    }
+    
+    /// Cancel any active timeout
+    open func cancelTimeout() {
+        // This is a placeholder for handler timeout cancellation
+        // Implement actual timeout cancellation logic when needed
     }
 } 

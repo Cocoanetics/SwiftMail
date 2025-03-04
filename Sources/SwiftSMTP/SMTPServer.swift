@@ -165,7 +165,7 @@ public actor SMTPServer {
         let promise = channel.eventLoop.makePromise(of: [String].self)
         
         // Create the handler
-        let handler = EHLOHandler.createHandler(promise: promise)
+		let handler = EHLOHandler.init(commandTag: "", promise: promise)
         
         // Execute the handler with the EHLO command
         let newCapabilities = try await executeHandler(handler, command: "EHLO \(getLocalHostname())")
@@ -210,8 +210,10 @@ public actor SMTPServer {
                 let promise = channel.eventLoop.makePromise(of: AuthResult.self)
                 
                 // Create the handler
-                let handler = AuthHandler.createAuthHandler(
+                let handler = AuthHandler(
+                    commandTag: nil,
                     promise: promise,
+                    timeoutSeconds: 30,
                     method: .plain,
                     username: username,
                     password: password,
@@ -241,8 +243,10 @@ public actor SMTPServer {
             let promise = channel.eventLoop.makePromise(of: AuthResult.self)
             
             // Create the handler
-            let handler = AuthHandler.createAuthHandler(
+            let handler = AuthHandler(
+                commandTag: nil,
                 promise: promise,
+                timeoutSeconds: 30,
                 method: .login,
                 username: username,
                 password: password,
@@ -474,26 +478,53 @@ public actor SMTPServer {
     }
     
     /**
-     Execute a handler for an SMTP command
+     Execute a handler for an SMTP command without sending a command
      - Parameters:
         - handlerType: The type of handler to create
         - timeoutSeconds: The timeout in seconds
      - Returns: The result of the handler
      - Throws: An error if the command fails
      */
-    private func executeHandlerOnly<H: SMTPCommandHandler>(handlerType: H.Type, timeoutSeconds: Int = 30) async throws -> H.ResultType {
+    private func executeHandlerOnly<T, HandlerType: SMTPCommandHandler>(
+        handlerType: HandlerType.Type,
+        timeoutSeconds: Int = 30
+    ) async throws -> T where HandlerType.ResultType == T {
         guard let channel = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
         
         // Create the handler promise
-        let promise = channel.eventLoop.makePromise(of: H.ResultType.self)
+        let promise = channel.eventLoop.makePromise(of: T.self)
         
-        // Create the handler
-        let handler = handlerType.createHandler(commandTag: nil, promise: promise, timeoutSeconds: timeoutSeconds)
+        // Create the handler directly using initializer
+        let handler = HandlerType.init(commandTag: "", promise: promise, timeoutSeconds: timeoutSeconds)
         
-        // Execute the handler without sending a command
-        return try await executeHandler(handler)
+        // Set the logger on the handler if it has one
+        if var loggable = handler as? LoggableHandler {
+            loggable.logger = inboundLogger
+        }
+        
+        // Set the current handler so the response handler can route responses to it
+        currentHandler = handler
+        
+        do {
+            // Wait for the handler to complete with a timeout
+            return try await withTimeout(seconds: Double(timeoutSeconds), operation: {
+                try await promise.futureResult.get()
+            }, onTimeout: {
+                // Fulfill the promise with an error to prevent leaks
+                promise.fail(SMTPError.connectionFailed("Response timeout"))
+                // Clear the current handler
+                self.currentHandler = nil
+                throw SMTPError.connectionFailed("Response timeout")
+            })
+        } catch {
+            // If any error occurs, fail the promise to prevent leaks
+            promise.fail(error)
+            // Clear the current handler
+            self.currentHandler = nil
+            throw error
+        }
     }
     
     /**

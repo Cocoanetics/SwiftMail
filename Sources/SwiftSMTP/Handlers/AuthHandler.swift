@@ -54,29 +54,6 @@ public class AuthHandler: BaseSMTPHandler<AuthResult> {
         super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
-    /// Create an instance of this handler with the authentication parameters
-    /// - Parameters:
-    ///   - promise: The promise to fulfill when the command completes
-    ///   - method: Authentication method to use
-    ///   - username: Username for authentication
-    ///   - password: Password for authentication
-    ///   - channel: Channel for sending commands
-    /// - Returns: A newly created handler instance
-    public static func createAuthHandler(promise: EventLoopPromise<AuthResult>, 
-                                        method: AuthMethod, 
-                                        username: String, 
-                                        password: String, 
-                                        channel: Channel,
-                                        timeoutSeconds: Int = 30) -> AuthHandler {
-        return AuthHandler(commandTag: nil, 
-                          promise: promise, 
-                          timeoutSeconds: timeoutSeconds, 
-                          method: method, 
-                          username: username, 
-                          password: password, 
-                          channel: channel)
-    }
-    
     /// Process a response line from the server
     /// - Parameter response: The response line to process
     /// - Returns: Whether the handler is complete

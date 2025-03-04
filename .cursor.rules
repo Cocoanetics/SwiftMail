@@ -14,6 +14,16 @@
   - `Tests/SwiftIMAPTests/` - Test files
   - `Tests/SwiftIMAPTests/Resources/` - Test resources
 
+## Iterating
+
+- Always do `swift build` after making changes and fix errors and warnings
+- By default, CLI applications run with minimal output (user-friendly mode)
+- For debugging purposes, use one of the following options:
+  - Set `ENABLE_DEBUG_OUTPUT=1` to enable detailed debug prints (e.g., `ENABLE_DEBUG_OUTPUT=1 swift run SwiftSMTPCLI`)
+  - Set `OS_LOG_DISABLE=1` to view Swift Logger output for system-level logs
+  - For maximum verbosity, use both: `OS_LOG_DISABLE=1 ENABLE_DEBUG_OUTPUT=1 swift run SwiftSMTPCLI`
+- When inspecting code, Cursor should prioritize the debug output mode for better understanding of the application flow
+
 ## Swift Style Guidelines
 
 - Prefer to formulate convenience methods as an extension on the Foundation base type
@@ -49,6 +59,42 @@
 
 - Use Swift's async/await pattern for asynchronous operations
 - Ensure proper error handling in asynchronous contexts
+
+## Logging
+
+- CLI applications use a two-tier logging approach:
+  - System logging: Swift Logger with OSLog integration for system-level events
+  - Debug prints: User-friendly debug messages with the `debugPrint()` helper function
+- Log levels follow this hierarchy:
+  - `.critical`: For fatal application errors
+  - `.error`: For errors that impact functionality but allow recovery
+  - `.warning`: For potential issues that don't impact functionality
+  - `.notice`: For important events in normal operation
+  - `.info`: For general information about application flow
+  - `.debug`: For detailed debugging information (normally suppressed)
+  - `.trace`: For extremely detailed flow tracing (normally suppressed)
+- Debug statements should be wrapped with the `debugPrint()` function, which conditionally prints when `ENABLE_DEBUG_OUTPUT=1` is set
+- Production code should minimize direct `print()` calls in favor of the logging system
+- Developers should run with `ENABLE_DEBUG_OUTPUT=1` when developing or debugging
+
+## CLI Application Standards
+
+- SwiftSMTPCLI and SwiftIMAPCLI should provide:
+  - Clean, user-friendly output in normal operation
+  - Detailed debug output when enabled with environment variables
+  - Clear error messages that are helpful without being overly technical
+- User-facing prints should be:
+  - Concise and clear
+  - Well-formatted with emoji or other visual cues where appropriate
+  - Free of implementation details unless debug mode is enabled
+- When implementing new CLI functionality:
+  - Add appropriate debug prints wrapped in `debugPrint()`
+  - Add user-facing prints for key progress indicators
+  - Include error handling with user-friendly messages
+- CLI applications should load configuration from environment variables or dotenv files
+- Running CLIs for testing:
+  - For user-friendly mode: `swift run SwiftSMTPCLI`
+  - For developer mode: `ENABLE_DEBUG_OUTPUT=1 swift run SwiftSMTPCLI`
 
 ## Testing
 
