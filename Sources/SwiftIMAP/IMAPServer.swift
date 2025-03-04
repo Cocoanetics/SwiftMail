@@ -550,12 +550,8 @@ public actor IMAPServer {
 		// Create a promise for the command's result
 		let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
 		
-		// Instantiate the appropriate handler for the command
-		let handler = command.handlerType.createHandler(
-			commandTag: tag,
-			promise: resultPromise,
-			timeoutSeconds: command.timeoutSeconds
-		)
+		// Create the handler of the correct type for this command
+		let handler = command.handlerType.init(commandTag: tag, promise: resultPromise, timeoutSeconds: command.timeoutSeconds)
 		
 		// Set the logger on the handler
 		handler.logger = inboundLogger
@@ -596,12 +592,8 @@ public actor IMAPServer {
 		// Create a promise for the result
 		let resultPromise = channel.eventLoop.makePromise(of: T.self)
 		
-		// Create the handler
-		let handler = HandlerType.createHandler(
-			commandTag: "",  // No command tag needed for server-initiated responses
-			promise: resultPromise,
-			timeoutSeconds: timeoutSeconds
-		)
+		// create the handler of the correct type for this command
+		let handler = HandlerType.init(commandTag: "", promise: resultPromise, timeoutSeconds: timeoutSeconds)
 		
 		// Set the logger on the handler
 		handler.logger = inboundLogger

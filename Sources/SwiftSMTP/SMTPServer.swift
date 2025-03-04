@@ -92,8 +92,12 @@ public actor SMTPServer {
                 
                 if useSSL {
                     do {
-                        // Create SSL context for secure connection
-                        let sslContext = try NIOSSLContext(configuration: TLSConfiguration.makeClientConfiguration())
+                        // Create SSL context with proper configuration for secure connection
+                        var tlsConfig = TLSConfiguration.makeClientConfiguration()
+                        tlsConfig.certificateVerification = .fullVerification
+                        tlsConfig.trustRoots = .default
+                        
+                        let sslContext = try NIOSSLContext(configuration: tlsConfig)
                         let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: self.host)
                         
                         // Add SSL handler first, then SMTP handlers
@@ -132,7 +136,13 @@ public actor SMTPServer {
             do {
                 try await startTLS()
             } catch {
-                logger.warning("STARTTLS failed: \(error.localizedDescription). Continuing without encryption.")
+                // For Gmail and other secure servers, we should not continue without encryption
+                if host.contains("gmail.com") || host.contains("google.com") {
+                    logger.error("STARTTLS failed for Gmail SMTP: \(error.localizedDescription). Cannot continue without encryption.")
+                    throw SMTPError.tlsFailed("Gmail requires encryption: \(error.localizedDescription)")
+                } else {
+                    logger.warning("STARTTLS failed: \(error.localizedDescription). Continuing without encryption.")
+                }
             }
         }
         
@@ -161,12 +171,8 @@ public actor SMTPServer {
                 // Extract the base capability (before any parameters)
                 let baseCapability = capability.split(separator: " ").first.map(String.init) ?? capability
                 capabilities.append(baseCapability)
-                
-                logger.debug("Detected server capability: \(baseCapability)")
             }
         }
-        
-        logger.info("Server capabilities: \(capabilities.joined(separator: ", "))")
     }
     
     /**
@@ -186,8 +192,12 @@ public actor SMTPServer {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
         
-        // Create SSL context for secure connection
-        let sslContext = try NIOSSLContext(configuration: TLSConfiguration.makeClientConfiguration())
+        // Create SSL context with proper configuration for secure connection
+        var tlsConfig = TLSConfiguration.makeClientConfiguration()
+        tlsConfig.certificateVerification = .fullVerification
+        tlsConfig.trustRoots = .default
+        
+        let sslContext = try NIOSSLContext(configuration: tlsConfig)
         let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: self.host)
         
         // Add SSL handler to the pipeline
@@ -214,44 +224,75 @@ public actor SMTPServer {
         }
         
         // Check if authentication is supported
-        if !capabilities.contains("AUTH") && !capabilities.contains("AUTH=LOGIN") && !capabilities.contains("AUTH=PLAIN") {
+        if !capabilities.contains("AUTH") && 
+           !capabilities.contains("AUTH=LOGIN") && 
+           !capabilities.contains("AUTH=PLAIN") {
             logger.notice("Authentication not supported by server, skipping login")
             return
         }
         
         logger.info("Authenticating with SMTP server")
         
-        // Send AUTH LOGIN command
-        let response = try await sendCommand("AUTH LOGIN")
-        
-        // Check if AUTH LOGIN was accepted
-        guard response.code >= 300 && response.code < 400 else {
-            if response.code == 503 && response.message.contains("authentication not enabled") {
-                logger.notice("Server reported authentication not enabled, continuing without authentication")
+        // For Gmail and many modern SMTP servers, PLAIN auth is preferred when using TLS
+        if isTLSEnabled && (capabilities.contains("AUTH=PLAIN") || capabilities.contains("AUTH")) {
+            // Try AUTH PLAIN (single step authentication)
+            do {
+                // Format: \0username\0password
+                let authString = "\u{0}\(username)\u{0}\(password)"
+                let authData = Data(authString.utf8).base64EncodedString()
+                
+                let response = try await sendCommand("AUTH PLAIN \(authData)")
+                
+                // Check if authentication was successful
+                guard response.code >= 200 && response.code < 300 else {
+                    throw SMTPError.authenticationFailed("Authentication failed: \(response.message)")
+                }
+                
+                logger.info("Authentication successful using PLAIN method")
                 return
+            } catch {
+                logger.warning("PLAIN authentication failed: \(error.localizedDescription), trying LOGIN method")
+                // Fall through to try LOGIN method
             }
-            throw SMTPError.authenticationFailed("Server rejected AUTH LOGIN: \(response.message)")
         }
         
-        // Send username (base64 encoded)
-        let usernameBase64 = Data(username.utf8).base64EncodedString()
-        let usernameResponse = try await sendCommand(usernameBase64)
-        
-        // Check if username was accepted
-        guard usernameResponse.code >= 300 && usernameResponse.code < 400 else {
-            throw SMTPError.authenticationFailed("Server rejected username: \(usernameResponse.message)")
+        // Try AUTH LOGIN (two-step authentication)
+        do {
+            // Send AUTH LOGIN command
+            let response = try await sendCommand("AUTH LOGIN")
+            
+            // Check if AUTH LOGIN was accepted
+            guard response.code >= 300 && response.code < 400 else {
+                if response.code == 503 && response.message.contains("authentication not enabled") {
+                    logger.notice("Server reported authentication not enabled, continuing without authentication")
+                    return
+                }
+                throw SMTPError.authenticationFailed("Server rejected AUTH LOGIN: \(response.message)")
+            }
+            
+            // Send username (base64 encoded)
+            let usernameBase64 = Data(username.utf8).base64EncodedString()
+            let usernameResponse = try await sendCommand(usernameBase64)
+            
+            // Check if username was accepted
+            guard usernameResponse.code >= 300 && usernameResponse.code < 400 else {
+                throw SMTPError.authenticationFailed("Server rejected username: \(usernameResponse.message)")
+            }
+            
+            // Send password (base64 encoded)
+            let passwordBase64 = Data(password.utf8).base64EncodedString()
+            let passwordResponse = try await sendCommand(passwordBase64)
+            
+            // Check if authentication was successful
+            guard passwordResponse.code >= 200 && passwordResponse.code < 300 else {
+                throw SMTPError.authenticationFailed("Authentication failed: \(passwordResponse.message)")
+            }
+            
+            logger.info("Authentication successful using LOGIN method")
+        } catch {
+            logger.error("Authentication failed: \(error.localizedDescription)")
+            throw error
         }
-        
-        // Send password (base64 encoded)
-        let passwordBase64 = Data(password.utf8).base64EncodedString()
-        let passwordResponse = try await sendCommand(passwordBase64)
-        
-        // Check if authentication was successful
-        guard passwordResponse.code >= 200 && passwordResponse.code < 300 else {
-            throw SMTPError.authenticationFailed("Authentication failed: \(passwordResponse.message)")
-        }
-        
-        logger.info("Authentication successful")
     }
     
     /**
@@ -260,27 +301,23 @@ public actor SMTPServer {
      */
     public func disconnect() async throws {
         guard let channel = channel else {
-            logger.notice("Already disconnected from SMTP server")
+            logger.warning("Attempted to disconnect when channel was already nil")
             return
         }
         
-        logger.info("Disconnecting from SMTP server")
-        
+        // Try to send QUIT command but don't wait for response
         do {
-            // Send QUIT command
-            _ = try await sendCommand("QUIT")
-            
-            // Close the connection
-            try await channel.close().get()
-        } catch let error as ChannelError where error == .alreadyClosed {
-            // Channel is already closed, which is fine
-            logger.notice("Channel was already closed")
+            let buffer = channel.allocator.buffer(string: "QUIT\r\n")
+            try await channel.writeAndFlush(buffer).get()
+            logger.debug("QUIT command sent")
         } catch {
-            // Log the error but don't rethrow it
-            logger.error("Error during disconnect: \(error.localizedDescription)")
+            logger.debug("Failed to send QUIT command: \(error.localizedDescription)")
         }
         
-        // Set the channel to nil
+        // Simply close the channel without waiting for response
+        // Note: This may result in an "SSL unclean shutdown" message in the logs,
+        // which is normal behavior when closing SSL/TLS connections and can be safely ignored
+        channel.close(promise: nil)
         self.channel = nil
         
         logger.info("Disconnected from SMTP server")
@@ -365,18 +402,26 @@ public actor SMTPServer {
         let promise = channel.eventLoop.makePromise(of: SMTPResponse.self)
         responsePromise = promise
         
-        // Send the command
-        let buffer = channel.allocator.buffer(string: command + "\r\n")
-        try await channel.writeAndFlush(buffer).get()
-        
-        logger.debug("SMTP command sent, waiting for response")
-        
-        // Wait for the response with a timeout
-        return try await withTimeout(seconds: 30, operation: {
-            try await promise.futureResult.get()
-        }, onTimeout: {
-            throw SMTPError.connectionFailed("Response timeout")
-        })
+        do {
+            // Send the command
+            let buffer = channel.allocator.buffer(string: command + "\r\n")
+            try await channel.writeAndFlush(buffer).get()
+            
+            logger.debug("SMTP command sent, waiting for response")
+            
+            // Wait for the response with a timeout
+            return try await withTimeout(seconds: 30, operation: {
+                try await promise.futureResult.get()
+            }, onTimeout: {
+                // Fulfill the promise with an error response to prevent leaks
+                promise.fail(SMTPError.connectionFailed("Response timeout"))
+                throw SMTPError.connectionFailed("Response timeout")
+            })
+        } catch {
+            // If any error occurs, fail the promise to prevent leaks
+            promise.fail(error)
+            throw error
+        }
     }
     
     /**
@@ -428,12 +473,20 @@ public actor SMTPServer {
         let promise = channel.eventLoop.makePromise(of: SMTPResponse.self)
         responsePromise = promise
         
-        // Wait for the response with a timeout
-        return try await withTimeout(seconds: 30, operation: {
-            try await promise.futureResult.get()
-        }, onTimeout: {
-            throw SMTPError.connectionFailed("Response timeout")
-        })
+        do {
+            // Wait for the response with a timeout
+            return try await withTimeout(seconds: 30, operation: {
+                try await promise.futureResult.get()
+            }, onTimeout: {
+                // Fulfill the promise with an error response to prevent leaks
+                promise.fail(SMTPError.connectionFailed("Response timeout"))
+                throw SMTPError.connectionFailed("Response timeout")
+            })
+        } catch {
+            // If any error occurs, fail the promise to prevent leaks
+            promise.fail(error)
+            throw error
+        }
     }
     
     /**
@@ -495,12 +548,88 @@ public actor SMTPServer {
     }
     
     /**
+     Handle errors in the SMTP channel
+     - Parameter error: The error that occurred
+     */
+    internal func handleChannelError(_ error: Error) {
+        // Check if the error is an SSL unclean shutdown, which is common during disconnection
+        if let sslError = error as? NIOSSLError, case .uncleanShutdown = sslError {
+            logger.notice("SSL unclean shutdown in SMTP channel (this is normal during disconnection)")
+        } else {
+            logger.error("Error in SMTP channel: \(error.localizedDescription)")
+        }
+        
+        // If there's a pending promise, fail it with the error
+        if let promise = responsePromise {
+            promise.fail(error)
+            responsePromise = nil
+        }
+    }
+    
+    /**
      Get the local hostname for EHLO command
      - Returns: The local hostname
      */
     private func getLocalHostname() -> String {
-        // Just return localhost as a fallback
-        return "localhost"
+        // Try to get the actual hostname
+        if let hostname = Host.current().name {
+            return hostname
+        }
+        
+        // Try to get a local IP address as a fallback
+        if let localIP = getLocalIPAddress() {
+            return "[\(localIP)]"
+        }
+        
+        // Use a domain-like format as a last resort
+        return "swift-smtp-client.local"
+    }
+    
+    /**
+     Get the local IP address
+     - Returns: The local IP address as a string, or nil if not available
+     */
+    private func getLocalIPAddress() -> String? {
+        var ifaddr: UnsafeMutablePointer<ifaddrs>?
+        
+        guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else {
+            return nil
+        }
+        
+        defer {
+            freeifaddrs(ifaddr)
+        }
+        
+        // Iterate through linked list of interfaces
+        var currentAddr: UnsafeMutablePointer<ifaddrs>? = firstAddr
+        var foundAddress: String? = nil
+        
+        while let addr = currentAddr {
+            let interface = addr.pointee
+            
+            // Check for IPv4 or IPv6 interface
+            let addrFamily = interface.ifa_addr.pointee.sa_family
+            if addrFamily == UInt8(AF_INET) || addrFamily == UInt8(AF_INET6) {
+                // Check interface name starts with "en" (Ethernet) or "wl" (WiFi)
+                let name = String(cString: interface.ifa_name)
+                if name.hasPrefix("en") || name.hasPrefix("wl") {
+                    // Convert interface address to a human readable string
+                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len),
+                                &hostname, socklen_t(hostname.count),
+                                nil, socklen_t(0), NI_NUMERICHOST)
+                    if let address = String(validatingUTF8: hostname) {
+                        foundAddress = address
+                        break
+                    }
+                }
+            }
+            
+            // Move to next interface
+            currentAddr = interface.ifa_next
+        }
+        
+        return foundAddress
     }
     
     /**
@@ -571,11 +700,19 @@ public actor SMTPServer {
         let promise = channel.eventLoop.makePromise(of: SMTPResponse.self)
         responsePromise = promise
         
-        // Wait for the response with a timeout
-        return try await withTimeout(seconds: 30, operation: {
-            try await promise.futureResult.get()
-        }, onTimeout: {
-            throw SMTPError.connectionFailed("Greeting timeout")
-        })
+        do {
+            // Wait for the response with a timeout
+            return try await withTimeout(seconds: 30, operation: {
+                try await promise.futureResult.get()
+            }, onTimeout: {
+                // Fulfill the promise with an error response to prevent leaks
+                promise.fail(SMTPError.connectionFailed("Greeting timeout"))
+                throw SMTPError.connectionFailed("Greeting timeout")
+            })
+        } catch {
+            // If any error occurs, fail the promise to prevent leaks
+            promise.fail(error)
+            throw error
+        }
     }
 } 

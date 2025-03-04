@@ -3,6 +3,7 @@
 
 import Foundation
 import NIO
+import NIOSSL
 import Logging
 
 /**

@@ -36,24 +36,3 @@ public struct EmailAddress: Hashable, Codable {
         }
     }
 }
-
-/// Common SSL/TLS configuration helpers for mail protocols
-public enum MailSSLConfiguration {
-    /// Create a standard SSL configuration for mail services
-    /// - Parameter hostname: The server hostname
-    /// - Returns: NIO SSL context
-    public static func createSSLContext(hostname: String) throws -> NIOSSLContext {
-        let configuration = TLSConfiguration.makeClientConfiguration()
-        return try NIOSSLContext(configuration: configuration)
-    }
-}
-
-/// Logging categories for mail operations
-public struct MailLogCategory {
-    public static let imap = "IMAP"
-    public static let smtp = "SMTP"
-    public static let imapOut = "IMAP OUT"
-    public static let imapIn = "IMAP IN"
-    public static let smtpOut = "SMTP OUT"
-    public static let smtpIn = "SMTP IN"
-} 

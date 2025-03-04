@@ -11,8 +11,8 @@ import NIOConcurrencyHelpers
 /// Protocol for command-specific IMAP handlers
 /// These handlers are added to the pipeline when a command is sent and removed when the response is received
 public protocol CommandHandler: ChannelInboundHandler where InboundIn == Response {
-    /// The tag associated with this command
-    var commandTag: String { get }
+    /// The tag associated with this command (optional)
+    var commandTag: String? { get }
     
     /// Whether this handler has completed processing
     var isCompleted: Bool { get }
@@ -37,8 +37,8 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
     public typealias InboundIn = Response
     public typealias InboundOut = Response
     
-    /// The tag associated with this command
-    public let commandTag: String
+    /// The tag associated with this command (optional)
+    public let commandTag: String?
     
     /// Whether this handler has completed processing
     public private(set) var isCompleted: Bool = false
@@ -126,6 +126,11 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
     public func processResponse(_ response: Response) -> Bool {
         // Buffer the response for logging
         bufferLog(response.debugDescription)
+        
+        // If commandTag is nil, we're only interested in untagged responses
+        if commandTag == nil {
+            return handleUntaggedResponse(response)
+        }
         
         // Check if this is a tagged response that matches our command tag
         if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {

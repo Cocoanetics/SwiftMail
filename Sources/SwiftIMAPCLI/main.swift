@@ -18,84 +18,12 @@ LoggingSystem.bootstrap { label in
     return OSLogHandler(label: label, log: osLogger)
 }
 
-// Create a logger for the main application
-let logger = os.Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "Main")
-
-// Path to the .env file (hardcoded as requested)
-let envFilePath = "/Users/oliver/Developer/.env"
-
-// Helper function to format flags more compactly
-func formatFlags(_ flags: [SwiftIMAP.Flag]) -> String {
-    return flags.map { flag -> String in
-        switch flag {
-        case .seen:
-            return "\\Seen"
-        case .answered:
-            return "\\Answered"
-        case .flagged:
-            return "\\Flagged"
-        case .deleted:
-            return "\\Deleted"
-        case .draft:
-            return "\\Draft"
-        case .custom(let name):
-            return name
-        }
-    }.joined(separator: ", ")
-}
-
-// Custom LogHandler that bridges Swift Logging to OSLog
-struct OSLogHandler: LogHandler {
-    let label: String
-    let log: OSLog
-    
-    // Required property for LogHandler protocol
-    var logLevel: Logging.Logger.Level = .debug  // Set to debug to capture all logs
-    
-    // Required property for LogHandler protocol
-    var metadata = Logging.Logger.Metadata()
-    
-    // Required subscript for LogHandler protocol
-    subscript(metadataKey metadataKey: String) -> Logging.Logger.Metadata.Value? {
-        get {
-            return metadata[metadataKey]
-        }
-        set {
-            metadata[metadataKey] = newValue
-        }
-    }
-    
-    // Initialize with a label and OSLog instance
-    init(label: String, log: OSLog) {
-        self.label = label
-        self.log = log
-    }
-    
-    // Required method for LogHandler protocol
-    func log(level: Logging.Logger.Level, message: Logging.Logger.Message, metadata: Logging.Logger.Metadata?, source: String, file: String, function: String, line: UInt) {
-        // Map Swift Logging levels to OSLog types
-        let type: OSLogType
-        switch level {
-        case .trace, .debug:
-            type = .debug
-        case .info, .notice:
-            type = .info
-        case .warning:
-            type = .default
-        case .error:
-            type = .error
-        case .critical:
-            type = .fault
-        }
-        
-        // Log the message using OSLog
-        os_log("%{public}@", log: log, type: type, message.description)
-    }
-}
+// Create a logger for the main application using Swift Logging
+let logger = Logger(label: "com.cocoanetics.SwiftIMAP.Main")
 
 do {
     // Configure SwiftDotenv with the specified path
-    try Dotenv.configure(atPath: envFilePath)
+    try Dotenv.configure()
     
     // Access IMAP credentials using dynamic member lookup with case pattern matching
     guard case let .string(host) = Dotenv["IMAP_HOST"] else {

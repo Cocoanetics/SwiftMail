@@ -4,7 +4,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "SwiftIMAP",
+    name: "SwiftMail",
     platforms: [
         .macOS("11.0")
     ],
