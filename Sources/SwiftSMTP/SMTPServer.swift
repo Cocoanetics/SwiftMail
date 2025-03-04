@@ -130,8 +130,8 @@ public actor SMTPServer {
             throw SMTPError.connectionFailed("Server rejected connection: \(greeting.message)")
         }
         
-        // Send EHLO command and get capabilities
-        let capabilities = try await sendEHLO()
+        // Fetch capabilities using our new method
+        let capabilities = try await fetchCapabilities()
         
         // If not using SSL and port is standard SMTP port, try STARTTLS
         if !useSSL && port == 587 && capabilities.contains("STARTTLS") {
@@ -152,34 +152,142 @@ public actor SMTPServer {
     }
     
     /**
-     Send EHLO command to get server capabilities
-     - Returns: Array of server capabilities
+     Execute a command and return the result
+     - Parameter command: The command to execute
+     - Returns: The result of the command
      - Throws: An error if the command fails
      */
-    private func sendEHLO() async throws -> [String] {
+    public func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+        // Ensure we have a valid channel
         guard let channel = channel else {
+            print("DEBUG - Not connected to SMTP server")
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
         
-        logger.debug("Sending EHLO command to get server capabilities")
-        
-        // Build the EHLO command with the local hostname
-        let command = "EHLO \(getLocalHostname())"
+        // Validate the command
+        try command.validate()
         
         // Create a promise for the result
-        let promise = channel.eventLoop.makePromise(of: [String].self)
+        let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
         
-        // Create and execute the handler
-        let capabilities = try await executeHandler(
-            EHLOHandler(commandTag: "EHLO", promise: promise, timeoutSeconds: 30), 
-            command: command
-        )
+        // Generate a command tag for traceability
+        let commandTag = UUID().uuidString
         
-        // Store capabilities for later use
-        self.capabilities = capabilities
-        logger.debug("Received capabilities: \(capabilities.joined(separator: ", "))")
+        // Create the command string
+        let commandString = command.toCommandString()
         
-        return capabilities
+        // Log command type for debugging
+        print("DEBUG - Executing command of type: \(type(of: command))")
+        logger.debug("Executing command of type: \(type(of: command))")
+        
+        // Create the handler for this command
+        var handler: (any SMTPCommandHandler)?
+        
+        // Check if the command is an AuthCommand
+        if let authCommand = command as? AuthCommand, 
+           CommandType.ResultType.self == AuthResult.self {
+            print("DEBUG - Creating AuthHandler for AuthCommand")
+            logger.debug("Creating AuthHandler for AuthCommand")
+            // Use the command's createHandler method
+            let authHandler = authCommand.createHandler(
+                channel: channel,
+                commandTag: commandTag,
+                promise: resultPromise as! EventLoopPromise<AuthResult>,
+                timeoutSeconds: command.timeoutSeconds
+            )
+            handler = authHandler
+            print("DEBUG - AuthHandler created successfully")
+            logger.debug("AuthHandler created successfully")
+        } else {
+            print("DEBUG - Creating handler using static createHandler method")
+            logger.debug("Creating handler using static createHandler method")
+            // Use the static createHandler method
+            handler = CommandType.HandlerType.createHandler(
+                commandTag: commandTag,
+                promise: resultPromise,
+                timeoutSeconds: command.timeoutSeconds
+            )
+            print("DEBUG - Handler created successfully: \(type(of: handler))")
+            logger.debug("Handler created successfully: \(type(of: handler))")
+        }
+        
+        // Set the logger on the handler if it implements LoggableHandler
+        if var loggableHandler = handler as? LoggableHandler {
+            loggableHandler.logger = logger
+            print("DEBUG - Logger set on handler")
+            logger.debug("Logger set on handler")
+        } else {
+            print("DEBUG - Handler does not implement LoggableHandler")
+            logger.debug("Handler does not implement LoggableHandler")
+        }
+        
+        // Store the current handler
+        self.currentHandler = handler
+        
+        // Log the command (except for AUTH which may contain sensitive data)
+        if commandString.hasPrefix("AUTH") {
+            print("DEBUG - Sending: AUTH [credentials redacted]")
+            logger.debug("Sending: AUTH [credentials redacted]")
+        } else {
+            print("DEBUG - Sending: \(commandString)")
+            logger.debug("Sending: \(commandString)")
+        }
+        
+        // Create a timeout for the command
+        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(command.timeoutSeconds))) {
+            print("DEBUG - Command timed out after \(command.timeoutSeconds) seconds")
+            self.logger.warning("Command timed out after \(command.timeoutSeconds) seconds")
+            resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
+        }
+        
+        do {
+            // Add the command handler to the pipeline
+            // We need to cast to ChannelHandler since SMTPCommandHandler doesn't conform to ChannelHandler
+            if let channelHandler = handler as? ChannelHandler {
+                print("DEBUG - Adding handler to pipeline")
+                logger.debug("Adding handler to pipeline")
+                try await channel.pipeline.addHandler(channelHandler).get()
+                print("DEBUG - Handler added to pipeline successfully")
+                logger.debug("Handler added to pipeline successfully")
+                
+                // Send the command to the server
+                let buffer = channel.allocator.buffer(string: commandString + "\r\n")
+                print("DEBUG - Sending command to server")
+                logger.debug("Sending command to server")
+                try await channel.writeAndFlush(buffer).get()
+                print("DEBUG - Command sent successfully")
+                logger.debug("Command sent successfully")
+                
+                // Wait for the result
+                print("DEBUG - Waiting for command result")
+                logger.debug("Waiting for command result")
+                let result = try await resultPromise.futureResult.get()
+                print("DEBUG - Command completed with result")
+                logger.debug("Command completed with result")
+                
+                // Cancel the timeout
+                scheduledTask.cancel()
+                
+                return result
+            } else {
+                print("DEBUG - Handler is not a ChannelHandler: \(type(of: handler))")
+                logger.error("Handler is not a ChannelHandler: \(type(of: handler))")
+                throw SMTPError.connectionFailed("Handler is not a ChannelHandler")
+            }
+        } catch {
+            // If any error occurs, fail the promise to prevent leaks
+            print("DEBUG - Error executing command: \(error.localizedDescription)")
+            logger.error("Error executing command: \(error.localizedDescription)")
+            resultPromise.fail(error)
+            
+            // Cancel the timeout
+            scheduledTask.cancel()
+            
+            // Clear the current handler
+            self.currentHandler = nil
+            
+            throw error
+        }
     }
     
     /**
@@ -187,92 +295,98 @@ public actor SMTPServer {
      - Parameters:
        - username: The username for authentication
        - password: The password for authentication
-     - Throws: An error if the authentication fails
+     - Returns: Boolean indicating if authentication was successful
+     - Throws: SMTPError if authentication fails
      */
-    public func authenticate(username: String, password: String) async throws {
-        guard let channel = channel else {
+    public func authenticate(username: String, password: String) async throws -> Bool {
+        // Ensure we have a valid channel
+        guard let _ = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
         
-        // Check if authentication is supported
-        if !capabilities.contains("AUTH") && 
-           !capabilities.contains("AUTH=LOGIN") && 
-           !capabilities.contains("AUTH=PLAIN") {
-            logger.notice("Authentication not supported by server, skipping login")
-            return
+        // Store the current capabilities for local use
+        let currentCapabilities = self.capabilities
+        print("DEBUG - Server capabilities: \(currentCapabilities)")
+        logger.debug("Server capabilities: \(currentCapabilities)")
+        
+        // Check if the server supports authentication (either general AUTH or specific methods)
+        guard currentCapabilities.contains("AUTH") || currentCapabilities.contains(where: { $0.hasPrefix("AUTH ") }) else {
+            print("DEBUG - Server does not support authentication")
+            throw SMTPError.authenticationFailed("Server does not support authentication")
         }
         
-        logger.info("Authenticating with SMTP server")
+        // Log available auth methods
+        let authMethods = currentCapabilities.filter { $0.hasPrefix("AUTH ") }
+        print("DEBUG - Available authentication methods: \(authMethods)")
+        logger.debug("Available authentication methods: \(authMethods)")
         
-        // Try authentication methods in order of preference
-        if isTLSEnabled && (capabilities.contains("AUTH=PLAIN") || capabilities.contains("AUTH")) {
-            // Try PLAIN auth (single step authentication)
+        // If we have TLS enabled, try PLAIN auth first
+        // Check for either specific AUTH PLAIN or general AUTH capability
+        let supportsPlain = currentCapabilities.contains("AUTH PLAIN") || 
+                            (currentCapabilities.contains("AUTH") && authMethods.isEmpty)
+        
+        if isTLSEnabled && supportsPlain {
+            print("DEBUG - Attempting PLAIN authentication (TLS enabled: \(isTLSEnabled))")
+            logger.debug("Attempting PLAIN authentication (TLS enabled: \(isTLSEnabled))")
             do {
-                // Format: \0username\0password
-                let authString = "\u{0}\(username)\u{0}\(password)"
-                let authData = Data(authString.utf8).base64EncodedString()
+                // Create and execute AUTH PLAIN command
+                let plainCommand = AuthCommand(username: username, password: password, method: .plain)
+                let result = try await executeCommand(plainCommand)
                 
-                // Create the handler promise
-                let promise = channel.eventLoop.makePromise(of: AuthResult.self)
-                
-                // Create the handler
-                let handler = AuthHandler(
-                    commandTag: nil,
-                    promise: promise,
-                    timeoutSeconds: 30,
-                    method: .plain,
-                    username: username,
-                    password: password,
-                    channel: channel
-                )
-                
-                // Execute the handler with the AUTH PLAIN command
-                let result = try await executeHandler(handler, command: "AUTH PLAIN \(authData)")
-                
-                // Check if authentication was successful
-                guard result.success else {
-                    let errorMessage = result.errorMessage ?? "Authentication failed"
-                    throw SMTPError.authenticationFailed(errorMessage)
+                // If successful, return success
+                if result.success {
+                    print("DEBUG - PLAIN authentication successful")
+                    logger.info("Authenticated successfully using PLAIN")
+                    return true
+                } else {
+                    print("DEBUG - PLAIN authentication failed: \(result.errorMessage ?? "Unknown error")")
+                    logger.warning("PLAIN authentication failed: \(result.errorMessage ?? "Unknown error")")
                 }
-                
-                logger.info("Authentication successful using PLAIN method")
-                return
             } catch {
-                logger.warning("PLAIN authentication failed: \(error.localizedDescription), trying LOGIN method")
-                // Fall through to try LOGIN method
+                print("DEBUG - PLAIN authentication error: \(error.localizedDescription)")
+                logger.warning("PLAIN authentication error: \(error.localizedDescription)")
             }
+        } else {
+            print("DEBUG - Skipping PLAIN authentication (TLS enabled: \(isTLSEnabled), AUTH PLAIN supported: \(supportsPlain))")
+            logger.debug("Skipping PLAIN authentication (TLS enabled: \(isTLSEnabled), AUTH PLAIN supported: \(supportsPlain))")
         }
         
-        // Try AUTH LOGIN (two-step authentication)
-        do {
-            // Create the handler promise
-            let promise = channel.eventLoop.makePromise(of: AuthResult.self)
-            
-            // Create the handler
-            let handler = AuthHandler(
-                commandTag: nil,
-                promise: promise,
-                timeoutSeconds: 30,
-                method: .login,
-                username: username,
-                password: password,
-                channel: channel
-            )
-            
-            // Execute the handler with the AUTH LOGIN command
-            let result = try await executeHandler(handler, command: "AUTH LOGIN")
-            
-            // Check if authentication was successful
-            guard result.success else {
-                let errorMessage = result.errorMessage ?? "Authentication failed"
-                throw SMTPError.authenticationFailed(errorMessage)
+        // If we reach here, either PLAIN auth failed or wasn't available
+        // Try LOGIN auth if supported (either specific AUTH LOGIN or general AUTH capability)
+        let supportsLogin = currentCapabilities.contains("AUTH LOGIN") || 
+                           (currentCapabilities.contains("AUTH") && authMethods.isEmpty)
+        
+        if supportsLogin {
+            print("DEBUG - Attempting LOGIN authentication")
+            logger.debug("Attempting LOGIN authentication")
+            do {
+                // Create and execute AUTH LOGIN command
+                let loginCommand = AuthCommand(username: username, password: password, method: .login)
+                let result = try await executeCommand(loginCommand)
+                
+                // If successful, return success
+                if result.success {
+                    print("DEBUG - LOGIN authentication successful")
+                    logger.info("Authenticated successfully using LOGIN")
+                    return true
+                } else {
+                    print("DEBUG - LOGIN authentication failed: \(result.errorMessage ?? "Unknown error")")
+                    logger.warning("LOGIN authentication failed: \(result.errorMessage ?? "Unknown error")")
+                    throw SMTPError.authenticationFailed(result.errorMessage ?? "Authentication failed")
+                }
+            } catch {
+                print("DEBUG - LOGIN authentication error: \(error.localizedDescription)")
+                logger.warning("LOGIN authentication error: \(error.localizedDescription)")
+                throw error
             }
-            
-            logger.info("Authentication successful using LOGIN method")
-        } catch {
-            logger.error("Authentication failed: \(error.localizedDescription)")
-            throw error
+        } else {
+            print("DEBUG - LOGIN authentication not supported by server")
+            logger.debug("LOGIN authentication not supported by server")
         }
+        
+        // If we reach here, all authentication methods failed
+        print("DEBUG - No supported authentication methods succeeded")
+        throw SMTPError.authenticationFailed("No supported authentication methods succeeded")
     }
     
     /**
@@ -764,7 +878,43 @@ public actor SMTPServer {
                 // Extract the base capability (before any parameters)
                 let baseCapability = capability.split(separator: " ").first.map(String.init) ?? capability
                 capabilities.append(baseCapability)
+                
+                // Also add the full capability with parameters
+                if baseCapability != capability {
+                    capabilities.append(capability)
+                }
+                
+                // Special handling for AUTH capability
+                if baseCapability == "AUTH" {
+                    // Add specific AUTH methods
+                    let authMethods = capability.split(separator: " ").dropFirst()
+                    for method in authMethods {
+                        capabilities.append("AUTH \(method)")
+                    }
+                }
             }
         }
+        
+        print("DEBUG - Parsed capabilities: \(capabilities)")
+    }
+    
+    /**
+     Fetch server capabilities by sending EHLO command
+     - Returns: Array of capability strings
+     - Throws: An error if the capability command fails
+     */
+    @discardableResult
+    public func fetchCapabilities() async throws -> [String] {
+        // Create the EHLO command with the hostname
+        let command = EHLOCommand(hostname: getLocalHostname())
+        
+        // Execute the command
+        let serverCapabilities = try await executeCommand(command)
+        
+        // Store capabilities for later use
+        self.capabilities = serverCapabilities
+        logger.debug("Received server capabilities: \(serverCapabilities.joined(separator: ", "))")
+        
+        return serverCapabilities
     }
 } 

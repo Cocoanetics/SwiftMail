@@ -86,9 +86,16 @@ do {
             // Login with credentials
             print("Authenticating...")
             debugPrint("Sending authentication request...")
-            try await server.authenticate(username: username, password: password)
-            logger.info("Authentication successful")
-            debugPrint("Authentication successful")
+            let authSuccess = try await server.authenticate(username: username, password: password)
+            
+            if authSuccess {
+                logger.info("Authentication successful")
+                debugPrint("Authentication successful")
+            } else {
+                logger.error("Authentication failed")
+                debugPrint("Authentication failed")
+                throw SMTPError.authenticationFailed("Authentication failed")
+            }
             
             // Create a test email
             let sender = EmailAddress(name: "Test Sender", address: username)
