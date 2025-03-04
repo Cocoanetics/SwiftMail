@@ -4,26 +4,26 @@
 import Foundation
 
 /**
- Represents an email message with sender, recipients, subject, and body
+ A struct representing an email message
  */
 public struct Email {
-    /// The sender of the email
+    /** The sender of the email */
     public let sender: EmailAddress
     
-    /// The recipients of the email
+    /** The recipients of the email */
     public let recipients: [EmailAddress]
     
-    /// The subject of the email
+    /** The subject of the email */
     public let subject: String
     
-    /// The body of the email
+    /** The body of the email */
     public let body: String
     
-    /// Optional attachments for the email
+    /** Optional attachments for the email */
     public let attachments: [Attachment]?
     
     /**
-     Initialize a new email
+     Initialize a new email with EmailAddress objects
      - Parameters:
      - sender: The sender of the email
      - recipients: The recipients of the email
@@ -40,38 +40,53 @@ public struct Email {
     }
     
     /**
-     Initialize a new email with string-based sender and recipients
+     Initialize a new email with string-based sender and recipient information
      - Parameters:
-     - sender: The name of the sender (optional)
+     - senderName: The name of the sender (optional)
      - senderAddress: The email address of the sender
-     - recipients: The email addresses of the recipients
+     - recipientNames: The names of the recipients (optional)
+     - recipientAddresses: The email addresses of the recipients
      - subject: The subject of the email
      - body: The body of the email
      - attachments: Optional attachments for the email
      */
-    public init(sender: String?, senderAddress: String, recipients: [String], subject: String, body: String, attachments: [Attachment]? = nil) {
+    public init(senderName: String? = nil, senderAddress: String, recipientNames: [String?]? = nil, recipientAddresses: [String], subject: String, body: String, attachments: [Attachment]? = nil) {
         // Create sender EmailAddress
-        let senderEmailAddress = EmailAddress(name: sender, address: senderAddress)
+        let sender = EmailAddress(name: senderName, address: senderAddress)
         
-        // Create recipient EmailAddresses
-        let recipientEmailAddresses = recipients.map { EmailAddress(address: $0) }
+        // Create recipient EmailAddress objects
+        var recipients: [EmailAddress] = []
         
-        // Call the main initializer
-        self.init(sender: senderEmailAddress, recipients: recipientEmailAddresses, subject: subject, body: body, attachments: attachments)
+        if let recipientNames = recipientNames, recipientNames.count == recipientAddresses.count {
+            // If recipient names are provided and count matches addresses
+            for i in 0..<recipientAddresses.count {
+                let recipient = EmailAddress(name: recipientNames[i], address: recipientAddresses[i])
+                recipients.append(recipient)
+            }
+        } else {
+            // If no recipient names are provided or count doesn't match
+            for address in recipientAddresses {
+                let recipient = EmailAddress(name: nil, address: address)
+                recipients.append(recipient)
+            }
+        }
+        
+        // Initialize with the created objects
+        self.init(sender: sender, recipients: recipients, subject: subject, body: body, attachments: attachments)
     }
 }
 
 /**
- Represents an attachment in an email
+ A struct representing an email attachment
  */
 public struct Attachment {
-    /// The filename of the attachment
+    /** The filename of the attachment */
     public let filename: String
     
-    /// The MIME type of the attachment
+    /** The MIME type of the attachment */
     public let mimeType: String
     
-    /// The data of the attachment
+    /** The data of the attachment */
     public let data: Data
     
     /**
@@ -85,5 +100,28 @@ public struct Attachment {
         self.filename = filename
         self.mimeType = mimeType
         self.data = data
+    }
+}
+
+// MARK: - CustomDebugStringConvertible
+
+extension Email: CustomDebugStringConvertible {
+    public var debugDescription: String {
+        var description = "Email {\n"
+        description += "  From: \(sender.formatted)\n"
+        description += "  To: \(recipients.map { $0.formatted }.joined(separator: ", "))\n"
+        description += "  Subject: \(subject)\n"
+        description += "  Body: \(body.prefix(100))\(body.count > 100 ? "..." : "")\n"
+        
+        if let attachments = attachments, !attachments.isEmpty {
+            description += "  Attachments: \(attachments.count) {\n"
+            for attachment in attachments {
+                description += "    \(attachment.filename) (\(attachment.mimeType), \(attachment.data.count) bytes)\n"
+            }
+            description += "  }\n"
+        }
+        
+        description += "}"
+        return description
     }
 } 

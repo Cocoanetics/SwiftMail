@@ -21,7 +21,10 @@ let package = Package(
             targets: ["SwiftMailCore"]),
         .executable(
             name: "SwiftIMAPCLI",
-            targets: ["SwiftIMAPCLI"])
+            targets: ["SwiftIMAPCLI"]),
+        .executable(
+            name: "SwiftSMTPCLI",
+            targets: ["SwiftSMTPCLI"])
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -60,6 +63,13 @@ let package = Package(
             name: "SwiftIMAPCLI",
             dependencies: [
                 "SwiftIMAP",
+                .product(name: "SwiftDotenv", package: "swift-dotenv"),
+            ]
+        ),
+        .executableTarget(
+            name: "SwiftSMTPCLI",
+            dependencies: [
+                "SwiftSMTP",
                 .product(name: "SwiftDotenv", package: "swift-dotenv"),
             ]
         ),
