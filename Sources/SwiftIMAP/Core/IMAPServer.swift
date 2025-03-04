@@ -8,6 +8,7 @@ import NIOIMAPCore
 import NIO
 import NIOSSL
 import NIOConcurrencyHelpers
+import SwiftMailCore
 
 /** An actor that represents an IMAP server connection */
 public actor IMAPServer {

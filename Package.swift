@@ -16,6 +16,9 @@ let package = Package(
         .library(
             name: "SwiftSMTP",
             targets: ["SwiftSMTP"]),
+        .library(
+            name: "SwiftMailCore",
+            targets: ["SwiftMailCore"]),
         .executable(
             name: "SwiftIMAPCLI",
             targets: ["SwiftIMAPCLI"])
@@ -26,13 +29,22 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-imap", branch: "main"),
         .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-testing", branch: "main"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
     ],
     targets: [
         // Targets are the basic building blocks of a package, defining a module or a test suite.
         // Targets can depend on other targets in this package and products from dependencies.
         .target(
+            name: "SwiftMailCore",
+            dependencies: [
+                .product(name: "NIOSSL", package: "swift-nio-ssl"),
+                .product(name: "Logging", package: "swift-log"),
+            ]
+        ),
+        .target(
             name: "SwiftIMAP",
             dependencies: [
+                "SwiftMailCore",
                 .product(name: "NIOIMAP", package: "swift-nio-imap"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
             ]
@@ -40,6 +52,7 @@ let package = Package(
         .target(
             name: "SwiftSMTP",
             dependencies: [
+                "SwiftMailCore",
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
             ]
         ),
@@ -64,6 +77,13 @@ let package = Package(
             name: "SwiftSMTPTests",
             dependencies: [
                 "SwiftSMTP",
+                .product(name: "Testing", package: "swift-testing")
+            ]
+        ),
+        .testTarget(
+            name: "SwiftMailCoreTests",
+            dependencies: [
+                "SwiftMailCore",
                 .product(name: "Testing", package: "swift-testing")
             ]
         ),
