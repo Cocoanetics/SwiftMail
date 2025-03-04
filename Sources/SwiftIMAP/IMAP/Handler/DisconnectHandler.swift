@@ -12,45 +12,20 @@ import NIO
 import OSLog
 
 /// Handler for the disconnect response
-public final class DisconnectHandler: IMAPCommandHandler {
+public final class DisconnectHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
+    /// The type of result this handler produces
     public typealias ResultType = Void
-    public typealias InboundIn = Response
-    public typealias InboundOut = Never
     
-    private let promise: EventLoopPromise<Void>
-    private let commandTag: String
-    private var scheduledTask: Scheduled<Void>?
-    private let logger: Logger
+    /// The channel to close
+    private var channel: Channel?
     
-    public static func createHandler(commandTag: String, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int, logger: Logger) -> Self {
-        return self.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
-    }
-    
-    public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int, logger: Logger) {
-        self.promise = promise
-        self.commandTag = commandTag
-        self.logger = logger
-    }
-    
-    public func channelRead(context: ChannelHandlerContext, data: NIOAny) -> EventLoopFuture<Void> {
-        // We're not interested in server responses when disconnecting
-        return context.eventLoop.makeSucceededFuture(())
-    }
-    
-    public func handleTimeout() {
-        promise.fail(IMAPError.timeout)
-    }
-    
-    public func cancelTimeout() {
-        scheduledTask?.cancel()
-        scheduledTask = nil
-    }
-    
-    public func setupTimeout(on eventLoop: EventLoop) {
-        let deadline = NIODeadline.now() + .seconds(10)
-        scheduledTask = eventLoop.scheduleTask(deadline: deadline) { [weak self] in
-            self?.handleTimeout()
-        }
+    /// Initialize a new disconnect handler
+    /// - Parameters:
+    ///   - commandTag: The tag associated with this command
+    ///   - promise: The promise to fulfill when the disconnect completes
+    ///   - timeoutSeconds: The timeout for this command in seconds
+    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int = 5) {
+        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
     public func handlerRemoved(context: ChannelHandlerContext) {
@@ -64,7 +39,7 @@ public final class DisconnectHandler: IMAPCommandHandler {
                     // Channel is already closed, which is fine
                     self.promise.succeed(())
                 } else {
-                    self.logger.error("Error during channel closure: \(error)")
+                    self.logger?.error("Error during channel closure: \(error)")
                     self.promise.fail(error)
                 }
             }

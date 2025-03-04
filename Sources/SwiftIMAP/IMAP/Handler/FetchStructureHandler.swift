@@ -9,18 +9,17 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH STRUCTURE command
-public final class FetchStructureHandler: BaseIMAPCommandHandler<BodyStructure>, @unchecked Sendable {
+public final class FetchStructureHandler: BaseIMAPCommandHandler<BodyStructure>, IMAPCommandHandler {
     /// The body structure from the response
     private var bodyStructure: BodyStructure?
     
     /// Initialize a new fetch structure handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
-    ///   - fetchPromise: The promise to fulfill when the fetch completes
+    ///   - promise: The promise to fulfill when the fetch completes
     ///   - timeoutSeconds: The timeout for this command in seconds
-    ///   - logger: The logger to use for logging responses
-    public init(commandTag: String, fetchPromise: EventLoopPromise<BodyStructure>, timeoutSeconds: Int = 10, logger: Logger) {
-        super.init(commandTag: commandTag, promise: fetchPromise, timeoutSeconds: timeoutSeconds, logger: logger)
+    override public init(commandTag: String, promise: EventLoopPromise<BodyStructure>, timeoutSeconds: Int = 10) {
+        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
     /// Handle a tagged OK response by succeeding the promise with the body structure

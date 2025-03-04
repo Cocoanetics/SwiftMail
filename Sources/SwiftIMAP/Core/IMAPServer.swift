@@ -2,7 +2,7 @@
 // A Swift IMAP client that encapsulates connection logic
 
 import Foundation
-import os.log
+import Logging
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
 import NIO
@@ -42,13 +42,13 @@ public actor IMAPServer {
 	 2. In the search field, type "process:com.cocoanetics.SwiftIMAP"
 	 3. You may need to adjust the "Action" menu to show "Include Debug Messages" and "Include Info Messages"
 	 */
-	private let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAPServer")
+	private let logger: Logging.Logger
 	
 	/** Logger for outgoing IMAP commands */
-	private let outboundLogger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAP OUT")
+	private let outboundLogger: Logging.Logger
 	
 	/** Logger for incoming IMAP responses */
-	private let inboundLogger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "IMAP IN")
+	private let inboundLogger: Logging.Logger
 	
 	/// Error thrown when a standard folder is not defined
 	public struct UndefinedFolderError: Error, CustomStringConvertible {
@@ -72,6 +72,11 @@ public actor IMAPServer {
 		self.host = host
 		self.port = port
 		self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
+		
+		// Initialize loggers
+		self.logger = Logging.Logger(label: "com.cocoanetics.SwiftIMAP.IMAPServer")
+		self.outboundLogger = Logging.Logger(label: "com.cocoanetics.SwiftIMAP.IMAP_OUT")
+		self.inboundLogger = Logging.Logger(label: "com.cocoanetics.SwiftIMAP.IMAP_IN")
 	}
 	
 	deinit {
@@ -546,9 +551,11 @@ public actor IMAPServer {
 		let handler = command.handlerType.createHandler(
 			commandTag: tag,
 			promise: resultPromise,
-			timeoutSeconds: command.timeoutSeconds,
-			logger: inboundLogger
+			timeoutSeconds: command.timeoutSeconds
 		)
+		
+		// Set the logger on the handler
+		handler.logger = inboundLogger
 		
 		// Add the handler to the channel pipeline
 		try await channel.pipeline.addHandler(handler).get()
@@ -590,9 +597,11 @@ public actor IMAPServer {
 		let handler = HandlerType.createHandler(
 			commandTag: "",  // No command tag needed for server-initiated responses
 			promise: resultPromise,
-			timeoutSeconds: timeoutSeconds,
-			logger: inboundLogger
+			timeoutSeconds: timeoutSeconds
 		)
+		
+		// Set the logger on the handler
+		handler.logger = inboundLogger
 		
 		// Add the handler to the pipeline
 		try await channel.pipeline.addHandler(handler).get()

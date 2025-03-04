@@ -2,7 +2,7 @@
 // A channel handler that logs outgoing IMAP commands
 
 import Foundation
-import os.log
+import Logging
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
 import NIO
@@ -12,11 +12,11 @@ public final class OutboundLogger: ChannelOutboundHandler, @unchecked Sendable {
     public typealias OutboundIn = Any
     public typealias OutboundOut = Any
     
-    private let logger: Logger
+    private let logger: Logging.Logger
     
     /// Initialize a new outbound logger
     /// - Parameter logger: The logger to use for logging commands
-    public init(logger: Logger) {
+    public init(logger: Logging.Logger) {
         self.logger = logger
     }
 	
@@ -32,16 +32,16 @@ public final class OutboundLogger: ChannelOutboundHandler, @unchecked Sendable {
 				case .byteBuffer(let buffer):
 					// Use the ByteBuffer extension to get a string value
 					let commandString = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) ?? "<Binary data>"
-					logger.debug("\(commandString, privacy: .public)")
+					logger.debug("\(commandString)")
 				case .fileRegion:
 					logger.debug("<File region data>")
 			}
 		} else if let debuggable = command as? CustomDebugStringConvertible {
 			// Use debugDescription for more detailed information about the command
-			logger.notice("\(debuggable.debugDescription, privacy: .public)")
+			logger.notice("\(debuggable.debugDescription)")
 		} else {
 			// Fallback to standard description
-			logger.notice("\(String(describing: command), privacy: .public)")
+			logger.notice("\(String(describing: command))")
 		}
 		
 		// Forward the data to the next handler

@@ -2,14 +2,14 @@
 // Handlers for server-related IMAP commands
 
 import Foundation
-import os.log
+import Logging
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
 import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP CAPABILITY command
-public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler, @unchecked Sendable {
+public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler {
     /// Collected capabilities
     private var capabilities: [Capability] = []
     
@@ -18,25 +18,8 @@ public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAP
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the command completes
     ///   - timeoutSeconds: The timeout for this command in seconds
-    ///   - logger: The logger to use for logging responses
-    override public init(commandTag: String, promise: EventLoopPromise<[Capability]>, timeoutSeconds: Int = 5, logger: Logger) {
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
-    }
-    
-    /// Create a handler for the command
-    /// - Parameters:
-    ///   - commandTag: The tag for the command
-    ///   - promise: The promise to fulfill with the result
-    ///   - timeoutSeconds: The timeout in seconds
-    ///   - logger: The logger to use
-    /// - Returns: A handler for the command
-    public static func createHandler(
-        commandTag: String,
-        promise: EventLoopPromise<[Capability]>,
-        timeoutSeconds: Int,
-        logger: Logger
-    ) -> CapabilityHandler {
-        return CapabilityHandler(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
+    override public init(commandTag: String, promise: EventLoopPromise<[Capability]>, timeoutSeconds: Int = 5) {
+        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
     /// Handle a tagged OK response by succeeding the promise with the capabilities
@@ -49,7 +32,7 @@ public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAP
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
     override public func handleTaggedErrorResponse(_ response: TaggedResponse) {
-        logger.error("Received error response for CAPABILITY command: \(String(describing: response.state))")
+        logger?.error("Received error response for CAPABILITY command: \(String(describing: response.state))")
         failWithError(IMAPError.commandFailed(String(describing: response.state)))
     }
     
@@ -72,31 +55,14 @@ public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAP
 }
 
 /// Handler for IMAP COPY command
-public final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
+public final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
     /// Initialize a new copy handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the command completes
     ///   - timeoutSeconds: The timeout for this command in seconds
-    ///   - logger: The logger to use for logging responses
-    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int = 5, logger: Logger) {
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
-    }
-    
-    /// Create a handler for the command
-    /// - Parameters:
-    ///   - commandTag: The tag for the command
-    ///   - promise: The promise to fulfill with the result
-    ///   - timeoutSeconds: The timeout in seconds
-    ///   - logger: The logger to use
-    /// - Returns: A handler for the command
-    public static func createHandler(
-        commandTag: String,
-        promise: EventLoopPromise<Void>,
-        timeoutSeconds: Int,
-        logger: Logger
-    ) -> CopyHandler {
-        return CopyHandler(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
+    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int = 5) {
+        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
     /// Handle a tagged OK response by succeeding the promise
@@ -113,31 +79,14 @@ public final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler
 }
 
 /// Handler for IMAP STORE command
-public final class StoreHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
+public final class StoreHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
     /// Initialize a new store handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the command completes
     ///   - timeoutSeconds: The timeout for this command in seconds
-    ///   - logger: The logger to use for logging responses
-    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int = 5, logger: Logger) {
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
-    }
-    
-    /// Create a handler for the command
-    /// - Parameters:
-    ///   - commandTag: The tag for the command
-    ///   - promise: The promise to fulfill with the result
-    ///   - timeoutSeconds: The timeout in seconds
-    ///   - logger: The logger to use
-    /// - Returns: A handler for the command
-    public static func createHandler(
-        commandTag: String,
-        promise: EventLoopPromise<Void>,
-        timeoutSeconds: Int,
-        logger: Logger
-    ) -> StoreHandler {
-        return StoreHandler(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
+    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int = 5) {
+        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
     /// Handle a tagged OK response by succeeding the promise
@@ -154,31 +103,14 @@ public final class StoreHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandle
 }
 
 /// Handler for IMAP EXPUNGE command
-public final class ExpungeHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
+public final class ExpungeHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
     /// Initialize a new expunge handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the command completes
     ///   - timeoutSeconds: The timeout for this command in seconds
-    ///   - logger: The logger to use for logging responses
-    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int = 5, logger: Logger) {
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
-    }
-    
-    /// Create a handler for the command
-    /// - Parameters:
-    ///   - commandTag: The tag for the command
-    ///   - promise: The promise to fulfill with the result
-    ///   - timeoutSeconds: The timeout in seconds
-    ///   - logger: The logger to use
-    /// - Returns: A handler for the command
-    public static func createHandler(
-        commandTag: String,
-        promise: EventLoopPromise<Void>,
-        timeoutSeconds: Int,
-        logger: Logger
-    ) -> ExpungeHandler {
-        return ExpungeHandler(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
+    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int = 5) {
+        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
     /// Handle a tagged OK response by succeeding the promise

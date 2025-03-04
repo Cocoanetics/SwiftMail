@@ -2,7 +2,7 @@
 // Protocol for command-specific IMAP handlers
 
 import Foundation
-import os.log
+import Logging
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
 import NIO
@@ -50,7 +50,7 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
     private var timeoutTask: Scheduled<Void>?
     
     /// Logger for IMAP responses
-    internal let logger: Logger
+    public var logger: Logger?
     
     /// Lock for thread-safe access to mutable properties
     internal let lock = NIOLock()
@@ -66,12 +66,10 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the command completes
     ///   - timeoutSeconds: The timeout for this command in seconds
-    ///   - logger: The logger to use for logging responses
-    public init(commandTag: String, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int = 10, logger: Logger) {
+    public init(commandTag: String, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int = 10) {
         self.commandTag = commandTag
         self.promise = promise
         self.timeoutSeconds = timeoutSeconds
-        self.logger = logger
     }
     
     /// Set up the timeout for this command
@@ -136,7 +134,7 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
                 // Subclasses should override handleTaggedOKResponse to handle the OK response
                 handleTaggedOKResponse(taggedResponse)
             } else {
-                logger.debug("Tagged response is an error: \(String(describing: taggedResponse.state))")
+                logger?.debug("Tagged response is an error: \(String(describing: taggedResponse.state))")
                 // Failed response, fail the promise with an error
                 handleTaggedErrorResponse(taggedResponse)
             }
@@ -191,7 +189,7 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
         lock.withLock {
             if !logBuffer.isEmpty {
                 let combinedLog = logBuffer.joined(separator: "\n")
-                logger.debug("\(combinedLog, privacy: .public)\n")
+                logger?.debug("\(combinedLog)\n")
                 logBuffer.removeAll()
             }
         }

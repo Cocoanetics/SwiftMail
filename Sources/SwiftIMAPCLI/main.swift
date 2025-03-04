@@ -3,12 +3,23 @@
 
 import Foundation
 import SwiftIMAP
-import os.log
+import os
+import Logging
 import SwiftDotenv
 import NIOIMAP
 
+// Configure the Swift Logging system to use OSLog
+LoggingSystem.bootstrap { label in
+    // Create an OSLog-based logger
+    let category = label.split(separator: ".").last?.description ?? "default"
+    let osLogger = OSLog(subsystem: "com.cocoanetics.SwiftIMAP", category: category)
+    
+    // Return a custom LogHandler that bridges to OSLog
+    return OSLogHandler(label: label, log: osLogger)
+}
+
 // Create a logger for the main application
-let logger = Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "Main")
+let logger = os.Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "Main")
 
 // Path to the .env file (hardcoded as requested)
 let envFilePath = "/Users/oliver/Developer/.env"
@@ -31,6 +42,55 @@ func formatFlags(_ flags: [SwiftIMAP.Flag]) -> String {
             return name
         }
     }.joined(separator: ", ")
+}
+
+// Custom LogHandler that bridges Swift Logging to OSLog
+struct OSLogHandler: LogHandler {
+    let label: String
+    let log: OSLog
+    
+    // Required property for LogHandler protocol
+    var logLevel: Logging.Logger.Level = .debug  // Set to debug to capture all logs
+    
+    // Required property for LogHandler protocol
+    var metadata = Logging.Logger.Metadata()
+    
+    // Required subscript for LogHandler protocol
+    subscript(metadataKey metadataKey: String) -> Logging.Logger.Metadata.Value? {
+        get {
+            return metadata[metadataKey]
+        }
+        set {
+            metadata[metadataKey] = newValue
+        }
+    }
+    
+    // Initialize with a label and OSLog instance
+    init(label: String, log: OSLog) {
+        self.label = label
+        self.log = log
+    }
+    
+    // Required method for LogHandler protocol
+    func log(level: Logging.Logger.Level, message: Logging.Logger.Message, metadata: Logging.Logger.Metadata?, source: String, file: String, function: String, line: UInt) {
+        // Map Swift Logging levels to OSLog types
+        let type: OSLogType
+        switch level {
+        case .trace, .debug:
+            type = .debug
+        case .info, .notice:
+            type = .info
+        case .warning:
+            type = .default
+        case .error:
+            type = .error
+        case .critical:
+            type = .fault
+        }
+        
+        // Log the message using OSLog
+        os_log("%{public}@", log: log, type: type, message.description)
+    }
 }
 
 do {

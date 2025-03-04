@@ -2,19 +2,21 @@ import Foundation
 import NIOIMAPCore
 
 /** Command to close the currently selected mailbox */
-struct CloseCommand: IMAPCommand {
-    typealias ResultType = Void
-    typealias HandlerType = CloseHandler
+public struct CloseCommand: IMAPCommand {
+    public typealias ResultType = Void
+    public typealias HandlerType = CloseHandler
     
-    var handlerType: HandlerType.Type {
+    public var handlerType: HandlerType.Type {
         return CloseHandler.self
     }
     
-    func validate() throws {
+    public init() {}
+    
+    public func validate() throws {
         // No validation needed for CLOSE command
     }
     
-    func toTaggedCommand(tag: String) -> TaggedCommand {
+    public func toTaggedCommand(tag: String) -> TaggedCommand {
         TaggedCommand(tag: tag, command: .close)
     }
 } 

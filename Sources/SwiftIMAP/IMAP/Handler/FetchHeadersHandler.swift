@@ -9,18 +9,17 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH HEADERS command
-public final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, @unchecked Sendable {
+public final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHandler {
     /// Collected email headers
     private var emailHeaders: [Header] = []
     
     /// Initialize a new fetch headers handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
-    ///   - fetchPromise: The promise to fulfill when the fetch completes
+    ///   - promise: The promise to fulfill when the fetch completes
     ///   - timeoutSeconds: The timeout for this command in seconds
-    ///   - logger: The logger to use for logging responses
-    public init(commandTag: String, fetchPromise: EventLoopPromise<[Header]>, timeoutSeconds: Int = 10, logger: Logger) {
-        super.init(commandTag: commandTag, promise: fetchPromise, timeoutSeconds: timeoutSeconds, logger: logger)
+    override public init(commandTag: String, promise: EventLoopPromise<[Header]>, timeoutSeconds: Int = 10) {
+        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
     /// Handle a tagged OK response by succeeding the promise with the mailbox info

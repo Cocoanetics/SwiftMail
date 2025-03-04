@@ -9,12 +9,12 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP SELECT command
-public final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCommandHandler, @unchecked Sendable {
+public final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCommandHandler {
     /// The type of result this handler produces
     public typealias ResultType = Mailbox.Status
     
-    /// Current mailbox information being built from responses
-    private var mailboxInfo: Mailbox.Status
+    /// The mailbox status being built
+    private var mailboxInfo = Mailbox.Status()
     
     /// Static property to hold the mailbox name between command creation and handler initialization
     private static var pendingMailboxName: String = ""
@@ -25,28 +25,15 @@ public final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCo
         pendingMailboxName = mailboxName
     }
     
-    /// Create a new handler instance
-    /// - Parameters:
-    ///   - commandTag: The tag associated with this command
-    ///   - promise: The promise to fulfill when the command completes
-    ///   - timeoutSeconds: The timeout for this command in seconds
-    ///   - logger: The logger to use for logging responses
-    public static func createHandler(commandTag: String, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int, logger: Logger) -> Self {
-        guard let handler = SelectHandler(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger) as? Self else {
-            fatalError("Failed to create SelectHandler")
-        }
-        return handler
-    }
-    
     /// Initialize a new select handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
-    ///   - promise: The promise to fulfill when the command completes
+    ///   - promise: The promise to fulfill when the select completes
     ///   - timeoutSeconds: The timeout for this command in seconds
-    ///   - logger: The logger to use for logging responses
-    override public init(commandTag: String, promise: EventLoopPromise<Mailbox.Status>, timeoutSeconds: Int = 5, logger: Logger) {
-        self.mailboxInfo = Mailbox.Status()
-        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
+    override public init(commandTag: String, promise: EventLoopPromise<Mailbox.Status>, timeoutSeconds: Int = 5) {
+        // Initialize with default values
+        mailboxInfo = Mailbox.Status()
+        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
     /// Handle a tagged OK response by succeeding the promise with the mailbox info

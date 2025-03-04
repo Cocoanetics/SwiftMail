@@ -9,22 +9,12 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH PART command
-public final class FetchPartHandler: BaseIMAPCommandHandler<Data>, @unchecked Sendable {
+public final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected message part data
     private var partData: Data = Data()
     
     /// Expected byte count for the streaming data
     private var expectedByteCount: Int?
-    
-    /// Initialize a new fetch part handler
-    /// - Parameters:
-    ///   - commandTag: The tag associated with this command
-    ///   - fetchPromise: The promise to fulfill when the fetch completes
-    ///   - timeoutSeconds: The timeout for this command in seconds
-    ///   - logger: The logger to use for logging responses
-    public init(commandTag: String, fetchPromise: EventLoopPromise<Data>, timeoutSeconds: Int = 10, logger: Logger) {
-        super.init(commandTag: commandTag, promise: fetchPromise, timeoutSeconds: timeoutSeconds, logger: logger)
-    }
     
     /// Handle a tagged OK response by succeeding the promise with the collected data
     /// - Parameter response: The tagged response

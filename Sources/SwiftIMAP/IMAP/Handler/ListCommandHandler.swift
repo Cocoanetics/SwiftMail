@@ -8,42 +8,17 @@
 import Foundation
 import NIOIMAPCore
 import NIO
-import os.log
+import Logging
 
 /// Handler for processing LIST command responses
-final class ListCommandHandler: IMAPCommandHandler, RemovableChannelHandler {
-    typealias ResultType = [Mailbox.Info]
-    typealias InboundIn = Response
-    typealias InboundOut = Never
+public final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, IMAPCommandHandler, @unchecked Sendable {
+    public typealias ResultType = [Mailbox.Info]
+    public typealias InboundIn = Response
+    public typealias InboundOut = Never
     
     private var mailboxes: [NIOIMAPCore.MailboxInfo] = []
-    private let promise: EventLoopPromise<[Mailbox.Info]>
-    private let logger: Logger
-    private var timeoutTask: Scheduled<Void>?
-    private let commandTag: String
-    private let timeoutSeconds: Int
     
-    required init(commandTag: String, promise: EventLoopPromise<[Mailbox.Info]>, timeoutSeconds: Int, logger: Logger?) {
-        self.commandTag = commandTag
-        self.promise = promise
-        self.timeoutSeconds = timeoutSeconds
-        self.logger = logger ?? Logger(subsystem: "com.cocoanetics.SwiftIMAP", category: "ListCommandHandler")
-    }
-    
-    static func createHandler(commandTag: String, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int, logger: Logger) -> Self {
-        return self.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
-    }
-    
-    func setupTimeout(on eventLoop: EventLoop) {
-        guard timeoutSeconds > 0 else { return }
-        
-        timeoutTask = eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) { [weak self] in
-            guard let self = self else { return }
-            self.promise.fail(IMAPError.timeout)
-        }
-    }
-    
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+	public override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = self.unwrapInboundIn(data)
         
         switch response {
@@ -60,7 +35,7 @@ final class ListCommandHandler: IMAPCommandHandler, RemovableChannelHandler {
         }
     }
     
-    func errorCaught(context: ChannelHandlerContext, error: Error) {
+	public override func errorCaught(context: ChannelHandlerContext, error: Error) {
         promise.fail(error)
         context.fireErrorCaught(error)
     }
@@ -74,10 +49,5 @@ final class ListCommandHandler: IMAPCommandHandler, RemovableChannelHandler {
         case .no, .bad:
             promise.fail(IMAPError.commandFailed("List command failed"))
         }
-    }
-    
-    func cancelTimeout() {
-        timeoutTask?.cancel()
-        timeoutTask = nil
     }
 } 

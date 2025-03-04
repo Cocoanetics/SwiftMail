@@ -1,64 +1,36 @@
 import Foundation
 import NIOIMAPCore
 import NIO
-import os.log
+import Logging
 
 /** Handler for the CLOSE command */
-final class CloseHandler: IMAPCommandHandler {
-    typealias ResultType = Void
-    typealias InboundIn = Response
-    typealias InboundOut = Never
+public final class CloseHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
+    public typealias ResultType = Void
+    public typealias InboundIn = Response
+    public typealias InboundOut = Never
     
-    private let promise: EventLoopPromise<Void>
-    private let commandTag: String
-    private let logger: Logger
-    private var scheduledTask: Scheduled<Void>?
-    
-    static func createHandler(commandTag: String, promise: EventLoopPromise<ResultType>, timeoutSeconds: Int, logger: Logger) -> Self {
-        return self.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds, logger: logger)
+    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int) {
+        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
-    init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int, logger: Logger) {
-        self.promise = promise
-        self.commandTag = commandTag
-        self.logger = logger
-    }
-    
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let response = self.unwrapInboundIn(data)
-        handleResponse(response)
-    }
-    
-    func handleResponse(_ response: Response) {
-        switch response {
-            case .tagged(let tagged) where tagged.tag == commandTag:
-                switch tagged.state {
-                    case .ok:
-                        promise.succeed(())
-                    case .no(let text):
-                        promise.fail(IMAPError.commandFailed("NO response: \(text)"))
-                    case .bad(let text):
-                        promise.fail(IMAPError.commandFailed("BAD response: \(text)"))
-                }
-                
-            case .tagged, .untagged, .fatal, .fetch, .authenticationChallenge, .idleStarted:
-                break // Ignore other responses
+    override public func processResponse(_ response: Response) -> Bool {
+        // Call the base class implementation to buffer the response
+        let handled = super.processResponse(response)
+        
+        // Process the response
+        if case .tagged(let tagged) = response, tagged.tag == commandTag {
+            // This is our tagged response, handle it
+            switch tagged.state {
+                case .ok:
+                    succeedWithResult(())
+                case .no(let text):
+                    failWithError(IMAPError.commandFailed("NO response: \(text)"))
+                case .bad(let text):
+                    failWithError(IMAPError.commandFailed("BAD response: \(text)"))
+            }
+            return true
         }
-    }
-    
-    func handleTimeout() {
-        promise.fail(IMAPError.timeout)
-    }
-    
-    func cancelTimeout() {
-        scheduledTask?.cancel()
-        scheduledTask = nil
-    }
-    
-    func setupTimeout(on eventLoop: EventLoop) {
-        let deadline = NIODeadline.now() + .seconds(5)
-        scheduledTask = eventLoop.scheduleTask(deadline: deadline) { [weak self] in
-            self?.handleTimeout()
-        }
+        
+        return handled
     }
 } 

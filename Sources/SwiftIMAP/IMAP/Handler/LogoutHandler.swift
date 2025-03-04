@@ -9,15 +9,14 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP LOGOUT command
-public final class LogoutHandler: BaseIMAPCommandHandler<Void>, @unchecked Sendable {
+public final class LogoutHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
     /// Initialize a new logout handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
-    ///   - logoutPromise: The promise to fulfill when the logout completes
+    ///   - promise: The promise to fulfill when the logout completes
     ///   - timeoutSeconds: The timeout for this command in seconds
-    ///   - logger: The logger to use for logging responses
-    public init(commandTag: String, logoutPromise: EventLoopPromise<Void>, timeoutSeconds: Int = 5, logger: Logger) {
-        super.init(commandTag: commandTag, promise: logoutPromise, timeoutSeconds: timeoutSeconds, logger: logger)
+    override public init(commandTag: String, promise: EventLoopPromise<Void>, timeoutSeconds: Int = 5) {
+        super.init(commandTag: commandTag, promise: promise, timeoutSeconds: timeoutSeconds)
     }
     
     /// Handle a timeout for this command

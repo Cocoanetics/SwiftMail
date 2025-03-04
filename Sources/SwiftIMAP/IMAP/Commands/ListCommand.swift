@@ -3,21 +3,23 @@ import NIOIMAP
 import NIO
 
 /// Command to list all available mailboxes
-struct ListCommand: IMAPCommand {
-    typealias ResultType = [Mailbox.Info]
-    typealias HandlerType = ListCommandHandler
+public struct ListCommand: IMAPCommand {
+    public typealias ResultType = [Mailbox.Info]
+    public typealias HandlerType = ListCommandHandler
     
-    let timeoutSeconds: Int = 30
+    public let timeoutSeconds: Int = 30
     
-    var handlerType: HandlerType.Type {
+    public var handlerType: HandlerType.Type {
         return ListCommandHandler.self
     }
     
-    func validate() throws {
+    public init() {}
+    
+    public func validate() throws {
         // No validation needed for LIST command
     }
     
-    func toTaggedCommand(tag: String) -> TaggedCommand {
+    public func toTaggedCommand(tag: String) -> TaggedCommand {
         // LIST "" "*" - List all mailboxes
         let reference = MailboxName(ByteBuffer(string: ""))
         let pattern = MailboxPatterns.pattern([ByteBuffer(string: "*")])
