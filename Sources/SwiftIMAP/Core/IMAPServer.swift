@@ -176,11 +176,14 @@ public actor IMAPServer {
 	 Disconnect from the server without sending a command
 	 - Throws: An error if the disconnection fails
 	 */
-	public func disconnect() async throws {
-		// Use executeHandlerOnly with DisconnectHandler instead of executeCommand
-		try await executeHandlerOnly(handlerType: DisconnectHandler.self, timeoutSeconds: 10)
+	public func disconnect() async throws
+	{
+		guard let channel = self.channel else {
+			logger.warning("Attempted to disconnect when channel was already nil")
+			return
+		}
 		
-		// Set the channel to nil
+		channel.close(promise: nil)
 		self.channel = nil
 	}
 	
