@@ -2,10 +2,8 @@
 // Commands related to IMAP server operations
 
 import Foundation
-import os.log
-@preconcurrency import NIOIMAP
-import NIOIMAPCore
 import NIO
+import NIOIMAP
 
 /// Command for retrieving server capabilities
 public struct CapabilityCommand: IMAPCommand {

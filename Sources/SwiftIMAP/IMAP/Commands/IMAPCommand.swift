@@ -2,10 +2,8 @@
 // Base protocol for all IMAP commands
 
 import Foundation
-import os.log
-@preconcurrency import NIOIMAP
-import NIOIMAPCore
 import NIO
+import NIOIMAP
 
 /// A protocol for all IMAP commands that know their handler type
 public protocol IMAPCommand {

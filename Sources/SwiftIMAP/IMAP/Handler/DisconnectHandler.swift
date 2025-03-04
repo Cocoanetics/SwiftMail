@@ -1,43 +1,15 @@
-// DisconnectCommand.swift
-// Command for gracefully disconnecting from an IMAP server
+//
+//  DisconnectHandler.swift
+//  SwiftIMAP
+//
+//  Created by Oliver Drobnik on 04.03.25.
+//
 
 import Foundation
-import os.log
 import NIOIMAP
 import NIOIMAPCore
 import NIO
-
-/// Command to gracefully disconnect from the server
-public struct DisconnectCommand: IMAPCommand {
-    /// The type of result returned by this command
-    public typealias ResultType = Void
-    
-    /// The handler type for this command
-    public typealias HandlerType = DisconnectHandler
-    
-    /// Returns the handler type for this command
-    public var handlerType: HandlerType.Type {
-        return DisconnectHandler.self
-    }
-    
-    /// The timeout for this command in seconds
-    public var timeoutSeconds: Int = 10
-    
-    /// Initialize a disconnect command
-    public init() {}
-    
-    /// Validate the command
-    public func validate() throws {
-        // No validation needed
-    }
-    
-    /// Convert to a tagged command
-    public func toTaggedCommand(tag: String) -> TaggedCommand {
-        // Disconnect doesn't actually send a command, but we need to conform to the protocol
-        // This will never be sent to the server as we handle it specially in executeCommand
-        return TaggedCommand(tag: tag, command: .noop)
-    }
-}
+import OSLog
 
 /// Handler for the disconnect response
 public final class DisconnectHandler: IMAPCommandHandler {

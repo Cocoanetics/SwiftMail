@@ -2,10 +2,8 @@
 // Commands related to IMAP authentication
 
 import Foundation
-import os.log
-@preconcurrency import NIOIMAP
-import NIOIMAPCore
 import NIO
+import NIOIMAP
 
 /// Command for logging into an IMAP server
 public struct LoginCommand: IMAPCommand {

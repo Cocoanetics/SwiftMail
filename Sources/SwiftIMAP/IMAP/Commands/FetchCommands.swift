@@ -2,10 +2,8 @@
 // Commands related to fetching data from IMAP server
 
 import Foundation
-import os.log
-@preconcurrency import NIOIMAP
-import NIOIMAPCore
 import NIO
+import NIOIMAP
 
 /// Command for fetching message headers
 public struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
