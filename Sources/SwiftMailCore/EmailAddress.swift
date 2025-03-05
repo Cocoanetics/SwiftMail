@@ -1,4 +1,4 @@
-// Common.swift
+// EmailAddress.swift
 // Common utilities shared between IMAP and SMTP modules
 
 import Foundation

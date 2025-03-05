@@ -36,5 +36,3 @@ public struct StartTLSCommand: SMTPCommand {
         // No validation needed for STARTTLS command
     }
 }
-
-// We'll add integration with the unified MailCommand system later when the basic functionality is working

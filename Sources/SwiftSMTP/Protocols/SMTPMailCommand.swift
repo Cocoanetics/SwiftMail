@@ -1,8 +1,9 @@
-// ProtocolSpecificCommands.swift
-// Protocol-specific extensions to the base MailCommand protocol
+// SMTPMailCommand.swift
+// SMTP-specific extensions to the base MailCommand protocol
 
 import Foundation
 import NIO
+import SwiftMailCore
 
 /// SMTP specific command extensions
 public protocol SMTPMailCommand: MailCommand {
@@ -28,17 +29,6 @@ public extension SMTPMailCommand {
     }
 }
 
-/// IMAP specific command extensions
-public protocol IMAPMailCommand: MailCommand {
-    /// The type of the tagged command
-    associatedtype TaggedCommandType
-    
-    /// Convert this high-level command to a network-level tagged command format
-    /// - Parameter tag: The command tag to use
-    /// - Returns: The tagged command representation
-    func toTaggedCommand(tag: String) -> TaggedCommandType
-}
-
 /// Response handler protocol for SMTP commands
 public protocol SMTPCommandResponseHandler: MailCommandHandler {
     /// The type of response this handler processes
@@ -48,15 +38,4 @@ public protocol SMTPCommandResponseHandler: MailCommandHandler {
     /// - Parameter response: The SMTP response to process
     /// - Returns: Whether the handler is complete
     func processResponse(_ response: SMTPResponseType) -> Bool
-}
-
-/// Response handler protocol for IMAP commands
-public protocol IMAPCommandResponseHandler: MailCommandHandler {
-    /// The type of response this handler processes
-    associatedtype IMAPResponseType
-    
-    /// Process an IMAP response
-    /// - Parameter response: The IMAP response to process
-    /// - Returns: Whether the handler is complete
-    func processResponse(_ response: IMAPResponseType) -> Bool
 } 
