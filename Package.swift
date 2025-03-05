@@ -1,12 +1,19 @@
-// swift-tools-version:5.7
+// swift-tools-version:5.9
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
 
 let package = Package(
     name: "SwiftMail",
+    // Platforms section only specifies minimum versions for Apple platforms
+    // The package will work on any Swift-supported platform including Linux
     platforms: [
-        .macOS("11.0")
+		.macOS("11.0"),
+		.iOS("14.0"),
+		.tvOS("14.0"),
+		.watchOS("7.0"),
+		.macCatalyst("14.0")
+		// visionOS("1.0") is commented out due to Swift tools version compatibility
     ],
     products: [
         // Products define the executables and libraries a package produces

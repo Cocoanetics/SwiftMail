@@ -9,6 +9,10 @@ import NIOSSL
 import Logging
 import SwiftMailCore
 
+#if os(Linux)
+import Glibc
+#endif
+
 /** An actor that represents an SMTP server connection */
 public actor SMTPServer {
     // MARK: - Properties
@@ -426,72 +430,6 @@ public actor SMTPServer {
     }
     
     /**
-     Get the local hostname for EHLO command
-     - Returns: The local hostname
-     */
-    private func getLocalHostname() -> String {
-        // Try to get the actual hostname
-        if let hostname = Host.current().name {
-            return hostname
-        }
-        
-        // Try to get a local IP address as a fallback
-        if let localIP = getLocalIPAddress() {
-            return "[\(localIP)]"
-        }
-        
-        // Use a domain-like format as a last resort
-        return "swift-smtp-client.local"
-    }
-    
-    /**
-     Get the local IP address
-     - Returns: The local IP address as a string, or nil if not available
-     */
-    private func getLocalIPAddress() -> String? {
-        var ifaddr: UnsafeMutablePointer<ifaddrs>?
-        
-        guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else {
-            return nil
-        }
-        
-        defer {
-            freeifaddrs(ifaddr)
-        }
-        
-        // Iterate through linked list of interfaces
-        var currentAddr: UnsafeMutablePointer<ifaddrs>? = firstAddr
-        var foundAddress: String? = nil
-        
-        while let addr = currentAddr {
-            let interface = addr.pointee
-            
-            // Check for IPv4 or IPv6 interface
-            let addrFamily = interface.ifa_addr.pointee.sa_family
-            if addrFamily == UInt8(AF_INET) || addrFamily == UInt8(AF_INET6) {
-                // Check interface name starts with "en" (Ethernet) or "wl" (WiFi)
-                let name = String(cString: interface.ifa_name)
-                if name.hasPrefix("en") || name.hasPrefix("wl") {
-                    // Convert interface address to a human readable string
-                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-                    getnameinfo(interface.ifa_addr, socklen_t(interface.ifa_addr.pointee.sa_len),
-                                &hostname, socklen_t(hostname.count),
-                                nil, socklen_t(0), NI_NUMERICHOST)
-                    if let address = String(validatingUTF8: hostname) {
-                        foundAddress = address
-                        break
-                    }
-                }
-            }
-            
-            // Move to next interface
-            currentAddr = interface.ifa_next
-        }
-        
-        return foundAddress
-    }
-    
-    /**
      Construct the email content
      - Parameter email: The email to send
      - Returns: The formatted email content
@@ -576,7 +514,7 @@ public actor SMTPServer {
         isTLSEnabled = true
         
         // Send EHLO again after STARTTLS and update capabilities
-        let ehloCommand = EHLOCommand(hostname: getLocalHostname())
+        let ehloCommand = EHLOCommand(hostname: String.localHostname)
         let rawResponse = try await executeCommand(ehloCommand)
         logger.debug("Raw EHLO response after TLS: \(rawResponse)")
 
@@ -650,7 +588,7 @@ public actor SMTPServer {
     @discardableResult
     public func fetchCapabilities() async throws -> [String] {
         logger.debug("Fetching server capabilities")
-        let command = EHLOCommand(hostname: getLocalHostname())
+        let command = EHLOCommand(hostname: String.localHostname)
         
         do {
             let response = try await executeCommand(command)
