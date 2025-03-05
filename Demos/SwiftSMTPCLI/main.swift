@@ -3,10 +3,9 @@
 
 import Foundation
 import SwiftSMTP
-import os
+import OSLog
 import Logging
 import SwiftDotenv
-import UniformTypeIdentifiers
 
 // Set default log level to info - will only show important logs
 // Per the cursor rules: Use OS_LOG_DISABLE=1 to see log output as needed
@@ -90,6 +89,7 @@ do {
             // Download Swift logo at runtime
             print("Downloading Swift logo...")
             let logoURL = URL(string: "https://developer.apple.com/swift/images/swift-logo.svg")!
+			let mimeType = String.mimeType(for: logoURL.pathExtension)
             let logoContentID = "swift-logo"
             let logoFilename = "swift-logo.svg"
             
@@ -147,9 +147,6 @@ do {
             </html>
             """
             
-            // Get MIME type for the downloaded image
-            let mimeType = "image/svg+xml" // SVG format from Apple's website
-            
             // Create a custom attachment with inline disposition
             let attachment = Attachment(
                 filename: logoFilename,
@@ -203,45 +200,6 @@ func formatCurrentDate() -> String {
     dateFormatter.dateStyle = .full
     dateFormatter.timeStyle = .medium
     return dateFormatter.string(from: Date())
-}
-
-// Helper function to get MIME type from file URL using UTI
-func getMimeTypeFromFileURL(_ fileURL: URL) -> String {
-    // First try to get UTType from file extension
-    if let fileExtension = fileURL.pathExtension.isEmpty ? nil : fileURL.pathExtension,
-       let utType = UTType(filenameExtension: fileExtension) {
-        // If we have a UTType, try to get its MIME type
-        if let mimeType = utType.preferredMIMEType {
-            return mimeType
-        }
-    }
-    
-    // Fallback to common extensions if UTI doesn't work
-    let pathExtension = fileURL.pathExtension.lowercased()
-    switch pathExtension {
-    case "jpg", "jpeg":
-        return "image/jpeg"
-    case "png":
-        return "image/png"
-    case "gif":
-        return "image/gif"
-    case "svg":
-        return "image/svg+xml"
-    case "pdf":
-        return "application/pdf"
-    case "txt":
-        return "text/plain"
-    case "html", "htm":
-        return "text/html"
-    case "doc", "docx":
-        return "application/msword"
-    case "xls", "xlsx":
-        return "application/vnd.ms-excel"
-    case "zip":
-        return "application/zip"
-    default:
-        return "application/octet-stream"
-    }
 }
 
 // Custom email structure that properly handles inline attachments
