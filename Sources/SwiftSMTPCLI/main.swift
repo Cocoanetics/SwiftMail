@@ -18,7 +18,7 @@ LoggingSystem.bootstrap { label in
     var handler = OSLogHandler(label: label, log: osLogger)
 //    // Check if we need verbose logging
 //    if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
-//        handler.logLevel = .trace
+        handler.logLevel = .trace
 //    } else {
 //        handler.logLevel = .info
 //    }

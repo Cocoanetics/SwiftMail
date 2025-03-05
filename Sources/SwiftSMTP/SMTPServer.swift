@@ -42,11 +42,9 @@ public actor SMTPServer {
      */
     private let logger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTPServer")
     
-    /** Logger for outgoing SMTP commands */
-    private let outboundLogger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTP_OUT")
-    
-    /** Logger for incoming SMTP responses */
-    private let inboundLogger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTP_IN")
+	// A logger on the channel that watches both directions
+	private let duplexLogger: SMTPLogger
+
     
     /** The current command handler */
     private var currentHandler: (any SMTPCommandHandler)?
@@ -64,6 +62,12 @@ public actor SMTPServer {
         self.host = host
         self.port = port
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
+		
+		let outboundLogger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTP_OUT")
+		let inboundLogger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTP_IN")
+
+		self.duplexLogger = SMTPLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
+
     }
     
     deinit {
@@ -90,8 +94,8 @@ public actor SMTPServer {
             .channelInitializer { channel in
                 let handlers: [ChannelHandler] = [
                     ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-                    SMTPResponseHandler(server: self),
-                    OutboundLogger(logger: self.outboundLogger)
+                    self.duplexLogger,
+                    SMTPResponseHandler(server: self)
                 ]
                 
                 if useSSL {
@@ -272,6 +276,9 @@ public actor SMTPServer {
                 
                 // Cancel the timeout
                 scheduledTask.cancel()
+				
+				// Flush the DuplexLogger's buffer after command execution
+				duplexLogger.flushInboundBuffer()
                 
                 return result
             } else {
@@ -290,6 +297,9 @@ public actor SMTPServer {
             
             // Clear the current handler
             self.currentHandler = nil
+			
+			// Flush the DuplexLogger's buffer even if there was an error
+			duplexLogger.flushInboundBuffer()
             
             throw error
         }
@@ -414,7 +424,7 @@ public actor SMTPServer {
                 // Execute the QUIT command - it has its own timeout set to 10 seconds
                 let result = try await executeCommand(quitCommand)
                 logger.debug("QUIT command completed with result: \(result)")
-            } catch {
+        } catch {
                 // If the QUIT command fails, just log it and continue with disconnection
                 // This could happen if the server doesn't respond or responds with an error
                 logger.warning("QUIT command failed: \(error.localizedDescription)")
@@ -510,30 +520,35 @@ public actor SMTPServer {
         // Create the handler directly using initializer
         let handler = HandlerType.init(commandTag: "", promise: promise)
         
-        // Set the logger on the handler if it has one
-        if var loggable = handler as? LoggableHandler {
-            loggable.logger = inboundLogger
-        }
-        
         // Set the current handler so the response handler can route responses to it
         currentHandler = handler
         
         do {
             // Wait for the handler to complete with a timeout
             return try await withTimeout(seconds: Double(timeoutSeconds), operation: {
-                try await promise.futureResult.get()
-            }, onTimeout: {
+                let result = try await promise.futureResult.get()
+				
+				// Flush the DuplexLogger's buffer even if there was an error
+				self.duplexLogger.flushInboundBuffer()
+				
+				return result
+				
+        }, onTimeout: {
                 // Fulfill the promise with an error to prevent leaks
                 promise.fail(SMTPError.connectionFailed("Response timeout"))
                 // Clear the current handler
                 self.currentHandler = nil
-                throw SMTPError.connectionFailed("Response timeout")
-            })
+            throw SMTPError.connectionFailed("Response timeout")
+        })
         } catch {
             // If any error occurs, fail the promise to prevent leaks
             promise.fail(error)
             // Clear the current handler
             self.currentHandler = nil
+			
+			// Flush the DuplexLogger's buffer even if there was an error
+			duplexLogger.flushInboundBuffer()
+
             throw error
         }
     }
@@ -543,8 +558,6 @@ public actor SMTPServer {
      - Parameter response: The response to process
      */
     internal func processResponse(_ response: SMTPResponse) {
-        // Log the response
-        inboundLogger.debug("\(response.message)")
         
         // If there's a current handler, let it process the response
         if let handler = currentHandler {

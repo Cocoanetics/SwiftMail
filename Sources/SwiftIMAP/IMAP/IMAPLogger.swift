@@ -1,4 +1,4 @@
-// DuplexLogger.swift
+// IMAPLogger.swift
 // A combined channel handler that logs both outgoing and incoming IMAP messages
 
 import Foundation
@@ -9,7 +9,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// A combined channel handler that logs both outgoing and incoming IMAP messages
-public final class DuplexLogger: ChannelDuplexHandler, @unchecked Sendable {
+public final class IMAPLogger: ChannelDuplexHandler, @unchecked Sendable {
     public typealias OutboundIn = Any
     public typealias OutboundOut = Any
     public typealias InboundIn = Response
@@ -83,7 +83,7 @@ public final class DuplexLogger: ChannelDuplexHandler, @unchecked Sendable {
         lock.withLock {
             if !inboundBuffer.isEmpty {
                 let combinedLog = inboundBuffer.joined(separator: "\n")
-                inboundLogger.notice("\(combinedLog)")
+                inboundLogger.trace("\(combinedLog)")
                 inboundBuffer.removeAll()
             }
         }

@@ -11,8 +11,8 @@ import NIOConcurrencyHelpers
 public final class SMTPLogger: ChannelDuplexHandler, @unchecked Sendable {
     public typealias OutboundIn = Any
     public typealias OutboundOut = Any
-    public typealias InboundIn = ByteBuffer
-    public typealias InboundOut = ByteBuffer
+    public typealias InboundIn = String
+    public typealias InboundOut = String
     
     private let outboundLogger: Logging.Logger
     private let inboundLogger: Logging.Logger
@@ -80,13 +80,9 @@ public final class SMTPLogger: ChannelDuplexHandler, @unchecked Sendable {
     
     /// Log incoming responses and forward them to the next handler
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let buffer = unwrapInboundIn(data)
+        let responseString = unwrapInboundIn(data)
         
-        // Convert buffer to string
-        if let responseString = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) {
-            // Add the response to the buffer
-            bufferInboundResponse(responseString)
-        }
+		bufferInboundResponse(responseString)
         
         // Forward the response to the next handler
         context.fireChannelRead(data)
@@ -105,7 +101,7 @@ public final class SMTPLogger: ChannelDuplexHandler, @unchecked Sendable {
         lock.withLock {
             if !inboundBuffer.isEmpty {
                 let combinedLog = inboundBuffer.joined(separator: "\n")
-                inboundLogger.notice("\(combinedLog)")
+                inboundLogger.trace("\(combinedLog)")
                 inboundBuffer.removeAll()
             }
         }
