@@ -1,60 +1,74 @@
-# SwiftIMAP
+# SwiftMail
 
-A Swift library for interacting with IMAP servers.
+A Swift package for email functionality, including IMAP and SMTP clients.
+
+## Overview
+
+SwiftMail is a comprehensive email package that includes:
+
+- **SwiftIMAP**: Library for interacting with IMAP servers
+- **SwiftSMTP**: Library for sending emails via SMTP servers
+- **SwiftMailCore**: Core functionality shared between email protocols
 
 ## Features
 
+### SwiftIMAP
 - Connect to IMAP servers securely using SSL/TLS
 - Authenticate with username and password
 - Select mailboxes and retrieve mailbox information
 - Fetch email headers and message parts
 - Handle MIME-encoded content and quoted-printable encoding
-- Save message parts to disk for debugging
 
-## Project Structure
+### SwiftSMTP
+- Connect to SMTP servers with support for secure connections
+- Support for both plain and SSL/TLS connections
+- STARTTLS support for upgrading connections
+- Authentication using PLAIN and LOGIN methods
+- Send emails with attachments
+- Properly formatted MIME content
 
-The project is organized as follows:
+### SwiftMailCore
+- Shared networking utilities
+- Email address handling and formatting
+- Credential redaction for secure logging
+- String and data utilities for email processing
 
-- **Sources/SwiftIMAP/Core**: Contains the main IMAP functionality
-  - **IMAPServer.swift**: The main class for IMAP server connections
-  - **IMAPResponseHandler.swift**: Handles IMAP server responses
+## Command Line Demos
 
-- **Sources/SwiftIMAP/Models**: Contains data models used throughout the library
-  - **EmailHeader.swift**: Represents an email header
-  - **MailboxInfo.swift**: Contains information about a mailbox
-  - **MessagePart.swift**: Represents a part of an email message
-  - **IMAPError.swift**: Custom error types for IMAP operations
+The package includes command line demos that showcase the functionality of both the IMAP and SMTP libraries:
 
-- **Sources/SwiftIMAP/Extensions**: Contains Swift extensions for various types
-  - **String+QuotedPrintable.swift**: Extensions for handling quoted-printable encoding
-  - **String+Utilities.swift**: Utility extensions for strings
-  - **Data+Utilities.swift**: Utility extensions for data
-  - **Int+Utilities.swift**: Utility extensions for integers
-  - **ByteBuffer+StringValue.swift**: Extension for ByteBuffer
-  - **MessageID+StringValue.swift**: Extension for MessageID
-  - **NIOSSLClientHandler+Sendable.swift**: Extension for NIOSSLClientHandler
+- **SwiftIMAPCLI**: Demonstrates IMAP operations like listing mailboxes and fetching messages
+- **SwiftSMTPCLI**: Demonstrates sending emails via SMTP
 
-- **Sources/SwiftIMAPCLI**: Contains the command-line interface application
+Both demos look for a `.env` file in the current working directory for configuration. Create a `.env` file with the following variables:
 
-- **Tests/SwiftIMAPTests**: Contains unit tests using Swift Testing framework
-  - **QuotedPrintableTests.swift**: Tests for quoted-printable encoding/decoding
-  - **Resources/**: Test resources including sample files for testing
+```
+# IMAP Configuration
+IMAP_HOST=imap.example.com
+IMAP_PORT=993
+IMAP_USER=your_username
+IMAP_PASS=your_password
 
-## Coding Standards
+# SMTP Configuration
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USER=your_username
+SMTP_PASS=your_password
+```
 
-This project follows a set of coding standards defined in the `.cursor.rules` file. Key principles include:
+To run the demos:
 
-- Protocol conformances should be in separate files named `Type+Protocol.swift`
-- Convenience methods should be formulated as extensions on Foundation base types
-- Public interfaces should be clearly defined with appropriate access control
-- Imports should be kept to the absolute minimum required
-- String conversions should prefer custom initializers (`String(value)`)
-- Single-line functions should be replaced with direct implementation
-- Unit tests should use Swift Testing framework instead of XCTest
+```bash
+# Run the IMAP demo
+swift run SwiftIMAPCLI
 
-For the complete set of coding standards, please refer to the `.cursor.rules` file in the project root.
+# Run the SMTP demo
+swift run SwiftSMTPCLI
+```
 
 ## Usage
+
+### SwiftIMAP Example
 
 ```swift
 import SwiftIMAP
@@ -76,17 +90,6 @@ print("Mailbox has \(mailboxInfo.messageCount) messages")
 let headers = try await imapServer.fetchHeaders(range: "1:10")
 for header in headers {
     print("Subject: \(header.subject)")
-    print("From: \(header.from)")
-    print("Date: \(header.date)")
-}
-
-// Fetch all parts of a message
-let parts = try await imapServer.fetchAllMessageParts(sequenceNumber: 1)
-for part in parts {
-    print("Part #\(part.partNumber): \(part.contentType)/\(part.contentSubtype)")
-    if let textContent = part.textContent() {
-        print("Content: \(textContent.prefix(100))...")
-    }
 }
 
 // Logout and close the connection
@@ -94,41 +97,62 @@ try await imapServer.logout()
 try await imapServer.close()
 ```
 
+### SwiftSMTP Example
+
+```swift
+import SwiftSMTP
+
+// Create an SMTP server connection
+let smtpServer = SMTPServer(host: "smtp.example.com", port: 587)
+
+// Connect to the server
+try await smtpServer.connect()
+
+// Authenticate with the server
+try await smtpServer.authenticate(username: "user@example.com", password: "password")
+
+// Create an email
+let sender = EmailAddress(address: "sender@example.com", name: "Sender Name")
+let recipient = EmailAddress(address: "recipient@example.com", name: "Recipient Name")
+let email = Email(
+    sender: sender,
+    recipients: [recipient],
+    subject: "Hello from SwiftSMTP",
+    body: "This is a test email sent using SwiftSMTP."
+)
+
+// Send the email
+try await smtpServer.sendEmail(email)
+
+// Disconnect from the server
+try await smtpServer.disconnect()
+```
+
 ## Testing
 
-The project uses [Swift Testing](https://github.com/apple/swift-testing) for unit tests instead of XCTest. To run the tests:
+The project uses [Swift Testing](https://github.com/apple/swift-testing) for unit tests. To run the tests:
 
 ```bash
 swift test
 ```
 
-Test files are organized in the `Tests/SwiftIMAPTests` directory and follow the Swift Testing conventions:
-
-```swift
-import Testing
-@testable import SwiftIMAP
-
-struct MyFeatureTests {
-    @Test
-    func testSomeFeature() {
-        // Test code here
-        #expect(someCondition)
-    }
-}
-```
-
 ## Requirements
 
-- Swift 5.7+
+- Swift 5.9+
 - macOS 11.0+
+- iOS 14.0+
+- tvOS 14.0+
+- watchOS 7.0+
+- macCatalyst 14.0+
 
 ## Dependencies
 
 - [SwiftNIO](https://github.com/apple/swift-nio)
 - [SwiftNIOSSL](https://github.com/apple/swift-nio-ssl)
-- [SwiftNIOIMAP](https://github.com/apple/swift-nio-imap)
-- [SwiftDotenv](https://github.com/thebarndog/swift-dotenv) (for CLI only)
+- [SwiftNIOIMAP](https://github.com/apple/swift-nio-imap) (for IMAP only)
+- [SwiftDotenv](https://github.com/thebarndog/swift-dotenv) (for CLI demos)
 - [Swift Testing](https://github.com/apple/swift-testing) (for tests only)
+- [Swift Logging](https://github.com/apple/swift-log)
 
 ## License
 
