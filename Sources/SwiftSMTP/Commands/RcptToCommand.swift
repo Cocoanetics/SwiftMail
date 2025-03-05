@@ -1,5 +1,6 @@
 import Foundation
 import NIOCore
+import SwiftMailCore
 
 /**
  Command to specify a recipient of an email

@@ -1,119 +1,66 @@
 // IMAPLogger.swift
-// A combined channel handler that logs both outgoing and incoming IMAP messages
+// A channel handler that logs both outgoing and incoming IMAP messages
 
 import Foundation
 import Logging
-@preconcurrency import NIOIMAP
-import NIOIMAPCore
 import NIO
 import NIOConcurrencyHelpers
 import SwiftMailCore
+@preconcurrency import NIOIMAP
+import NIOIMAPCore
 
-/// A combined channel handler that logs both outgoing and incoming IMAP messages
-public final class IMAPLogger: ChannelDuplexHandler, @unchecked Sendable {
-    public typealias OutboundIn = Any
-    public typealias OutboundOut = Any
+/// A channel handler that logs both outgoing and incoming IMAP messages
+public final class IMAPLogger: MailLogger, @unchecked Sendable {
     public typealias InboundIn = Response
     public typealias InboundOut = Response
     
-    private let outboundLogger: Logging.Logger
-    private let inboundLogger: Logging.Logger
+    // Regular expressions for redacting sensitive information
+    private let loginRegex = try! NSRegularExpression(pattern: "^[A-Za-z0-9]+ LOGIN", options: [])
+    private let authRegex = try! NSRegularExpression(pattern: "^[A-Za-z0-9]+ AUTH", options: [])
     
-    // Thread-safe storage for aggregating inbound messages
-    private let lock = NIOLock()
-    private var inboundBuffer: [String] = []
-    
-    /// Initialize a new IMAP logger
-    /// - Parameters:
-    ///   - outboundLogger: The logger to use for outgoing commands
-    ///   - inboundLogger: The logger to use for incoming responses
-    public init(outboundLogger: Logging.Logger, inboundLogger: Logging.Logger) {
-        self.outboundLogger = outboundLogger
-        self.inboundLogger = inboundLogger
-    }
-    
-    /// Log outgoing commands and forward them to the next handler
-    public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
-        // Try to extract the command from the data
+    /// Process outgoing IMAP commands
+    public override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let command = unwrapOutboundIn(data)
-		
-		let commandString: String
         
-        // Check if this is an IOData type (which contains raw bytes)
-        if let ioData = command as? IOData {
-            // Extract the ByteBuffer from IOData and convert to string
-            switch ioData {
-                case .byteBuffer(let buffer):
-                    // Use the ByteBuffer extension to get a string value
-                    commandString = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) ?? "<Binary data>"
-                case .fileRegion:
-                    commandString = "<File region data>"
-            }
-        } else if let debuggable = command as? CustomDebugStringConvertible {
-            // Use debugDescription for more detailed information about the command
-            commandString = debuggable.debugDescription
+        // Get string representation of the command
+        let commandString = stringRepresentation(from: command)
+        
+        // Redact sensitive information in LOGIN and AUTH commands
+        let range = NSRange(location: 0, length: commandString.utf16.count)
+        
+        if loginRegex.firstMatch(in: commandString, options: [], range: range) != nil {
+            // Use the String extension to redact sensitive LOGIN information
+            outboundLogger.debug("\(commandString.redactAfter("LOGIN"))")
+        } else if authRegex.firstMatch(in: commandString, options: [], range: range) != nil {
+            // Also redact AUTH commands which may contain encoded credentials
+            outboundLogger.debug("\(commandString.redactAfter("AUTH"))")
         } else {
-            // Fallback to standard description
-            commandString = String(describing: command)
+            outboundLogger.debug("\(commandString)")
         }
-		
-		// Redact sensitive information in LOGIN and AUTH commands
-        let loginPattern = "(^\\s*\\w+\\s+LOGIN\\b)"
-        let authPattern = "(^\\s*\\w+\\s+AUTH\\b|^\\s*AUTH\\b)"
         
-		let loginRegex = try! NSRegularExpression(pattern: loginPattern, options: [.caseInsensitive])
-		let authRegex = try! NSRegularExpression(pattern: authPattern, options: [.caseInsensitive])
-		
-		let range = NSRange(location: 0, length: commandString.utf16.count)
-		
-		if loginRegex.firstMatch(in: commandString, options: [], range: range) != nil {
-			// Use the String extension to redact sensitive LOGIN information
-			outboundLogger.debug("\(commandString.redactAfter("LOGIN"))")
-		} else if authRegex.firstMatch(in: commandString, options: [], range: range) != nil {
-			// Also redact AUTH commands which may contain encoded credentials
-			outboundLogger.debug("\(commandString.redactAfter("AUTH"))")
-		} else {
-			outboundLogger.debug("\(commandString)")
-		}
-        
-        // Forward the data to the next handler
+        // Forward the command to the next handler
         context.write(data, promise: promise)
     }
     
-    /// Log incoming responses and forward them to the next handler
-    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+    /// Process incoming IMAP responses
+    public override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
         
         // Add the response to the buffer
-        bufferInboundResponse(response.debugDescription)
+        bufferInboundResponse(String(describing: response))
         
         // Forward the response to the next handler
         context.fireChannelRead(data)
     }
     
-    /// Add a response to the inbound buffer
-    private func bufferInboundResponse(_ message: String) {
-        lock.withLock {
-            inboundBuffer.append(message)
-        }
-    }
-    
-    /// Flush the inbound buffer to the logger
-    /// This should be called when a complete response has been received
-    public func flushInboundBuffer() {
+    /// Override to use debug level instead of trace
+    public override func flushInboundBuffer() {
         lock.withLock {
             if !inboundBuffer.isEmpty {
                 let combinedLog = inboundBuffer.joined(separator: "\n")
                 inboundLogger.debug("\(combinedLog)")
                 inboundBuffer.removeAll()
             }
-        }
-    }
-    
-    /// Check if there are any buffered inbound messages
-    public var hasBufferedMessages: Bool {
-        lock.withLock {
-            return !inboundBuffer.isEmpty
         }
     }
 } 

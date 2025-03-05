@@ -21,18 +21,4 @@ public struct EmailAddress: Hashable, Codable {
         self.name = name
         self.address = address
     }
-    
-    /// Format the email address as per RFC 5322
-    public var formatted: String {
-        if let name = name, !name.isEmpty {
-            // Use quotes if the name contains special characters
-            if name.contains(where: { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }) {
-                return "\"\(name)\" <\(address)>"
-            } else {
-                return "\(name) <\(address)>"
-            }
-        } else {
-            return address
-        }
-    }
 }

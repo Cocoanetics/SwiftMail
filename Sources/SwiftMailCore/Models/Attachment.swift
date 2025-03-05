@@ -1,3 +1,6 @@
+// Attachment.swift
+// Common attachment model for email messages
+
 import Foundation
 
 /**
