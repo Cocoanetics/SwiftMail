@@ -30,6 +30,7 @@ let package = Package(
         // Dependencies declare other packages that this package depends on.
         .package(url: "https://github.com/thebarndog/swift-dotenv", from: "2.1.0"),
         .package(url: "https://github.com/apple/swift-nio-imap", branch: "main"),
+        .package(url: "https://github.com/apple/swift-nio", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-testing", branch: "main"),
         .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
@@ -40,6 +41,7 @@ let package = Package(
         .target(
             name: "SwiftMailCore",
             dependencies: [
+                .product(name: "NIO", package: "swift-nio"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
                 .product(name: "Logging", package: "swift-log"),
             ]

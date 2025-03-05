@@ -1,27 +1,44 @@
 import Foundation
-import NIOCore
+import NIO
 import Logging
+import SwiftMailCore
 
 /**
- Handler for the STARTTLS command response
+ Handler for SMTP STARTTLS command responses
  */
 public final class StartTLSHandler: BaseSMTPHandler<Bool> {
-    
     /**
      Process a response from the server
      - Parameter response: The response to process
      - Returns: Whether the handler is complete
      */
     override public func processResponse(_ response: SMTPResponse) -> Bool {
-        
-        // 2xx responses are considered successful
-        if response.code >= 200 && response.code < 300 {
+        if response.code == 220 {
+            // 220 Ready to start TLS
             promise.succeed(true)
-        } else {
-            // Any other response is considered a failure
-            promise.succeed(false)
+            return true
+        } else if response.code >= 400 {
+            // Error response
+            promise.fail(SMTPError.tlsFailed("STARTTLS failed: \(response.message)"))
+            return true
         }
         
-        return true // Always complete after a single response
+        return false // Not complete yet
+    }
+    
+    /**
+     Handle a successful response
+     - Parameter response: The parsed SMTP response
+     */
+    override public func handleSuccess(response: SMTPResponse) {
+        promise.succeed(true)
+    }
+    
+    /**
+     Handle an error response
+     - Parameter response: The parsed SMTP response
+     */
+    override public func handleError(response: SMTPResponse) {
+        promise.fail(SMTPError.tlsFailed("STARTTLS failed: \(response.message)"))
     }
 } 

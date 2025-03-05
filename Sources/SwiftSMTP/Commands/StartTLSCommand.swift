@@ -1,5 +1,6 @@
 import Foundation
 import NIOCore
+import SwiftMailCore
 
 /**
  Command to initiate TLS/SSL encryption on the connection
@@ -10,9 +11,9 @@ public struct StartTLSCommand: SMTPCommand {
     
     /// The handler type that will process responses for this command
     public typealias HandlerType = StartTLSHandler
-	
-	/// Default timeout in seconds
-	public let timeoutSeconds: Int = 10
+    
+    /// Default timeout in seconds
+    public let timeoutSeconds: Int = 10
     
     /**
      Initialize a new STARTTLS command
@@ -34,4 +35,6 @@ public struct StartTLSCommand: SMTPCommand {
     public func validate() throws {
         // No validation needed for STARTTLS command
     }
-} 
+}
+
+// We'll add integration with the unified MailCommand system later when the basic functionality is working
