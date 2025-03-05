@@ -24,9 +24,3 @@ public protocol SMTPCommandHandler {
     ///   - promise: The promise to fulfill when the command completes
     init(commandTag: String?, promise: EventLoopPromise<ResultType>)
 }
-
-/// Protocol for handlers that can have a logger set
-public protocol LoggableHandler {
-    /// Logger for handler operations
-    var logger: Logger { get set }
-}

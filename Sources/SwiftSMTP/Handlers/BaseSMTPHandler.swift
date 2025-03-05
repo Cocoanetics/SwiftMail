@@ -3,7 +3,7 @@ import NIOCore
 import Logging
 
 /// Base class for SMTP command handlers that provides common functionality
-open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, SMTPCommandHandler, LoggableHandler {
+open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, SMTPCommandHandler {
     public typealias InboundIn = SMTPResponse
     public typealias InboundOut = Never
     public typealias ResultType = T
@@ -14,9 +14,6 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     /// The promise that will be fulfilled when the command completes
     public let promise: EventLoopPromise<ResultType>
     
-    /// Logger for handler operations
-    public var logger: Logger
-    
     /// Initialize a new handler
     /// - Parameters:
     ///   - commandTag: Optional tag for the command (not commonly used in SMTP but included for consistency)
@@ -24,7 +21,6 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     public required init(commandTag: String?, promise: EventLoopPromise<ResultType>) {
         self.commandTag = commandTag
         self.promise = promise
-        self.logger = Logger(label: "com.cocoanetics.SwiftSMTP.Handler.\(String(describing: type(of: self)))")
     }
     
     /// Process a response line from the server
@@ -75,7 +71,6 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     ///   - data: The data read from the channel
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = self.unwrapInboundIn(data)
-        logger.debug("Received response: \(response)")
         
         // Process the response
         let isComplete = processResponse(response)

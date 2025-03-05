@@ -30,17 +30,7 @@ LoggingSystem.bootstrap { label in
 // Create a logger for the main application using Swift Logging
 let logger = Logger(label: "com.cocoanetics.SwiftIMAP.Main")
 
-// Helper function for debug prints - only prints when ENABLE_DEBUG_OUTPUT is set
-func debugPrint(_ message: String) {
-    if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
-        print("DEBUG: \(message)")
-    }
-}
-
 print("📧 SwiftIMAPCLI - Email Reading Test")
-print("Debug mode: OS_LOG_DISABLE=\(ProcessInfo.processInfo.environment["OS_LOG_DISABLE"] ?? "not set")")
-print("Debug mode: OS_ACTIVITY_MODE=\(ProcessInfo.processInfo.environment["OS_ACTIVITY_MODE"] ?? "not set")")
-print("Debug mode: SWIFT_LOG_LEVEL=\(ProcessInfo.processInfo.environment["SWIFT_LOG_LEVEL"] ?? "not set")")
 
 do {
     // Configure SwiftDotenv with the specified path
@@ -72,7 +62,6 @@ do {
     logger.info("Host: \(host)")
     logger.info("Port: \(port)")
     logger.info("Username: \(username)")
-    debugPrint("IMAP configuration: \(host):\(port) with username \(username)")
     
     // Create an IMAP server instance
     let server = IMAPServer(host: host, port: port)
@@ -81,20 +70,13 @@ do {
     await Task {
         do {
             // Connect to the server
-            debugPrint("Connecting to IMAP server \(host):\(port)...")
             try await server.connect()
-            debugPrint("Connection established successfully")
             
             // Login with credentials
-            debugPrint("Authenticating with username \(username)...")
             try await server.login(username: username, password: password)
-            debugPrint("Authentication successful")
 			
             // Detect standard folders
-            logger.notice("Detecting standard folders...")
-            debugPrint("Detecting standard folders...")
             let detectedConfig = try await server.detectStandardFolders()
-            debugPrint("Standard folders detected successfully")
             
             // Print detected folder configuration
             print("\n📁 Detected Standard Folders:")
@@ -106,26 +88,19 @@ do {
             print("")
             
             // Select the INBOX mailbox and get mailbox information
-            debugPrint("Selecting INBOX mailbox...")
             let mailboxStatus = try await server.selectMailbox("INBOX")
-            debugPrint("INBOX selected. Message count: \(mailboxStatus.messageCount)")
-            
+			
             // Print mailbox information
             if mailboxStatus.messageCount > 0 {
                 // Fetch the 10 latest complete emails including attachments
-                logger.notice("Fetching latest emails...")
-                debugPrint("Fetching latest emails...")
                 
 				let startMessage = SequenceNumber(max(1, mailboxStatus.messageCount - 9))
 				let endMessage = SequenceNumber(mailboxStatus.messageCount)
-                debugPrint("Fetching messages from sequence \(startMessage) to \(endMessage)")
 
                 do {
                     // Use the fetchEmails method with the sequence number set
                     let emails = try await server.fetchMessages(using: SequenceNumberSet(startMessage...endMessage))
-                    debugPrint("\(emails.count) emails fetched successfully")
                     
-                    logger.notice("📧 Latest Complete Emails (\(emails.count)) 📧")
                     print("\n📧 Latest Complete Emails (\(emails.count)) 📧")
                     
                     // Display emails using the improved debug description format
@@ -135,41 +110,25 @@ do {
                     }
                     
                 } catch {
-                    logger.error("Failed to fetch emails: \(error.localizedDescription)")
                     print("Failed to fetch emails: \(error.localizedDescription)")
-                    debugPrint("ERROR: \(error)")
                 }
             } else {
-                logger.notice("No messages in mailbox")
                 print("No messages in mailbox")
             }
             
             // Logout from the server
-            debugPrint("Logging out...")
             try await server.logout()
-            debugPrint("Logout successful")
             
             // Close the connection
-            debugPrint("Disconnecting...")
             try await server.disconnect()
-            debugPrint("Disconnection complete")
         }
-		catch let error as NIOIMAP.IMAPDecoderError {
-			
-			let string = String(buffer: error.buffer)
-			print(string)
-			debugPrint("ERROR: \(error)")
-			
-		}
 		catch {
             logger.error("Error: \(error.localizedDescription)")
-            debugPrint("ERROR: \(error)")
             exit(1)
         }
     }.value
     
 } catch {
     logger.error("Error: \(error.localizedDescription)")
-    debugPrint("ERROR: \(error)")
     exit(1)
 }
