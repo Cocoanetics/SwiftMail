@@ -101,7 +101,9 @@ let mailboxInfo = try await imapServer.selectMailbox("INBOX")
 print("Mailbox has \(mailboxInfo.messageCount) messages")
 
 // Fetch the 10 most recent email headers
-let headers = try await imapServer.fetchHeaders(range: "1:10")
+let startMessage = SequenceNumber(max(1, mailboxInfo.messageCount - 9))
+let endMessage = SequenceNumber(mailboxInfo.messageCount)
+let headers = try await imapServer.fetchHeaders(using: SequenceNumberSet(startMessage...endMessage))
 for header in headers {
     print("Subject: \(header.subject)")
 }
