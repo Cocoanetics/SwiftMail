@@ -35,34 +35,33 @@ public final class SMTPLogger: ChannelDuplexHandler, @unchecked Sendable {
         // Try to extract the command from the data
         let command = unwrapOutboundIn(data)
         
+		let commandString: String
+		
         // Check if this is an IOData type (which contains raw bytes)
         if let ioData = command as? IOData {
             // Extract the ByteBuffer from IOData and convert to string
             switch ioData {
                 case .byteBuffer(let buffer):
                     // Use the ByteBuffer extension to get a string value
-                    let commandString = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) ?? "<Binary data>"
+                    commandString = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) ?? "<Binary data>"
                     
-                    // Redact sensitive information in AUTH commands
-                    if commandString.hasPrefix("AUTH") || commandString.hasPrefix("auth") {
-                        outboundLogger.trace("AUTH [credentials redacted]")
-                    } else {
-                        outboundLogger.trace("\(commandString)")
-                    }
                 case .fileRegion:
-                    outboundLogger.trace("<File region data>")
+					commandString = "<File region data>"
             }
         } else if let debuggable = command as? CustomDebugStringConvertible {
             // Use debugDescription for more detailed information about the command
-            let description = debuggable.debugDescription
-            
-			outboundLogger.trace("\(description)")
+			commandString = debuggable.debugDescription
         } else {
             // Fallback to standard description
-            let description = String(describing: command)
-            
-			outboundLogger.trace("\(description)")
+			commandString = String(describing: command)
         }
+		
+		// Redact sensitive information in AUTH commands
+		if commandString.hasPrefix("AUTH") || commandString.hasPrefix("auth") {
+			outboundLogger.trace("AUTH [credentials redacted]")
+		} else {
+			outboundLogger.trace("\(commandString)")
+		}
         
         // Forward the data to the next handler
         context.write(data, promise: promise)

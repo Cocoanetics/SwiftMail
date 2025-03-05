@@ -35,6 +35,8 @@ public final class IMAPLogger: ChannelDuplexHandler, @unchecked Sendable {
     public func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         // Try to extract the command from the data
         let command = unwrapOutboundIn(data)
+		
+		let commandString: String
         
         // Check if this is an IOData type (which contains raw bytes)
         if let ioData = command as? IOData {
@@ -42,18 +44,30 @@ public final class IMAPLogger: ChannelDuplexHandler, @unchecked Sendable {
             switch ioData {
                 case .byteBuffer(let buffer):
                     // Use the ByteBuffer extension to get a string value
-                    let commandString = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) ?? "<Binary data>"
-                    outboundLogger.trace("\(commandString)")
+                    commandString = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) ?? "<Binary data>"
                 case .fileRegion:
-                    outboundLogger.trace("<File region data>")
+                    commandString = "<File region data>"
             }
         } else if let debuggable = command as? CustomDebugStringConvertible {
             // Use debugDescription for more detailed information about the command
-            outboundLogger.trace("\(debuggable.debugDescription)")
+            commandString = debuggable.debugDescription
         } else {
             // Fallback to standard description
-            outboundLogger.trace("\(String(describing: command))")
+            commandString = String(describing: command)
         }
+		
+		// Redact sensitive information in LOGIN commands
+		if commandString.range(of: "LOGIN", options: [.caseInsensitive]) != nil {
+			// For other types containing LOGIN
+			if let tagEndRange = commandString.range(of: " LOGIN", options: [.caseInsensitive]) {
+				let tag = commandString[..<tagEndRange.lowerBound]
+				outboundLogger.trace("\(tag) LOGIN [credentials redacted]")
+			} else {
+				outboundLogger.trace("LOGIN [credentials redacted]")
+			}
+		} else {
+			outboundLogger.trace("\(commandString)")
+		}
         
         // Forward the data to the next handler
         context.write(data, promise: promise)

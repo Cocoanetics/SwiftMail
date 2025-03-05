@@ -24,7 +24,10 @@ let package = Package(
             targets: ["SwiftIMAPCLI"]),
         .executable(
             name: "SwiftSMTPCLI",
-            targets: ["SwiftSMTPCLI"])
+            targets: ["SwiftSMTPCLI"]),
+        .executable(
+            name: "CredentialRedactionTest",
+            targets: ["CredentialRedactionTest"])
     ],
     dependencies: [
         // Dependencies declare other packages that this package depends on.
@@ -73,6 +76,13 @@ let package = Package(
             dependencies: [
                 "SwiftSMTP",
                 .product(name: "SwiftDotenv", package: "swift-dotenv"),
+            ]
+        ),
+        .executableTarget(
+            name: "CredentialRedactionTest",
+            dependencies: [
+                "SwiftIMAP",
+                .product(name: "Logging", package: "swift-log")
             ]
         ),
         .testTarget(

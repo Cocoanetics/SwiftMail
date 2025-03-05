@@ -245,49 +245,30 @@ public actor SMTPServer {
      - Throws: SMTPError if authentication fails
      */
     public func authenticate(username: String, password: String) async throws -> Bool {
-        logger.info("Starting SMTP authentication for user: \(username)")
-        
-        // Debug log all capabilities to see what's available
-        logger.debug("Current capabilities: \(capabilities.joined(separator: ", "))")
         
         // Check if we have PLAIN auth support
         if capabilities.contains("AUTH PLAIN") {
-            logger.debug("Trying PLAIN authentication method")
-            // Create and execute PlainAuthCommand
             let plainCommand = PlainAuthCommand(username: username, password: password)
             let result = try await executeCommand(plainCommand)
             
             // If successful, return success
             if result.success {
-                logger.info("PLAIN authentication successful")
                 return true
-            } else {
-                logger.warning("PLAIN authentication failed: \(result.errorMessage ?? "No error message")")
             }
-        } else {
-            logger.debug("Server does not support AUTH PLAIN")
         }
         
         // If PLAIN auth failed or is not supported, try LOGIN auth
         if capabilities.contains("AUTH LOGIN") {
-            logger.debug("Trying LOGIN authentication method")
-            // Create and execute LoginAuthCommand
             let loginCommand = LoginAuthCommand(username: username, password: password)
             let result = try await executeCommand(loginCommand)
             
             // If successful, return success
             if result.success {
-                logger.info("LOGIN authentication successful")
                 return true
-            } else {
-                logger.warning("LOGIN authentication failed: \(result.errorMessage ?? "No error message")")
             }
-        } else {
-            logger.debug("Server does not support AUTH LOGIN")
         }
         
         // If we get here, authentication failed
-        logger.error("All authentication methods failed")
         throw SMTPError.authenticationFailed("Authentication failed with all available methods")
     }
     
