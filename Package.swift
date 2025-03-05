@@ -66,14 +66,16 @@ let package = Package(
             dependencies: [
                 "SwiftIMAP",
                 .product(name: "SwiftDotenv", package: "swift-dotenv"),
-            ]
+            ],
+			path: "Demos/SwiftIMAPCLI"
         ),
         .executableTarget(
             name: "SwiftSMTPCLI",
             dependencies: [
                 "SwiftSMTP",
                 .product(name: "SwiftDotenv", package: "swift-dotenv"),
-            ]
+            ],
+			path: "Demos/SwiftSMTPCLI"
         ),
         .testTarget(
             name: "SwiftIMAPTests",
