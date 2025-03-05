@@ -12,8 +12,8 @@ let package = Package(
 		.iOS("14.0"),
 		.tvOS("14.0"),
 		.watchOS("7.0"),
-		.macCatalyst("14.0")
-		// visionOS("1.0") is commented out due to Swift tools version compatibility
+		.macCatalyst("14.0"),
+		.visionOS("1.0")
     ],
     products: [
         // Products define the executables and libraries a package produces
