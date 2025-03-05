@@ -5,8 +5,8 @@ import NIOCore
  Command to send EHLO and retrieve server capabilities
  */
 public struct EHLOCommand: SMTPCommand {
-    /// The result type is an array of capability strings
-    public typealias ResultType = [String]
+    /// The result type is the raw response text
+    public typealias ResultType = String
     
     /// The handler type that will process responses for this command
     public typealias HandlerType = EHLOHandler
@@ -28,12 +28,8 @@ public struct EHLOCommand: SMTPCommand {
         return "EHLO \(hostname)"
     }
     
-    /// Backward compatibility for existing code
-    public func toString(localHostname: String) -> String {
-        // If hostname was not provided during initialization, use the provided one
-        if hostname.isEmpty {
-            return "EHLO \(localHostname)"
-        }
-        return toCommandString()
+    /// Validate the command
+    public func validate() throws {
+        // No validation needed for EHLO
     }
 } 

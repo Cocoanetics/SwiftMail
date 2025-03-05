@@ -8,9 +8,10 @@ import NIOSSL
  */
 public final class SMTPResponseHandler: ChannelInboundHandler {
     public typealias InboundIn = String
+    public typealias InboundOut = SMTPResponse
     
-    /// Reference to the server that owns this handler
-    private weak var server: SMTPServer?
+    /// Logger for response processing
+    private let logger = Logger(label: "com.cocoanetics.SwiftSMTP.ResponseHandler")
     
     /// Current accumulated response lines
     private var currentResponse = ""
@@ -18,15 +19,11 @@ public final class SMTPResponseHandler: ChannelInboundHandler {
     /// Current response code
     private var currentCode: Int = 0
     
-    /// Logger for response processing
-    private let logger = Logger(label: "com.cocoanetics.SwiftSMTP.ResponseHandler")
-    
     /**
      Initialize a new response handler
-     - Parameter server: The SMTP server that owns this handler
      */
-    public init(server: SMTPServer) {
-        self.server = server
+    public init() {
+        // No longer needs reference to SMTPServer
     }
     
     /**
@@ -47,13 +44,6 @@ public final class SMTPResponseHandler: ChannelInboundHandler {
         - error: The error that occurred
      */
     public func errorCaught(context: ChannelHandlerContext, error: Error) {
-        // Forward the error to the server - need to use Task for async calls
-        if let server = server {
-            Task {
-                await server.handleChannelError(error)
-            }
-        }
-        
         // Log errors locally
         if let sslError = error as? NIOSSLError, case .uncleanShutdown = sslError {
             logger.notice("SSL unclean shutdown in SMTP channel (this is normal during disconnection)")
@@ -61,13 +51,14 @@ public final class SMTPResponseHandler: ChannelInboundHandler {
             logger.error("Error in SMTP channel: \(error.localizedDescription)")
         }
         
-        // Close the channel
-        context.close(promise: nil)
+        // Fire the error to the next handler in the pipeline
+        context.fireErrorCaught(error)
     }
     
     /**
      Process a response line from the server
      - Parameter line: The response line to process
+     - Parameter context: The channel handler context
      */
     private func processLine(_ line: String, context: ChannelHandlerContext) {
         // Add the line to the current response
@@ -92,12 +83,8 @@ public final class SMTPResponseHandler: ChannelInboundHandler {
             // Create the response object
             let response = SMTPResponse(code: currentCode, message: message)
             
-            // Forward the response to the server - need to use Task for async calls
-            if let server = server {
-                Task {
-                    await server.processResponse(response)
-                }
-            }
+            // Fire the response directly to the next handler in the pipeline
+            context.fireChannelRead(self.wrapInboundOut(response))
             
             // Reset the current response
             currentResponse = ""
@@ -108,12 +95,8 @@ public final class SMTPResponseHandler: ChannelInboundHandler {
             // Create the response object
             let response = SMTPResponse(code: 220, message: line)
             
-            // Forward the response to the server - need to use Task for async calls
-            if let server = server {
-                Task {
-                    await server.processResponse(response)
-                }
-            }
+            // Fire the response directly to the next handler in the pipeline
+            context.fireChannelRead(self.wrapInboundOut(response))
             
             // Reset the current response
             currentResponse = ""

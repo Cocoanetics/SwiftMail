@@ -65,14 +65,14 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     
     // MARK: - ChannelInboundHandler Implementation
     
-    /// Handle channel read events
+    /// Handle channel read events directly from the pipeline
     /// - Parameters:
     ///   - context: The channel handler context
     ///   - data: The data read from the channel
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let response = self.unwrapInboundIn(data)
+        let response = unwrapInboundIn(data)
         
-        // Process the response
+        // Process the response directly
         let isComplete = processResponse(response)
         
         // If the handler is complete, remove it from the pipeline
@@ -101,9 +101,11 @@ open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, S
     ///   - context: The channel handler context
     ///   - error: The error caught
     public func errorCaught(context: ChannelHandlerContext, error: Error) {
-        // If we get an error, fail the promise with the error
-        // No need to check if it's fulfilled - Swift's promise system will ignore second attempts
+        // Fail the promise with the error
         promise.fail(error)
+        
+        // Remove this handler from the pipeline
+        context.pipeline.removeHandler(self, promise: nil)
         
         // Forward the error to the next handler
         context.fireErrorCaught(error)

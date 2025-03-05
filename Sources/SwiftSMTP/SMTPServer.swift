@@ -25,12 +25,6 @@ public actor SMTPServer {
     /** The channel for communication with the server */
     private var channel: Channel?
     
-    /** The promise for the current SMTP response */
-    private var responsePromise: EventLoopPromise<SMTPResponse>?
-    
-    /** The current SMTP response buffer */
-    private var currentResponse = ""
-    
     /** Flag indicating whether TLS is enabled */
     private var isTLSEnabled = false
     
@@ -45,10 +39,6 @@ public actor SMTPServer {
 	// A logger on the channel that watches both directions
 	private let duplexLogger: SMTPLogger
 
-    
-    /** The current command handler */
-    private var currentHandler: (any SMTPCommandHandler)?
-    
     // MARK: - Initialization
     
     /**
@@ -67,7 +57,6 @@ public actor SMTPServer {
 		let inboundLogger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTP_IN")
 
 		self.duplexLogger = SMTPLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
-
     }
     
     deinit {
@@ -95,7 +84,7 @@ public actor SMTPServer {
                 let handlers: [ChannelHandler] = [
                     ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
                     self.duplexLogger,
-                    SMTPResponseHandler(server: self)
+                    SMTPResponseHandler()
                 ]
                 
                 if useSSL {
@@ -180,33 +169,34 @@ public actor SMTPServer {
         // Create the command string
         let commandString = command.toCommandString()
         
-        // Create the handler for this command
-        var handler: (any SMTPCommandHandler)?
+        // Create the handler using standard initialization
+        let commandHandler = CommandType.HandlerType(commandTag: commandTag, promise: resultPromise)
         
-        // Check if the command is an AuthCommand
-        if let authCommand = command as? AuthCommand, 
-           CommandType.ResultType.self == AuthResult.self {
-            // Use the initializer directly
-            let authHandler = AuthHandler(
+        // Create special handlers with additional parameters if needed
+        var handler: ChannelHandler
+        
+        // Special case for LoginAuthHandler which needs the command parameters
+        if let _ = commandHandler as? LoginAuthHandler,
+           let loginCommand = command as? LoginAuthCommand {
+            
+            logger.debug("Creating LoginAuthHandler with command parameters")
+            
+            // Re-init with command parameters
+            let loginHandler = LoginAuthHandler(
                 commandTag: commandTag,
                 promise: resultPromise as! EventLoopPromise<AuthResult>,
-                method: authCommand.method,
-                username: authCommand.username,
-                password: authCommand.password,
-                channel: channel
+                command: loginCommand
             )
-            handler = authHandler
+            
+            // Store the handler
+            handler = loginHandler
         } else {
-            // All command handlers are initialized directly with the required parameters.
-            // This modern approach avoids the need for a createHandler method on each command.
-            handler = CommandType.HandlerType(
-                commandTag: commandTag,
-                promise: resultPromise
-            )
+            // For all other handlers, use the standard cast
+            guard let channelHandler = commandHandler as? ChannelHandler else {
+                throw SMTPError.connectionFailed("Handler is not a ChannelHandler")
+            }
+            handler = channelHandler
         }
-        
-        // Store the current handler
-        self.currentHandler = handler
         
         // Create a timeout for the command
 		let timeoutSeconds = command.timeoutSeconds
@@ -217,105 +207,88 @@ public actor SMTPServer {
         
         do {
             // Add the command handler to the pipeline
-            // We need to cast to ChannelHandler since SMTPCommandHandler doesn't conform to ChannelHandler
-            if let channelHandler = handler as? ChannelHandler {
-                try await channel.pipeline.addHandler(channelHandler).get()
-                
-                // Send the command to the server
-                let buffer = channel.allocator.buffer(string: commandString + "\r\n")
-                try await channel.writeAndFlush(buffer).get()
-                
-                // Wait for the result
-                let result = try await resultPromise.futureResult.get()
-                
-                // Cancel the timeout
-                scheduledTask.cancel()
-				
-				// Flush the DuplexLogger's buffer after command execution
-				duplexLogger.flushInboundBuffer()
-                
-                return result
-            } else {
-                throw SMTPError.connectionFailed("Handler is not a ChannelHandler")
-            }
-        } catch {
-            // If any error occurs, fail the promise to prevent leaks
-            resultPromise.fail(error)
+            try await channel.pipeline.addHandler(handler).get()
+            
+            // Send the command to the server
+            let buffer = channel.allocator.buffer(string: commandString + "\r\n")
+            try await channel.writeAndFlush(buffer).get()
+            
+            // Wait for the result
+            let result = try await resultPromise.futureResult.get()
             
             // Cancel the timeout
             scheduledTask.cancel()
-            
-            // Clear the current handler
-            self.currentHandler = nil
 			
-			// Flush the DuplexLogger's buffer even if there was an error
+			// Flush the DuplexLogger's buffer after command execution
 			duplexLogger.flushInboundBuffer()
             
-            throw error
+            return result
+        } catch {
+            // Cancel the timeout
+            scheduledTask.cancel()
+            
+            // If it's a timeout error, throw a more specific error
+            if error is SMTPError {
+                throw error
+            } else {
+                throw SMTPError.connectionFailed("Command failed: \(error.localizedDescription)")
+            }
         }
     }
     
     /**
      Authenticate with the SMTP server
      - Parameters:
-     - username: The username for authentication
-     - password: The password for authentication
-     - Returns: Boolean indicating if authentication was successful
+     - username: The username to authenticate with
+     - password: The password to authenticate with
+     - Returns: A boolean indicating if authentication was successful
      - Throws: SMTPError if authentication fails
      */
     public func authenticate(username: String, password: String) async throws -> Bool {
-        // Ensure we have a valid channel
-        guard let _ = channel else {
-            throw SMTPError.connectionFailed("Not connected to SMTP server")
+        logger.info("Starting SMTP authentication for user: \(username)")
+        
+        // Debug log all capabilities to see what's available
+        logger.debug("Current capabilities: \(capabilities.joined(separator: ", "))")
+        
+        // Check if we have PLAIN auth support
+        if capabilities.contains("AUTH PLAIN") {
+            logger.debug("Trying PLAIN authentication method")
+            // Create and execute PlainAuthCommand
+            let plainCommand = PlainAuthCommand(username: username, password: password)
+            let result = try await executeCommand(plainCommand)
+            
+            // If successful, return success
+            if result.success {
+                logger.info("PLAIN authentication successful")
+                return true
+            } else {
+                logger.warning("PLAIN authentication failed: \(result.errorMessage ?? "No error message")")
+            }
+        } else {
+            logger.debug("Server does not support AUTH PLAIN")
         }
         
-        // Store the current capabilities for local use
-        let currentCapabilities = self.capabilities
-        
-        // Check if the server supports authentication (either general AUTH or specific methods)
-        guard currentCapabilities.contains("AUTH") || currentCapabilities.contains(where: { $0.hasPrefix("AUTH ") }) else {
-            throw SMTPError.authenticationFailed("Server does not support authentication")
+        // If PLAIN auth failed or is not supported, try LOGIN auth
+        if capabilities.contains("AUTH LOGIN") {
+            logger.debug("Trying LOGIN authentication method")
+            // Create and execute LoginAuthCommand
+            let loginCommand = LoginAuthCommand(username: username, password: password)
+            let result = try await executeCommand(loginCommand)
+            
+            // If successful, return success
+            if result.success {
+                logger.info("LOGIN authentication successful")
+                return true
+            } else {
+                logger.warning("LOGIN authentication failed: \(result.errorMessage ?? "No error message")")
+            }
+        } else {
+            logger.debug("Server does not support AUTH LOGIN")
         }
         
-        // Log available auth methods
-        let authMethods = currentCapabilities.filter { $0.hasPrefix("AUTH ") }
-        
-        // If we have TLS enabled, try PLAIN auth first
-        // Check for either specific AUTH PLAIN or general AUTH capability
-        let supportsPlain = currentCapabilities.contains("AUTH PLAIN") || 
-                            (currentCapabilities.contains("AUTH") && authMethods.isEmpty)
-        
-        if isTLSEnabled && supportsPlain {
-			// Create and execute AUTH PLAIN command
-			let plainCommand = AuthCommand(username: username, password: password, method: .plain)
-			let result = try await executeCommand(plainCommand)
-			
-			// If successful, return success
-			if result.success {
-				return true
-			}
-        }
-        
-        // If we reach here, either PLAIN auth failed or wasn't available
-        // Try LOGIN auth if supported (either specific AUTH LOGIN or general AUTH capability)
-        let supportsLogin = currentCapabilities.contains("AUTH LOGIN") || 
-                           (currentCapabilities.contains("AUTH") && authMethods.isEmpty)
-        
-        if supportsLogin {
-			// Create and execute AUTH LOGIN command
-			let loginCommand = AuthCommand(username: username, password: password, method: .login)
-			let result = try await executeCommand(loginCommand)
-			
-			// If successful, return success
-			if result.success {
-				return true
-			} else {
-				throw SMTPError.authenticationFailed(result.errorMessage ?? "Authentication failed")
-			}
-        }
-        
-        // If we reach here, all authentication methods failed
-        throw SMTPError.authenticationFailed("No supported authentication methods succeeded")
+        // If we get here, authentication failed
+        logger.error("All authentication methods failed")
+        throw SMTPError.authenticationFailed("Authentication failed with all available methods")
     }
     
     /**
@@ -423,55 +396,36 @@ public actor SMTPServer {
         // Create the handler directly using initializer
         let handler = HandlerType.init(commandTag: "", promise: promise)
         
-        // Set the current handler so the response handler can route responses to it
-        currentHandler = handler
-        
         do {
             // Wait for the handler to complete with a timeout
             return try await withTimeout(seconds: Double(timeoutSeconds), operation: {
-                let result = try await promise.futureResult.get()
-				
-				// Flush the DuplexLogger's buffer even if there was an error
-				self.duplexLogger.flushInboundBuffer()
-				
-				return result
-				
-        }, onTimeout: {
+                // Add the handler to the pipeline
+                if let channelHandler = handler as? ChannelHandler {
+                    try await channel.pipeline.addHandler(channelHandler).get()
+                    
+                    // Wait for the result
+                    let result = try await promise.futureResult.get()
+                    
+                    // Flush the DuplexLogger's buffer even if there was an error
+                    self.duplexLogger.flushInboundBuffer()
+                    
+                    return result
+                } else {
+                    throw SMTPError.connectionFailed("Handler is not a ChannelHandler")
+                }
+            }, onTimeout: {
                 // Fulfill the promise with an error to prevent leaks
                 promise.fail(SMTPError.connectionFailed("Response timeout"))
-                // Clear the current handler
-                self.currentHandler = nil
-            throw SMTPError.connectionFailed("Response timeout")
-        })
+                throw SMTPError.connectionFailed("Response timeout")
+            })
         } catch {
             // If any error occurs, fail the promise to prevent leaks
             promise.fail(error)
-            // Clear the current handler
-            self.currentHandler = nil
-			
-			// Flush the DuplexLogger's buffer even if there was an error
-			duplexLogger.flushInboundBuffer()
+            
+            // Flush the DuplexLogger's buffer even if there was an error
+            duplexLogger.flushInboundBuffer()
 
             throw error
-        }
-    }
-    
-    /**
-     Process a response from the server using the current handler
-     - Parameter response: The response to process
-     */
-    internal func processResponse(_ response: SMTPResponse) {
-        
-        // If there's a current handler, let it process the response
-        if let handler = currentHandler {
-            // If the handler indicates it's complete, clear it
-            if handler.processResponse(response) {
-                currentHandler = nil
-            }
-        } else if let promise = responsePromise {
-            // For backward compatibility, fulfill the promise with the response
-            promise.succeed(response)
-            responsePromise = nil
         }
     }
     
@@ -487,26 +441,7 @@ public actor SMTPServer {
             logger.error("Error in SMTP channel: \(error.localizedDescription)")
         }
         
-        // If there's a current handler, fail its promise
-        if let handler = currentHandler {
-            // Use a generic function to handle the promise failure
-            failHandler(handler: handler, error: error)
-            currentHandler = nil
-        } else if let promise = responsePromise {
-            // For backward compatibility
-            promise.fail(error)
-            responsePromise = nil
-        }
-    }
-    
-    /**
-     Generic function to fail a handler's promise with an error
-     - Parameters:
-       - handler: The handler whose promise should be failed
-       - error: The error to fail with
-     */
-    private func failHandler<H: SMTPCommandHandler>(handler: H, error: Error) {
-        handler.promise.fail(error)
+        // Error handling is now done directly by the handlers
     }
     
     /**
@@ -661,8 +596,13 @@ public actor SMTPServer {
         
         // Send EHLO again after STARTTLS and update capabilities
         let ehloCommand = EHLOCommand(hostname: getLocalHostname())
-        let capabilities = try await executeCommand(ehloCommand)
-        
+        let rawResponse = try await executeCommand(ehloCommand)
+        logger.debug("Raw EHLO response after TLS: \(rawResponse)")
+
+        // Parse capabilities from raw response
+        let capabilities = parseCapabilities(from: rawResponse)
+        logger.debug("Parsed \(capabilities.count) capabilities after TLS")
+
         // Store capabilities for later use
         self.capabilities = capabilities
     }
@@ -670,10 +610,13 @@ public actor SMTPServer {
     /**
      Parse server capabilities from EHLO response
      - Parameter response: The EHLO response message
+     - Returns: Array of server capabilities
      */
-    private func parseCapabilities(from response: String) {
-        // Clear existing capabilities
-        capabilities.removeAll()
+    private func parseCapabilities(from response: String) -> [String] {
+        // Create a new array for capabilities
+        var parsedCapabilities = [String]()
+        
+        logger.debug("Parsing SMTP server capabilities: \n\(response)")
         
         // Split the response into lines
         let lines = response.split(separator: "\n")
@@ -682,29 +625,40 @@ public actor SMTPServer {
         for line in lines.dropFirst() {
             // Extract the capability (remove the response code prefix if present)
             let capabilityLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if capabilityLine.count > 4 && capabilityLine.prefix(4).allSatisfy({ $0.isNumber || $0 == "-" }) {
-                // This is a line with a response code prefix (e.g., "250-SIZE 20480000")
-                let capability = String(capabilityLine.dropFirst(4)).trimmingCharacters(in: .whitespaces)
+            logger.debug("Processing capability line: '\(capabilityLine)'")
+            
+            // For EHLO responses, each line starts with a response code (e.g., "250-AUTH LOGIN PLAIN")
+            if capabilityLine.count > 4 && (capabilityLine.prefix(4).hasPrefix("250-") || capabilityLine.prefix(4).hasPrefix("250 ")) {
+                // Extract the capability (after the response code)
+                let capabilityPart = capabilityLine.dropFirst(4).trimmingCharacters(in: .whitespaces)
+                logger.debug("Extracted capability part: '\(capabilityPart)'")
                 
-                // Extract the base capability (before any parameters)
-                let baseCapability = capability.split(separator: " ").first.map(String.init) ?? capability
-                capabilities.append(baseCapability)
-                
-                // Also add the full capability with parameters
-                if baseCapability != capability {
-                    capabilities.append(capability)
-                }
-                
-                // Special handling for AUTH capability
-                if baseCapability == "AUTH" {
-                    // Add specific AUTH methods
-                    let authMethods = capability.split(separator: " ").dropFirst()
+                // Special handling for AUTH capability which may list multiple methods
+                if capabilityPart.hasPrefix("AUTH ") {
+                    // Add the base AUTH capability
+                    parsedCapabilities.append("AUTH")
+                    logger.debug("Added base capability: AUTH")
+                    
+                    // Extract and add each individual auth method
+                    let authMethods = capabilityPart.dropFirst(5).split(separator: " ")
+                    logger.debug("Found auth methods: \(authMethods)")
                     for method in authMethods {
-                        capabilities.append("AUTH \(method)")
+                        let authMethod = "AUTH \(method)"
+                        parsedCapabilities.append(authMethod)
+                        logger.debug("Added auth method: \(authMethod)")
                     }
+                } else {
+                    // For other capabilities, add them as-is
+                    parsedCapabilities.append(capabilityPart)
+                    logger.debug("Added capability: \(capabilityPart)")
                 }
             }
         }
+        
+        // Log all parsed capabilities
+        logger.info("Server supports \(parsedCapabilities.count) capabilities: \(parsedCapabilities.joined(separator: ", "))")
+        
+        return parsedCapabilities
     }
     
     /**
@@ -714,16 +668,26 @@ public actor SMTPServer {
      */
     @discardableResult
     public func fetchCapabilities() async throws -> [String] {
-        // Create the EHLO command with the hostname
+        logger.debug("Fetching server capabilities")
         let command = EHLOCommand(hostname: getLocalHostname())
         
-        // Execute the command
-        let serverCapabilities = try await executeCommand(command)
-        
-        // Store capabilities for later use
-        self.capabilities = serverCapabilities
-        
-        return serverCapabilities
+        do {
+            let response = try await executeCommand(command)
+            logger.debug("Raw EHLO response: \(response)")
+            
+            // Parse the capabilities from the raw response
+            let capabilities = parseCapabilities(from: response)
+            
+            logger.debug("Fetched \(capabilities.count) capabilities")
+            
+            // Store capabilities for later use
+            self.capabilities = capabilities
+            
+            return capabilities
+        } catch {
+            logger.error("Failed to fetch capabilities: \(error)")
+            throw error
+        }
     }
     
     /**
