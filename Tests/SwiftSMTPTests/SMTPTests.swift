@@ -28,13 +28,13 @@ struct SMTPTests {
             sender: sender,
             recipients: [recipient1, recipient2],
             subject: "Test Subject",
-            body: "Test Body"
+            textBody: "Test Body"
         )
         
         #expect(email.sender.address == "sender@example.com", "Sender address should match")
         #expect(email.recipients.count == 2, "Should have 2 recipients")
         #expect(email.subject == "Test Subject", "Subject should match")
-        #expect(email.body == "Test Body", "Body should match")
+        #expect(email.textBody == "Test Body", "Text body should match")
     }
     
     @Test
@@ -45,7 +45,7 @@ struct SMTPTests {
             senderAddress: "sender@example.com",
             recipientAddresses: ["recipient@example.com"],
             subject: "Test Subject",
-            body: "Test Body"
+            textBody: "Test Body"
         )
         
         #expect(email.sender.name == "Test Sender", "Sender name should match")

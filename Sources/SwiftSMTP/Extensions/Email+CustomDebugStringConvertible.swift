@@ -8,12 +8,18 @@ extension Email: CustomDebugStringConvertible {
         description += "  From: \(sender.formatted)\n"
         description += "  To: \(recipients.map { $0.formatted }.joined(separator: ", "))\n"
         description += "  Subject: \(subject)\n"
-        description += "  Body: \(body.prefix(100))\(body.count > 100 ? "..." : "")\n"
+        description += "  Text Body: \(textBody.prefix(100))\(textBody.count > 100 ? "..." : "")\n"
+        
+        if let htmlBody = htmlBody {
+            description += "  HTML Body: \(htmlBody.prefix(100))\(htmlBody.count > 100 ? "..." : "")\n"
+        }
         
         if let attachments = attachments, !attachments.isEmpty {
             description += "  Attachments: \(attachments.count) {\n"
             for attachment in attachments {
-                description += "    \(attachment.filename) (\(attachment.mimeType), \(attachment.data.count) bytes)\n"
+                let inlineStatus = attachment.isInline ? " (inline)" : ""
+                let contentIDInfo = attachment.contentID != nil ? " contentID: \(attachment.contentID!)" : ""
+                description += "    \(attachment.filename) (\(attachment.mimeType), \(attachment.data.count) bytes)\(inlineStatus)\(contentIDInfo)\n"
             }
             description += "  }\n"
         }

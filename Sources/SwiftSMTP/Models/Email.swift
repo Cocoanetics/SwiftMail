@@ -16,8 +16,11 @@ public struct Email {
     /** The subject of the email */
     public let subject: String
     
-    /** The body of the email */
-    public let body: String
+    /** The plain text body of the email */
+    public let textBody: String
+    
+    /** The HTML body of the email (optional) */
+    public let htmlBody: String?
     
     /** Optional attachments for the email */
     public let attachments: [Attachment]?
@@ -28,14 +31,16 @@ public struct Email {
      - sender: The sender of the email
      - recipients: The recipients of the email
      - subject: The subject of the email
-     - body: The body of the email
+     - textBody: The plain text body of the email
+     - htmlBody: The HTML body of the email (optional)
      - attachments: Optional attachments for the email
      */
-    public init(sender: EmailAddress, recipients: [EmailAddress], subject: String, body: String, attachments: [Attachment]? = nil) {
+    public init(sender: EmailAddress, recipients: [EmailAddress], subject: String, textBody: String, htmlBody: String? = nil, attachments: [Attachment]? = nil) {
         self.sender = sender
         self.recipients = recipients
         self.subject = subject
-        self.body = body
+        self.textBody = textBody
+        self.htmlBody = htmlBody
         self.attachments = attachments
     }
     
@@ -47,10 +52,11 @@ public struct Email {
      - recipientNames: The names of the recipients (optional)
      - recipientAddresses: The email addresses of the recipients
      - subject: The subject of the email
-     - body: The body of the email
+     - textBody: The plain text body of the email
+     - htmlBody: The HTML body of the email (optional)
      - attachments: Optional attachments for the email
      */
-    public init(senderName: String? = nil, senderAddress: String, recipientNames: [String?]? = nil, recipientAddresses: [String], subject: String, body: String, attachments: [Attachment]? = nil) {
+    public init(senderName: String? = nil, senderAddress: String, recipientNames: [String?]? = nil, recipientAddresses: [String], subject: String, textBody: String, htmlBody: String? = nil, attachments: [Attachment]? = nil) {
         // Create sender EmailAddress
         let sender = EmailAddress(name: senderName, address: senderAddress)
         
@@ -72,6 +78,6 @@ public struct Email {
         }
         
         // Initialize with the created objects
-        self.init(sender: sender, recipients: recipients, subject: subject, body: body, attachments: attachments)
+        self.init(sender: sender, recipients: recipients, subject: subject, textBody: textBody, htmlBody: htmlBody, attachments: attachments)
     }
 } 
