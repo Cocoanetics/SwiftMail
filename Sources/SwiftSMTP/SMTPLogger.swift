@@ -45,33 +45,23 @@ public final class SMTPLogger: ChannelDuplexHandler, @unchecked Sendable {
                     
                     // Redact sensitive information in AUTH commands
                     if commandString.hasPrefix("AUTH") || commandString.hasPrefix("auth") {
-                        outboundLogger.notice("AUTH [credentials redacted]")
+                        outboundLogger.trace("AUTH [credentials redacted]")
                     } else {
-                        outboundLogger.notice("\(commandString)")
+                        outboundLogger.trace("\(commandString)")
                     }
                 case .fileRegion:
-                    outboundLogger.notice("<File region data>")
+                    outboundLogger.trace("<File region data>")
             }
         } else if let debuggable = command as? CustomDebugStringConvertible {
             // Use debugDescription for more detailed information about the command
             let description = debuggable.debugDescription
             
-            // Redact sensitive information in AUTH commands
-            if description.hasPrefix("AUTH") || description.hasPrefix("auth") {
-                outboundLogger.notice("AUTH [credentials redacted]")
-            } else {
-                outboundLogger.notice("\(description)")
-            }
+			outboundLogger.trace("\(description)")
         } else {
             // Fallback to standard description
             let description = String(describing: command)
             
-            // Redact sensitive information in AUTH commands
-            if description.hasPrefix("AUTH") || description.hasPrefix("auth") {
-                outboundLogger.notice("AUTH [credentials redacted]")
-            } else {
-                outboundLogger.notice("\(description)")
-            }
+			outboundLogger.trace("\(description)")
         }
         
         // Forward the data to the next handler

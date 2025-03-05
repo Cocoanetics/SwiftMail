@@ -162,10 +162,9 @@ public actor SMTPServer {
      - Returns: The result of the command
      - Throws: An error if the command fails
      */
-    public func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+    @discardableResult public func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
         // Ensure we have a valid channel
         guard let channel = channel else {
-            print("DEBUG - Not connected to SMTP server")
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
         
@@ -181,17 +180,12 @@ public actor SMTPServer {
         // Create the command string
         let commandString = command.toCommandString()
         
-        // Log command type for debugging
-        print("DEBUG - Executing command of type: \(type(of: command))")
-        
         // Create the handler for this command
         var handler: (any SMTPCommandHandler)?
         
         // Check if the command is an AuthCommand
         if let authCommand = command as? AuthCommand, 
            CommandType.ResultType.self == AuthResult.self {
-            print("DEBUG - Creating AuthHandler for AuthCommand")
-            logger.debug("Creating AuthHandler for AuthCommand")
             // Use the initializer directly
             let authHandler = AuthHandler(
                 commandTag: commandTag,
@@ -202,50 +196,22 @@ public actor SMTPServer {
                 channel: channel
             )
             handler = authHandler
-            print("DEBUG - AuthHandler initialized with method: \(authCommand.method), username: \(authCommand.username), channel: \(channel)")
-            logger.debug("AuthHandler created successfully")
         } else {
-            print("DEBUG - Creating handler using initializer")
-            logger.debug("Creating handler using initializer")
-
             // All command handlers are initialized directly with the required parameters.
             // This modern approach avoids the need for a createHandler method on each command.
             handler = CommandType.HandlerType(
                 commandTag: commandTag,
                 promise: resultPromise
             )
-            print("DEBUG - Handler created successfully: \(type(of: handler))")
-            logger.debug("Handler created successfully: \(type(of: handler))")
-        }
-        
-        // Set the logger on the handler if it implements LoggableHandler
-        if var loggableHandler = handler as? LoggableHandler {
-            loggableHandler.logger = logger
-            print("DEBUG - Logger set on handler")
-            logger.debug("Logger set on handler")
-        } else {
-            print("DEBUG - Handler does not implement LoggableHandler")
-            logger.debug("Handler does not implement LoggableHandler")
         }
         
         // Store the current handler
         self.currentHandler = handler
         
-        // Log the command (except for AUTH which may contain sensitive data)
-        if commandString.hasPrefix("AUTH") {
-            print("DEBUG - Sending: AUTH [credentials redacted]")
-            logger.debug("Sending: AUTH [credentials redacted]")
-        } else {
-            print("DEBUG - Sending: \(commandString)")
-            logger.debug("Sending: \(commandString)")
-        }
-        
         // Create a timeout for the command
 		let timeoutSeconds = command.timeoutSeconds
 		
 		let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
-            print("DEBUG - Command timed out after \(timeoutSeconds) seconds")
-            self.logger.warning("Command timed out after \(timeoutSeconds) seconds")
             resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
         }
         
@@ -253,26 +219,14 @@ public actor SMTPServer {
             // Add the command handler to the pipeline
             // We need to cast to ChannelHandler since SMTPCommandHandler doesn't conform to ChannelHandler
             if let channelHandler = handler as? ChannelHandler {
-                print("DEBUG - Adding handler to pipeline")
-                logger.debug("Adding handler to pipeline")
                 try await channel.pipeline.addHandler(channelHandler).get()
-                print("DEBUG - Handler added to pipeline successfully")
-                logger.debug("Handler added to pipeline successfully")
                 
                 // Send the command to the server
                 let buffer = channel.allocator.buffer(string: commandString + "\r\n")
-                print("DEBUG - Sending command to server")
-                logger.debug("Sending command to server")
                 try await channel.writeAndFlush(buffer).get()
-                print("DEBUG - Command sent successfully")
-                logger.debug("Command sent successfully")
                 
                 // Wait for the result
-                print("DEBUG - Waiting for command result")
-                logger.debug("Waiting for command result")
                 let result = try await resultPromise.futureResult.get()
-                print("DEBUG - Command completed with result")
-                logger.debug("Command completed with result")
                 
                 // Cancel the timeout
                 scheduledTask.cancel()
@@ -282,14 +236,10 @@ public actor SMTPServer {
                 
                 return result
             } else {
-                print("DEBUG - Handler is not a ChannelHandler: \(type(of: handler))")
-                logger.error("Handler is not a ChannelHandler: \(type(of: handler))")
                 throw SMTPError.connectionFailed("Handler is not a ChannelHandler")
             }
         } catch {
             // If any error occurs, fail the promise to prevent leaks
-            print("DEBUG - Error executing command: \(error.localizedDescription)")
-            logger.error("Error executing command: \(error.localizedDescription)")
             resultPromise.fail(error)
             
             // Cancel the timeout
@@ -321,19 +271,14 @@ public actor SMTPServer {
         
         // Store the current capabilities for local use
         let currentCapabilities = self.capabilities
-        print("DEBUG - Server capabilities: \(currentCapabilities)")
-        logger.debug("Server capabilities: \(currentCapabilities)")
         
         // Check if the server supports authentication (either general AUTH or specific methods)
         guard currentCapabilities.contains("AUTH") || currentCapabilities.contains(where: { $0.hasPrefix("AUTH ") }) else {
-            print("DEBUG - Server does not support authentication")
             throw SMTPError.authenticationFailed("Server does not support authentication")
         }
         
         // Log available auth methods
         let authMethods = currentCapabilities.filter { $0.hasPrefix("AUTH ") }
-        print("DEBUG - Available authentication methods: \(authMethods)")
-        logger.debug("Available authentication methods: \(authMethods)")
         
         // If we have TLS enabled, try PLAIN auth first
         // Check for either specific AUTH PLAIN or general AUTH capability
@@ -341,29 +286,14 @@ public actor SMTPServer {
                             (currentCapabilities.contains("AUTH") && authMethods.isEmpty)
         
         if isTLSEnabled && supportsPlain {
-            print("DEBUG - Attempting PLAIN authentication (TLS enabled: \(isTLSEnabled))")
-            logger.debug("Attempting PLAIN authentication (TLS enabled: \(isTLSEnabled))")
-            do {
-                // Create and execute AUTH PLAIN command
-                let plainCommand = AuthCommand(username: username, password: password, method: .plain)
-                let result = try await executeCommand(plainCommand)
-                
-                // If successful, return success
-                if result.success {
-                    print("DEBUG - PLAIN authentication successful")
-                    logger.info("Authenticated successfully using PLAIN")
-                    return true
-                } else {
-                    print("DEBUG - PLAIN authentication failed: \(result.errorMessage ?? "Unknown error")")
-                    logger.warning("PLAIN authentication failed: \(result.errorMessage ?? "Unknown error")")
-                }
-            } catch {
-                print("DEBUG - PLAIN authentication error: \(error.localizedDescription)")
-                logger.warning("PLAIN authentication error: \(error.localizedDescription)")
-            }
-        } else {
-            print("DEBUG - Skipping PLAIN authentication (TLS enabled: \(isTLSEnabled), AUTH PLAIN supported: \(supportsPlain))")
-            logger.debug("Skipping PLAIN authentication (TLS enabled: \(isTLSEnabled), AUTH PLAIN supported: \(supportsPlain))")
+			// Create and execute AUTH PLAIN command
+			let plainCommand = AuthCommand(username: username, password: password, method: .plain)
+			let result = try await executeCommand(plainCommand)
+			
+			// If successful, return success
+			if result.success {
+				return true
+			}
         }
         
         // If we reach here, either PLAIN auth failed or wasn't available
@@ -372,35 +302,19 @@ public actor SMTPServer {
                            (currentCapabilities.contains("AUTH") && authMethods.isEmpty)
         
         if supportsLogin {
-            print("DEBUG - Attempting LOGIN authentication")
-            logger.debug("Attempting LOGIN authentication")
-            do {
-                // Create and execute AUTH LOGIN command
-                let loginCommand = AuthCommand(username: username, password: password, method: .login)
-                let result = try await executeCommand(loginCommand)
-                
-                // If successful, return success
-                if result.success {
-                    print("DEBUG - LOGIN authentication successful")
-                    logger.info("Authenticated successfully using LOGIN")
-                    return true
-                } else {
-                    print("DEBUG - LOGIN authentication failed: \(result.errorMessage ?? "Unknown error")")
-                    logger.warning("LOGIN authentication failed: \(result.errorMessage ?? "Unknown error")")
-                    throw SMTPError.authenticationFailed(result.errorMessage ?? "Authentication failed")
-                }
-            } catch {
-                print("DEBUG - LOGIN authentication error: \(error.localizedDescription)")
-                logger.warning("LOGIN authentication error: \(error.localizedDescription)")
-                throw error
-            }
-        } else {
-            print("DEBUG - LOGIN authentication not supported by server")
-            logger.debug("LOGIN authentication not supported by server")
+			// Create and execute AUTH LOGIN command
+			let loginCommand = AuthCommand(username: username, password: password, method: .login)
+			let result = try await executeCommand(loginCommand)
+			
+			// If successful, return success
+			if result.success {
+				return true
+			} else {
+				throw SMTPError.authenticationFailed(result.errorMessage ?? "Authentication failed")
+			}
         }
         
         // If we reach here, all authentication methods failed
-        print("DEBUG - No supported authentication methods succeeded")
         throw SMTPError.authenticationFailed("No supported authentication methods succeeded")
     }
     
@@ -414,22 +328,11 @@ public actor SMTPServer {
             return
         }
         
-        logger.debug("Sending QUIT command...")
-        
-        do {
-            // Use QuitCommand instead of directly sending a string
-            let quitCommand = QuitCommand()
-            
-            do {
-                // Execute the QUIT command - it has its own timeout set to 10 seconds
-                let result = try await executeCommand(quitCommand)
-                logger.debug("QUIT command completed with result: \(result)")
-        } catch {
-                // If the QUIT command fails, just log it and continue with disconnection
-                // This could happen if the server doesn't respond or responds with an error
-                logger.warning("QUIT command failed: \(error.localizedDescription)")
-            }
-        }
+		// Use QuitCommand instead of directly sending a string
+		let quitCommand = QuitCommand()
+		
+		// Execute the QUIT command - it has its own timeout set to 10 seconds
+		try await executeCommand(quitCommand)
         
         // Close the channel regardless of QUIT command result
         channel.close(promise: nil)
@@ -802,8 +705,6 @@ public actor SMTPServer {
                 }
             }
         }
-        
-        print("DEBUG - Parsed capabilities: \(capabilities)")
     }
     
     /**
@@ -821,7 +722,6 @@ public actor SMTPServer {
         
         // Store capabilities for later use
         self.capabilities = serverCapabilities
-        logger.debug("Received server capabilities: \(serverCapabilities.joined(separator: ", "))")
         
         return serverCapabilities
     }

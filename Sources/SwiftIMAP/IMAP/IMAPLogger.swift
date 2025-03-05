@@ -43,16 +43,16 @@ public final class IMAPLogger: ChannelDuplexHandler, @unchecked Sendable {
                 case .byteBuffer(let buffer):
                     // Use the ByteBuffer extension to get a string value
                     let commandString = buffer.getString(at: buffer.readerIndex, length: buffer.readableBytes) ?? "<Binary data>"
-                    outboundLogger.notice("\(commandString)")
+                    outboundLogger.trace("\(commandString)")
                 case .fileRegion:
-                    outboundLogger.notice("<File region data>")
+                    outboundLogger.trace("<File region data>")
             }
         } else if let debuggable = command as? CustomDebugStringConvertible {
             // Use debugDescription for more detailed information about the command
-            outboundLogger.notice("\(debuggable.debugDescription)")
+            outboundLogger.trace("\(debuggable.debugDescription)")
         } else {
             // Fallback to standard description
-            outboundLogger.notice("\(String(describing: command))")
+            outboundLogger.trace("\(String(describing: command))")
         }
         
         // Forward the data to the next handler

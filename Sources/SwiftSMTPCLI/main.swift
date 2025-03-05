@@ -16,12 +16,13 @@ LoggingSystem.bootstrap { label in
     
     // Set log level to info by default (or trace if SWIFT_LOG_LEVEL is set to trace)
     var handler = OSLogHandler(label: label, log: osLogger)
-//    // Check if we need verbose logging
-//    if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
+
+	// Check if we need verbose logging
+    if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
         handler.logLevel = .trace
-//    } else {
-//        handler.logLevel = .info
-//    }
+    } else {
+        handler.logLevel = .info
+    }
     
     return handler
 }
@@ -29,17 +30,7 @@ LoggingSystem.bootstrap { label in
 // Create a logger for the main application using Swift Logging
 let logger = Logger(label: "com.cocoanetics.SwiftSMTP.Main")
 
-// Helper function for debug prints - only prints when ENABLE_DEBUG_OUTPUT is set
-func debugPrint(_ message: String) {
-    if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
-        print("DEBUG: \(message)")
-    }
-}
-
 print("📧 SwiftSMTPCLI - Email Sending Test")
-print("Debug mode: OS_LOG_DISABLE=\(ProcessInfo.processInfo.environment["OS_LOG_DISABLE"] ?? "not set")")
-print("Debug mode: OS_ACTIVITY_MODE=\(ProcessInfo.processInfo.environment["OS_ACTIVITY_MODE"] ?? "not set")")
-print("Debug mode: SWIFT_LOG_LEVEL=\(ProcessInfo.processInfo.environment["SWIFT_LOG_LEVEL"] ?? "not set")")
 
 do {
     // Configure SwiftDotenv with the specified path
@@ -68,8 +59,6 @@ do {
         exit(1)
     }
     
-    debugPrint("SMTP configuration: \(host):\(port) with username \(username)")
-    
     // Create an SMTP server instance
     let server = SMTPServer(host: host, port: port)
     
@@ -78,22 +67,18 @@ do {
         do {
             // Connect to the server
             print("Connecting to SMTP server...")
-            debugPrint("Initiating connection to \(host):\(port)...")
 
             try await server.connect()
-            debugPrint("Connection established successfully")
             
             // Login with credentials
             print("Authenticating...")
-            debugPrint("Sending authentication request...")
-            let authSuccess = try await server.authenticate(username: username, password: password)
+
+			let authSuccess = try await server.authenticate(username: username, password: password)
             
             if authSuccess {
                 logger.info("Authentication successful")
-                debugPrint("Authentication successful")
             } else {
                 logger.error("Authentication failed")
-                debugPrint("Authentication failed")
                 throw SMTPError.authenticationFailed("Authentication failed")
             }
             
@@ -110,21 +95,17 @@ do {
             
             // Send the email
             print("Sending test email to \(recipient.address)...")
-            debugPrint("Sending email with subject '\(email.subject)'...")
-            try await server.sendEmail(email)
-            debugPrint("Email transmission complete")
+
+			try await server.sendEmail(email)
 
 			print("Email sent successfully!")
             
             // Disconnect from the server
             print("Disconnecting...")
-            debugPrint("Sending QUIT command...")
-            try await server.disconnect()
-            debugPrint("Disconnection complete")
-			
+
+			try await server.disconnect()
         } catch {
             print("Error: \(error.localizedDescription)")
-            debugPrint("ERROR: \(error)")
             logger.error("Error: \(error.localizedDescription)")
             exit(1)
         }
@@ -132,7 +113,6 @@ do {
     
 } catch {
     print("Error: \(error.localizedDescription)")
-    debugPrint("ERROR: \(error)")
     logger.error("Error: \(error.localizedDescription)")
     exit(1)
 } 
