@@ -31,7 +31,6 @@ public final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAP
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
     override public func handleTaggedErrorResponse(_ response: TaggedResponse) {
-        logger?.error("Received error response for CAPABILITY command: \(String(describing: response.state))")
         failWithError(IMAPError.commandFailed(String(describing: response.state)))
     }
     

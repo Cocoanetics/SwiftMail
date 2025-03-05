@@ -9,9 +9,6 @@ import Logging
 public protocol IMAPCommandHandler: ChannelInboundHandler {
     associatedtype ResultType
     
-    /// Logger for IMAP responses
-    var logger: Logger? { get set }
-    
     /// Initialize the handler
     /// - Parameters:
     ///   - commandTag: The tag for the command (optional)

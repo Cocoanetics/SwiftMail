@@ -33,9 +33,6 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
     /// Whether this handler has completed processing
     public private(set) var isCompleted: Bool = false
     
-    /// Logger for IMAP responses
-    public var logger: Logger?
-    
     /// Lock for thread-safe access to mutable properties
     internal let lock = NIOLock()
     
@@ -61,9 +58,6 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
             isCompleted = true
         }
         
-        // Flush any remaining logs before removing the handler
-        flushLogBuffer()
-        
         // Remove this handler from the pipeline
         context.pipeline.removeHandler(self, promise: nil)
     }
@@ -84,8 +78,6 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     public func processResponse(_ response: Response) -> Bool {
-        // Buffer the response for logging
-        bufferLog(response.debugDescription)
         
         // If commandTag is nil, we're only interested in untagged responses
         if commandTag == nil {
@@ -99,7 +91,6 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
                 // Subclasses should override handleTaggedOKResponse to handle the OK response
                 handleTaggedOKResponse(taggedResponse)
             } else {
-                logger?.debug("Tagged response is an error: \(String(describing: taggedResponse.state))")
                 // Failed response, fail the promise with an error
                 handleTaggedErrorResponse(taggedResponse)
             }
@@ -142,24 +133,6 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
         return false
     }
     
-    /// Add a message to the log buffer
-    fileprivate func bufferLog(_ message: String) {
-        lock.withLock {
-            logBuffer.append(message)
-        }
-    }
-    
-    /// Flush the log buffer to the logger
-    fileprivate func flushLogBuffer() {
-        lock.withLock {
-            if !logBuffer.isEmpty {
-                let combinedLog = logBuffer.joined(separator: "\n")
-                logger?.debug("\(combinedLog)\n")
-                logBuffer.removeAll()
-            }
-        }
-    }
-    
     /// Channel read method from ChannelInboundHandler
     public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
@@ -188,9 +161,6 @@ public class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChanne
     /// Handle an error
     /// This method should be overridden by subclasses
     public func handleError(_ error: Error) {
-        // Flush logs before handling the error
-        flushLogBuffer()
-        
         // Fail the promise with the error
         failWithError(error)
     }
