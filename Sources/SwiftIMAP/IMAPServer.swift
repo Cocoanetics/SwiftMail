@@ -71,10 +71,10 @@ public actor IMAPServer {
 		self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 		
 		// Initialize loggers
-		self.logger = Logging.Logger(label: "com.cocoanetics.SwiftIMAP.IMAPServer")
+		self.logger = Logging.Logger(label: "com.cocoanetics.SwiftMail.IMAPServer")
 		
-		let outboundLogger = Logging.Logger(label: "com.cocoanetics.SwiftIMAP.IMAP_OUT")
-		let inboundLogger = Logging.Logger(label: "com.cocoanetics.SwiftIMAP.IMAP_IN")
+		let outboundLogger = Logging.Logger(label: "com.cocoanetics.SwiftMail.IMAP_OUT")
+		let inboundLogger = Logging.Logger(label: "com.cocoanetics.SwiftMail.IMAP_IN")
 		
 		self.duplexLogger = IMAPLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
 	}

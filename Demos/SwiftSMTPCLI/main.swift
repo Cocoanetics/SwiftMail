@@ -12,7 +12,7 @@ import SwiftDotenv
 LoggingSystem.bootstrap { label in
     // Create an OSLog-based logger
     let category = label.split(separator: ".").last?.description ?? "default"
-    let osLogger = OSLog(subsystem: "com.cocoanetics.SwiftSMTP", category: category)
+    let osLogger = OSLog(subsystem: "com.cocoanetics.SwiftSMTPCLI", category: category)
     
     // Set log level to info by default (or trace if SWIFT_LOG_LEVEL is set to trace)
     var handler = OSLogHandler(label: label, log: osLogger)
@@ -28,7 +28,7 @@ LoggingSystem.bootstrap { label in
 }
 
 // Create a logger for the main application using Swift Logging
-let logger = Logger(label: "com.cocoanetics.SwiftSMTP.Main")
+let logger = Logger(label: "com.cocoanetics.SwiftSMTPCLI.Main")
 
 print("📧 SwiftSMTPCLI - Email Sending Test")
 

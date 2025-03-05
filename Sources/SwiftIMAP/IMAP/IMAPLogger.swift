@@ -68,12 +68,12 @@ public final class IMAPLogger: ChannelDuplexHandler, @unchecked Sendable {
 		
 		if loginRegex.firstMatch(in: commandString, options: [], range: range) != nil {
 			// Use the String extension to redact sensitive LOGIN information
-			outboundLogger.trace("\(commandString.redactAfter("LOGIN"))")
+			outboundLogger.debug("\(commandString.redactAfter("LOGIN"))")
 		} else if authRegex.firstMatch(in: commandString, options: [], range: range) != nil {
 			// Also redact AUTH commands which may contain encoded credentials
-			outboundLogger.trace("\(commandString.redactAfter("AUTH"))")
+			outboundLogger.debug("\(commandString.redactAfter("AUTH"))")
 		} else {
-			outboundLogger.trace("\(commandString)")
+			outboundLogger.debug("\(commandString)")
 		}
         
         // Forward the data to the next handler
@@ -104,7 +104,7 @@ public final class IMAPLogger: ChannelDuplexHandler, @unchecked Sendable {
         lock.withLock {
             if !inboundBuffer.isEmpty {
                 let combinedLog = inboundBuffer.joined(separator: "\n")
-                inboundLogger.trace("\(combinedLog)")
+                inboundLogger.debug("\(combinedLog)")
                 inboundBuffer.removeAll()
             }
         }

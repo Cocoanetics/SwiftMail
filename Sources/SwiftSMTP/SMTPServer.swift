@@ -38,7 +38,7 @@ public actor SMTPServer {
     /**
      Logger for SMTP operations
      */
-    private let logger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTPServer")
+    private let logger = Logger(label: "com.cocoanetics.SwiftMail.SMTPServer")
     
 	// A logger on the channel that watches both directions
 	private let duplexLogger: SMTPLogger
@@ -57,8 +57,8 @@ public actor SMTPServer {
         self.port = port
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 		
-		let outboundLogger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTP_OUT")
-		let inboundLogger = Logger(label: "com.cocoanetics.SwiftSMTP.SMTP_IN")
+		let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
+		let inboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_IN")
 
 		self.duplexLogger = SMTPLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
     }

@@ -13,7 +13,7 @@ import NIOIMAP
 LoggingSystem.bootstrap { label in
     // Create an OSLog-based logger
     let category = label.split(separator: ".").last?.description ?? "default"
-    let osLogger = OSLog(subsystem: "com.cocoanetics.SwiftIMAP", category: category)
+    let osLogger = OSLog(subsystem: "com.cocoanetics.SwiftIMAPCLI", category: category)
     
     // Set log level to info by default (or trace if verbose logging is enabled)
     var handler = OSLogHandler(label: label, log: osLogger)
@@ -28,7 +28,7 @@ LoggingSystem.bootstrap { label in
 }
 
 // Create a logger for the main application using Swift Logging
-let logger = Logger(label: "com.cocoanetics.SwiftIMAP.Main")
+let logger = Logger(label: "com.cocoanetics.SwiftIMAPCLI.Main")
 
 print("📧 SwiftIMAPCLI - Email Reading Test")
 

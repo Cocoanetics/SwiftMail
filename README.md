@@ -64,7 +64,21 @@ swift run SwiftIMAPCLI
 
 # Run the SMTP demo
 swift run SwiftSMTPCLI
+
+# Run with debug logging enabled (recommended for development)
+ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift run SwiftIMAPCLI
+ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift run SwiftSMTPCLI
+
+# Alternative: Run with full debug logging and capture all protocol communication
+ENABLE_DEBUG_OUTPUT=1 OS_LOG_DISABLE=0 swift run SwiftIMAPCLI & log stream --predicate 'process == "SwiftIMAPCLI"' --debug
+ENABLE_DEBUG_OUTPUT=1 OS_LOG_DISABLE=0 swift run SwiftSMTPCLI & log stream --predicate 'process == "SwiftSMTPCLI"' --debug
 ```
+
+The debug logging options:
+- `ENABLE_DEBUG_OUTPUT=1`: Enables trace level logging
+- `OS_ACTIVITY_DT_MODE=debug`: Formats debug output in a readable way
+- `OS_LOG_DISABLE=0`: Ensures OS logging is not suppressed
+- `log stream`: Captures all system logs for the process, including protocol communication
 
 ## Usage
 

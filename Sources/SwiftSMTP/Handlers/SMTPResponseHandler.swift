@@ -10,9 +10,6 @@ public final class SMTPResponseHandler: ChannelInboundHandler {
     public typealias InboundIn = String
     public typealias InboundOut = SMTPResponse
     
-    /// Logger for response processing
-    private let logger = Logger(label: "com.cocoanetics.SwiftSMTP.ResponseHandler")
-    
     /// Current accumulated response lines
     private var currentResponse = ""
     
@@ -44,13 +41,6 @@ public final class SMTPResponseHandler: ChannelInboundHandler {
         - error: The error that occurred
      */
     public func errorCaught(context: ChannelHandlerContext, error: Error) {
-        // Log errors locally
-        if let sslError = error as? NIOSSLError, case .uncleanShutdown = sslError {
-            logger.notice("SSL unclean shutdown in SMTP channel (this is normal during disconnection)")
-        } else {
-            logger.error("Error in SMTP channel: \(error.localizedDescription)")
-        }
-        
         // Fire the error to the next handler in the pipeline
         context.fireErrorCaught(error)
     }
