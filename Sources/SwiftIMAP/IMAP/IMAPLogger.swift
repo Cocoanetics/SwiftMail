@@ -30,12 +30,12 @@ public final class IMAPLogger: MailLogger, @unchecked Sendable {
         
         if loginRegex.firstMatch(in: commandString, options: [], range: range) != nil {
             // Use the String extension to redact sensitive LOGIN information
-            outboundLogger.debug("\(commandString.redactAfter("LOGIN"))")
+            outboundLogger.trace("\(commandString.redactAfter("LOGIN"))")
         } else if authRegex.firstMatch(in: commandString, options: [], range: range) != nil {
             // Also redact AUTH commands which may contain encoded credentials
-            outboundLogger.debug("\(commandString.redactAfter("AUTH"))")
+            outboundLogger.trace("\(commandString.redactAfter("AUTH"))")
         } else {
-            outboundLogger.debug("\(commandString)")
+            outboundLogger.trace("\(commandString)")
         }
         
         // Forward the command to the next handler
@@ -52,15 +52,4 @@ public final class IMAPLogger: MailLogger, @unchecked Sendable {
         // Forward the response to the next handler
         context.fireChannelRead(data)
     }
-    
-    /// Override to use debug level instead of trace
-    public override func flushInboundBuffer() {
-        lock.withLock {
-            if !inboundBuffer.isEmpty {
-                let combinedLog = inboundBuffer.joined(separator: "\n")
-                inboundLogger.debug("\(combinedLog)")
-                inboundBuffer.removeAll()
-            }
-        }
-    }
-} 
+}
