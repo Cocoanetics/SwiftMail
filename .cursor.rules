@@ -19,10 +19,17 @@
 - Always do `swift build` after making changes and fix errors and warnings
 - By default, CLI applications run with minimal output (user-friendly mode)
 - For debugging purposes, use one of the following options:
-  - Set `ENABLE_DEBUG_OUTPUT=1` to enable detailed debug prints (e.g., `ENABLE_DEBUG_OUTPUT=1 swift run SwiftSMTPCLI`)
-  - Set `OS_LOG_DISABLE=1` to view Swift Logger output for system-level logs
-  - For maximum verbosity, use both: `OS_LOG_DISABLE=1 ENABLE_DEBUG_OUTPUT=1 swift run SwiftSMTPCLI`
+  - **Recommended for development**: `ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift run SwiftIMAPCLI` or `ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift run SwiftSMTPCLI`
+  - For basic debug output: `ENABLE_DEBUG_OUTPUT=1 swift run SwiftIMAPCLI` or `ENABLE_DEBUG_OUTPUT=1 swift run SwiftSMTPCLI`
+  - For complete protocol communication: `ENABLE_DEBUG_OUTPUT=1 swift run SwiftIMAPCLI & log stream --predicate 'process == "SwiftIMAPCLI"' --debug`
+- Note that SMTP and IMAP have different logging behaviors:
+  - SMTP shows `[SMTPServer]` category logs for operations like connecting, sending emails, etc.
+  - IMAP only shows `[Main]` category logs by default, with protocol details only visible via log stream
 - When inspecting code, Cursor should prioritize the debug output mode for better understanding of the application flow
+- For debugging specific issues:
+  - Network connectivity problems: Use the log stream approach to see all protocol communication
+  - Authentication issues: Check for redacted credentials in logs and verify environment variables
+  - Performance issues: Run with time measurements (`time swift run SwiftIMAPCLI`)
 
 ## Swift Style Guidelines
 
@@ -33,32 +40,52 @@
   1. Custom initializers: `String(value)`
   2. Properties like `stringValue` or `description` only when a custom initializer isn't available
   3. `String(describing:)` as a last resort
+- Use Swift's property wrappers and result builders where appropriate
+- Prefer Swift's modern concurrency model (async/await) over completion handlers
+- Use Swift's strong typing to your advantage - avoid stringly typed code
 
 ## Access Control
 
 - Ensure methods called from outside the module are marked as `public`
 - Maintain a clear public interface for public types
 - Methods or properties that should not be visible publicly should be `internal`, `private`, or `fileprivate`
+- Use `internal` as the default access level (implicit in Swift)
+- Consider using `fileprivate` for types that should only be accessible within the same file
 
 ## Imports
 
 - Imports for a file should always be the absolute minimum required
 - Don't import modules that aren't directly used in the file
+- Group imports logically: Swift standard library first, then Foundation/system frameworks, then third-party dependencies
+- Use `@_exported import` sparingly and only when necessary for API design
 
 ## Package Structure
 
 - Follow standard Swift Package Manager conventions for directory structure
 - Avoid specifying explicit paths in Package.swift when using standard directory locations
+- Organize targets logically:
+  - Core functionality in base libraries
+  - Protocol-specific code in dedicated modules
+  - CLI applications in separate targets
+  - Test targets matching their corresponding source targets
 
 ## Error Handling
 
 - Use meaningful error types and descriptive error messages
 - Properly propagate errors up the call stack with appropriate context
+- Define custom error types using enums that conform to `Error`
+- Include relevant context in error messages to aid debugging
+- Use `do-catch` blocks to handle errors at appropriate levels
+- Consider using `Result` type for functions that might fail but don't use `throws`
 
 ## Asynchronous Code
 
 - Use Swift's async/await pattern for asynchronous operations
 - Ensure proper error handling in asynchronous contexts
+- Use structured concurrency with `Task` and task groups
+- Be mindful of potential race conditions in concurrent code
+- Use actors to protect mutable state in concurrent contexts
+- Avoid mixing completion handler-based code with async/await when possible
 
 ## Logging
 
@@ -76,6 +103,15 @@
 - Debug statements should be wrapped with the `debugPrint()` function, which conditionally prints when `ENABLE_DEBUG_OUTPUT=1` is set
 - Production code should minimize direct `print()` calls in favor of the logging system
 - Developers should run with `ENABLE_DEBUG_OUTPUT=1` when developing or debugging
+- Protocol-specific logging:
+  - IMAP: Use trace-level logging for protocol commands and responses
+  - SMTP: Use trace-level logging for protocol commands and responses
+  - Always redact sensitive information (passwords, authentication tokens) in logs
+- Log messages should be:
+  - Clear and concise
+  - Grammatically correct
+  - Free of unnecessary technical jargon
+  - Helpful for debugging without requiring source code access
 
 ## CLI Application Standards
 
@@ -94,7 +130,12 @@
 - CLI applications should load configuration from environment variables or dotenv files
 - Running CLIs for testing:
   - For user-friendly mode: `swift run SwiftSMTPCLI`
-  - For developer mode: `ENABLE_DEBUG_OUTPUT=1 swift run SwiftSMTPCLI`
+  - For developer mode: `ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift run SwiftSMTPCLI`
+- CLI output should follow a consistent format:
+  - Use emoji prefixes for different types of output (📧 for emails, 📁 for folders, etc.)
+  - Use color when available (via ANSI escape codes) for highlighting important information
+  - Provide clear progress indicators for long-running operations
+  - Format tabular data in an aligned, readable manner
 
 ## Testing
 
@@ -107,4 +148,12 @@
 - Throw custom errors (e.g., `TestFailure`) instead of using `XCTFail`
 - Test methods that access resources should be marked as `throws`
 - Organize tests with clear MARK comments to separate different test categories
-- Test files should follow the same naming convention as the files they test (e.g., `String+QuotedPrintable.swift` → `QuotedPrintableTests.swift`) 
+- Test files should follow the same naming convention as the files they test (e.g., `String+QuotedPrintable.swift` → `QuotedPrintableTests.swift`)
+- Running tests with debug output:
+  - `ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift test`
+  - `ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift test --filter "StringExtensionsTests"`
+- Test coverage:
+  - Aim for high test coverage of core functionality
+  - Prioritize testing edge cases and error conditions
+  - Use mocks for external dependencies (network, file system)
+  - Include both unit tests and integration tests where appropriate 
