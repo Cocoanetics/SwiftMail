@@ -183,8 +183,6 @@ public actor SMTPServer {
         if let _ = commandHandler as? LoginAuthHandler,
            let loginCommand = command as? LoginAuthCommand {
             
-            logger.debug("Creating LoginAuthHandler with command parameters")
-            
             // Re-init with command parameters
             let loginHandler = LoginAuthHandler(
                 commandTag: commandTag,
@@ -516,11 +514,9 @@ public actor SMTPServer {
         // Send EHLO again after STARTTLS and update capabilities
         let ehloCommand = EHLOCommand(hostname: String.localHostname)
         let rawResponse = try await executeCommand(ehloCommand)
-        logger.debug("Raw EHLO response after TLS: \(rawResponse)")
 
         // Parse capabilities from raw response
         let capabilities = parseCapabilities(from: rawResponse)
-        logger.debug("Parsed \(capabilities.count) capabilities after TLS")
 
         // Store capabilities for later use
         self.capabilities = capabilities
@@ -535,8 +531,6 @@ public actor SMTPServer {
         // Create a new array for capabilities
         var parsedCapabilities = [String]()
         
-        logger.debug("Parsing SMTP server capabilities: \n\(response)")
-        
         // Split the response into lines
         let lines = response.split(separator: "\n")
         
@@ -544,38 +538,30 @@ public actor SMTPServer {
         for line in lines.dropFirst() {
             // Extract the capability (remove the response code prefix if present)
             let capabilityLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            logger.debug("Processing capability line: '\(capabilityLine)'")
             
             // For EHLO responses, each line starts with a response code (e.g., "250-AUTH LOGIN PLAIN")
             if capabilityLine.count > 4 && (capabilityLine.prefix(4).hasPrefix("250-") || capabilityLine.prefix(4).hasPrefix("250 ")) {
                 // Extract the capability (after the response code)
                 let capabilityPart = capabilityLine.dropFirst(4).trimmingCharacters(in: .whitespaces)
-                logger.debug("Extracted capability part: '\(capabilityPart)'")
                 
                 // Special handling for AUTH capability which may list multiple methods
                 if capabilityPart.hasPrefix("AUTH ") {
                     // Add the base AUTH capability
                     parsedCapabilities.append("AUTH")
-                    logger.debug("Added base capability: AUTH")
                     
                     // Extract and add each individual auth method
                     let authMethods = capabilityPart.dropFirst(5).split(separator: " ")
-                    logger.debug("Found auth methods: \(authMethods)")
-                    for method in authMethods {
+
+					for method in authMethods {
                         let authMethod = "AUTH \(method)"
                         parsedCapabilities.append(authMethod)
-                        logger.debug("Added auth method: \(authMethod)")
-                    }
+					}
                 } else {
                     // For other capabilities, add them as-is
                     parsedCapabilities.append(capabilityPart)
-                    logger.debug("Added capability: \(capabilityPart)")
                 }
             }
         }
-        
-        // Log all parsed capabilities
-        logger.info("Server supports \(parsedCapabilities.count) capabilities: \(parsedCapabilities.joined(separator: ", "))")
         
         return parsedCapabilities
     }
@@ -587,24 +573,19 @@ public actor SMTPServer {
      */
     @discardableResult
     public func fetchCapabilities() async throws -> [String] {
-        logger.debug("Fetching server capabilities")
         let command = EHLOCommand(hostname: String.localHostname)
         
         do {
             let response = try await executeCommand(command)
-            logger.debug("Raw EHLO response: \(response)")
             
             // Parse the capabilities from the raw response
             let capabilities = parseCapabilities(from: response)
-            
-            logger.debug("Fetched \(capabilities.count) capabilities")
             
             // Store capabilities for later use
             self.capabilities = capabilities
             
             return capabilities
         } catch {
-            logger.error("Failed to fetch capabilities: \(error)")
             throw error
         }
     }
