@@ -50,6 +50,8 @@ public actor IMAPServer {
 	/** Logger for incoming IMAP responses */
 	private let inboundLogger: Logging.Logger
 	
+	private let duplexLogger: DuplexLogger
+	
 	/// Error thrown when a standard folder is not defined
 	public struct UndefinedFolderError: Error, CustomStringConvertible {
 		public let folderType: String
@@ -77,6 +79,8 @@ public actor IMAPServer {
 		self.logger = Logging.Logger(label: "com.cocoanetics.SwiftIMAP.IMAPServer")
 		self.outboundLogger = Logging.Logger(label: "com.cocoanetics.SwiftIMAP.IMAP_OUT")
 		self.inboundLogger = Logging.Logger(label: "com.cocoanetics.SwiftIMAP.IMAP_IN")
+		
+		self.duplexLogger = DuplexLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
 	}
 	
 	deinit {
@@ -108,7 +112,7 @@ public actor IMAPServer {
 				return channel.pipeline.addHandlers([
 					sslHandler,
 					IMAPClientHandler(),
-					OutboundLogger(logger: self.outboundLogger)
+					self.duplexLogger
 				])
 			}
 		
@@ -550,9 +554,6 @@ public actor IMAPServer {
 		// Create the handler for this command
 		let handler = command.handlerType.init(commandTag: tag, promise: resultPromise)
 		
-		// Set the logger on the handler
-		handler.logger = inboundLogger
-		
 		// Get timeout value for this command
 		let timeoutSeconds = command.timeoutSeconds
 		
@@ -575,10 +576,16 @@ public actor IMAPServer {
 			// Cancel the timeout
 			scheduledTask.cancel()
 			
+			// Flush the DuplexLogger's buffer after command execution
+			duplexLogger.flushInboundBuffer()
+
 			return result
 		} catch {
 			// Cancel the timeout
 			scheduledTask.cancel()
+			
+			// Flush the DuplexLogger's buffer even if there was an error
+			duplexLogger.flushInboundBuffer()
 			
 			throw error
 		}

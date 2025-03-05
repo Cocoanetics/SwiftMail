@@ -90,7 +90,8 @@ public actor SMTPServer {
             .channelInitializer { channel in
                 let handlers: [ChannelHandler] = [
                     ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-                    SMTPResponseHandler(server: self)
+                    SMTPResponseHandler(server: self),
+                    OutboundLogger(logger: self.outboundLogger)
                 ]
                 
                 if useSSL {
@@ -178,7 +179,6 @@ public actor SMTPServer {
         
         // Log command type for debugging
         print("DEBUG - Executing command of type: \(type(of: command))")
-        logger.debug("Executing command of type: \(type(of: command))")
         
         // Create the handler for this command
         var handler: (any SMTPCommandHandler)?
