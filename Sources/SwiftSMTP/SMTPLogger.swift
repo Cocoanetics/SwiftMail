@@ -6,6 +6,7 @@ import Logging
 import NIO
 import NIOCore
 import NIOConcurrencyHelpers
+import SwiftMailCore
 
 /// A combined channel handler that logs both outgoing and incoming SMTP messages
 public final class SMTPLogger: ChannelDuplexHandler, @unchecked Sendable {
@@ -58,7 +59,7 @@ public final class SMTPLogger: ChannelDuplexHandler, @unchecked Sendable {
 		
 		// Redact sensitive information in AUTH commands
 		if commandString.hasPrefix("AUTH") || commandString.hasPrefix("auth") {
-			outboundLogger.trace("AUTH [credentials redacted]")
+			outboundLogger.trace("\(commandString.redactAfter("AUTH"))")
 		} else {
 			outboundLogger.trace("\(commandString)")
 		}

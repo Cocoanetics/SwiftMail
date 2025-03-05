@@ -7,6 +7,7 @@ import Logging
 import NIOIMAPCore
 import NIO
 import NIOConcurrencyHelpers
+import SwiftMailCore
 
 /// A combined channel handler that logs both outgoing and incoming IMAP messages
 public final class IMAPLogger: ChannelDuplexHandler, @unchecked Sendable {
@@ -56,15 +57,21 @@ public final class IMAPLogger: ChannelDuplexHandler, @unchecked Sendable {
             commandString = String(describing: command)
         }
 		
-		// Redact sensitive information in LOGIN commands
-		if commandString.range(of: "LOGIN", options: [.caseInsensitive]) != nil {
-			// For other types containing LOGIN
-			if let tagEndRange = commandString.range(of: " LOGIN", options: [.caseInsensitive]) {
-				let tag = commandString[..<tagEndRange.lowerBound]
-				outboundLogger.trace("\(tag) LOGIN [credentials redacted]")
-			} else {
-				outboundLogger.trace("LOGIN [credentials redacted]")
-			}
+		// Redact sensitive information in LOGIN and AUTH commands
+        let loginPattern = "(^\\s*\\w+\\s+LOGIN\\b)"
+        let authPattern = "(^\\s*\\w+\\s+AUTH\\b|^\\s*AUTH\\b)"
+        
+		let loginRegex = try! NSRegularExpression(pattern: loginPattern, options: [.caseInsensitive])
+		let authRegex = try! NSRegularExpression(pattern: authPattern, options: [.caseInsensitive])
+		
+		let range = NSRange(location: 0, length: commandString.utf16.count)
+		
+		if loginRegex.firstMatch(in: commandString, options: [], range: range) != nil {
+			// Use the String extension to redact sensitive LOGIN information
+			outboundLogger.trace("\(commandString.redactAfter("LOGIN"))")
+		} else if authRegex.firstMatch(in: commandString, options: [], range: range) != nil {
+			// Also redact AUTH commands which may contain encoded credentials
+			outboundLogger.trace("\(commandString.redactAfter("AUTH"))")
 		} else {
 			outboundLogger.trace("\(commandString)")
 		}

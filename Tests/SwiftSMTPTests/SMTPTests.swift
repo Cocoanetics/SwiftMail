@@ -6,15 +6,15 @@ struct SMTPTests {
     func testPlaceholder() {
         // This is just a placeholder test to ensure the test target can compile
         // Once you implement SwiftSMTP functionality, replace with actual tests
-        #expect(true)
+        #expect(Bool(true))
     }
     
     @Test
     func testSMTPServerInit() {
         // Test that we can initialize an SMTPServer
-        let server = SMTPServer(host: "smtp.example.com", port: 587)
-        // Since host and port are private, we can only verify the server was created
-        #expect(server is SMTPServer, "Should create an SMTPServer instance")
+        _ = SMTPServer(host: "smtp.example.com", port: 587)
+        // Since there's no API to check properties, just verify it's created
+        #expect(Bool(true), "SMTPServer instance created")
     }
     
     @Test
@@ -41,9 +41,9 @@ struct SMTPTests {
     func testEmailStringInit() {
         // Test the string-based initializer
         let email = Email(
-            sender: "Test Sender",
+            senderName: "Test Sender",
             senderAddress: "sender@example.com",
-            recipients: ["recipient@example.com"],
+            recipientAddresses: ["recipient@example.com"],
             subject: "Test Subject",
             body: "Test Body"
         )
