@@ -90,31 +90,23 @@ do {
             // Select the INBOX mailbox and get mailbox information
             let mailboxStatus = try await server.selectMailbox("INBOX")
 			
-            // Print mailbox information
-            if mailboxStatus.messageCount > 0 {
-                // Fetch the 10 latest complete emails including attachments
-                
-				let startMessage = SequenceNumber(max(1, mailboxStatus.messageCount - 9))
-				let endMessage = SequenceNumber(mailboxStatus.messageCount)
-
-                do {
-                    // Use the fetchEmails method with the sequence number set
-                    let emails = try await server.fetchMessages(using: SequenceNumberSet(startMessage...endMessage))
-                    
-                    print("\n📧 Latest Complete Emails (\(emails.count)) 📧")
-                    
-                    // Display emails using the improved debug description format
-                    for (index, email) in emails.enumerated() {
-                        print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
-                        print("---")
-                    }
-                    
-                } catch {
-                    print("Failed to fetch emails: \(error.localizedDescription)")
-                }
-            } else {
-                print("No messages in mailbox")
-            }
+			// Use the convenience method to get the latest 10 messages
+			if let latestMessagesSet = mailboxStatus.latest(10) {
+				
+				let emails = try await server.fetchMessages(using: latestMessagesSet)
+				
+				print("\n📧 Latest Emails (\(emails.count)) 📧")
+				
+				// Display emails using the improved debug description format
+				for (index, email) in emails.enumerated() {
+					print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
+					print("---")
+				}
+			}
+			else
+			{
+				print("No messages found in INBOX")
+			}
             
             // Logout from the server
             try await server.logout()

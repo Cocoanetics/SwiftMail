@@ -131,6 +131,21 @@ public enum Mailbox {
         
         /// The flags that can be permanently stored
         public var permanentFlags: [Flag] = []
+        
+        /// Get a sequence number set for the latest n messages in the mailbox
+        /// - Parameter count: The number of latest messages to include
+        /// - Returns: A sequence number set containing the latest n messages, or nil if the mailbox is empty
+        public func latest(_ count: Int) -> SequenceNumberSet? {
+            guard messageCount > 0 else { return nil }
+            
+            let startIndex = max(1, messageCount - count + 1)
+            let endIndex = messageCount
+            
+            let startMessage = SequenceNumber(startIndex)
+            let endMessage = SequenceNumber(endIndex)
+            
+            return SequenceNumberSet(startMessage...endMessage)
+        }
     }
 }
 
