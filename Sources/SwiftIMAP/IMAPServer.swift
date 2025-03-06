@@ -32,8 +32,11 @@ public actor IMAPServer {
 	/** Server capabilities */
 	private var capabilities: Set<NIOIMAPCore.Capability> = []
 	
-	/** The current folder configuration */
-	private var folderConfig: FolderConfiguration = .default
+	/** The list of all mailboxes with their attributes */
+	public private(set) var mailboxes: [Mailbox.Info] = []
+	
+	/** Special folders - mailboxes with SPECIAL-USE attributes */
+	public private(set) var specialMailboxes: [Mailbox.Info] = []
 	
 	/**
 	 Logger for IMAP operations
@@ -52,7 +55,7 @@ public actor IMAPServer {
 		public let folderType: String
 		
 		public var description: String {
-			return "Standard folder '\(folderType)' is not defined. Call detectStandardFolders() first or set a custom folder configuration."
+			return "Standard folder '\(folderType)' is not defined. Call listSpecialUseMailboxes() first to detect special folders."
 		}
 	}
 	
@@ -657,198 +660,228 @@ public actor IMAPServer {
 
 // MARK: - Common Mail Operations
 extension IMAPServer {
-	/// Configuration for standard IMAP folders
-	public struct FolderConfiguration {
-		/// The name of the trash folder
-		public var trash: String
-		/// The name of the archive folder
-		public var archive: String
-		/// The name of the sent folder
-		public var sent: String
-		/// The name of the drafts folder
-		public var drafts: String
-		/// The name of the junk/spam folder
-		public var junk: String
+	/**
+	 List mailboxes with SPECIAL-USE attributes and update the folder configuration.
+	 
+	 This method is the primary way to detect special folders in IMAP:
+	 - If the server supports SPECIAL-USE capability, it will use the LIST command with SPECIAL-USE return option
+	 - If not, it will detect special mailboxes by name using common folder name patterns
+	 
+	 - Returns: Array of mailboxes with special-use attributes only
+	 - Throws: An error if the operation fails
+	 */
+	public func listSpecialUseMailboxes() async throws -> [Mailbox.Info] {
+		// Check if the server supports SPECIAL-USE capability
+		let supportsSpecialUse = capabilities.contains(NIOIMAPCore.Capability("SPECIAL-USE"))
 		
-		/// Default folder configuration
-		public static let `default` = FolderConfiguration(
-			trash: "Trash",
-			archive: "Archive",
-			sent: "Sent",
-			drafts: "Drafts",
-			junk: "Junk"
-		)
+		// Get all mailboxes and store them
+		self.mailboxes = try await listMailboxes()
+		var specialFolders: [Mailbox.Info] = []
 		
-		/// Gmail-style folder configuration
-		public static let gmail = FolderConfiguration(
-			trash: "[Gmail]/Trash",
-			archive: "[Gmail]/All Mail",
-			sent: "[Gmail]/Sent Mail",
-			drafts: "[Gmail]/Drafts",
-			junk: "[Gmail]/Spam"
-		)
+		// Flag to track if we've found an explicit inbox
+		var foundExplicitInbox = false
 		
-		/// Apple Mail-style folder configuration
-		public static let apple = FolderConfiguration(
-			trash: "Deleted Messages",
-			archive: "Archive",
-			sent: "Sent Messages",
-			drafts: "Drafts",
-			junk: "Junk"
-		)
+		if supportsSpecialUse {
+			// Create a ListCommand with SPECIAL-USE return option
+			let command = ListCommand(returnOptions: [.specialUse])
+			let mailboxesWithAttributes = try await executeCommand(command)
+			
+			// Keep only mailboxes with special-use attributes
+			for mailbox in mailboxesWithAttributes {
+				let hasSpecialUse = mailbox.attributes.contains(.inbox) ||
+									mailbox.attributes.contains(.trash) ||
+									mailbox.attributes.contains(.archive) ||
+									mailbox.attributes.contains(.sent) ||
+									mailbox.attributes.contains(.drafts) ||
+									mailbox.attributes.contains(.junk) ||
+									mailbox.attributes.contains(.flagged)
+				
+				if hasSpecialUse {
+					specialFolders.append(mailbox)
+					if mailbox.attributes.contains(.inbox) {
+						foundExplicitInbox = true
+					}
+				}
+			}
+		} else {
+			// Detect special folders by name when SPECIAL-USE is not supported
+			for mailbox in mailboxes {
+				var attributes = mailbox.attributes
+				var hasSpecialUse = false
+				
+				// Check name patterns for common special folders
+				let nameLower = mailbox.name.lowercased()
+				
+				if mailbox.attributes.contains(.inbox) {
+					foundExplicitInbox = true
+					hasSpecialUse = true
+				} else if nameLower.contains("trash") || nameLower.contains("deleted") {
+					attributes.insert(.trash)
+					hasSpecialUse = true
+				} else if nameLower.contains("sent") {
+					attributes.insert(.sent)
+					hasSpecialUse = true
+				} else if nameLower.contains("draft") {
+					attributes.insert(.drafts)
+					hasSpecialUse = true
+				} else if nameLower.contains("junk") || nameLower.contains("spam") {
+					attributes.insert(.junk)
+					hasSpecialUse = true
+				} else if nameLower.contains("archive") || (nameLower.contains("all") && nameLower.contains("mail")) {
+					attributes.insert(.archive)
+					hasSpecialUse = true
+				} else if nameLower.contains("starred") || nameLower.contains("flagged") {
+					attributes.insert(.flagged)
+					hasSpecialUse = true
+				}
+				
+				// Special case for Gmail's folders
+				if mailbox.name == "[Gmail]/Trash" {
+					attributes.insert(.trash)
+					hasSpecialUse = true
+				} else if mailbox.name == "[Gmail]/Sent Mail" {
+					attributes.insert(.sent)
+					hasSpecialUse = true
+				} else if mailbox.name == "[Gmail]/Drafts" {
+					attributes.insert(.drafts)
+					hasSpecialUse = true
+				} else if mailbox.name == "[Gmail]/Spam" {
+					attributes.insert(.junk)
+					hasSpecialUse = true
+				} else if mailbox.name == "[Gmail]/All Mail" {
+					attributes.insert(.archive)
+					hasSpecialUse = true
+				} else if mailbox.name == "[Gmail]/Starred" {
+					attributes.insert(.flagged)
+					hasSpecialUse = true
+				}
+				
+				if hasSpecialUse {
+					// Create a new mailbox info with the enhanced attributes
+					let specialMailbox = Mailbox.Info(
+						name: mailbox.name,
+						attributes: attributes,
+						hierarchyDelimiter: mailbox.hierarchyDelimiter
+					)
+					specialFolders.append(specialMailbox)
+				}
+			}
+		}
 		
-		/// Outlook-style folder configuration
-		public static let outlook = FolderConfiguration(
-			trash: "Deleted Items",
-			archive: "Archive",
-			sent: "Sent Items",
-			drafts: "Drafts",
-			junk: "Junk Email"
-		)
+		// Per IMAP spec, INBOX always exists - if no explicit inbox was found, add it
+		if !foundExplicitInbox {
+			// Find the INBOX in the mailboxes list
+			if let inboxMailbox = mailboxes.first(where: { $0.name.caseInsensitiveCompare("INBOX") == .orderedSame }) {
+				// Create a copy with the inbox attribute added
+				var inboxAttributes = inboxMailbox.attributes
+				inboxAttributes.insert(.inbox)
+				
+				let inboxWithAttribute = Mailbox.Info(
+					name: inboxMailbox.name,
+					attributes: inboxAttributes,
+					hierarchyDelimiter: inboxMailbox.hierarchyDelimiter
+				)
+				
+				specialFolders.append(inboxWithAttribute)
+			}
+		}
+		
+		// Update the specialMailboxes property
+		self.specialMailboxes = specialFolders
+		
+		return specialFolders
 	}
-	
-	/// Get the current folder configuration
-	public func getFolderConfiguration() -> FolderConfiguration {
-		return folderConfig
-	}
-	
-	/// Set a custom folder configuration
-	public func setFolderConfiguration(_ config: FolderConfiguration) {
-		self.folderConfig = config
-	}
-	
-	/// List all available mailboxes
-	/// - Returns: Array of mailbox information
-	/// - Throws: An error if the operation fails
+}
+
+// MARK: - Mailbox Listing and Special Folders
+extension IMAPServer {
+	/** Get a list of all available mailboxes
+	 - Returns: Array of mailbox information
+	 - Throws: An error if the operation fails
+	 */
 	public func listMailboxes() async throws -> [Mailbox.Info] {
 		let command = ListCommand()
 		return try await executeCommand(command)
 	}
 	
-	/**
-	 Attempt to detect the server's standard folder names by checking common variations
-	 This method will update the folder configuration automatically if standard folders are found
-	 - Returns: The detected folder configuration
-	 - Throws: An error if the operation fails
-	 */
-	public func detectStandardFolders() async throws -> FolderConfiguration {
-		// Common variations of standard folder names
-		let trashVariations = ["Trash", "[Gmail]/Trash", "Deleted Messages", "Deleted Items", "Deleted", "Papierkorb"]
-		let archiveVariations = ["Archive", "[Gmail]/All Mail", "Archives", "Archived", "Archiv"]
-		let sentVariations = ["Sent", "[Gmail]/Sent Mail", "Sent Messages", "Sent Items", "Gesendet"]
-		let draftsVariations = ["Drafts", "[Gmail]/Drafts", "Draft", "Entwürfe"]
-		let junkVariations = ["Junk", "[Gmail]/Spam", "Spam", "Junk Email", "Junk Mail", "Spam-E-Mail"]
-		
-		// Get list of available mailboxes
-		let mailboxInfos = try await listMailboxes()
-		let mailboxNames = mailboxInfos.map { $0.name }
-		var config = FolderConfiguration.default
-		
-		// Helper function to find first matching folder
-		func findFolder(variations: [String], type: String) -> String? {
-			let found = variations.first { variation in
-				mailboxNames.contains { $0.caseInsensitiveCompare(variation) == .orderedSame }
+	/// Get the inbox folder or throw if not found
+	public var inboxFolder: Mailbox.Info {
+		get throws {
+			guard let inbox = specialMailboxes.inbox ?? mailboxes.inbox else {
+				throw UndefinedFolderError(folderType: "Inbox")
 			}
-			if found == nil {
-				logger.warning("Could not detect standard folder: \(type). Available variations: \(variations.joined(separator: ", "))")
-			}
-			return found
+			return inbox
 		}
-		
-		// Try to detect each standard folder
-		if let trash = findFolder(variations: trashVariations, type: "Trash") {
-			config.trash = trash
-		}
-		
-		if let archive = findFolder(variations: archiveVariations, type: "Archive") {
-			config.archive = archive
-		}
-		
-		if let sent = findFolder(variations: sentVariations, type: "Sent") {
-			config.sent = sent
-		}
-		
-		if let drafts = findFolder(variations: draftsVariations, type: "Drafts") {
-			config.drafts = drafts
-		}
-		
-		if let junk = findFolder(variations: junkVariations, type: "Junk") {
-			config.junk = junk
-		}
-		
-		// Update the configuration
-		self.folderConfig = config
-		return config
 	}
 	
-	/// Get the current trash folder name or throw if undefined
-	public var trashFolder: String {
+	/// Get the trash folder or throw if not found
+	public var trashFolder: Mailbox.Info {
 		get throws {
-			guard !folderConfig.trash.isEmpty else {
+			guard let trash = specialMailboxes.trash else {
 				throw UndefinedFolderError(folderType: "Trash")
 			}
-			return folderConfig.trash
+			return trash
 		}
 	}
 	
-	/// Get the current archive folder name or throw if undefined
-	public var archiveFolder: String {
+	/// Get the archive folder or throw if not found
+	public var archiveFolder: Mailbox.Info {
 		get throws {
-			guard !folderConfig.archive.isEmpty else {
+			guard let archive = specialMailboxes.archive else {
 				throw UndefinedFolderError(folderType: "Archive")
 			}
-			return folderConfig.archive
+			return archive
 		}
 	}
 	
-	/// Get the current sent folder name or throw if undefined
-	public var sentFolder: String {
+	/// Get the sent folder or throw if not found
+	public var sentFolder: Mailbox.Info {
 		get throws {
-			guard !folderConfig.sent.isEmpty else {
+			guard let sent = specialMailboxes.sent else {
 				throw UndefinedFolderError(folderType: "Sent")
 			}
-			return folderConfig.sent
+			return sent
 		}
 	}
 	
-	/// Get the current drafts folder name or throw if undefined
-	public var draftsFolder: String {
+	/// Get the drafts folder or throw if not found
+	public var draftsFolder: Mailbox.Info {
 		get throws {
-			guard !folderConfig.drafts.isEmpty else {
+			guard let drafts = specialMailboxes.drafts else {
 				throw UndefinedFolderError(folderType: "Drafts")
 			}
-			return folderConfig.drafts
+			return drafts
 		}
 	}
 	
-	/// Get the current junk folder name or throw if undefined
-	public var junkFolder: String {
+	/// Get the junk folder or throw if not found
+	public var junkFolder: Mailbox.Info {
 		get throws {
-			guard !folderConfig.junk.isEmpty else {
+			guard let junk = specialMailboxes.junk else {
 				throw UndefinedFolderError(folderType: "Junk")
 			}
-			return folderConfig.junk
+			return junk
 		}
 	}
 }
 
-// Update the existing methods to use the throwing getters
+// Update the existing folder operations to use the throwing getters
 extension IMAPServer {
 	public func moveToTrash<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
-		try await move(messages: identifierSet, to: try trashFolder)
+		try await move(messages: identifierSet, to: try trashFolder.name)
 	}
 	
 	public func archive<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
 		try await store(flags: [.seen], on: identifierSet, operation: .add)
-		try await move(messages: identifierSet, to: try archiveFolder)
+		try await move(messages: identifierSet, to: try archiveFolder.name)
 	}
 	
 	public func markAsJunk<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
-		try await move(messages: identifierSet, to: try junkFolder)
+		try await move(messages: identifierSet, to: try junkFolder.name)
 	}
 	
 	public func saveAsDraft<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
 		try await store(flags: [.draft], on: identifierSet, operation: .add)
-		try await move(messages: identifierSet, to: try draftsFolder)
+		try await move(messages: identifierSet, to: try draftsFolder.name)
 	}
 }

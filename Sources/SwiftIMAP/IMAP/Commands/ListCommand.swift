@@ -9,20 +9,34 @@ public struct ListCommand: IMAPCommand {
     
     public let timeoutSeconds: Int = 30
     
+    // Return options for the LIST command
+    private let returnOptions: [ReturnOption]
+    
     public var handlerType: HandlerType.Type {
         return ListCommandHandler.self
     }
     
-    public init() {}
+    /// Initialize a new LIST command
+    /// - Parameter returnOptions: Optional list of return options for the LIST command (e.g. SPECIAL-USE)
+    public init(returnOptions: [ReturnOption] = []) {
+        self.returnOptions = returnOptions
+    }
     
     public func validate() throws {
         // No validation needed for LIST command
     }
     
     public func toTaggedCommand(tag: String) -> TaggedCommand {
-        // LIST "" "*" - List all mailboxes
+        // Standard LIST parameters
         let reference = MailboxName(ByteBuffer(string: ""))
         let pattern = MailboxPatterns.pattern([ByteBuffer(string: "*")])
-        return TaggedCommand(tag: tag, command: .list(nil, reference: reference, pattern))
+        
+        // Use return options if provided
+        if !returnOptions.isEmpty {
+            return TaggedCommand(tag: tag, command: .list(nil, reference: reference, pattern, returnOptions))
+        } else {
+            // Standard LIST command without return options
+            return TaggedCommand(tag: tag, command: .list(nil, reference: reference, pattern))
+        }
     }
 }

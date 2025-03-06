@@ -28,6 +28,29 @@ public enum Mailbox {
             /// The mailbox is unmarked
             public static let unmarked = Attributes(rawValue: 1 << 4)
             
+            // MARK: - Special-Use Attributes (RFC 6154)
+            
+            /// The mailbox is used for archive storage
+            public static let archive = Attributes(rawValue: 1 << 5)
+            
+            /// The mailbox is used to store draft messages
+            public static let drafts = Attributes(rawValue: 1 << 6)
+            
+            /// The mailbox contains flagged/important messages
+            public static let flagged = Attributes(rawValue: 1 << 7)
+            
+            /// The mailbox is used to store junk/spam messages
+            public static let junk = Attributes(rawValue: 1 << 8)
+            
+            /// The mailbox is used to store sent messages
+            public static let sent = Attributes(rawValue: 1 << 9)
+            
+            /// The mailbox is used to store deleted/trash messages
+            public static let trash = Attributes(rawValue: 1 << 10)
+            
+            /// The mailbox is the primary inbox
+            public static let inbox = Attributes(rawValue: 1 << 11)
+            
             /// Initialize from NIOIMAPCore.MailboxInfo.Attribute array
             init(from attributes: [NIOIMAPCore.MailboxInfo.Attribute]) {
                 var result: Attributes = []
@@ -45,8 +68,24 @@ public enum Mailbox {
                     case .unmarked:
                         result.insert(.unmarked)
                     default:
+                        // Check for special-use attributes in the raw value
+                        let rawString = String(describing: attribute)
+                        if rawString.contains("\\Archive") {
+                            result.insert(.archive)
+                        } else if rawString.contains("\\Drafts") {
+                            result.insert(.drafts)
+                        } else if rawString.contains("\\Flagged") {
+                            result.insert(.flagged)
+                        } else if rawString.contains("\\Junk") {
+                            result.insert(.junk)
+                        } else if rawString.contains("\\Sent") {
+                            result.insert(.sent)
+                        } else if rawString.contains("\\Trash") {
+                            result.insert(.trash)
+                        } else if rawString.contains("\\Inbox") {
+                            result.insert(.inbox)
+                        }
                         // Ignore any other attributes for now
-                        break
                     }
                 }
                 
@@ -174,6 +213,15 @@ extension Mailbox.Info.Attributes: CustomStringConvertible {
         if contains(.marked) { components.append("marked") }
         if contains(.unmarked) { components.append("unmarked") }
         
+        // Add special-use attributes
+        if contains(.archive) { components.append("\\Archive") }
+        if contains(.drafts) { components.append("\\Drafts") }
+        if contains(.flagged) { components.append("\\Flagged") }
+        if contains(.junk) { components.append("\\Junk") }
+        if contains(.sent) { components.append("\\Sent") }
+        if contains(.trash) { components.append("\\Trash") }
+        if contains(.inbox) { components.append("\\Inbox") }
+        
         return components.isEmpty ? "[]" : "[\(components.joined(separator: ", "))]"
     }
 }
@@ -194,5 +242,62 @@ extension Mailbox.Status: CustomStringConvertible {
         }
         desc += ")"
         return desc
+    }
+}
+
+// MARK: - Special Folders Extension
+extension Array where Element == Mailbox.Info {
+    /// Find the first mailbox with the inbox attribute, defaulting to the standard "INBOX" if none found
+    public var inbox: Element? {
+        // First look for a mailbox with the inbox attribute
+        if let inboxMailbox = first(where: { $0.attributes.contains(.inbox) }) {
+            return inboxMailbox
+        }
+        
+        // As a fallback, look for the standard INBOX mailbox
+        return first(where: { $0.name.caseInsensitiveCompare("INBOX") == .orderedSame })
+    }
+    
+    /// Find the first mailbox with the sent attribute
+    public var sent: Element? {
+        return first(where: { $0.attributes.contains(.sent) })
+    }
+    
+    /// Find the first mailbox with the drafts attribute
+    public var drafts: Element? {
+        return first(where: { $0.attributes.contains(.drafts) })
+    }
+    
+    /// Find the first mailbox with the trash attribute
+    public var trash: Element? {
+        return first(where: { $0.attributes.contains(.trash) })
+    }
+    
+    /// Find the first mailbox with the junk attribute
+    public var junk: Element? {
+        return first(where: { $0.attributes.contains(.junk) })
+    }
+    
+    /// Find the first mailbox with the archive attribute
+    public var archive: Element? {
+        return first(where: { $0.attributes.contains(.archive) })
+    }
+    
+    /// Find the first mailbox with the flagged attribute
+    public var flagged: Element? {
+        return first(where: { $0.attributes.contains(.flagged) })
+    }
+    
+    /// Get only mailboxes with special-use attributes
+    public var specialFolders: [Element] {
+        return filter { mailbox in
+            mailbox.attributes.contains(.inbox) ||
+            mailbox.attributes.contains(.sent) ||
+            mailbox.attributes.contains(.drafts) ||
+            mailbox.attributes.contains(.trash) ||
+            mailbox.attributes.contains(.junk) ||
+            mailbox.attributes.contains(.archive) ||
+            mailbox.attributes.contains(.flagged)
+        }
     }
 } 

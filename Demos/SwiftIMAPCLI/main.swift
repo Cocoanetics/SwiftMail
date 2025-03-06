@@ -34,24 +34,44 @@ print("📧 SwiftIMAPCLI - Email Reading Test")
 
 do {
     // Configure SwiftDotenv with the specified path
-    try Dotenv.configure()
-    print("Environment configuration loaded successfully")
+    print("🔍 Looking for .env file...")
+    
+    // Try loading the .env file
+    do {
+        try Dotenv.configure()
+        print("✅ Environment configuration loaded successfully")
+    } catch {
+        print("❌ Failed to load .env file: \(error.localizedDescription)")
+        exit(1)
+    }
+    
+    // Print the loaded variables to verify
+    print("📋 Loaded environment variables:")
     
     // Access IMAP credentials using dynamic member lookup with case pattern matching
     guard case let .string(host) = Dotenv["IMAP_HOST"] else {
+        print("❌ IMAP_HOST not found in .env file")
         logger.error("IMAP_HOST not found in .env file")
         exit(1)
     }
     
+    print("   IMAP_HOST: \(host)")
+    
     guard case let .integer(port) = Dotenv["IMAP_PORT"] else {
+        print("❌ IMAP_PORT not found or invalid in .env file")
         logger.error("IMAP_PORT not found or invalid in .env file")
         exit(1)
     }
     
+    print("   IMAP_PORT: \(port)")
+    
     guard case let .string(username) = Dotenv["IMAP_USERNAME"] else {
+        print("❌ IMAP_USERNAME not found in .env file")
         logger.error("IMAP_USERNAME not found in .env file")
         exit(1)
     }
+    
+    print("   IMAP_USERNAME: \(username)")
     
     guard case let .string(password) = Dotenv["IMAP_PASSWORD"] else {
         logger.error("IMAP_PASSWORD not found in .env file")
@@ -66,61 +86,22 @@ do {
     // Create an IMAP server instance
     let server = IMAPServer(host: host, port: port)
     
-    // Use Task with await for async operations
-    await Task {
-        do {
-            // Connect to the server
-            try await server.connect()
-            
-            // Login with credentials
-            try await server.login(username: username, password: password)
-			
-            // Detect standard folders
-            let detectedConfig = try await server.detectStandardFolders()
-            
-            // Print detected folder configuration
-            print("\n📁 Detected Standard Folders:")
-            print("Trash:   \(detectedConfig.trash)")
-            print("Archive: \(detectedConfig.archive)")
-            print("Sent:    \(detectedConfig.sent)")
-            print("Drafts:  \(detectedConfig.drafts)")
-            print("Junk:    \(detectedConfig.junk)")
-            print("")
-            
-            // Select the INBOX mailbox and get mailbox information
-            let mailboxStatus = try await server.selectMailbox("INBOX")
-			
-			// Use the convenience method to get the latest 10 messages
-			if let latestMessagesSet = mailboxStatus.latest(10) {
-				
-				let emails = try await server.fetchMessages(using: latestMessagesSet)
-				
-				print("\n📧 Latest Emails (\(emails.count)) 📧")
-				
-				// Display emails using the improved debug description format
-				for (index, email) in emails.enumerated() {
-					print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
-					print("---")
-				}
-			}
-			else
-			{
-				print("No messages found in INBOX")
-			}
-            
-            // Logout from the server
-            try await server.logout()
-            
-            // Close the connection
-            try await server.disconnect()
-        }
-		catch {
-            logger.error("Error: \(error.localizedDescription)")
-            exit(1)
-        }
-    }.value
-    
-} catch {
-    logger.error("Error: \(error.localizedDescription)")
-    exit(1)
+	do {
+		try await server.connect()
+		try await server.login(username: username, password: password)
+		
+		// List special folders
+		let specialFolders = try await server.listSpecialUseMailboxes()
+		
+		// Display special folders
+		print("\nSpecial Folders:")
+		for folder in specialFolders {
+			print("- \(folder.name): \(folder.attributes)")
+		}
+		
+		try await server.disconnect()
+	} catch {
+		logger.error("Error: \(error.localizedDescription)")
+		exit(1)
+	}
 }
