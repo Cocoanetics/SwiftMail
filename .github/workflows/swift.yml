@@ -5,18 +5,29 @@ name: Swift
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build:
-
     runs-on: macos-latest
-
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: swift build -v
-    - name: Run tests
-      run: swift test -v
+      - uses: actions/checkout@v4
+
+      - name: Install Swift 6 Toolchain (Nightly)
+        run: |
+          TOOLCHAIN_URL=$(curl -s https://download.swift.org/development/xcode/swift-DEVELOPMENT-SNAPSHOT-2024-03-05-a/swift-DEVELOPMENT-SNAPSHOT-2024-03-05-a-osx.pkg)
+          curl -O $TOOLCHAIN_URL
+          sudo installer -pkg swift-*-osx.pkg -target /
+          export TOOLCHAIN=`/usr/libexec/PlistBuddy -c "Print CFBundleIdentifier" /Library/Developer/Toolchains/swift-DEVELOPMENT-SNAPSHOT-*/Info.plist`
+          sudo xcode-select -s /Library/Developer/Toolchains/$TOOLCHAIN/usr/bin
+
+      - name: Verify Swift version
+        run: swift --version
+
+      - name: Build
+        run: swift build -v
+
+      - name: Test
+        run: swift test -v
