@@ -55,14 +55,12 @@ let package = Package(
             dependencies: [
                 "SwiftMailCore",
                 .product(name: "NIOIMAP", package: "swift-nio-imap"),
-                .product(name: "NIOSSL", package: "swift-nio-ssl"),
             ]
         ),
         .target(
             name: "SwiftSMTP",
             dependencies: [
                 "SwiftMailCore",
-                .product(name: "NIOSSL", package: "swift-nio-ssl"),
             ]
         ),
         .executableTarget(
