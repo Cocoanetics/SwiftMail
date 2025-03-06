@@ -68,17 +68,11 @@ swift run SwiftSMTPCLI
 # Run with debug logging enabled (recommended for development)
 ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift run SwiftIMAPCLI
 ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift run SwiftSMTPCLI
-
-# Alternative: Run with full debug logging and capture all protocol communication
-ENABLE_DEBUG_OUTPUT=1 OS_LOG_DISABLE=0 swift run SwiftIMAPCLI & log stream --predicate 'process == "SwiftIMAPCLI"' --debug
-ENABLE_DEBUG_OUTPUT=1 OS_LOG_DISABLE=0 swift run SwiftSMTPCLI & log stream --predicate 'process == "SwiftSMTPCLI"' --debug
 ```
 
 The debug logging options:
 - `ENABLE_DEBUG_OUTPUT=1`: Enables trace level logging
 - `OS_ACTIVITY_DT_MODE=debug`: Formats debug output in a readable way
-- `OS_LOG_DISABLE=0`: Ensures OS logging is not suppressed
-- `log stream`: Captures all system logs for the process, including protocol communication
 
 ## Usage
 
@@ -100,12 +94,21 @@ try await imapServer.login(username: "user@example.com", password: "password")
 let mailboxInfo = try await imapServer.selectMailbox("INBOX")
 print("Mailbox has \(mailboxInfo.messageCount) messages")
 
-// Fetch the 10 most recent email headers
-let startMessage = SequenceNumber(max(1, mailboxInfo.messageCount - 9))
-let endMessage = SequenceNumber(mailboxInfo.messageCount)
-let headers = try await imapServer.fetchHeaders(using: SequenceNumberSet(startMessage...endMessage))
-for header in headers {
-    print("Subject: \(header.subject)")
+// Use the convenience method to get the latest 10 messages
+if let latestMessagesSet = mailboxStatus.latest(10) {
+				
+   let emails = try await server.fetchMessages(using: latestMessagesSet)
+				
+   print("\n📧 Latest Emails (\(emails.count)) 📧")
+				
+   for (index, email) in emails.enumerated() {
+      print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
+      print("---")
+   }
+}
+else
+{
+   print("No messages found in INBOX")
 }
 
 // Logout and close the connection
