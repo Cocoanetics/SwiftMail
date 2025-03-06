@@ -96,7 +96,28 @@ do {
 		// Display special folders
 		print("\nSpecial Folders:")
 		for folder in specialFolders {
-			print("- \(folder.name): \(folder.attributes)")
+			print("- \(folder.name)")
+		}
+		
+		guard let inbox = specialFolders.inbox else {
+			fatalError("INBOX mailbox not found")
+		}
+		
+		// Select the INBOX mailbox and get mailbox information
+		let mailboxStatus = try await server.selectMailbox(inbox.name)
+		
+		// Use the convenience method to get the latest 10 messages
+		if let latestMessagesSet = mailboxStatus.latest(10) {
+			let emails = try await server.fetchMessages(using: latestMessagesSet)
+			
+			print("\n📧 Latest Emails (\(emails.count)) 📧")
+			
+			for (index, email) in emails.enumerated() {
+				print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
+				print("---")
+			}
+		} else {
+			print("No messages found in INBOX")
 		}
 		
 		try await server.disconnect()
