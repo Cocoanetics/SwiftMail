@@ -15,6 +15,9 @@ let package = Package(
     ],
     products: [
         .library(
+            name: "SwiftMail",
+            targets: ["SwiftIMAP", "SwiftSMTP"]),
+        .library(
             name: "SwiftIMAP",
             targets: ["SwiftIMAP"]),
         .library(
@@ -92,6 +95,7 @@ let package = Package(
             name: "SwiftSMTPTests",
             dependencies: [
                 "SwiftSMTP",
+                "SwiftMailCore",
                 .product(name: "Testing", package: "swift-testing")
             ]
         ),

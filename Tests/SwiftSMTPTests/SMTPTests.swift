@@ -1,5 +1,6 @@
 import Testing
 @testable import SwiftSMTP
+@testable import SwiftMailCore
 
 struct SMTPTests {
     @Test
@@ -20,9 +21,9 @@ struct SMTPTests {
     @Test
     func testEmailInit() {
         // Test email initialization
-        let sender = SwiftSMTP.EmailAddress(name: "Sender", address: "sender@example.com")
-        let recipient1 = SwiftSMTP.EmailAddress(address: "recipient1@example.com")
-        let recipient2 = SwiftSMTP.EmailAddress(name: "Recipient 2", address: "recipient2@example.com")
+        let sender = EmailAddress(name: "Sender", address: "sender@example.com")
+        let recipient1 = EmailAddress(address: "recipient1@example.com")
+        let recipient2 = EmailAddress(name: "Recipient 2", address: "recipient2@example.com")
         
         let email = Email(
             sender: sender,
@@ -43,6 +44,7 @@ struct SMTPTests {
         let email = Email(
             senderName: "Test Sender",
             senderAddress: "sender@example.com",
+            recipientNames: nil,
             recipientAddresses: ["recipient@example.com"],
             subject: "Test Subject",
             textBody: "Test Body"
