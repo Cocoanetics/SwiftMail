@@ -1,0 +1,31 @@
+---
+description: SwiftMail logging standards and log level reference
+globs: "**/*.swift"
+alwaysApply: false
+---
+# SwiftMail Logging Reference
+
+## Log Levels
+
+- `.critical`: For fatal application errors
+- `.error`: For errors that impact functionality but allow recovery
+- `.warning`: For potential issues that don't impact functionality
+- `.notice`: For important events in normal operation
+- `.info`: For general information about application flow
+- `.debug`: For detailed debugging information (normally suppressed)
+- `.trace`: For extremely detailed flow tracing (normally suppressed)
+
+## Logging Best Practices
+
+- Debug statements should be wrapped with the `debugPrint()` function, which conditionally prints when `ENABLE_DEBUG_OUTPUT=1` is set
+- Production code should minimize direct `print()` calls in favor of the logging system
+- Developers should run with `ENABLE_DEBUG_OUTPUT=1` when developing or debugging
+- Protocol-specific logging:
+  - IMAP: Use trace-level logging for protocol commands and responses
+  - SMTP: Use trace-level logging for protocol commands and responses
+  - Always redact sensitive information (passwords, authentication tokens) in logs
+- Log messages should be:
+  - Clear and concise
+  - Grammatically correct
+  - Free of unnecessary technical jargon
+  - Helpful for debugging without requiring source code access 
