@@ -22,7 +22,12 @@ public struct RcptToCommand: SMTPCommand {
      Initialize a new RCPT TO command
      - Parameter recipientAddress: The email address of the recipient
      */
-    public init(recipientAddress: String) {
+    public init(recipientAddress: String) throws {
+        // Validate email format
+        guard recipientAddress.isValidEmail() else {
+            throw SMTPError.invalidEmailAddress("Invalid recipient address: \(recipientAddress)")
+        }
+        
         self.recipientAddress = recipientAddress
     }
     
@@ -46,6 +51,12 @@ public struct RcptToCommand: SMTPCommand {
         let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
         guard emailPredicate.evaluate(with: recipientAddress) else {
             throw SMTPError.sendFailed("Invalid recipient email format: \(recipientAddress)")
+        }
+    }
+    
+    func validateResponse(_ response: SMTPResponse) throws {
+        guard response.code == SMTPResponseCode.commandOK.rawValue else {
+            throw SMTPError.unexpectedResponse(response)
         }
     }
 } 

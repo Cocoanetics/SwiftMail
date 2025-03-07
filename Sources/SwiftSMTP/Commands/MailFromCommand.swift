@@ -22,7 +22,12 @@ public struct MailFromCommand: SMTPCommand {
      Initialize a new MAIL FROM command
      - Parameter senderAddress: The email address of the sender
      */
-    public init(senderAddress: String) {
+    public init(senderAddress: String) throws {
+        // Validate email format
+        guard senderAddress.isValidEmail() else {
+            throw SMTPError.invalidEmailAddress("Invalid sender address: \(senderAddress)")
+        }
+        
         self.senderAddress = senderAddress
     }
     
@@ -46,6 +51,12 @@ public struct MailFromCommand: SMTPCommand {
         let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
         guard emailPredicate.evaluate(with: senderAddress) else {
             throw SMTPError.sendFailed("Invalid sender email format: \(senderAddress)")
+        }
+    }
+    
+    func validateResponse(_ response: SMTPResponse) throws {
+        guard response.code == SMTPResponseCode.commandOK.rawValue else {
+            throw SMTPError.unexpectedResponse(response)
         }
     }
 } 

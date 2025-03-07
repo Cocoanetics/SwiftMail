@@ -332,7 +332,7 @@ public actor SMTPServer {
         }
         
         // Send MAIL FROM command using the new command class
-        let mailFromCommand = MailFromCommand(senderAddress: email.sender.address)
+        let mailFromCommand = try MailFromCommand(senderAddress: email.sender.address)
         let mailFromSuccess = try await executeCommand(mailFromCommand)
         
         // Check if MAIL FROM was accepted
@@ -342,7 +342,7 @@ public actor SMTPServer {
         
         // Send RCPT TO command for each recipient (To, CC, and BCC) using the new command class
         for recipient in email.allRecipients {
-            let rcptToCommand = RcptToCommand(recipientAddress: recipient.address)
+            let rcptToCommand = try RcptToCommand(recipientAddress: recipient.address)
             let rcptToSuccess = try await executeCommand(rcptToCommand)
             
             // Check if RCPT TO was accepted

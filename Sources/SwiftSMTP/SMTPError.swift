@@ -2,6 +2,7 @@
 // Error types for SMTP operations
 
 import Foundation
+import SwiftMailCore
 
 /**
  Error types for SMTP operations
@@ -28,6 +29,9 @@ public enum SMTPError: Error {
     
     /// TLS negotiation failed
     case tlsFailed(String)
+    
+    /// Unexpected response from server
+    case unexpectedResponse(SMTPResponse)
 }
 
 // Add CustomStringConvertible conformance for better error messages
@@ -48,6 +52,8 @@ extension SMTPError: CustomStringConvertible {
             return "SMTP invalid email address: \(reason)"
         case .tlsFailed(let reason):
             return "SMTP TLS failed: \(reason)"
+        case .unexpectedResponse(let response):
+            return "SMTP unexpected response: \(response.code) \(response.message)"
         }
     }
 } 

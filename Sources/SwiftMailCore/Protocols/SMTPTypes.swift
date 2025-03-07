@@ -3,6 +3,29 @@
 
 import Foundation
 
+/// SMTP response codes
+public enum SMTPResponseCode: Int {
+    case commandOK = 250
+    case ready = 220
+    case readyForContent = 354
+    case serviceClosing = 221
+    case authSuccess = 235
+    case tempError = 421
+    case mailboxUnavailable = 450
+    case localError = 451
+    case insufficientStorage = 452
+    case syntaxError = 500
+    case argumentError = 501
+    case notImplemented = 502
+    case badSequence = 503
+    case paramNotImplemented = 504
+    case mailboxUnavailablePerm = 550
+    case userNotLocal = 551
+    case exceededStorage = 552
+    case nameNotAllowed = 553
+    case transactionFailed = 554
+}
+
 /// A structure representing a response from an SMTP server
 public struct SMTPResponse: MailResponse {
     /// The numeric response code
