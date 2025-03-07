@@ -46,11 +46,9 @@ public struct RcptToCommand: SMTPCommand {
             throw SMTPError.sendFailed("Recipient address cannot be empty")
         }
         
-        // Simple regex to check email format
-        let emailRegex = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
-        let emailPredicate = NSPredicate(format: "SELF MATCHES %@", emailRegex)
-        guard emailPredicate.evaluate(with: recipientAddress) else {
-            throw SMTPError.sendFailed("Invalid recipient email format: \(recipientAddress)")
+        // Use our cross-platform email validation method
+        guard recipientAddress.isValidEmail() else {
+            throw SMTPError.invalidEmailAddress("Invalid recipient address: \(recipientAddress)")
         }
     }
     
