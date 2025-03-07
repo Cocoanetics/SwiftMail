@@ -1,8 +1,4 @@
-// SMTPServer.swift
-// A Swift SMTP client that encapsulates connection logic
-
 import Foundation
-import os.log
 import NIO
 import NIOCore
 import NIOSSL
@@ -40,8 +36,8 @@ public actor SMTPServer {
      */
     private let logger = Logger(label: "com.cocoanetics.SwiftMail.SMTPServer")
     
-	// A logger on the channel that watches both directions
-	private let duplexLogger: SMTPLogger
+    // A logger on the channel that watches both directions
+    private let duplexLogger: SMTPLogger
 
     // MARK: - Initialization
     
@@ -56,11 +52,11 @@ public actor SMTPServer {
         self.host = host
         self.port = port
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
-		
-		let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
-		let inboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_IN")
+        
+        let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
+        let inboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_IN")
 
-		self.duplexLogger = SMTPLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
+        self.duplexLogger = SMTPLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
     }
     
     deinit {
@@ -201,9 +197,9 @@ public actor SMTPServer {
         }
         
         // Create a timeout for the command
-		let timeoutSeconds = command.timeoutSeconds
-		
-		let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+        let timeoutSeconds = command.timeoutSeconds
+        
+        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
             resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
         }
         
@@ -220,9 +216,9 @@ public actor SMTPServer {
             
             // Cancel the timeout
             scheduledTask.cancel()
-			
-			// Flush the DuplexLogger's buffer after command execution
-			duplexLogger.flushInboundBuffer()
+            
+            // Flush the DuplexLogger's buffer after command execution
+            duplexLogger.flushInboundBuffer()
             
             return result
         } catch {
@@ -284,11 +280,11 @@ public actor SMTPServer {
             return
         }
         
-		// Use QuitCommand instead of directly sending a string
-		let quitCommand = QuitCommand()
-		
-		// Execute the QUIT command - it has its own timeout set to 10 seconds
-		try await executeCommand(quitCommand)
+        // Use QuitCommand instead of directly sending a string
+        let quitCommand = QuitCommand()
+        
+        // Execute the QUIT command - it has its own timeout set to 10 seconds
+        try await executeCommand(quitCommand)
         
         // Close the channel regardless of QUIT command result
         channel.close(promise: nil)
@@ -724,10 +720,10 @@ public actor SMTPServer {
                     // Extract and add each individual auth method
                     let authMethods = capabilityPart.dropFirst(5).split(separator: " ")
 
-					for method in authMethods {
+                    for method in authMethods {
                         let authMethod = "AUTH \(method)"
                         parsedCapabilities.append(authMethod)
-					}
+                    }
                 } else {
                     // For other capabilities, add them as-is
                     parsedCapabilities.append(capabilityPart)
@@ -794,4 +790,4 @@ public actor SMTPServer {
             return result
         }
     }
-} 
+}

@@ -1,13 +1,24 @@
-// The Swift Programming Language
-// https://docs.swift.org/swift-book
-
 import Foundation
 import SwiftSMTP
-import OSLog
 import Logging
 import SwiftDotenv
 import SwiftMailCore
 
+#if canImport(OSLog)
+import OSLog
+#endif
+
+#if os(Linux)
+LoggingSystem.bootstrap { label in
+    var handler = StreamLogHandler.standardOutput(label: label)
+    if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
+        handler.logLevel = .trace
+    } else {
+        handler.logLevel = .info
+    }
+    return handler
+}
+#else
 // Set default log level to info - will only show important logs
 // Per the cursor rules: Use OS_LOG_DISABLE=1 to see log output as needed
 LoggingSystem.bootstrap { label in
@@ -18,7 +29,7 @@ LoggingSystem.bootstrap { label in
     // Set log level to info by default (or trace if SWIFT_LOG_LEVEL is set to trace)
     var handler = OSLogHandler(label: label, log: osLogger)
 
-	// Check if we need verbose logging
+    // Check if we need verbose logging
     if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
         handler.logLevel = .trace
     } else {
@@ -27,6 +38,7 @@ LoggingSystem.bootstrap { label in
     
     return handler
 }
+#endif
 
 // Create a logger for the main application using Swift Logging
 let logger = Logger(label: "com.cocoanetics.SwiftSMTPCLI.Main")
@@ -74,7 +86,7 @@ do {
             // Login with credentials
             print("Authenticating...")
 
-			let authSuccess = try await server.authenticate(username: username, password: password)
+            let authSuccess = try await server.authenticate(username: username, password: password)
             
             if authSuccess {
                 logger.info("Authentication successful")
@@ -114,4 +126,3 @@ do {
     logger.error("Error: \(error.localizedDescription)")
     exit(1)
 }
-

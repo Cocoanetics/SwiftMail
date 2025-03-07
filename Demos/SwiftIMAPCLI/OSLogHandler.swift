@@ -6,6 +6,8 @@
 //
 
 import Foundation
+
+#if canImport(OSLog)
 import OSLog
 import Logging
 
@@ -57,3 +59,4 @@ struct OSLogHandler: LogHandler {
         os_log("%{public}@", log: log, type: type, message.description)
     }
 }
+#endif
