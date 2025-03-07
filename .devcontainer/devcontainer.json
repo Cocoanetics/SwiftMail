@@ -1,5 +1,17 @@
 {
   "tasks": {
-    "build": "swift build"
-  }
+    "build": "swift build",
+    "test": "swift test"
+  },
+  "image": "swift:latest",
+  "runArgs": ["--platform", "linux/amd64"],
+  "settings": {
+    "terminal.integrated.shell.linux": "/bin/bash"
+  },
+  "extensions": [
+    "ms-vscode.cpptools",
+    "ms-vscode.cmake-tools",
+    "ms-vscode.cmake"
+  ],
+  "postCreateCommand": "swift package resolve"
 }
