@@ -96,7 +96,23 @@ do {
 		try await server.connect()
 		try await server.login(username: username, password: password)
 		
+		// Try to enable compression for bandwidth reduction
+		print("\nTrying to enable COMPRESS=DEFLATE...")
+		do {
+			try await server.enableCompression()
+			print("✅ COMPRESS=DEFLATE enabled successfully")
+			logger.info("COMPRESS=DEFLATE enabled successfully")
+		} catch {
+			print("⚠️ Could not enable compression: \(error.localizedDescription)")
+			logger.warning("Could not enable compression: \(error.localizedDescription)")
+			// Continue with the program even if compression fails
+		}
+		
+		// Add a small delay to ensure channel stability after compression change
+		try await Task.sleep(nanoseconds: 500_000_000) // 500ms delay
+		
 		// List special folders
+		print("\nListing special folders...")
 		let specialFolders = try await server.listSpecialUseMailboxes()
 		
 		// Display special folders

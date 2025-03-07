@@ -20,6 +20,7 @@ public enum IMAPError: Error {
     case expungeFailed(String)
     case moveFailed(String)
     case commandNotSupported(String)
+    case compressionFailed(String)
 }
 
 // Add CustomStringConvertible conformance for better error messages
@@ -56,6 +57,8 @@ extension IMAPError: CustomStringConvertible {
             return "Move failed: \(reason)"
         case .commandNotSupported(let reason):
             return "Command not supported: \(reason)"
+        case .compressionFailed(let reason):
+            return "Compression failed: \(reason)"
         }
     }
 } 

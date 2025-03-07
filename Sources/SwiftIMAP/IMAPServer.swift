@@ -9,6 +9,7 @@ import NIO
 import NIOSSL
 import NIOConcurrencyHelpers
 import SwiftMailCore
+import CompressNIO
 
 /** An actor that represents an IMAP server connection */
 public actor IMAPServer {
@@ -37,6 +38,12 @@ public actor IMAPServer {
 	
 	/** Special folders - mailboxes with SPECIAL-USE attributes */
 	public private(set) var specialMailboxes: [Mailbox.Info] = []
+	
+	// Reference to deflate handler for enabling compression
+	private var deflateHandler: DeflateHandler?
+	
+	// Store channel information for later handler access
+	private var channelHandlerContext: (Channel, DeflateHandler)?
 	
 	/**
 	 Logger for IMAP operations
@@ -104,12 +111,24 @@ public actor IMAPServer {
 		let bootstrap = ClientBootstrap(group: group)
 			.channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
 			.channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
-			.channelInitializer { channel in
+			.channelInitializer { [logger = self.logger] channel in
 				let sslHandler = try! NIOSSLClientHandler(context: sslContext, serverHostname: host)
 				
+				// Create deflate handler (initially inactive)
+				let deflateHandler = DeflateHandler(logger: logger)
+				
+				// We won't store the reference here to avoid actor isolation issues
+				// self.deflateHandler = deflateHandler
+				
 				// Create the IMAP client pipeline
+				// Order matters:
+				// 1. SSL Handler (decrypt/encrypt)
+				// 2. DeflateHandler (decompress/compress)
+				// 3. IMAPClientHandler (parse/serialize IMAP protocol)
+				// 4. DuplexLogger (log the data)
 				return channel.pipeline.addHandlers([
 					sslHandler,
+					deflateHandler,
 					IMAPClientHandler(),
 					self.duplexLogger
 				])
@@ -120,6 +139,14 @@ public actor IMAPServer {
 		
 		// Store the channel
 		self.channel = channel
+		
+		// Now that we have a connected channel, store the deflate handler for later use
+		// First, get the handler from the pipeline
+		if let deflateHandler = try? await channel.pipeline.handler(type: DeflateHandler.self).get() {
+			// Store both channel and handler for later reference
+			self.channelHandlerContext = (channel, deflateHandler)
+			self.deflateHandler = deflateHandler
+		}
 		
 		// Wait for the server greeting using our generic handler execution pattern
 		// The greeting handler now returns capabilities if they were in the greeting
@@ -901,5 +928,34 @@ extension IMAPServer {
 	public func saveAsDraft<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
 		try await store(flags: [.draft], on: identifierSet, operation: .add)
 		try await move(messages: identifierSet, to: try draftsFolder.name)
+	}
+	
+	/**
+	 Enable COMPRESS=DEFLATE compression to reduce bandwidth usage
+	 - Throws: Error if compression failed or is not supported by the server
+	 */
+	public func enableCompression() async throws {
+		// Check if server supports COMPRESS=DEFLATE capability
+		let hasCompressDeflate = capabilities.contains(NIOIMAPCore.Capability("COMPRESS=DEFLATE"))
+		
+		if !hasCompressDeflate {
+			throw IMAPError.commandNotSupported("COMPRESS=DEFLATE capability not supported by server")
+		}
+		
+		logger.info("Enabling COMPRESS=DEFLATE for bandwidth reduction")
+		
+		// Create and execute the compress command
+		let command = CompressCommand(algorithm: "DEFLATE")
+		try await executeCommand(command)
+		
+		// After the COMPRESS command is accepted by the server, activate the deflate handler
+		guard let deflateHandler = self.deflateHandler else {
+			throw IMAPError.compressionFailed("Deflate handler not found in pipeline")
+		}
+		
+		// Activate the deflate handler
+		deflateHandler.setActive(true)
+		
+		logger.info("COMPRESS=DEFLATE enabled successfully")
 	}
 }

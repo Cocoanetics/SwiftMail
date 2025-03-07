@@ -39,6 +39,9 @@ let package = Package(
 		.package(url: "https://github.com/apple/swift-nio-imap", branch: "main"),
         .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-testing", branch: "main"),
+        .package(url: "https://github.com/apple/swift-nio-extras", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-nio-zlib-support.git", from: "1.0.0"),
+        .package(url: "https://github.com/adam-fowler/compress-nio", from: "1.0.0"),
     ],
     targets: [
         .target(
@@ -54,6 +57,9 @@ let package = Package(
             dependencies: [
                 "SwiftMailCore",
                 .product(name: "NIOIMAP", package: "swift-nio-imap"),
+                .product(name: "NIOExtras", package: "swift-nio-extras"),
+                .product(name: "NIO", package: "swift-nio"),
+                .product(name: "CompressNIO", package: "compress-nio"),
             ]
         ),
         .target(
