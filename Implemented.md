@@ -37,7 +37,7 @@
 - [x] COPY - Copy messages to another mailbox.
 - [x] MOVE - Move messages to another mailbox.
 - [x] EXPUNGE - Expunge deleted messages from the selected mailbox.
-- [ ] UNSELECT - Allows the client to unselect the current mailbox without selecting a new one.
+- [x] UNSELECT - Allows the client to unselect the current mailbox without selecting a new one.
 
 #### Message Commands
 

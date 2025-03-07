@@ -213,6 +213,24 @@ public actor IMAPServer {
 	}
 	
 	/**
+	 Unselect the currently selected mailbox without expunging deleted messages
+	 
+	 This is an IMAP extension command (RFC 3691) that might not be supported by all servers.
+	 If the server does not support UNSELECT, an IMAPError will be thrown.
+	 
+	 - Throws: An error if the unselect operation fails or is not supported
+	 */
+	public func unselectMailbox() async throws {
+		// Check if the server supports UNSELECT capability
+		if !capabilities.contains(.unselect) {
+			throw IMAPError.commandNotSupported("UNSELECT command not supported by server")
+		}
+		
+		let command = UnselectCommand()
+		try await executeCommand(command)
+	}
+	
+	/**
 	 Logout from the IMAP server
 	 - Throws: An error if the logout fails
 	 */
