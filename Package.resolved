@@ -118,15 +118,6 @@
       }
     },
     {
-      "identity" : "swift-nio-zlib-support",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/apple/swift-nio-zlib-support.git",
-      "state" : {
-        "revision" : "37760e9a52030bb9011972c5213c3350fa9d41fd",
-        "version" : "1.0.0"
-      }
-    },
-    {
       "identity" : "swift-numerics",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-numerics.git",

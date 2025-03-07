@@ -40,7 +40,6 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-testing", branch: "main"),
         .package(url: "https://github.com/apple/swift-nio-extras", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-nio-zlib-support.git", from: "1.0.0"),
         .package(url: "https://github.com/adam-fowler/compress-nio", from: "1.0.0"),
     ],
     targets: [

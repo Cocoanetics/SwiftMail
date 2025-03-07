@@ -10,8 +10,8 @@ import Atomics // Instead of NIOConcurrencyHelpers
 /// A duplex channel handler that supports deflate compression and decompression for IMAP.
 /// This handler is designed to be added to the pipeline during connection setup,
 /// and then activated after the COMPRESS=DEFLATE command is accepted by the server.
-@available(*, deprecated, message: "This class is not thread-safe. Access only through IMAPServer methods.")
-public final class DeflateHandler: ChannelDuplexHandler, @unchecked Sendable {
+
+final class DeflateHandler: ChannelDuplexHandler, @unchecked Sendable {
     public typealias InboundIn = ByteBuffer
     public typealias InboundOut = ByteBuffer
     public typealias OutboundIn = ByteBuffer
