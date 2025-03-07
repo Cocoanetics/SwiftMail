@@ -1,0 +1,74 @@
+# IMAP Commands
+
+## Supported Commands
+- [x] LoginCommand
+  - IMAP Command: LOGIN
+  - Description: Used to authenticate a user with a username and password.
+- [x] LogoutCommand
+  - IMAP Command: LOGOUT
+  - Description: Used to log out the user from the IMAP server.
+- [x] CloseCommand
+  - IMAP Command: CLOSE
+  - Description: Used to close the currently selected mailbox.
+- [x] FetchHeadersCommand
+  - IMAP Command: FETCH
+  - Description: Used to fetch message headers from the server.
+- [x] FetchMessagePartCommand
+  - IMAP Command: FETCH
+  - Description: Used to fetch a specific part of a message.
+- [x] FetchStructureCommand
+  - IMAP Command: FETCH
+  - Description: Used to fetch the structure of a message.
+- [x] ListCommand
+  - IMAP Command: LIST
+  - Description: Used to list all available mailboxes. Special-folders version implemented.
+- [x] MoveCommand
+  - IMAP Command: MOVE
+  - Description: Used to move messages from one mailbox to another.
+- [x] SelectMailboxCommand
+  - IMAP Command: SELECT
+  - Description: Used to select a mailbox.
+- [x] CapabilityCommand
+  - IMAP Command: CAPABILITY
+  - Description: Used to retrieve server capabilities.
+- [x] CopyCommand
+  - IMAP Command: COPY
+  - Description: Used to copy messages from one mailbox to another.
+- [x] StoreCommand
+  - IMAP Command: STORE
+  - Description: Used to store flags on messages.
+- [x] ExpungeCommand
+  - IMAP Command: EXPUNGE
+  - Description: Used to expunge deleted messages.
+
+## Commands to be Implemented
+- [ ] AppendCommand
+  - IMAP Command: APPEND
+  - Description: Used to append a message to a mailbox.
+- [ ] CheckCommand
+  - IMAP Command: CHECK
+  - Description: Used to request a checkpoint of the currently selected mailbox.
+- [ ] CreateCommand
+  - IMAP Command: CREATE
+  - Description: Used to create a new mailbox.
+- [ ] DeleteCommand
+  - IMAP Command: DELETE
+  - Description: Used to delete a mailbox.
+- [ ] ExamineCommand
+  - IMAP Command: EXAMINE
+  - Description: Used to open a mailbox in read-only mode.
+- [ ] RenameCommand
+  - IMAP Command: RENAME
+  - Description: Used to rename a mailbox.
+- [ ] SearchCommand
+  - IMAP Command: SEARCH
+  - Description: Used to search messages in the currently selected mailbox.
+- [ ] StatusCommand
+  - IMAP Command: STATUS
+  - Description: Used to request the status of a mailbox.
+- [ ] SubscribeCommand
+  - IMAP Command: SUBSCRIBE
+  - Description: Used to subscribe to a mailbox.
+- [ ] UnsubscribeCommand
+  - IMAP Command: UNSUBSCRIBE
+  - Description: Used to unsubscribe from a mailbox.
