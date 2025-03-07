@@ -37,6 +37,7 @@
 - [x] COPY - Copy messages to another mailbox.
 - [x] MOVE - Move messages to another mailbox.
 - [x] EXPUNGE - Expunge deleted messages from the selected mailbox.
+- [ ] UNSELECT - Allows the client to unselect the current mailbox without selecting a new one.
 
 #### Message Commands
 
@@ -47,10 +48,21 @@
 - [x] STORE - Store flags on messages.
   - [x] STORE (ADD) - Add flags to messages.
   - [x] STORE (REMOVE) - Remove flags from messages.
+- [ ] SEARCH - Allows the client to search for messages based on various criteria.
+- [ ] ESEARCH - Extended search command that provides additional search capabilities.
 
 #### TLS Commands
 
 - [x] STARTTLS - Start TLS encryption (used internally in the `startTLS` function).
+
+#### Other Commands
+
+- [ ] ENABLE - Allows the client to enable server-side extensions.
+- [ ] ID - Allows the client to identify itself to the server.
+- [ ] CONDSTORE - Provides support for conditional STORE operations.
+- [ ] QRESYNC - Provides support for quick resynchronization of the mailbox.
+- [ ] METADATA - Allows the client to retrieve and store metadata associated with mailboxes.
+- [ ] LIST-EXTENDED - Extended LIST command that provides additional listing capabilities.
 
 ## SMTP
 
@@ -63,6 +75,12 @@
 - [ ] DSN - Delivery Status Notification, allows the client to request delivery status notifications for sent emails.
 - [ ] ENHANCEDSTATUSCODES - Provides enhanced status codes for more detailed error reporting.
 - [ ] BINARYMIME - Allows the transmission of binary MIME messages without the need for encoding.
+- [ ] SIZE - Allows the client to specify the size of the message.
+- [ ] PIPELINING - Allows the client to send multiple commands without waiting for a response.
+- [ ] 8BITMIME - Allows the transmission of 8-bit MIME messages.
+- [ ] CHUNKING - Allows the client to send large messages in chunks.
+- [ ] AUTH CRAM-MD5 - Allows the client to authenticate using the CRAM-MD5 method.
+- [ ] AUTH DIGEST-MD5 - Allows the client to authenticate using the DIGEST-MD5 method.
 
 ### Commands
 
