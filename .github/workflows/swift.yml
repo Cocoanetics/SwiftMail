@@ -22,10 +22,10 @@ jobs:
         run: swift --version
       
       - name: Build
-        run: swift build -v
+        run: swift build
       
       - name: Run tests
-        run: swift test -v
+        run: swift test
 
   build-linux:
     runs-on: ubuntu-latest
@@ -42,7 +42,7 @@ jobs:
         run: swift --version
       
       - name: Build
-        run: swift build -v
+        run: swift build
       
       - name: Run tests
-        run: swift test -v
+        run: swift test
