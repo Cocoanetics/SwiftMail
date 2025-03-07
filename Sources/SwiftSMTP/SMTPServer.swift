@@ -7,6 +7,7 @@ import NIOCore
 import NIOSSL
 import Logging
 import SwiftMailCore
+import NIOConcurrencyHelpers
 
 #if os(Linux)
 import Glibc
@@ -74,7 +75,7 @@ public actor SMTPServer {
      - Throws: An error if the connection fails
      */
     public func connect() async throws {
-        logger.info("Connecting to SMTP server \(self.host):\(self.port)")
+        logger.debug("Connecting to SMTP server at \(host):\(port)")
         
         // Determine if we should use SSL based on the port
         let useSSL = (port == 465) // SMTPS port
@@ -299,80 +300,61 @@ public actor SMTPServer {
     // MARK: - Email Sending
     
     /**
-     Send an email
-     - Parameters:
-        - email: The email to send
-     - Throws: An error if the email cannot be sent
+     Send an email with the server
+     - Parameter email: The email to send
+     - Throws: An error if sending fails
      */
     public func sendEmail(_ email: Email) async throws {
-        guard let _ = channel else {
-            throw SMTPError.connectionFailed("Not connected to SMTP server")
+        // Check if we have a valid channel (meaning we're connected)
+        guard channel != nil else {
+            logger.error("Attempting to send email without an active connection")
+            throw SMTPError.connectionFailed("Not connected to SMTP server. Call connect() first.")
         }
         
-        // Log information about the email being sent
-        let totalRecipients = email.recipients.count + email.ccRecipients.count + email.bccRecipients.count
-        logger.info("Sending email from \(email.sender) to \(totalRecipients) recipients")
+        // We don't explicitly check for authentication here, as the SMTP server will reject
+        // commands if not authenticated, and that will be handled by the error handling below.
         
-        // Log additional details in debug mode
-        if email.htmlBody != nil {
-            logger.debug("Email contains HTML content")
+        var allRecipients = email.recipients
+        allRecipients.append(contentsOf: email.ccRecipients)
+        allRecipients.append(contentsOf: email.bccRecipients)
+        
+        logger.debug("Sending email to \(allRecipients.count) recipients with subject: \(email.subject)")
+        if !email.regularAttachments.isEmpty || !email.inlineAttachments.isEmpty {
+            logger.debug("Email contains \(email.regularAttachments.count) regular attachments and \(email.inlineAttachments.count) inline attachments")
         }
         
-        if let attachments = email.attachments, !attachments.isEmpty {
-            let inlineCount = attachments.filter { $0.isInline }.count
-            let regularCount = attachments.count - inlineCount
+        // Check if the server supports 8BITMIME
+        let supports8BitMIME = self.capabilities.contains("8BITMIME")
+        
+        if supports8BitMIME {
+            self.logger.debug("Server supports 8BITMIME, using it for this email")
+        }
+        
+        do {
+            // Create Mail From command using 8BITMIME if supported
+            let mailFrom = try MailFromCommand(senderAddress: email.sender.address, use8BitMIME: supports8BitMIME)
+            _ = try await executeCommand(mailFrom)
             
-            if inlineCount > 0 {
-                logger.debug("Email contains \(inlineCount) inline attachment(s)")
+            // RCPT TO commands
+            for recipient in allRecipients {
+                let rcptTo = try RcptToCommand(recipientAddress: recipient.address)
+                _ = try await executeCommand(rcptTo)
             }
             
-            if regularCount > 0 {
-                logger.debug("Email contains \(regularCount) regular attachment(s)")
-            }
-        }
-        
-        // Send MAIL FROM command using the new command class
-        let mailFromCommand = try MailFromCommand(senderAddress: email.sender.address)
-        let mailFromSuccess = try await executeCommand(mailFromCommand)
-        
-        // Check if MAIL FROM was accepted
-        guard mailFromSuccess else {
-            throw SMTPError.sendFailed("Server rejected sender")
-        }
-        
-        // Send RCPT TO command for each recipient (To, CC, and BCC) using the new command class
-        for recipient in email.allRecipients {
-            let rcptToCommand = try RcptToCommand(recipientAddress: recipient.address)
-            let rcptToSuccess = try await executeCommand(rcptToCommand)
+            // DATA command
+            let data = DataCommand()
+            _ = try await executeCommand(data)
             
-            // Check if RCPT TO was accepted
-            guard rcptToSuccess else {
-                throw SMTPError.sendFailed("Server rejected recipient \(recipient.address)")
-            }
+            // Construct and send content
+            let content = self.constructEmailContent(email, use8BitMIME: supports8BitMIME)
+            let sendContent = SendContentCommand(content: content)
+            _ = try await executeCommand(sendContent)
+            
+            self.logger.debug("Email sent successfully")
+        } catch {
+            self.logger.error("Failed to send email: \(error)")
+            throw error
         }
-        
-        // Send DATA command using the new command class
-        let dataCommand = DataCommand()
-        let dataSuccess = try await executeCommand(dataCommand)
-        
-        // Check if DATA was accepted
-        guard dataSuccess else {
-            throw SMTPError.sendFailed("Server rejected DATA command")
-        }
-        
-        // Construct email content
-        let emailContent = constructEmailContent(email)
-        
-        // Send email content using the new command class
-        let contentCommand = SendContentCommand(content: emailContent)
-        let contentSuccess = try await executeCommand(contentCommand)
-        
-        // Check if email content was accepted
-        guard contentSuccess else {
-            throw SMTPError.sendFailed("Server rejected email content")
-        }
-        
-        logger.info("Email sent successfully")
     }
     
     // MARK: - Helper Methods
@@ -451,9 +433,10 @@ public actor SMTPServer {
      Construct the email content with headers and body
      - Parameters:
         - email: The email to construct content for
+        - use8BitMIME: Whether to use 8BITMIME capability
      - Returns: The constructed email content
      */
-    private func constructEmailContent(_ email: Email) -> String {
+    private func constructEmailContent(_ email: Email, use8BitMIME: Bool = false) -> String {
         var content = ""
         
         // Add headers
@@ -478,6 +461,24 @@ public actor SMTPServer {
         let mainBoundary = "SwiftSMTP-Boundary-\(UUID().uuidString)"
         let altBoundary = "SwiftSMTP-Alt-Boundary-\(UUID().uuidString)"
         let relatedBoundary = "SwiftSMTP-Related-Boundary-\(UUID().uuidString)"
+        
+        // Determine the text encoding based on 8BITMIME support and content safety
+        let textEncoding: String
+        let textBody: String
+        let htmlBody: String?
+        
+        if use8BitMIME && isSafe8BitContent(email.textBody) && 
+           (email.htmlBody == nil || isSafe8BitContent(email.htmlBody!)) {
+            // Only use 8bit if the content is safe (no binary zeros or problematic control chars)
+            textEncoding = "8bit"
+            textBody = email.textBody
+            htmlBody = email.htmlBody
+        } else {
+            // Otherwise fall back to quoted-printable
+            textEncoding = "quoted-printable"
+            textBody = email.textBody.quotedPrintableEncoded()
+            htmlBody = email.htmlBody?.quotedPrintableEncoded()
+        }
         
         let hasHtmlBody = email.htmlBody != nil
         let hasInlineAttachments = !email.inlineAttachments.isEmpty
@@ -504,14 +505,14 @@ public actor SMTPServer {
                     // Add text part
                     content += "--\(altBoundary)\r\n"
                     content += "Content-Type: text/plain; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                    content += "\(email.textBody)\r\n\r\n"
+                    content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
+                    content += "\(textBody)\r\n\r\n"
                     
                     // Add HTML part
                     content += "--\(altBoundary)\r\n"
                     content += "Content-Type: text/html; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                    content += "\(email.htmlBody ?? "")\r\n\r\n"
+                    content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
+                    content += "\(htmlBody ?? "")\r\n\r\n"
                     
                     // End alternative boundary
                     content += "--\(altBoundary)--\r\n\r\n"
@@ -543,14 +544,14 @@ public actor SMTPServer {
                     // Add text part
                     content += "--\(altBoundary)\r\n"
                     content += "Content-Type: text/plain; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                    content += "\(email.textBody)\r\n\r\n"
+                    content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
+                    content += "\(textBody)\r\n\r\n"
                     
                     // Add HTML part
                     content += "--\(altBoundary)\r\n"
                     content += "Content-Type: text/html; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                    content += "\(email.htmlBody ?? "")\r\n\r\n"
+                    content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
+                    content += "\(htmlBody ?? "")\r\n\r\n"
                     
                     // End alternative boundary
                     content += "--\(altBoundary)--\r\n\r\n"
@@ -559,8 +560,8 @@ public actor SMTPServer {
                 // Just text, no HTML
                 content += "--\(mainBoundary)\r\n"
                 content += "Content-Type: text/plain; charset=UTF-8\r\n"
-                content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                content += "\(email.textBody)\r\n\r\n"
+                content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
+                content += "\(textBody)\r\n\r\n"
             }
             
             // Add regular attachments
@@ -589,14 +590,14 @@ public actor SMTPServer {
             // Add text part
             content += "--\(altBoundary)\r\n"
             content += "Content-Type: text/plain; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-            content += "\(email.textBody)\r\n\r\n"
+            content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
+            content += "\(textBody)\r\n\r\n"
             
             // Add HTML part
             content += "--\(altBoundary)\r\n"
             content += "Content-Type: text/html; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-            content += "\(email.htmlBody ?? "")\r\n\r\n"
+            content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
+            content += "\(htmlBody ?? "")\r\n\r\n"
             
             // End alternative boundary
             content += "--\(altBoundary)--\r\n\r\n"
@@ -629,22 +630,22 @@ public actor SMTPServer {
             // Add text part
             content += "--\(altBoundary)\r\n"
             content += "Content-Type: text/plain; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-            content += "\(email.textBody)\r\n\r\n"
+            content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
+            content += "\(textBody)\r\n\r\n"
             
             // Add HTML part
             content += "--\(altBoundary)\r\n"
             content += "Content-Type: text/html; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-            content += "\(email.htmlBody ?? "")\r\n\r\n"
+            content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
+            content += "\(htmlBody ?? "")\r\n\r\n"
             
             // End alternative boundary
             content += "--\(altBoundary)--\r\n"
         } else {
             // Simple text email
             content += "Content-Type: text/plain; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-            content += email.textBody
+            content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
+            content += textBody
         }
         
         return content
@@ -792,5 +793,30 @@ public actor SMTPServer {
             
             return result
         }
+    }
+    
+    private func isSafe8BitContent(_ content: String) -> Bool {
+        if content.contains("\0") {
+            return false
+        }
+
+        var problematicControlChars = CharacterSet()
+        problematicControlChars.insert(charactersIn: "\u{01}"..."\u{08}")
+        problematicControlChars.insert(charactersIn: "\u{0B}"..."\u{0C}")
+        problematicControlChars.insert(charactersIn: "\u{0E}"..."\u{1F}")
+        problematicControlChars.insert(charactersIn: "\u{7F}")
+
+        if content.rangeOfCharacter(from: problematicControlChars) != nil {
+            return false
+        }
+
+        let lines = content.split(separator: "\n")
+        for line in lines {
+            if line.count > 998 {
+                return false
+            }
+        }
+
+        return true
     }
 } 
