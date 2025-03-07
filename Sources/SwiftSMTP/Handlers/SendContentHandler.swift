@@ -5,7 +5,7 @@ import Logging
 /**
  Handler for the email content response
  */
-public final class SendContentHandler: BaseSMTPHandler<Bool> {
+public final class SendContentHandler: BaseSMTPHandler<Void> {
     
     /**
      Process a response from the server
@@ -16,10 +16,10 @@ public final class SendContentHandler: BaseSMTPHandler<Bool> {
         
         // 2xx responses are considered successful
         if response.code >= 200 && response.code < 300 {
-            promise.succeed(true)
+            promise.succeed(())
         } else {
             // Any other response is considered a failure
-            promise.succeed(false)
+            promise.fail(SMTPError.unexpectedResponse(response))
         }
         
         return true // Always complete after a single response
