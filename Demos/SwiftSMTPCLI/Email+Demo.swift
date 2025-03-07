@@ -1,4 +1,8 @@
 import Foundation
+// Import the FoundationNetworking module on Linux platforms
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import SwiftSMTP
 import SwiftMailCore
 
@@ -26,7 +30,9 @@ extension Email {
         let logoFilename = "swift-logo.svg"
         
         // Download the image data using a cross-platform approach
-        let session = URLSession(configuration: .default)
+        // Create a URLSession configuration that works on all platforms
+        let config = URLSessionConfiguration.default
+        let session = URLSession(configuration: config)
         let (imageData, response) = try await session.data(from: logoURL)
         
         guard let httpResponse = response as? HTTPURLResponse else {
