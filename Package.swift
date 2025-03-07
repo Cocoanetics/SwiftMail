@@ -10,8 +10,7 @@ let package = Package(
 		.iOS("14.0"),
 		.tvOS("14.0"),
 		.watchOS("7.0"),
-		.macCatalyst("14.0"),
-		.visionOS("1.0")
+		.macCatalyst("14.0")
     ],
     products: [
         .library(
