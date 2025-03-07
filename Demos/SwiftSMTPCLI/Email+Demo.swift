@@ -25,11 +25,16 @@ extension Email {
         let logoContentID = "swift-logo"
         let logoFilename = "swift-logo.svg"
         
-        // Download the image data
-        let (imageData, response) = try await URLSession.shared.data(from: logoURL)
+        // Download the image data using a cross-platform approach
+        let session = URLSession(configuration: .default)
+        let (imageData, response) = try await session.data(from: logoURL)
         
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw NSError(domain: "com.cocoanetics.SwiftSMTPCLI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to download Swift logo"])
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "com.cocoanetics.SwiftSMTPCLI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid response type"])
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            throw NSError(domain: "com.cocoanetics.SwiftSMTPCLI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to download Swift logo, status code: \(httpResponse.statusCode)"])
         }
         
         print("Swift logo downloaded successfully (\(imageData.count) bytes)")
@@ -98,7 +103,7 @@ extension Email {
         )
         
         // Add HTML body and inline image attachment
-		email.htmlBody = htmlBody
+        email.htmlBody = htmlBody
         email.attachments = [attachment]
         
         print("Created HTML email with embedded Swift logo")
