@@ -2,7 +2,6 @@
 // Structure to hold information about a message part
 
 import Foundation
-import UniformTypeIdentifiers
 
 /// Structure to hold information about a message part
 public struct MessagePart: Sendable {
