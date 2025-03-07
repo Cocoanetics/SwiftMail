@@ -1,4 +1,4 @@
-// StringExtensions.swift
+// String+Redacting.swift
 // String extensions for the SwiftMailCore library
 
 import Foundation

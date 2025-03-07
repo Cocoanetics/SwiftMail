@@ -1,4 +1,4 @@
-// StringExtensionsTests.swift
+// String+RedactingTests.swift
 // Tests for string extensions in the SwiftMailCore library
 
 import Testing
