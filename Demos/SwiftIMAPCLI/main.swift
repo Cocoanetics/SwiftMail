@@ -8,24 +8,31 @@ import Logging
 import SwiftDotenv
 import NIOIMAP
 
+#if canImport(OSLog)
+
+import OSLog
+
 // Set default log level to info - will only show important logs
 // Per the cursor rules: Use OS_LOG_DISABLE=1 to see log output as needed
 LoggingSystem.bootstrap { label in
-    // Create an OSLog-based logger
-    let category = label.split(separator: ".").last?.description ?? "default"
-    let osLogger = OSLog(subsystem: "com.cocoanetics.SwiftIMAPCLI", category: category)
-    
-    // Set log level to info by default (or trace if verbose logging is enabled)
-    var handler = OSLogHandler(label: label, log: osLogger)
-    // Check if we need verbose logging
-    if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
-        handler.logLevel = .trace
-    } else {
-        handler.logLevel = .info
-    }
-    
-    return handler
+	// Create an OSLog-based logger
+	let category = label.split(separator: ".").last?.description ?? "default"
+	let osLogger = OSLog(subsystem: "com.cocoanetics.SwiftIMAPCLI", category: category)
+	
+	// Set log level to info by default (or trace if SWIFT_LOG_LEVEL is set to trace)
+	var handler = OSLogHandler(label: label, log: osLogger)
+
+	// Check if we need verbose logging
+	if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
+		handler.logLevel = .trace
+	} else {
+		handler.logLevel = .info
+	}
+	
+	return handler
 }
+
+#endif
 
 // Create a logger for the main application using Swift Logging
 let logger = Logger(label: "com.cocoanetics.SwiftIMAPCLI.Main")

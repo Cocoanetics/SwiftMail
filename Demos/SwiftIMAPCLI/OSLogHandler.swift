@@ -6,8 +6,11 @@
 //
 
 import Foundation
-import OSLog
 import Logging
+
+#if canImport(OSLog)
+
+import OSLog
 
 // Custom LogHandler that bridges Swift Logging to OSLog
 struct OSLogHandler: LogHandler {
@@ -57,3 +60,5 @@ struct OSLogHandler: LogHandler {
         os_log("%{public}@", log: log, type: type, message.description)
     }
 }
+
+#endif

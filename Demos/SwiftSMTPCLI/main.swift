@@ -3,10 +3,14 @@
 
 import Foundation
 import SwiftSMTP
-import OSLog
 import Logging
 import SwiftDotenv
 import SwiftMailCore
+
+
+#if canImport(OSLog)
+
+import OSLog
 
 // Set default log level to info - will only show important logs
 // Per the cursor rules: Use OS_LOG_DISABLE=1 to see log output as needed
@@ -27,6 +31,8 @@ LoggingSystem.bootstrap { label in
     
     return handler
 }
+
+#endif
 
 // Create a logger for the main application using Swift Logging
 let logger = Logger(label: "com.cocoanetics.SwiftSMTPCLI.Main")

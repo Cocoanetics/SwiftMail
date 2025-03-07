@@ -2,7 +2,6 @@
 // Handler for IMAP SELECT command
 
 import Foundation
-import os.log
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
 import NIO

@@ -2,7 +2,6 @@
 // A Swift SMTP client that encapsulates connection logic
 
 import Foundation
-import os.log
 import NIO
 import NIOCore
 import NIOSSL
