@@ -77,7 +77,7 @@
 - [ ] BINARYMIME - Allows the transmission of binary MIME messages without the need for encoding.
 - [ ] SIZE - Allows the client to specify the size of the message.
 - [ ] PIPELINING - Allows the client to send multiple commands without waiting for a response.
-- [ ] 8BITMIME - Allows the transmission of 8-bit MIME messages.
+- [x] 8BITMIME - Allows the transmission of 8-bit MIME messages.
 - [ ] CHUNKING - Allows the client to send large messages in chunks.
 - [ ] AUTH CRAM-MD5 - Allows the client to authenticate using the CRAM-MD5 method.
 - [ ] AUTH DIGEST-MD5 - Allows the client to authenticate using the DIGEST-MD5 method.

@@ -7,6 +7,7 @@ import NIOCore
 import NIOSSL
 import Logging
 import SwiftMailCore
+import NIOConcurrencyHelpers
 
 #if os(Linux)
 import Glibc
@@ -74,7 +75,7 @@ public actor SMTPServer {
      - Throws: An error if the connection fails
      */
     public func connect() async throws {
-        logger.info("Connecting to SMTP server \(self.host):\(self.port)")
+        logger.debug("Connecting to SMTP server at \(host):\(port)")
         
         // Determine if we should use SSL based on the port
         let useSSL = (port == 465) // SMTPS port
@@ -299,80 +300,60 @@ public actor SMTPServer {
     // MARK: - Email Sending
     
     /**
-     Send an email
-     - Parameters:
-        - email: The email to send
-     - Throws: An error if the email cannot be sent
+     Send an email with the server
+     - Parameter email: The email to send
+     - Throws: An error if sending fails
      */
     public func sendEmail(_ email: Email) async throws {
-        guard let _ = channel else {
-            throw SMTPError.connectionFailed("Not connected to SMTP server")
+        // Check if we have a valid channel (meaning we're connected)
+        guard channel != nil else {
+            logger.error("Attempting to send email without an active connection")
+            throw SMTPError.connectionFailed("Not connected to SMTP server. Call connect() first.")
         }
         
-        // Log information about the email being sent
-        let totalRecipients = email.recipients.count + email.ccRecipients.count + email.bccRecipients.count
-        logger.info("Sending email from \(email.sender) to \(totalRecipients) recipients")
+        // We don't explicitly check for authentication here, as the SMTP server will reject
+        // commands if not authenticated, and that will be handled by the error handling below.
         
-        // Log additional details in debug mode
-        if email.htmlBody != nil {
-            logger.debug("Email contains HTML content")
+        var allRecipients = email.recipients
+        allRecipients.append(contentsOf: email.ccRecipients)
+        allRecipients.append(contentsOf: email.bccRecipients)
+        
+        logger.debug("Sending email to \(allRecipients.count) recipients with subject: \(email.subject)")
+        if !email.regularAttachments.isEmpty || !email.inlineAttachments.isEmpty {
+            logger.debug("Email contains \(email.regularAttachments.count) regular attachments and \(email.inlineAttachments.count) inline attachments")
         }
         
-        if let attachments = email.attachments, !attachments.isEmpty {
-            let inlineCount = attachments.filter { $0.isInline }.count
-            let regularCount = attachments.count - inlineCount
+        // Check if the server supports 8BITMIME
+        let supports8BitMIME = self.capabilities.contains("8BITMIME")
+        
+        if supports8BitMIME {
+            self.logger.debug("Server supports 8BITMIME, using it for this email")
+        }
+        
+        do {
+            // Create Mail From command using 8BITMIME if supported
+            let mailFrom = try MailFromCommand(senderAddress: email.sender.address, use8BitMIME: supports8BitMIME)
+            _ = try await executeCommand(mailFrom)
             
-            if inlineCount > 0 {
-                logger.debug("Email contains \(inlineCount) inline attachment(s)")
+            // RCPT TO commands
+            for recipient in allRecipients {
+                let rcptTo = try RcptToCommand(recipientAddress: recipient.address)
+                _ = try await executeCommand(rcptTo)
             }
             
-            if regularCount > 0 {
-                logger.debug("Email contains \(regularCount) regular attachment(s)")
-            }
-        }
-        
-        // Send MAIL FROM command using the new command class
-        let mailFromCommand = try MailFromCommand(senderAddress: email.sender.address)
-        let mailFromSuccess = try await executeCommand(mailFromCommand)
-        
-        // Check if MAIL FROM was accepted
-        guard mailFromSuccess else {
-            throw SMTPError.sendFailed("Server rejected sender")
-        }
-        
-        // Send RCPT TO command for each recipient (To, CC, and BCC) using the new command class
-        for recipient in email.allRecipients {
-            let rcptToCommand = try RcptToCommand(recipientAddress: recipient.address)
-            let rcptToSuccess = try await executeCommand(rcptToCommand)
+            // DATA command
+            let data = DataCommand()
+            _ = try await executeCommand(data)
             
-            // Check if RCPT TO was accepted
-            guard rcptToSuccess else {
-                throw SMTPError.sendFailed("Server rejected recipient \(recipient.address)")
-            }
+            // Send content
+            let sendContent = SendContentCommand(email: email, use8BitMIME: supports8BitMIME)
+            try await executeCommand(sendContent)
+            
+            self.logger.debug("Email sent successfully")
+        } catch {
+            self.logger.error("Failed to send email: \(error)")
+            throw error
         }
-        
-        // Send DATA command using the new command class
-        let dataCommand = DataCommand()
-        let dataSuccess = try await executeCommand(dataCommand)
-        
-        // Check if DATA was accepted
-        guard dataSuccess else {
-            throw SMTPError.sendFailed("Server rejected DATA command")
-        }
-        
-        // Construct email content
-        let emailContent = constructEmailContent(email)
-        
-        // Send email content using the new command class
-        let contentCommand = SendContentCommand(content: emailContent)
-        let contentSuccess = try await executeCommand(contentCommand)
-        
-        // Check if email content was accepted
-        guard contentSuccess else {
-            throw SMTPError.sendFailed("Server rejected email content")
-        }
-        
-        logger.info("Email sent successfully")
     }
     
     // MARK: - Helper Methods
@@ -445,209 +426,6 @@ public actor SMTPServer {
         }
         
         // Error handling is now done directly by the handlers
-    }
-    
-    /**
-     Construct the email content with headers and body
-     - Parameters:
-        - email: The email to construct content for
-     - Returns: The constructed email content
-     */
-    private func constructEmailContent(_ email: Email) -> String {
-        var content = ""
-        
-        // Add headers
-        content += "From: \(email.sender)\r\n"
-        
-        // Add To header if there are primary recipients
-        if !email.recipients.isEmpty {
-            content += "To: \(email.recipients.map { $0.description }.joined(separator: ", "))\r\n"
-        }
-        
-        // Add CC header if there are CC recipients
-        if !email.ccRecipients.isEmpty {
-            content += "Cc: \(email.ccRecipients.map { $0.description }.joined(separator: ", "))\r\n"
-        }
-        
-        // Note: BCC recipients are not included in the headers (that's why they're "blind")
-        
-        content += "Subject: \(email.subject)\r\n"
-        content += "MIME-Version: 1.0\r\n"
-        
-        // Generate boundaries
-        let mainBoundary = "SwiftSMTP-Boundary-\(UUID().uuidString)"
-        let altBoundary = "SwiftSMTP-Alt-Boundary-\(UUID().uuidString)"
-        let relatedBoundary = "SwiftSMTP-Related-Boundary-\(UUID().uuidString)"
-        
-        let hasHtmlBody = email.htmlBody != nil
-        let hasInlineAttachments = !email.inlineAttachments.isEmpty
-        let hasRegularAttachments = !email.regularAttachments.isEmpty
-        
-        // Determine the structure based on what we have
-        if hasRegularAttachments {
-            // If we have regular attachments, use multipart/mixed as the top level
-            content += "Content-Type: multipart/mixed; boundary=\"\(mainBoundary)\"\r\n\r\n"
-            content += "This is a multi-part message in MIME format.\r\n\r\n"
-            
-            // Start with the text/html part
-            if hasHtmlBody {
-                content += "--\(mainBoundary)\r\n"
-                
-                if hasInlineAttachments {
-                    // If we have inline attachments, use multipart/related for HTML and inline attachments
-                    content += "Content-Type: multipart/related; boundary=\"\(relatedBoundary)\"\r\n\r\n"
-                    
-                    // First add the multipart/alternative part
-                    content += "--\(relatedBoundary)\r\n"
-                    content += "Content-Type: multipart/alternative; boundary=\"\(altBoundary)\"\r\n\r\n"
-                    
-                    // Add text part
-                    content += "--\(altBoundary)\r\n"
-                    content += "Content-Type: text/plain; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                    content += "\(email.textBody)\r\n\r\n"
-                    
-                    // Add HTML part
-                    content += "--\(altBoundary)\r\n"
-                    content += "Content-Type: text/html; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                    content += "\(email.htmlBody ?? "")\r\n\r\n"
-                    
-                    // End alternative boundary
-                    content += "--\(altBoundary)--\r\n\r\n"
-                    
-                    // Add inline attachments
-                    for attachment in email.inlineAttachments {
-                        content += "--\(relatedBoundary)\r\n"
-                        content += "Content-Type: \(attachment.mimeType)"
-                        content += "; name=\"\(attachment.filename)\"\r\n"
-                        content += "Content-Transfer-Encoding: base64\r\n"
-                        
-                        if let contentID = attachment.contentID {
-                            content += "Content-ID: <\(contentID)>\r\n"
-                        }
-                        
-                        content += "Content-Disposition: inline; filename=\"\(attachment.filename)\"\r\n\r\n"
-                        
-                        // Encode attachment data as base64
-                        let base64Data = attachment.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn])
-                        content += "\(base64Data)\r\n\r\n"
-                    }
-                    
-                    // End related boundary
-                    content += "--\(relatedBoundary)--\r\n\r\n"
-                } else {
-                    // No inline attachments, just use multipart/alternative
-                    content += "Content-Type: multipart/alternative; boundary=\"\(altBoundary)\"\r\n\r\n"
-                    
-                    // Add text part
-                    content += "--\(altBoundary)\r\n"
-                    content += "Content-Type: text/plain; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                    content += "\(email.textBody)\r\n\r\n"
-                    
-                    // Add HTML part
-                    content += "--\(altBoundary)\r\n"
-                    content += "Content-Type: text/html; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                    content += "\(email.htmlBody ?? "")\r\n\r\n"
-                    
-                    // End alternative boundary
-                    content += "--\(altBoundary)--\r\n\r\n"
-                }
-            } else {
-                // Just text, no HTML
-                content += "--\(mainBoundary)\r\n"
-                content += "Content-Type: text/plain; charset=UTF-8\r\n"
-                content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-                content += "\(email.textBody)\r\n\r\n"
-            }
-            
-            // Add regular attachments
-            for attachment in email.regularAttachments {
-                content += "--\(mainBoundary)\r\n"
-                content += "Content-Type: \(attachment.mimeType)\r\n"
-                content += "Content-Transfer-Encoding: base64\r\n"
-                content += "Content-Disposition: attachment; filename=\"\(attachment.filename)\"\r\n\r\n"
-                
-                // Encode attachment data as base64
-                let base64Data = attachment.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn])
-                content += "\(base64Data)\r\n\r\n"
-            }
-            
-            // End main boundary
-            content += "--\(mainBoundary)--\r\n"
-        } else if hasHtmlBody && hasInlineAttachments {
-            // HTML with inline attachments but no regular attachments - use multipart/related
-            content += "Content-Type: multipart/related; boundary=\"\(relatedBoundary)\"\r\n\r\n"
-            content += "This is a multi-part message in MIME format.\r\n\r\n"
-            
-            // First add the multipart/alternative part
-            content += "--\(relatedBoundary)\r\n"
-            content += "Content-Type: multipart/alternative; boundary=\"\(altBoundary)\"\r\n\r\n"
-            
-            // Add text part
-            content += "--\(altBoundary)\r\n"
-            content += "Content-Type: text/plain; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-            content += "\(email.textBody)\r\n\r\n"
-            
-            // Add HTML part
-            content += "--\(altBoundary)\r\n"
-            content += "Content-Type: text/html; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-            content += "\(email.htmlBody ?? "")\r\n\r\n"
-            
-            // End alternative boundary
-            content += "--\(altBoundary)--\r\n\r\n"
-            
-            // Add inline attachments
-            for attachment in email.inlineAttachments {
-                content += "--\(relatedBoundary)\r\n"
-                content += "Content-Type: \(attachment.mimeType)"
-                content += "; name=\"\(attachment.filename)\"\r\n"
-                content += "Content-Transfer-Encoding: base64\r\n"
-                
-                if let contentID = attachment.contentID {
-                    content += "Content-ID: <\(contentID)>\r\n"
-                }
-                
-                content += "Content-Disposition: inline; filename=\"\(attachment.filename)\"\r\n\r\n"
-                
-                // Encode attachment data as base64
-                let base64Data = attachment.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn])
-                content += "\(base64Data)\r\n\r\n"
-            }
-            
-            // End related boundary
-            content += "--\(relatedBoundary)--\r\n"
-        } else if hasHtmlBody {
-            // Only HTML, no attachments - use multipart/alternative
-            content += "Content-Type: multipart/alternative; boundary=\"\(altBoundary)\"\r\n\r\n"
-            content += "This is a multi-part message in MIME format.\r\n\r\n"
-            
-            // Add text part
-            content += "--\(altBoundary)\r\n"
-            content += "Content-Type: text/plain; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-            content += "\(email.textBody)\r\n\r\n"
-            
-            // Add HTML part
-            content += "--\(altBoundary)\r\n"
-            content += "Content-Type: text/html; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-            content += "\(email.htmlBody ?? "")\r\n\r\n"
-            
-            // End alternative boundary
-            content += "--\(altBoundary)--\r\n"
-        } else {
-            // Simple text email
-            content += "Content-Type: text/plain; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: 8bit\r\n\r\n"
-            content += email.textBody
-        }
-        
-        return content
     }
     
     /**

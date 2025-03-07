@@ -14,28 +14,40 @@ public struct MailFromCommand: SMTPCommand {
     
     /// The email address of the sender
     private let senderAddress: String
-	
-	/// Default timeout in seconds
-	public let timeoutSeconds: Int = 30
+    
+    /// Indicates if 8BITMIME is supported and should be used
+    private let use8BitMIME: Bool
+    
+    /// Default timeout in seconds
+    public let timeoutSeconds: Int = 30
     
     /**
      Initialize a new MAIL FROM command
-     - Parameter senderAddress: The email address of the sender
+     - Parameters:
+       - senderAddress: The email address of the sender
+       - use8BitMIME: Whether to use 8BITMIME extension if available
      */
-    public init(senderAddress: String) throws {
+    public init(senderAddress: String, use8BitMIME: Bool = false) throws {
         // Validate email format
         guard senderAddress.isValidEmail() else {
             throw SMTPError.invalidEmailAddress("Invalid sender address: \(senderAddress)")
         }
         
         self.senderAddress = senderAddress
+        self.use8BitMIME = use8BitMIME
     }
     
     /**
      Convert the command to a string that can be sent to the server
      */
     public func toCommandString() -> String {
-        return "MAIL FROM:<\(senderAddress)>"
+        if use8BitMIME {
+            // Add the BODY=8BITMIME parameter when 8BITMIME is supported
+            return "MAIL FROM:<\(senderAddress)> BODY=8BITMIME"
+        } else {
+            // Standard MAIL FROM command
+            return "MAIL FROM:<\(senderAddress)>"
+        }
     }
     
     /**
