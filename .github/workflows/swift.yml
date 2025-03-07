@@ -21,10 +21,7 @@ jobs:
       - name: Verify Swift version
         run: swift --version
       
-      - name: Build
-        run: swift build
-      
-      - name: Run tests
+      - name: Build & Test
         run: swift test
 
   build-linux:
@@ -41,8 +38,5 @@ jobs:
       - name: Verify Swift version
         run: swift --version
       
-      - name: Build
-        run: swift build
-      
-      - name: Run tests
-        run: swift test
+      - name: Build & Test
+        run: swift test 
