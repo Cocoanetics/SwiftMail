@@ -3,29 +3,49 @@
 
 import Foundation
 
+/// Extension to provide utilities for Int to describe file sizes
 extension Int {
-    /// Format a file size in bytes to a human-readable string
-    /// - Parameter locale: Optional locale to use for formatting (nil uses the system locale)
-    /// - Returns: A formatted string (e.g., "1.2 KB")
+    /// Format the integer as a human-readable file size (e.g. 1.5 MB)
+    /// - Parameter locale: The locale to use for formatting (defaults to current)
+    /// - Returns: A human-readable string representation of the file size
 	public func formattedFileSize(locale: Locale = .current) -> String {
+        #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+        // Use MeasurementFormatter on Apple platforms
         let byteCount = Measurement(value: Double(self), unit: UnitInformationStorage.bytes)
         let formatter = MeasurementFormatter()
         formatter.unitOptions = .providedUnit
         formatter.numberFormatter.maximumFractionDigits = 1
-		formatter.locale = locale
+        formatter.locale = locale
         
-        // Convert to the most appropriate unit
-        let converted: Measurement<UnitInformationStorage>
-        if self < 1000 {
-            converted = byteCount
-        } else if self < 1000 * 1000 {
-            converted = byteCount.converted(to: .kilobytes)
-        } else if self < 1000 * 1000 * 1000 {
-            converted = byteCount.converted(to: .megabytes)
+        // Format sizes in the appropriate unit
+        if self < 1_000 {
+            return formatter.string(from: byteCount)
+        } else if self < 1_000_000 {
+            return formatter.string(from: byteCount.converted(to: .kilobytes))
+        } else if self < 1_000_000_000 {
+            return formatter.string(from: byteCount.converted(to: .megabytes))
         } else {
-            converted = byteCount.converted(to: .gigabytes)
+            return formatter.string(from: byteCount.converted(to: .gigabytes))
         }
+        #else
+        // Simplified implementation for Linux
+        let byteCount = Double(self)
+        let numberFormatter = NumberFormatter()
+        numberFormatter.maximumFractionDigits = 1
+        numberFormatter.locale = locale
         
-        return formatter.string(from: converted)
+        if byteCount < 1_000 {
+            return "\(Int(byteCount)) B"
+        } else if byteCount < 1_000_000 {
+            let kb = byteCount / 1_000
+            return "\(numberFormatter.string(from: NSNumber(value: kb)) ?? String(format: "%.1f", kb)) KB"
+        } else if byteCount < 1_000_000_000 {
+            let mb = byteCount / 1_000_000
+            return "\(numberFormatter.string(from: NSNumber(value: mb)) ?? String(format: "%.1f", mb)) MB"
+        } else {
+            let gb = byteCount / 1_000_000_000
+            return "\(numberFormatter.string(from: NSNumber(value: gb)) ?? String(format: "%.1f", gb)) GB"
+        }
+        #endif
     }
 } 

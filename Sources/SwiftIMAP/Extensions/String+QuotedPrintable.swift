@@ -6,6 +6,9 @@
 //
 
 import Foundation
+#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+import CoreFoundation
+#endif
 
 extension String {
 
@@ -236,39 +239,83 @@ extension String {
 // MARK: - String.Encoding Helpers
 
 extension String {
-	/// Convert a charset string to a String.Encoding
-	/// - Parameter charset: The charset name (e.g., "utf-8", "iso-8859-1")
-	/// - Returns: The corresponding String.Encoding, or .utf8 as fallback
+	/// Convert a charset name to a Swift Encoding
+	/// - Parameter charset: The charset name to convert
+	/// - Returns: The corresponding String.Encoding, or .utf8 if not recognized
 	static func encodingFromCharset(_ charset: String) -> String.Encoding {
-		let normalizedCharset = charset.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+		// Normalize the charset name
+		let normalizedCharset = charset.uppercased()
 		
-		// Handle common charset names directly
+		// Handle common charsets directly
 		switch normalizedCharset {
-		case "utf-8", "utf8":
+		case "UTF-8", "UTF8":
 			return .utf8
-		case "iso-8859-1", "iso8859-1", "latin1":
-			return .isoLatin1
-		case "iso-8859-2", "iso8859-2", "latin2":
-			return .isoLatin2
-		case "windows-1252", "cp1252":
-			return .windowsCP1252
-		case "ascii":
-			return .ascii
-		case "utf-16", "utf16":
+		case "UTF-16", "UTF16":
 			return .utf16
-		case "utf-16be", "utf16be":
-			return .utf16BigEndian
-		case "utf-16le", "utf16le":
-			return .utf16LittleEndian
+		case "UTF-32", "UTF32":
+			return .utf32
+		case "ASCII":
+			return .ascii
+		case "ISO-8859-1", "ISO8859-1":
+			return .isoLatin1
+		case "ISO-8859-2", "ISO8859-2":
+			return .isoLatin2
+		case "WINDOWS-1250":
+			return .windowsCP1250
+		case "WINDOWS-1251":
+			return .windowsCP1251
+		case "WINDOWS-1252":
+			return .windowsCP1252
+		case "WINDOWS-1253":
+			return .windowsCP1253
+		case "WINDOWS-1254":
+			return .windowsCP1254
 		default:
-			// Try to convert using Core Foundation
+			#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+			// Try to convert using Core Foundation on Apple platforms
 			let cfEncoding = CFStringConvertIANACharSetNameToEncoding(normalizedCharset as CFString)
 			if cfEncoding != kCFStringEncodingInvalidId {
 				let nsEncoding = CFStringConvertEncodingToNSStringEncoding(cfEncoding)
 				return String.Encoding(rawValue: nsEncoding)
 			}
+			#endif
 			
-			// Default to UTF-8 if charset is not recognized
+			// Fallback for unknown charsets or Linux
+			// Try some additional common encodings
+			if normalizedCharset.hasPrefix("ISO-8859") || normalizedCharset.hasPrefix("ISO8859") {
+				// Extract the number part (e.g., "ISO-8859-15" -> "15")
+				if let rangeOfDash = normalizedCharset.range(of: "-"),
+				   let rangeOfSecondDash = normalizedCharset.range(of: "-", range: rangeOfDash.upperBound..<normalizedCharset.endIndex) {
+					let number = normalizedCharset[rangeOfSecondDash.upperBound...]
+					if number == "1" {
+						return .isoLatin1
+					} else if number == "2" {
+						return .isoLatin2
+					}
+					// Add other ISO encodings as needed
+				}
+			}
+			
+			// Windows codepages
+			if normalizedCharset.hasPrefix("WINDOWS-") || normalizedCharset.hasPrefix("CP") {
+				let codePage: String
+				if normalizedCharset.hasPrefix("WINDOWS-") {
+					codePage = String(normalizedCharset.dropFirst(8))
+				} else { // CP prefix
+					codePage = String(normalizedCharset.dropFirst(2))
+				}
+				
+				switch codePage {
+				case "1250": return .windowsCP1250
+				case "1251": return .windowsCP1251
+				case "1252": return .windowsCP1252
+				case "1253": return .windowsCP1253
+				case "1254": return .windowsCP1254
+				default: break
+				}
+			}
+			
+			// Default to UTF-8 if unknown
 			return .utf8
 		}
 	}
