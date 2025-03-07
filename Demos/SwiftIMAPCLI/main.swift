@@ -2,11 +2,10 @@
 // https://docs.swift.org/swift-book
 
 import Foundation
-import SwiftIMAP
-import os
 import Logging
 import SwiftDotenv
 import NIOIMAP
+import SwiftIMAP
 
 #if canImport(OSLog)
 
