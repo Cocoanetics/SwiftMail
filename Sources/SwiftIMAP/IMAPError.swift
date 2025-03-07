@@ -19,6 +19,7 @@ public enum IMAPError: Error {
     case storeFailed(String)
     case expungeFailed(String)
     case moveFailed(String)
+    case commandNotSupported(String)
 }
 
 // Add CustomStringConvertible conformance for better error messages
@@ -53,6 +54,8 @@ extension IMAPError: CustomStringConvertible {
             return "Expunge failed: \(reason)"
         case .moveFailed(let reason):
             return "Move failed: \(reason)"
+        case .commandNotSupported(let reason):
+            return "Command not supported: \(reason)"
         }
     }
 } 

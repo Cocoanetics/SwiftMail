@@ -55,7 +55,7 @@
          <EnvironmentVariable
             key = "ENABLE_DEBUG_OUTPUT"
             value = "1"
-            isEnabled = "NO">
+            isEnabled = "YES">
          </EnvironmentVariable>
       </EnvironmentVariables>
    </LaunchAction>
