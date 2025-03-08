@@ -36,34 +36,24 @@ final class DeflateHandler: ChannelDuplexHandler, @unchecked Sendable {
     public init(logger: Logger, isActive: Bool = false) {
         self.logger = logger
         self.isActive = ManagedAtomic<Bool>(isActive) // Use ManagedAtomic instead
-        logger.debug("DEFLATE handler initialized (active: \(isActive))")
     }
     
     /// Activate or deactivate compression
     public func setActive(_ active: Bool) {
         let oldValue = isActive.exchange(active, ordering: .relaxed)
         if oldValue != active {
-            logger.info("DEFLATE handler \(active ? "activated" : "deactivated")")
-            
             if active {
                 do {
                     // Create new compressor and decompressor when activating
                     self.compressor = try ZlibCompressor(algorithm: .deflate)
                     self.decompressor = try ZlibDecompressor(algorithm: .deflate)
-                    logger.debug("Created new deflate compressor and decompressor")
                 } catch {
                     logger.error("Failed to create compressor/decompressor: \(error)")
                 }
             } else {
                 // Clean up when deactivating
-                if self.compressor != nil || self.decompressor != nil {
-                    logger.debug("Preparing to clear compressor and decompressor during deactivation")
-                    
-                    // Safe to set to nil - full cleanup will happen in handlerRemoved if needed
-                    self.compressor = nil
-                    self.decompressor = nil
-                    logger.debug("Cleared deflate compressor and decompressor")
-                }
+                self.compressor = nil
+                self.decompressor = nil
             }
         }
     }
@@ -106,31 +96,13 @@ final class DeflateHandler: ChannelDuplexHandler, @unchecked Sendable {
                 // Use stream decompression which maintains state between chunks
                 try decompressor.inflate(from: &buffer, to: &decompressedBuffer)
                 
-                logger.debug("Decompressed \(originalSize) bytes to \(decompressedBuffer.readableBytes) bytes (attempt \(attempt))")
-                
                 // Pass the decompressed data up the pipeline
                 context.fireChannelRead(wrapInboundOut(decompressedBuffer))
                 return
             } catch let error as CompressNIOError where error == .bufferOverflow && attempt < maxDecompressionAttempts {
                 // If we got a buffer overflow and have more attempts, log and try again with a larger buffer
-                logger.warning("Decompression buffer overflow on attempt \(attempt), trying with larger buffer")
                 continue
             } catch {
-                if attempt == maxDecompressionAttempts {
-                    logger.error("Failed to decompress after \(maxDecompressionAttempts) attempts: \(error) (buffer size: \(originalSize))")
-                } else {
-                    logger.error("Error decompressing data on attempt \(attempt): \(error) (buffer size: \(originalSize))")
-                }
-                
-                // Log the first few bytes of the buffer for debugging
-                if originalSize > 0 {
-                    let bytesToLog = min(originalSize, 20)
-                    var bufferCopy = originalBuffer
-                    if let bytes = bufferCopy.readBytes(length: bytesToLog) {
-                        logger.error("First \(bytesToLog) bytes: \(bytes)")
-                    }
-                }
-                
                 // On error, pass the original data through
                 context.fireChannelRead(wrapInboundOut(originalBuffer))
                 return
@@ -166,8 +138,6 @@ final class DeflateHandler: ChannelDuplexHandler, @unchecked Sendable {
             // Compress the data
             try compressor.deflate(from: &buffer, to: &compressedBuffer, flush: .sync)
             
-            logger.debug("Compressed \(originalSize) bytes to \(compressedBuffer.readableBytes) bytes")
-            
             // Write the compressed data
             context.write(wrapOutboundOut(compressedBuffer), promise: promise)
         } catch {
@@ -178,11 +148,9 @@ final class DeflateHandler: ChannelDuplexHandler, @unchecked Sendable {
     }
     
     public func handlerAdded(context: ChannelHandlerContext) {
-        logger.debug("DeflateHandler added to pipeline")
     }
     
     public func handlerRemoved(context: ChannelHandlerContext) {
-        logger.debug("DeflateHandler removed from pipeline")
         
         // Properly finalize compressor before setting to nil
         if let compressor = self.compressor {
@@ -193,7 +161,6 @@ final class DeflateHandler: ChannelDuplexHandler, @unchecked Sendable {
                 
                 // Final flush to clean up resources
                 try compressor.deflate(from: &tempInBuffer, to: &tempOutBuffer, flush: .finish)
-                logger.debug("Compressor finalized successfully")
             } catch {
                 logger.error("Error finalizing compressor: \(error)")
             }
@@ -201,7 +168,6 @@ final class DeflateHandler: ChannelDuplexHandler, @unchecked Sendable {
         
         // For decompressor, there's no real "finalization" needed - just log and release
         if self.decompressor != nil {
-            logger.debug("Releasing decompressor resources")
         }
         
         // Now safe to set to nil
