@@ -46,14 +46,14 @@ Both demos look for a `.env` file in the current working directory for configura
 # IMAP Configuration
 IMAP_HOST=imap.example.com
 IMAP_PORT=993
-IMAP_USER=your_username
-IMAP_PASS=your_password
+IMAP_USERNAME=your_username
+IMAP_PASSWORD=your_password
 
 # SMTP Configuration
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
-SMTP_USER=your_username
-SMTP_PASS=your_password
+SMTP_USERNAME=your_username
+SMTP_PASSWORD=your_password
 ```
 
 To run the demos:
