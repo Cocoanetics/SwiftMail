@@ -4,7 +4,6 @@
 import Foundation
 import Logging
 import SwiftDotenv
-import NIOIMAP
 import SwiftIMAP
 
 #if canImport(OSLog)
@@ -36,99 +35,83 @@ LoggingSystem.bootstrap { label in
 // Create a logger for the main application using Swift Logging
 let logger = Logger(label: "com.cocoanetics.SwiftIMAPCLI.Main")
 
-print("📧 SwiftIMAPCLI - Email Reading Test")
+print("📧 SwiftIMAPCLI - Simple Email Demo")
 
 do {
-    // Configure SwiftDotenv with the specified path
-    print("🔍 Looking for .env file...")
+    // Load environment variables
+    try Dotenv.configure()
     
-    // Try loading the .env file
-    do {
-        try Dotenv.configure()
-        print("✅ Environment configuration loaded successfully")
-    } catch {
-        print("❌ Failed to load .env file: \(error.localizedDescription)")
+    // Get IMAP credentials
+    guard case let .string(host) = Dotenv["IMAP_HOST"],
+          case let .integer(port) = Dotenv["IMAP_PORT"],
+          case let .string(username) = Dotenv["IMAP_USERNAME"],
+          case let .string(password) = Dotenv["IMAP_PASSWORD"] else {
+        print("❌ Missing or invalid IMAP credentials in .env file")
         exit(1)
     }
     
-    // Print the loaded variables to verify
-    print("📋 Loaded environment variables:")
+    print("Connecting to \(host):\(port) as \(username)...")
     
-    // Access IMAP credentials using dynamic member lookup with case pattern matching
-    guard case let .string(host) = Dotenv["IMAP_HOST"] else {
-        print("❌ IMAP_HOST not found in .env file")
-        logger.error("IMAP_HOST not found in .env file")
-        exit(1)
-    }
-    
-    print("   IMAP_HOST: \(host)")
-    
-    guard case let .integer(port) = Dotenv["IMAP_PORT"] else {
-        print("❌ IMAP_PORT not found or invalid in .env file")
-        logger.error("IMAP_PORT not found or invalid in .env file")
-        exit(1)
-    }
-    
-    print("   IMAP_PORT: \(port)")
-    
-    guard case let .string(username) = Dotenv["IMAP_USERNAME"] else {
-        print("❌ IMAP_USERNAME not found in .env file")
-        logger.error("IMAP_USERNAME not found in .env file")
-        exit(1)
-    }
-    
-    print("   IMAP_USERNAME: \(username)")
-    
-    guard case let .string(password) = Dotenv["IMAP_PASSWORD"] else {
-        logger.error("IMAP_PASSWORD not found in .env file")
-        exit(1)
-    }
-    
-    logger.info("IMAP credentials loaded successfully")
-    logger.info("Host: \(host)")
-    logger.info("Port: \(port)")
-    logger.info("Username: \(username)")
-    
-    // Create an IMAP server instance
+    // Create an IMAP server instance and connect
     let server = IMAPServer(host: host, port: port)
     
-	do {
-		try await server.connect()
-		try await server.login(username: username, password: password)
-		
-		// List special folders
-		let specialFolders = try await server.listSpecialUseMailboxes()
-		
-		// Display special folders
-		print("\nSpecial Folders:")
-		for folder in specialFolders {
-			print("- \(folder.name)")
-		}
-		
-		guard let inbox = specialFolders.inbox else {
-			fatalError("INBOX mailbox not found")
-		}
-		
-		// Select the INBOX mailbox and get mailbox information
-		let mailboxStatus = try await server.selectMailbox(inbox.name)
-		
-		// Use the convenience method to get the latest 10 messages
-		if let latestMessagesSet = mailboxStatus.latest(10) {
-			let emails = try await server.fetchMessages(using: latestMessagesSet)
-			
-			print("\n📧 Latest Emails (\(emails.count)) 📧")
-			
-			for (index, email) in emails.enumerated() {
-				print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
-				print("---")
-			}
-		} else {
-			print("No messages found in INBOX")
-		}
-		
-		try await server.disconnect()
-	} catch {
-		logger.error("Error: \(error.localizedDescription)")
-		exit(1)
-	}
+    try await server.connect()
+    try await server.login(username: username, password: password)
+    print("✅ Connected and logged in successfully")
+    
+    // List special folders and find inbox
+    let specialFolders = try await server.listSpecialUseMailboxes()
+    guard let inbox = specialFolders.inbox else {
+        print("❌ INBOX mailbox not found")
+        exit(1)
+    }
+    
+    // Select the INBOX mailbox
+    print("\nSelecting INBOX...")
+    let mailboxStatus = try await server.selectMailbox(inbox.name)
+    print("Selected mailbox: \(inbox.name) with \(mailboxStatus.messageCount) messages")
+    
+    // Search for messages from YouTube
+    print("\nSearching for messages from YouTube...")
+    let youtubeMessagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.from("YouTube")])
+    print("Found \(youtubeMessagesSet.count) messages from YouTube")
+    
+    // Fetch and display YouTube message headers
+    if !youtubeMessagesSet.isEmpty {
+        let youtubeHeaders = try await server.fetchHeaders(using: youtubeMessagesSet)
+        
+        print("\n📧 YouTube Emails (\(youtubeHeaders.count)) 📧")
+        for (index, header) in youtubeHeaders.enumerated() {
+            print("\n[\(index + 1)/\(youtubeHeaders.count)] \(header.subject)")
+            print("   From: \(header.from)")
+            print("   Date: \(header.date)")
+            print("---")
+        }
+    } else {
+        print("No YouTube messages found.")
+    }
+    
+    // Get the latest 5 messages
+    print("\nFetching the latest 5 messages...")
+    if let latestMessagesSet = mailboxStatus.latest(5) {
+        let latestHeaders = try await server.fetchHeaders(using: latestMessagesSet)
+        
+        print("\n📧 Latest Emails (\(latestHeaders.count)) 📧")
+        for (index, header) in latestHeaders.enumerated() {
+            print("\n[\(index + 1)/\(latestHeaders.count)] \(header.subject)")
+            print("   From: \(header.from)")
+            print("   Date: \(header.date)")
+            print("---")
+        }
+    } else {
+        print("No messages found in INBOX")
+    }
+    
+    // Disconnect from the server
+    try await server.disconnect()
+    print("✅ Successfully disconnected from server")
+    
+} catch {
+    print("❌ Error: \(error.localizedDescription)")
+    exit(1)
 }

@@ -673,14 +673,15 @@ public actor IMAPServer {
 	}
 	
 	/**
-	 Perform a search on the IMAP server
+	 Searches for messages matching the given criteria
+	 
 	 - Parameters:
-	 - identifierSet: An optional set of message identifiers to limit the search scope
-	 - criteria: An array of search criteria
-	 - Returns: A collection of message identifiers matching the search criteria
+	   - identifierSet: Optional set of message identifiers to search within
+	   - criteria: The search criteria to apply
+	 - Returns: A set of message identifiers matching the search criteria
 	 - Throws: An error if the search operation fails
 	 */
-	public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria]) async throws -> [T] {
+	public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria]) async throws -> MessageIdentifierSet<T> {
 		let command = SearchCommand(identifierSet: identifierSet, criteria: criteria)
 		return try await executeCommand(command)
 	}
