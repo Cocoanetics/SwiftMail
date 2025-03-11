@@ -1,6 +1,3 @@
-// IMAPServer.swift
-// A Swift IMAP client that encapsulates connection logic
-
 import Foundation
 import Logging
 @preconcurrency import NIOIMAP
@@ -673,6 +670,19 @@ public actor IMAPServer {
 		commandTagCounter += 1
 		
 		return "\(tagPrefix)\(String(format: "%03d", commandTagCounter))"
+	}
+	
+	/**
+	 Perform a search on the IMAP server
+	 - Parameters:
+	 - identifierSet: An optional set of message identifiers to limit the search scope
+	 - criteria: An array of search criteria
+	 - Returns: A collection of message identifiers matching the search criteria
+	 - Throws: An error if the search operation fails
+	 */
+	public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria]) async throws -> [T] {
+		let command = SearchCommand(identifierSet: identifierSet, criteria: criteria)
+		return try await executeCommand(command)
 	}
 }
 
