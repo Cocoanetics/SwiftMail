@@ -122,6 +122,14 @@ public struct MessageIdentifierSet<Identifier: MessageIdentifier> {
         self.indexSet = Foundation.IndexSet(integer: Int(identifier.value))
     }
     
+    /// Creates a set from an array of identifiers
+    public init(_ identifiers: [Identifier]) {
+        self.indexSet = Foundation.IndexSet()
+        for identifier in identifiers {
+            self.indexSet.insert(Int(identifier.value))
+        }
+    }
+    
     /// Creates a set containing identifiers in the given range
     public init(_ range: ClosedRange<Identifier>) {
         self.indexSet = Foundation.IndexSet(integersIn: Int(range.lowerBound.value)...Int(range.upperBound.value))
@@ -193,6 +201,11 @@ public struct MessageIdentifierSet<Identifier: MessageIdentifier> {
     /// Returns a view of the ranges in the set
     public var ranges: [ClosedRange<Int>] {
         return indexSet.rangeView.map { $0.lowerBound...$0.upperBound - 1 }
+    }
+    
+    /// Converts the set to an array of identifiers
+    public func toArray() -> [Identifier] {
+        return indexSet.map { Identifier(UInt32($0)) }
     }
 }
 

@@ -58,4 +58,67 @@ extension IMAPError: CustomStringConvertible {
             return "Command not supported: \(reason)"
         }
     }
+}
+
+// Add LocalizedError conformance for better error messages in system contexts
+extension IMAPError: LocalizedError {
+    public var errorDescription: String? {
+        return description
+    }
+    
+    public var failureReason: String? {
+        switch self {
+        case .connectionFailed(let reason):
+            return "Could not establish connection to the IMAP server: \(reason)"
+        case .loginFailed(let reason):
+            return "Authentication with the IMAP server failed: \(reason)"
+        case .selectFailed(let reason):
+            return "Could not select the requested mailbox: \(reason)"
+        case .fetchFailed(let reason):
+            return "Failed to fetch messages: \(reason)"
+        case .logoutFailed(let reason):
+            return "Failed to properly logout: \(reason)"
+        case .timeout:
+            return "The operation took too long and timed out"
+        case .greetingFailed(let reason):
+            return "Server did not provide a proper greeting: \(reason)"
+        case .invalidArgument(let reason):
+            return "An invalid argument was provided: \(reason)"
+        case .emptyIdentifierSet:
+            return "An empty set of message identifiers was provided"
+        case .commandFailed(let reason):
+            return "The IMAP command failed to execute: \(reason)"
+        case .copyFailed(let reason):
+            return "Failed to copy messages: \(reason)"
+        case .storeFailed(let reason):
+            return "Failed to store flags: \(reason)"
+        case .expungeFailed(let reason):
+            return "Failed to expunge deleted messages: \(reason)"
+        case .moveFailed(let reason):
+            return "Failed to move messages: \(reason)"
+        case .commandNotSupported(let reason):
+            return "The requested command is not supported by the server: \(reason)"
+        }
+    }
+    
+    public var recoverySuggestion: String? {
+        switch self {
+        case .connectionFailed:
+            return "Check your network connection and server settings."
+        case .loginFailed:
+            return "Verify your username and password."
+        case .selectFailed:
+            return "Make sure the mailbox exists and you have permission to access it."
+        case .fetchFailed:
+            return "Ensure you have selected a mailbox and have valid message identifiers."
+        case .timeout:
+            return "Try again later when the server might be less busy."
+        case .commandFailed(let reason) where reason.contains("not allowed now"):
+            return "Make sure to select a mailbox before performing this operation."
+        case .commandNotSupported:
+            return "This operation may not be supported by your email provider."
+        default:
+            return "Check the error details and try again."
+        }
+    }
 } 
