@@ -678,11 +678,12 @@ public actor IMAPServer {
 	 - Parameters:
 	   - identifierSet: Optional set of message identifiers to search within
 	   - criteria: The search criteria to apply
+	   - sortCriteria: Optional sort criteria to apply
 	 - Returns: A set of message identifiers matching the search criteria
 	 - Throws: An error if the search operation fails
 	 */
-	public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria]) async throws -> MessageIdentifierSet<T> {
-		let command = SearchCommand(identifierSet: identifierSet, criteria: criteria)
+	public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], sortCriteria: [SortCriteria]? = nil) async throws -> MessageIdentifierSet<T> {
+		let command = SearchCommand(identifierSet: identifierSet, criteria: criteria, sortCriteria: sortCriteria)
 		return try await executeCommand(command)
 	}
 	
