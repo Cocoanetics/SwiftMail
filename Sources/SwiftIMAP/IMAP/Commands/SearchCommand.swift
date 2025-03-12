@@ -10,14 +10,16 @@ public struct SearchCommand<T: MessageIdentifier>: IMAPCommand {
     
     public let identifierSet: MessageIdentifierSet<T>?
     public let criteria: [SearchCriteria]
+    public let sortCriteria: [SortCriteria]?
     
     public var handlerType: HandlerType.Type { SearchHandler<T>.self }
     
     public var timeoutSeconds: Int { return 10 }
     
-    public init(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria]) {
+    public init(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], sortCriteria: [SortCriteria]? = nil) {
         self.identifierSet = identifierSet
         self.criteria = criteria
+        self.sortCriteria = sortCriteria
     }
     
     public func validate() throws {
@@ -29,12 +31,19 @@ public struct SearchCommand<T: MessageIdentifier>: IMAPCommand {
     public func toTaggedCommand(tag: String) -> TaggedCommand {
         let nioCriteria = criteria.map { $0.toNIO() }
         
-        if T.self == UID.self {
-            // For UID search, we need to use the key parameter
-            return TaggedCommand(tag: tag, command: .uidSearch(key: .and(nioCriteria)))
+        if let sortCriteria = sortCriteria, !sortCriteria.isEmpty {
+            let nioSortCriteria = sortCriteria.map { $0.toNIO() }
+            if T.self == UID.self {
+                return TaggedCommand(tag: tag, command: .uidSort(sort: nioSortCriteria, charset: "UTF-8", searchKey: .and(nioCriteria)))
+            } else {
+                return TaggedCommand(tag: tag, command: .sort(sort: nioSortCriteria, charset: "UTF-8", searchKey: .and(nioCriteria)))
+            }
         } else {
-            // For regular search, we need to use the key parameter
-            return TaggedCommand(tag: tag, command: .search(key: .and(nioCriteria)))
+            if T.self == UID.self {
+                return TaggedCommand(tag: tag, command: .uidSearch(key: .and(nioCriteria)))
+            } else {
+                return TaggedCommand(tag: tag, command: .search(key: .and(nioCriteria)))
+            }
         }
     }
 }
