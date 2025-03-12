@@ -678,12 +678,35 @@ public actor IMAPServer {
 	 - Parameters:
 	   - identifierSet: Optional set of message identifiers to search within
 	   - criteria: The search criteria to apply
+	   - sortCriteria: Optional sort criteria to apply
 	 - Returns: A set of message identifiers matching the search criteria
 	 - Throws: An error if the search operation fails
 	 */
-	public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria]) async throws -> MessageIdentifierSet<T> {
-		let command = SearchCommand(identifierSet: identifierSet, criteria: criteria)
+	public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], sortCriteria: [SortCriteria]? = nil) async throws -> MessageIdentifierSet<T> {
+		let command = SearchCommand(identifierSet: identifierSet, criteria: criteria, sortCriteria: sortCriteria)
 		return try await executeCommand(command)
+	}
+	
+	/**
+	 Sorts messages based on the given sort criteria and search criteria
+	 
+	 - Parameters:
+	   - sortCriteria: The sort criteria to apply
+	   - charset: The character set for searching (commonly "UTF-8")
+	   - searchCriteria: The search criteria to apply
+	 - Returns: A set of message identifiers matching the search and sort criteria
+	 - Throws: An error if the sort operation fails
+	 */
+	public func sort<T: MessageIdentifier>(sortCriteria: [SortCriteria], charset: String = "UTF-8", searchCriteria: [SearchCriteria]) async throws -> MessageIdentifierSet<T> {
+		// Check if the server supports the SORT capability
+		if supportsCapability({ $0 == .sort }) {
+			let command = SearchCommand(identifierSet: nil, criteria: searchCriteria, sortCriteria: sortCriteria)
+			return try await executeCommand(command)
+		} else {
+			// Fallback to SEARCH if SORT is not supported
+			let command = SearchCommand(identifierSet: nil, criteria: searchCriteria)
+			return try await executeCommand(command)
+		}
 	}
 }
 
