@@ -87,7 +87,6 @@ public actor IMAPServer {
 	
 	/**
 	 Connect to the IMAP server
-	 - Returns: A boolean indicating whether the connection was successful
 	 - Throws: An error if the connection fails
 	 */
 	public func connect() async throws {

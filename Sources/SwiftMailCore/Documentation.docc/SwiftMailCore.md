@@ -11,22 +11,24 @@ SwiftMailCore provides the foundational components and utilities used by both th
 ### Essentials
 
 - <doc:GettingStarted>
+- ``MailCommand``
+- ``MailCommandHandler``
+- ``MailError``
 
-### Networking
+### Email Types
 
-- ``Connection``
-- ``ConnectionConfiguration``
+- ``Email``
+- ``EmailAddress``
+- ``Attachment``
 
 ### Logging
 
-- ``LoggingSystem``
-- ``Logger``
+- ``MailLogger``
+- ``MailResponse``
 
-### Common Types
+### Base Types
 
-- ``MailError``
-- ``MailAddress``
-- ``MailHeaders``
+- ``BaseMailCommandHandler``
 
 ## Installation
 

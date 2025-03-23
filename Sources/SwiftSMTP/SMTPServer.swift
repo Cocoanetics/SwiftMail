@@ -71,7 +71,6 @@ public actor SMTPServer {
     
     /**
      Connect to the SMTP server
-     - Returns: A boolean indicating whether the connection was successful
      - Throws: An error if the connection fails
      */
     public func connect() async throws {

@@ -43,16 +43,37 @@ Log levels are used as follows:
 - `.debug`: Detailed debugging information
 - `.trace`: Protocol-level tracing (commands and responses)
 
-### Creating a Connection Configuration
+### Creating Email Messages
 
-To establish connections for email operations, you'll need to create a connection configuration:
+To create an email message:
 
 ```swift
-let config = ConnectionConfiguration(
-    host: "mail.example.com",
-    port: 993,
-    useTLS: true
+let sender = EmailAddress(name: "John Doe", address: "john@example.com")
+let recipient = EmailAddress(name: "Jane Smith", address: "jane@example.com")
+
+let email = Email(
+    sender: sender,
+    recipients: [recipient],
+    subject: "Hello from SwiftMail",
+    textBody: "This is a test email!",
+    htmlBody: "<html><body><h1>Hello!</h1><p>This is a test email!</p></body></html>"
 )
+```
+
+### Adding Attachments
+
+You can add attachments to your email:
+
+```swift
+let attachment = Attachment(
+    filename: "document.pdf",
+    mimeType: "application/pdf",
+    data: fileData,
+    isInline: false
+)
+
+var emailWithAttachment = email
+emailWithAttachment.attachments = [attachment]
 ```
 
 ### Error Handling
@@ -64,12 +85,14 @@ do {
     // Your email operation here
 } catch let error as MailError {
     switch error {
-    case .connectionFailed(let reason):
-        logger.error("Connection failed: \(reason)")
-    case .authenticationFailed:
-        logger.error("Authentication failed")
-    default:
-        logger.error("An error occurred: \(error)")
+    case .connectionError(let reason):
+        logger.error("Connection error: \(reason)")
+    case .authenticationFailed(let reason):
+        logger.error("Authentication failed: \(reason)")
+    case .timeout(let reason):
+        logger.error("Operation timed out: \(reason)")
+    case .general(let reason):
+        logger.error("An error occurred: \(reason)")
     }
 }
 ```
@@ -84,28 +107,32 @@ do {
 - Use `ENABLE_DEBUG_OUTPUT=1` during development
 - Avoid direct `print()` calls in favor of the logging system
 
-### Connection Management
-- Always close connections when done
-- Handle connection errors gracefully
-- Implement appropriate timeouts
-- Use TLS when possible for security
+### Email Composition
+- Always validate email addresses
+- Use proper line endings (CRLF)
+- Follow RFC 5322 format for headers
+- Handle different character encodings properly
 
 ## Next Steps
 
-- Learn about the IMAP implementation in ``SwiftIMAP``
-- Explore SMTP functionality in ``SwiftSMTP``
-- Check out the available networking options in ``Connection``
+- Explore IMAP functionality in SwiftMail's IMAP module
+- Explore SMTP functionality in SwiftMail's SMTP module
+- Check out the command handling with ``MailCommand``
 
 ## Topics
 
 ### Essentials
 
-- ``Connection``
-- ``ConnectionConfiguration``
+- ``Email``
+- ``EmailAddress``
 - ``MailError``
 
-### Advanced Topics
+### Command Handling
 
-- ``LoggingSystem``
-- ``MailAddress``
-- ``MailHeaders`` 
+- ``MailCommand``
+- ``MailCommandHandler``
+- ``BaseMailCommandHandler``
+
+### Attachments
+
+- ``Attachment`` 

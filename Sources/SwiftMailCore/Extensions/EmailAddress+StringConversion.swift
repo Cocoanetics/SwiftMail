@@ -7,15 +7,8 @@ import Foundation
 
 extension EmailAddress: LosslessStringConvertible {
     /**
-     Initialize an EmailAddress from a string representation
-     
-     Supports formats like:
-     - "user@example.com"
-     - "John Doe <john.doe@example.com>"
-     - "\"John Doe, Jr.\" <john.doe@example.com>"
-     
+     Initialize an email address from a string representation
      - Parameter description: The string representation of the email address
-     - Returns: nil if the string is not a valid email address format
      */
     public init?(_ description: String) {
         // Simple email address without a name
