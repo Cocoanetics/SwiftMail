@@ -4,13 +4,13 @@ import NIOIMAP
 import NIOIMAPCore
 
 /**
- * Handler for IMAP SEARCH commands.
- * 
- * This handler processes search responses from the IMAP server and collects
- * the message identifiers that match the search criteria.
- *
- * The generic parameter T specifies the exact MessageIdentifier type to be collected.
- */
+Handler for IMAP SEARCH commands.
+
+This handler processes search responses from the IMAP server and collects
+the message identifiers that match the search criteria.
+
+The generic parameter T specifies the exact MessageIdentifier type to be collected.
+*/
 final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageIdentifierSet<T>>, IMAPCommandHandler {
     typealias ResultType = MessageIdentifierSet<T>
     typealias InboundIn = Response

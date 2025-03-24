@@ -189,29 +189,4 @@ try await imapServer.unselectMailbox()
 
 ## Topics
 
-### Essentials
-
 - ``IMAPServer``
-
-### Common Operations
-
-- ``IMAPServer/connect()``
-- ``IMAPServer/login(username:password:)``
-- ``IMAPServer/listMailboxes()``
-- ``IMAPServer/selectMailbox(_:)``
-- ``IMAPServer/fetchMessages(using:)``
-- ``IMAPServer/search(criteria:)``
-- ``IMAPServer/copy(_:to:)``
-- ``IMAPServer/store(_:flags:operation:)``
-- ``IMAPServer/expunge()``
-- ``IMAPServer/closeMailbox()``
-- ``IMAPServer/unselectMailbox()``
-
-### Special Mailboxes
-
-- ``IMAPServer/inboxFolder``
-- ``IMAPServer/sentFolder``
-- ``IMAPServer/trashFolder``
-- ``IMAPServer/draftsFolder``
-- ``IMAPServer/junkFolder``
-- ``IMAPServer/archiveFolder`` 

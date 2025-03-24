@@ -16,21 +16,35 @@ import Glibc
 /** 
  An actor that represents an SMTP server connection.
  
- Use this class to establish and manage connections to SMTP servers, perform authentication,
- and send emails. The class handles connection lifecycle, command execution, and maintains
- server state.
+ This class provides functionality to:
+ - Establish secure connections to SMTP servers
+ - Authenticate using various mechanisms (PLAIN, LOGIN)
+ - Send emails with attachments and inline content
+ - Handle connection lifecycle and server capabilities
  
  Example:
  ```swift
  let server = SMTPServer(host: "smtp.example.com", port: 587)
  try await server.connect()
  try await server.authenticate(username: "user@example.com", password: "password")
+ 
+ let email = Email(
+     sender: EmailAddress("sender@example.com"),
+     recipients: [EmailAddress("recipient@example.com")],
+     subject: "Test Email",
+     body: "Hello, World!"
+ )
+ try await server.sendEmail(email)
  ```
  
- - Note: All operations are logged using the Swift Logging package. To view logs in Console.app:
-   1. Open Console.app
-   2. Search for "process:com.cocoanetics.SwiftMail"
-   3. Adjust the "Action" menu to show Debug and Info messages
+ - Note: All operations are logged using the Swift Logging package:
+   - Critical: Fatal errors that prevent email sending
+   - Error: Authentication failures, connection issues
+   - Warning: TLS negotiation issues, timeout warnings
+   - Notice: Successful connections and disconnections
+   - Info: Email sending progress
+   - Debug: SMTP command execution details
+   - Trace: Raw SMTP protocol communication
  */
 public actor SMTPServer {
     // MARK: - Properties
@@ -38,7 +52,7 @@ public actor SMTPServer {
     /** The hostname of the SMTP server */
     private let host: String
     
-    /** The port number of the SMTP server (typically 587 for STARTTLS or 465 for SMTPS) */
+    /** The port number of the SMTP server */
     private let port: Int
     
     /** The event loop group for handling asynchronous operations */
@@ -56,20 +70,31 @@ public actor SMTPServer {
     /** 
      Logger for SMTP operations
      
-     This logger is configured to output SMTP-specific operations and events.
-     Log messages are categorized by severity level and include contextual information
-     about the SMTP operations being performed.
+     This logger outputs SMTP-specific operations and events at appropriate levels:
+     - Critical: Application cannot continue
+     - Error: Operation failed but application can continue
+     - Warning: Potential issues that don't impact functionality
+     - Notice: Important events in normal operation
+     - Info: General information about application flow
+     - Debug: Detailed debugging information
+     - Trace: Protocol-level communication
      
-     - Note: Debug and trace level logs include detailed protocol information
+     To view these logs in Console.app:
+     1. Open Console.app
+     2. Search for "process:com.cocoanetics.SwiftMail"
+     3. Adjust the "Action" menu to show Debug and Info messages
      */
     private let logger = Logger(label: "com.cocoanetics.SwiftMail.SMTPServer")
     
     /** 
      A logger that monitors both inbound and outbound SMTP traffic
      
-     This logger captures the raw SMTP protocol communication in both directions,
-     which is useful for debugging connection issues. Sensitive information like
-     passwords is automatically redacted.
+     This logger captures the raw SMTP protocol communication in both directions:
+     - Outbound: Commands sent to the server
+     - Inbound: Responses received from the server
+     
+     Sensitive information like passwords and authentication tokens is automatically
+     redacted in the logs.
      */
     private let duplexLogger: SMTPLogger
 
@@ -80,12 +105,15 @@ public actor SMTPServer {
      
      - Parameters:
        - host: The hostname of the SMTP server
-       - port: The port number of the SMTP server (typically 587 for STARTTLS or 465 for SMTPS)
+       - port: The port number of the SMTP server
        - numberOfThreads: The number of threads to use for the event loop group
-     - Note: The port number determines the initial security mode:
-       - Port 25: Plain SMTP (not recommended)
-       - Port 587: STARTTLS (recommended)
-       - Port 465: SMTPS (implicit TLS)
+     
+     The port number determines the initial security mode:
+     - Port 25: Plain SMTP (not recommended)
+     - Port 587: STARTTLS (recommended)
+     - Port 465: SMTPS (implicit TLS)
+     
+     - Note: Logs initialization at debug level with connection details
      */
     public init(host: String, port: Int, numberOfThreads: Int = 1) {
         self.host = host
@@ -379,8 +407,23 @@ public actor SMTPServer {
     
     /**
      Send an email with the server
-     - Parameter email: The email to send
-     - Throws: An error if sending fails
+     
+     This method handles the complete email sending process:
+     1. Validates the connection state
+     2. Processes all recipients (To, CC, BCC)
+     3. Handles attachments and inline content
+     4. Uses 8BITMIME if supported by the server
+     
+     - Parameters:
+       - email: The email to send, including recipients, subject, body, and attachments
+     - Throws: 
+       - `SMTPError.connectionFailed` if not connected
+       - `SMTPError.sendFailed` if the email cannot be sent
+       - `SMTPError.recipientRejected` if any recipient is rejected
+     - Note: 
+       - Logs email sending at info level with recipient count
+       - Logs attachment details at debug level
+       - Redacts sensitive content in logs
      */
     public func sendEmail(_ email: Email) async throws {
         // Check if we have a valid channel (meaning we're connected)

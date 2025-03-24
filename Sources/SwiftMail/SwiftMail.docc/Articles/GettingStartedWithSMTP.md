@@ -88,14 +88,4 @@ do {
 
 ## Topics
 
-### Essentials
-
 - ``SMTPServer``
-- ``Email``
-- ``EmailAddress``
-
-### Common Operations
-
-- ``SMTPServer/connect()``
-- ``SMTPServer/login(username:password:)``
-- ``SMTPServer/send(_:)`` 
