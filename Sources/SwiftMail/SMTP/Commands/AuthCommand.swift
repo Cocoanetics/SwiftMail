@@ -4,24 +4,24 @@ import NIO
 /**
  Command to authenticate with SMTP server
  */
-public struct AuthCommand: SMTPCommand {
+struct AuthCommand: SMTPCommand {
     /// The result type for this command
-    public typealias ResultType = AuthResult
+    typealias ResultType = AuthResult
     
     /// The handler type for this command
-    public typealias HandlerType = AuthHandler
+    typealias HandlerType = AuthHandler
     
     /// Username for authentication
-    public let username: String
+    let username: String
     
     /// Password for authentication
-    public let password: String
+    let password: String
     
     /// Authentication method to use
-    public let method: AuthMethod
+    let method: AuthMethod
     
     /// Default timeout in seconds
-    public let timeoutSeconds: Int = 30
+    let timeoutSeconds: Int = 30
     
     /**
      Initialize a new authentication command
@@ -30,7 +30,7 @@ public struct AuthCommand: SMTPCommand {
        - password: The password for authentication
        - method: The authentication method to use (default: .plain)
      */
-    public init(username: String, password: String, method: AuthMethod = .plain) {
+    init(username: String, password: String, method: AuthMethod = .plain) {
         self.username = username
         self.password = password
         self.method = method
@@ -40,7 +40,7 @@ public struct AuthCommand: SMTPCommand {
      Convert the command to a string to send to the server
      - Returns: The command string
      */
-    public func toCommandString() -> String {
+    func toCommandString() -> String {
         switch method {
         case .plain:
             // For PLAIN auth, format is: \0username\0password
@@ -57,7 +57,7 @@ public struct AuthCommand: SMTPCommand {
      Validate that the command parameters are valid
      - Throws: SMTPError if validation fails
      */
-    public func validate() throws {
+    func validate() throws {
         guard !username.isEmpty else {
             throw SMTPError.authenticationFailed("Username cannot be empty")
         }
