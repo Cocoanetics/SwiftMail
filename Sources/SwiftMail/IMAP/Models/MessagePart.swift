@@ -71,14 +71,14 @@ public struct MessagePart: Sendable {
             return nil
         }
         
-        return String(data: data, encoding: .utf8)
+        return String(data: data, encoding: String.Encoding.utf8)
     }
     
     /// Decode the part content if it's quoted-printable encoded
     /// - Returns: The decoded data, or the original data if not encoded or can't be decoded
     public func decodedContent() -> Data {
         guard contentType.lowercased() == "text", 
-              let textContent = String(data: data, encoding: .utf8) else {
+              let textContent = String(data: data, encoding: String.Encoding.utf8) else {
             return data
         }
         
@@ -104,12 +104,12 @@ public struct MessagePart: Sendable {
             // Use the extracted charset for decoding
             let encoding = String.encodingFromCharset(charset)
             if let decodedContent = textContent.decodeQuotedPrintable(encoding: encoding),
-               let decodedData = decodedContent.data(using: .utf8) {
+               let decodedData = decodedContent.data(using: String.Encoding.utf8) {
                 return decodedData
             } else {
                 // Fallback to the String extension if specific charset decoding fails
                 let decodedContent = textContent.decodeQuotedPrintableContent()
-                if let decodedData = decodedContent.data(using: .utf8) {
+                if let decodedData = decodedContent.data(using: String.Encoding.utf8) {
                     return decodedData
                 }
             }

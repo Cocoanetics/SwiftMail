@@ -1,0 +1,79 @@
+@Tutorial(time: 20) {
+    @Intro(title: "Working with IMAP") {
+        Learn how to use SwiftMail's IMAP functionality to connect to email servers and manage messages.
+        
+        @Image(source: imap-overview.png, alt: "Illustration showing IMAP email flow")
+    }
+    
+    @Section(title: "Connecting to an IMAP Server") {
+        @ContentAndMedia {
+            Learn how to establish a connection to an IMAP server and authenticate with your credentials.
+            
+            @Image(source: imap-connect.png, alt: "Illustration showing IMAP connection")
+        }
+        
+        @Steps {
+            @Step {
+                First, create an IMAP server instance with your server details.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-1.swift")
+            }
+            
+            @Step {
+                Connect to the server and authenticate with your credentials.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-2.swift")
+            }
+        }
+    }
+    
+    @Section(title: "Working with Mailboxes") {
+        @ContentAndMedia {
+            Learn how to list and select mailboxes on the IMAP server.
+            
+            @Image(source: mailboxes.png, alt: "Illustration showing mailbox structure")
+        }
+        
+        @Steps {
+            @Step {
+                List available mailboxes on the server.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-3.swift")
+            }
+            
+            @Step {
+                Select a mailbox to work with.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-4.swift")
+            }
+        }
+    }
+    
+    @Section(title: "Fetching Messages") {
+        @ContentAndMedia {
+            Learn how to fetch and read email messages from a mailbox.
+            
+            @Image(source: fetch-messages.png, alt: "Illustration showing message fetching")
+        }
+        
+        @Steps {
+            @Step {
+                Fetch the latest messages from the selected mailbox.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-5.swift")
+            }
+            
+            @Step {
+                Process the fetched messages.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-6.swift")
+            }
+            
+            @Step {
+                Clean up by logging out and closing the connection.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-7.swift")
+            }
+        }
+    }
+} 
