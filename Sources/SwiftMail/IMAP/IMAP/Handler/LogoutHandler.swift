@@ -8,17 +8,12 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP LOGOUT command
-public final class LogoutHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
+final class LogoutHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
 
-    /// Handle an error
-    override public func handleError(_ error: Error) {
-        super.handleError(error)
-    }
-    
     /// Process an incoming response
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
-    override public func processResponse(_ response: Response) -> Bool {
+    override func processResponse(_ response: Response) -> Bool {
         // Log the response
         let baseHandled = super.processResponse(response)
         

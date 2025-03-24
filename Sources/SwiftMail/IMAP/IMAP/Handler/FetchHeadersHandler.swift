@@ -8,27 +8,27 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH HEADERS command
-public final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHandler {
+final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHandler {
     /// Collected email headers
     private var emailHeaders: [Header] = []
     
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
-    override public func handleTaggedOKResponse(_ response: TaggedResponse) {
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
         // Succeed with the collected headers
         succeedWithResult(lock.withLock { self.emailHeaders })
     }
     
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
-    override public func handleTaggedErrorResponse(_ response: TaggedResponse) {
+    override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.fetchFailed(String(describing: response.state)))
     }
     
     /// Process an incoming response
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
-    override public func processResponse(_ response: Response) -> Bool {
+    override func processResponse(_ response: Response) -> Bool {
         // Call the base class implementation to buffer the response
         let handled = super.processResponse(response)
         

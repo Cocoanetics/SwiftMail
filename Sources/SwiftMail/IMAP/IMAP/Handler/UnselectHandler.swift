@@ -10,12 +10,12 @@ import Logging
  The UNSELECT command is an extension to IMAP defined in RFC 3691 that allows
  a client to deselect the current mailbox without expunging deleted messages.
  */
-public final class UnselectHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
-    public typealias ResultType = Void
-    public typealias InboundIn = Response
-    public typealias InboundOut = Never
+final class UnselectHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
+    typealias ResultType = Void
+    typealias InboundIn = Response
+    typealias InboundOut = Never
     
-    override public func processResponse(_ response: Response) -> Bool {
+    override func processResponse(_ response: Response) -> Bool {
         // Call the base class implementation to buffer the response
         let handled = super.processResponse(response)
         

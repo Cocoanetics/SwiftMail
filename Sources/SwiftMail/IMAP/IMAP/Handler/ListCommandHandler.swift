@@ -11,14 +11,14 @@ import NIO
 import Logging
 
 /// Handler for processing LIST command responses
-public final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, IMAPCommandHandler, @unchecked Sendable {
+final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, IMAPCommandHandler, @unchecked Sendable {
     public typealias ResultType = [Mailbox.Info]
     public typealias InboundIn = Response
     public typealias InboundOut = Never
     
     private var mailboxes: [NIOIMAPCore.MailboxInfo] = []
     
-	public override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+	override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = self.unwrapInboundIn(data)
         
         switch response {
@@ -35,7 +35,7 @@ public final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, I
         }
     }
     
-	public override func errorCaught(context: ChannelHandlerContext, error: Error) {
+	override func errorCaught(context: ChannelHandlerContext, error: Error) {
         promise.fail(error)
         context.fireErrorCaught(error)
     }

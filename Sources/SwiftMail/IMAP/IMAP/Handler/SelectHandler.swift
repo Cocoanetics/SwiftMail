@@ -8,7 +8,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP SELECT command
-public final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCommandHandler {
+final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCommandHandler {
     /// The type of result this handler produces
     public typealias ResultType = Mailbox.Status
     
@@ -28,7 +28,7 @@ public final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCo
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the select completes
-    override public init(commandTag: String, promise: EventLoopPromise<Mailbox.Status>) {
+    override init(commandTag: String, promise: EventLoopPromise<Mailbox.Status>) {
         // Initialize with default values
         mailboxInfo = Mailbox.Status()
         super.init(commandTag: commandTag, promise: promise)
@@ -36,7 +36,7 @@ public final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCo
     
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
-    override public func handleTaggedOKResponse(_ response: TaggedResponse) {
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
         // If we have a first unseen message but unseen count is 0,
         // calculate the unseen count as (total messages - first unseen + 1)
         if mailboxInfo.firstUnseen > 0 && mailboxInfo.unseenCount == 0 {
@@ -49,14 +49,14 @@ public final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCo
     
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
-    override public func handleTaggedErrorResponse(_ response: TaggedResponse) {
+    override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.selectFailed(String(describing: response.state)))
     }
     
     /// Handle untagged responses to extract mailbox information
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
-    override public func handleUntaggedResponse(_ response: Response) -> Bool {
+    override func handleUntaggedResponse(_ response: Response) -> Bool {
         // Process untagged responses for mailbox information
         if case .untagged(let untaggedResponse) = response {
             // Extract mailbox information from untagged responses

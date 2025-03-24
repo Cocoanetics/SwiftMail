@@ -8,21 +8,15 @@ import NIOIMAPCore
  It allows a client to deselect the current mailbox without implicitly causing an expunge 
  of messages marked for deletion, as the CLOSE command does.
  */
-public struct UnselectCommand: IMAPCommand {
-    public typealias ResultType = Void
-    public typealias HandlerType = UnselectHandler
+struct UnselectCommand: IMAPCommand {
+    typealias ResultType = Void
+    typealias HandlerType = UnselectHandler
     
-    public var handlerType: HandlerType.Type {
+    var handlerType: HandlerType.Type {
         return UnselectHandler.self
     }
     
-    public init() {}
-    
-    public func validate() throws {
-        // No validation needed for UNSELECT command
-    }
-    
-    public func toTaggedCommand(tag: String) -> TaggedCommand {
+    func toTaggedCommand(tag: String) -> TaggedCommand {
         // Using a raw string command since UNSELECT is not in the standard Command enum
         // The UNSELECT command takes no parameters
 		return TaggedCommand(tag: tag, command: .unselect)

@@ -11,14 +11,14 @@ import NIOIMAPCore
  *
  * The generic parameter T specifies the exact MessageIdentifier type to be collected.
  */
-public final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageIdentifierSet<T>>, IMAPCommandHandler {
-    public typealias ResultType = MessageIdentifierSet<T>
-    public typealias InboundIn = Response
-    public typealias InboundOut = Never
+final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageIdentifierSet<T>>, IMAPCommandHandler {
+    typealias ResultType = MessageIdentifierSet<T>
+    typealias InboundIn = Response
+    typealias InboundOut = Never
     
     private var searchResults: [T] = []
     
-    override public func processResponse(_ response: Response) -> Bool {
+    override func processResponse(_ response: Response) -> Bool {
         let handled = super.processResponse(response)
         
         // Check for untagged status responses that indicate errors
@@ -52,7 +52,7 @@ public final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<M
         return handled
     }
     
-    override public func handleTaggedOKResponse(_ response: TaggedResponse) {
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
         // When we receive an OK response, the search is complete
         // Return the collected search results as a MessageIdentifierSet
         print("Search complete, returning \(searchResults.count) results")
@@ -66,7 +66,7 @@ public final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<M
         succeedWithResult(resultSet)
     }
     
-    override public func handleTaggedErrorResponse(_ response: TaggedResponse) {
+    override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         // If the search command fails, report the error with more specific information
         switch response.state {
         case .bad(let responseText):

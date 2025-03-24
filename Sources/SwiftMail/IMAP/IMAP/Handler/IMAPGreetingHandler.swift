@@ -9,12 +9,12 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP server greeting
-public final class IMAPGreetingHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler, @unchecked Sendable {
+final class IMAPGreetingHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler, @unchecked Sendable {
     
     /// Process untagged responses to look for the server greeting
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
-    override public func handleUntaggedResponse(_ response: Response) -> Bool {
+    override func handleUntaggedResponse(_ response: Response) -> Bool {
         // Server greeting is typically an untagged OK response
         if case .untagged(let untaggedResponse) = response {
             if case .conditionalState(let state) = untaggedResponse {

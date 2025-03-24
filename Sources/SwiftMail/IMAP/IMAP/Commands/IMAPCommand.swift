@@ -30,6 +30,10 @@ protocol IMAPCommand {
 extension IMAPCommand {
     var timeoutSeconds: Int { return 5 }
     
+	var handlerType: HandlerType.Type {
+		return HandlerType.self
+	}
+	
     func validate() throws {
         // Default implementation does no validation
     }

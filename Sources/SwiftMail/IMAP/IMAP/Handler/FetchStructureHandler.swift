@@ -8,13 +8,13 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH STRUCTURE command
-public final class FetchStructureHandler: BaseIMAPCommandHandler<BodyStructure>, IMAPCommandHandler {
+final class FetchStructureHandler: BaseIMAPCommandHandler<BodyStructure>, IMAPCommandHandler {
     /// The body structure from the response
     private var bodyStructure: BodyStructure?
     
     /// Handle a tagged OK response by succeeding the promise with the body structure
     /// - Parameter response: The tagged response
-    override public func handleTaggedOKResponse(_ response: TaggedResponse) {
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
         lock.withLock {
             if let structure = self.bodyStructure {
                 succeedWithResult(structure)
@@ -26,14 +26,14 @@ public final class FetchStructureHandler: BaseIMAPCommandHandler<BodyStructure>,
     
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
-    override public func handleTaggedErrorResponse(_ response: TaggedResponse) {
+    override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.fetchFailed(String(describing: response.state)))
     }
     
     /// Process an incoming response
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
-    override public func processResponse(_ response: Response) -> Bool {
+    override func processResponse(_ response: Response) -> Bool {
         // Call the base class implementation to buffer the response
         let handled = super.processResponse(response)
         

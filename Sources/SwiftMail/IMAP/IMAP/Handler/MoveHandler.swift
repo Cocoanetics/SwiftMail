@@ -8,16 +8,16 @@ import NIO
 import NIOConcurrencyHelpers
 
 /** Handler for IMAP MOVE command */
-public final class MoveHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
+final class MoveHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
     /** The result type for this handler */
-    public typealias ResultType = Void
+    typealias ResultType = Void
     
     /**
      Process an incoming response
      - Parameter response: The response to process
      - Returns: Whether the response was handled by this handler
      */
-    override public func processResponse(_ response: Response) -> Bool {
+    override func processResponse(_ response: Response) -> Bool {
         // Log the response using the base handler
         let baseHandled = super.processResponse(response)
         

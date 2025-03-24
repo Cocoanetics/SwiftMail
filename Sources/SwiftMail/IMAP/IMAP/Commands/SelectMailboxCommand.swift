@@ -3,28 +3,28 @@ import NIO
 import NIOIMAP
 
 /// Command to select a mailbox
-public struct SelectMailboxCommand: IMAPCommand {
-    public typealias ResultType = Mailbox.Status
-    public typealias HandlerType = SelectHandler
+struct SelectMailboxCommand: IMAPCommand {
+    typealias ResultType = Mailbox.Status
+    typealias HandlerType = SelectHandler
     
-    public let mailboxName: String
-    public let timeoutSeconds: Int = 30
+    let mailboxName: String
+    let timeoutSeconds: Int = 30
     
-    public var handlerType: HandlerType.Type {
+    var handlerType: HandlerType.Type {
         return SelectHandler.self
     }
     
-    public init(mailboxName: String) {
+    init(mailboxName: String) {
         self.mailboxName = mailboxName
     }
     
-    public func validate() throws {
+    func validate() throws {
         guard !mailboxName.isEmpty else {
             throw IMAPError.invalidArgument("Mailbox name cannot be empty")
         }
     }
     
-    public func toTaggedCommand(tag: String) -> TaggedCommand {
+    func toTaggedCommand(tag: String) -> TaggedCommand {
         return TaggedCommand(tag: tag, command: .select(MailboxName(ByteBuffer(string: mailboxName))))
     }
 }
