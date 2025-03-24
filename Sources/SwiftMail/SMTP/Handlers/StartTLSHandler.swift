@@ -6,13 +6,13 @@ import Logging
 /**
  Handler for SMTP STARTTLS command responses
  */
-public final class StartTLSHandler: BaseSMTPHandler<Bool> {
+final class StartTLSHandler: BaseSMTPHandler<Bool> {
     /**
      Process a response from the server
      - Parameter response: The response to process
      - Returns: Whether the handler is complete
      */
-    override public func processResponse(_ response: SMTPResponse) -> Bool {
+    override func processResponse(_ response: SMTPResponse) -> Bool {
         if response.code == 220 {
             // 220 Ready to start TLS
             promise.succeed(true)
@@ -30,7 +30,7 @@ public final class StartTLSHandler: BaseSMTPHandler<Bool> {
      Handle a successful response
      - Parameter response: The parsed SMTP response
      */
-    override public func handleSuccess(response: SMTPResponse) {
+    override func handleSuccess(response: SMTPResponse) {
         promise.succeed(true)
     }
     
@@ -38,7 +38,7 @@ public final class StartTLSHandler: BaseSMTPHandler<Bool> {
      Handle an error response
      - Parameter response: The parsed SMTP response
      */
-    override public func handleError(response: SMTPResponse) {
+    override func handleError(response: SMTPResponse) {
         promise.fail(SMTPError.tlsFailed("STARTTLS failed: \(response.message)"))
     }
 } 

@@ -6,9 +6,9 @@ import NIOSSL
 /**
  A channel handler for processing SMTP responses and forwarding them to the appropriate command handler
  */
-public final class SMTPResponseHandler: ChannelInboundHandler {
-    public typealias InboundIn = String
-    public typealias InboundOut = SMTPResponse
+final class SMTPResponseHandler: ChannelInboundHandler {
+	typealias InboundIn = String
+	typealias InboundOut = SMTPResponse
     
     /// Current accumulated response lines
     private var currentResponse = ""
@@ -17,19 +17,12 @@ public final class SMTPResponseHandler: ChannelInboundHandler {
     private var currentCode: Int = 0
     
     /**
-     Initialize a new response handler
-     */
-    public init() {
-        // No longer needs reference to SMTPServer
-    }
-    
-    /**
      Handle an incoming response line
      - Parameters:
         - context: The channel handler context
         - data: The incoming data (response line)
      */
-    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+	func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let line = unwrapInboundIn(data)
         processLine(line, context: context)
     }
@@ -40,7 +33,7 @@ public final class SMTPResponseHandler: ChannelInboundHandler {
         - context: The channel handler context
         - error: The error that occurred
      */
-    public func errorCaught(context: ChannelHandlerContext, error: Error) {
+	func errorCaught(context: ChannelHandlerContext, error: Error) {
         // Fire the error to the next handler in the pipeline
         context.fireErrorCaught(error)
     }
@@ -98,9 +91,9 @@ public final class SMTPResponseHandler: ChannelInboundHandler {
 /**
  A frame decoder for SMTP responses that extracts individual response lines
  */
-public final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
-    public typealias InboundIn = ByteBuffer
-    public typealias InboundOut = String
+final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
+	typealias InboundIn = ByteBuffer
+	typealias InboundOut = String
     
     /// Maximum line length (to prevent memory issues)
     private let maxLength: Int
@@ -114,7 +107,7 @@ public final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
         - maxLength: Maximum allowed line length
         - stripDelimiter: Whether to strip the delimiter from the output
      */
-    public init(maxLength: Int = 8192, stripDelimiter: Bool = true) {
+	init(maxLength: Int = 8192, stripDelimiter: Bool = true) {
         self.maxLength = maxLength
         self.stripDelimiter = stripDelimiter
     }
@@ -126,7 +119,7 @@ public final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
         - buffer: The incoming data buffer
      - Returns: Decoding result
      */
-    public func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
+	func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
         // Check if we can find a line delimiter
         guard let delimiterIndex = buffer.readableBytesView.firstIndex(where: { $0 == 0x0A /* \n */ }) else {
             return .needMoreData
@@ -154,7 +147,7 @@ public final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
         return .continue
     }
     
-    public func decodeLast(context: ChannelHandlerContext, buffer: inout ByteBuffer, seenEOF: Bool) throws -> DecodingState {
+	func decodeLast(context: ChannelHandlerContext, buffer: inout ByteBuffer, seenEOF: Bool) throws -> DecodingState {
         // Just use the normal decode for the last bytes
         return try decode(context: context, buffer: &buffer)
     }
