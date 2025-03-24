@@ -13,7 +13,7 @@ struct StartTLSCommand: SMTPCommand {
 	typealias HandlerType = StartTLSHandler
     
     /// Default timeout in seconds
-    public let timeoutSeconds: Int = 10
+	let timeoutSeconds: Int = 10
     
     /**
      Convert the command to a string that can be sent to the server

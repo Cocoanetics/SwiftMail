@@ -20,7 +20,7 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCommandHa
     
     /// Prepare the handler for a specific mailbox
     /// - Parameter mailboxName: The name of the mailbox to select
-    public static func prepareForMailbox(_ mailboxName: String) {
+	static func prepareForMailbox(_ mailboxName: String) {
         pendingMailboxName = mailboxName
     }
     

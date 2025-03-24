@@ -16,7 +16,7 @@ struct RcptToCommand: SMTPCommand {
     private let recipientAddress: String
 	
 	/// Default timeout in seconds
-	public let timeoutSeconds: Int = 10
+	let timeoutSeconds: Int = 10
     
     /**
      Initialize a new RCPT TO command

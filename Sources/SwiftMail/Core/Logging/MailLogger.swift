@@ -17,9 +17,9 @@ class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
     typealias InboundOut = Any
     
     // Common properties - using protected-like access
-    public let outboundLogger: Logging.Logger
-    public let inboundLogger: Logging.Logger
-    public let lock = NIOLock()
+	let outboundLogger: Logging.Logger
+	let inboundLogger: Logging.Logger
+	let lock = NIOLock()
     
     // Make inboundBuffer accessible for modification by subclasses
 	var inboundBuffer: [String] = []
