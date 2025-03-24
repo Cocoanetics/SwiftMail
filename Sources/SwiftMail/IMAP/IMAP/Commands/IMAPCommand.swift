@@ -6,7 +6,7 @@ import NIO
 import NIOIMAP
 
 /// A protocol for all IMAP commands that know their handler type
-public protocol IMAPCommand {
+protocol IMAPCommand {
     /// The result type this command produces
     associatedtype ResultType
     
@@ -27,7 +27,7 @@ public protocol IMAPCommand {
 }
 
 // Provide reasonable defaults
-public extension IMAPCommand {
+extension IMAPCommand {
     var timeoutSeconds: Int { return 5 }
     
     func validate() throws {

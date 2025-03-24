@@ -4,12 +4,12 @@ import NIO
 import Logging
 
 /** Handler for the CLOSE command */
-public final class CloseHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
-    public typealias ResultType = Void
-    public typealias InboundIn = Response
-    public typealias InboundOut = Never
+final class CloseHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
+	typealias ResultType = Void
+	typealias InboundIn = Response
+	typealias InboundOut = Never
     
-    override public func processResponse(_ response: Response) -> Bool {
+    override func processResponse(_ response: Response) -> Bool {
         // Call the base class implementation to buffer the response
         let handled = super.processResponse(response)
         
