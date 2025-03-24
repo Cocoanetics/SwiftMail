@@ -154,7 +154,7 @@ public actor SMTPServer {
      - Returns: The result of the command
      - Throws: An error if the command fails
      */
-    @discardableResult public func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+    @discardableResult func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
         // Ensure we have a valid channel
         guard let channel = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
