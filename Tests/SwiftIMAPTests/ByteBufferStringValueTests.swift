@@ -1,7 +1,7 @@
 import Foundation
 import Testing
 import NIO
-@testable import SwiftIMAP
+@testable import SwiftMail
 
 struct ByteBufferStringValueTests {
     

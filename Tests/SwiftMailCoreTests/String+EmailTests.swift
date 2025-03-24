@@ -2,7 +2,7 @@
 // Tests for email validation String extension
 
 import XCTest
-@testable import SwiftMailCore
+@testable import SwiftMail
 
 final class StringEmailTests: XCTestCase {
     func testValidEmails() {

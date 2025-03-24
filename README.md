@@ -79,7 +79,7 @@ The debug logging options:
 ### SwiftIMAP Example
 
 ```swift
-import SwiftIMAP
+import SwiftMail
 
 // Create an IMAP server connection
 let imapServer = IMAPServer(host: "imap.example.com", port: 993)
@@ -119,7 +119,7 @@ try await imapServer.close()
 ### SwiftSMTP Example
 
 ```swift
-import SwiftSMTP
+import SwiftMail
 
 // Create an SMTP server connection
 let smtpServer = SMTPServer(host: "smtp.example.com", port: 587)

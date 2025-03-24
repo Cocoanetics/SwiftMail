@@ -1,5 +1,5 @@
 import Testing
-import SwiftMailCore
+import SwiftMail
 
 @Suite("EmailAddress Tests")
 struct EmailAddressTests {

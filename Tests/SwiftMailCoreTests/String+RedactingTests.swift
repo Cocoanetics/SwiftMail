@@ -2,7 +2,7 @@
 // Tests for string extensions in the SwiftMailCore library
 
 import Testing
-import SwiftMailCore
+import SwiftMail
 
 @Suite("String Extensions Tests")
 struct StringExtensionsTests {

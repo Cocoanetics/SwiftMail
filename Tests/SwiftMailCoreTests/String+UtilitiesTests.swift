@@ -2,7 +2,7 @@
 // Tests for general String utilities
 
 import XCTest
-@testable import SwiftMailCore
+@testable import SwiftMail
 
 final class StringUtilitiesTests: XCTestCase {
     func testSanitizedFileName() {

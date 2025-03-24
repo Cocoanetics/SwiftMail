@@ -2,10 +2,10 @@
 // https://docs.swift.org/swift-book
 
 import Foundation
-import SwiftSMTP
+import SwiftMail
 import Logging
 import SwiftDotenv
-import SwiftMailCore
+import SwiftMail
 
 
 #if canImport(OSLog)

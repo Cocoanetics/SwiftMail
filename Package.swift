@@ -15,16 +15,7 @@ let package = Package(
     products: [
         .library(
             name: "SwiftMail",
-            targets: ["SwiftIMAP", "SwiftSMTP"]),
-        .library(
-            name: "SwiftIMAP",
-            targets: ["SwiftIMAP"]),
-        .library(
-            name: "SwiftSMTP",
-            targets: ["SwiftSMTP"]),
-        .library(
-            name: "SwiftMailCore",
-            targets: ["SwiftMailCore"]),
+            targets: ["SwiftMail"]),
         .executable(
             name: "SwiftIMAPCLI",
             targets: ["SwiftIMAPCLI"]),
@@ -43,30 +34,18 @@ let package = Package(
     ],
     targets: [
         .target(
-            name: "SwiftMailCore",
+            name: "SwiftMail",
             dependencies: [
                 .product(name: "NIO", package: "swift-nio"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
                 .product(name: "Logging", package: "swift-log"),
-            ]
-        ),
-        .target(
-            name: "SwiftIMAP",
-            dependencies: [
-                "SwiftMailCore",
                 .product(name: "NIOIMAP", package: "swift-nio-imap"),
-            ]
-        ),
-        .target(
-            name: "SwiftSMTP",
-            dependencies: [
-                "SwiftMailCore",
             ]
         ),
         .executableTarget(
             name: "SwiftIMAPCLI",
             dependencies: [
-                "SwiftIMAP",
+                "SwiftMail",
                 .product(name: "SwiftDotenv", package: "swift-dotenv"),
             ],
 			path: "Demos/SwiftIMAPCLI"
@@ -74,7 +53,7 @@ let package = Package(
         .executableTarget(
             name: "SwiftSMTPCLI",
             dependencies: [
-                "SwiftSMTP",
+                "SwiftMail",
                 .product(name: "SwiftDotenv", package: "swift-dotenv"),
             ],
 			path: "Demos/SwiftSMTPCLI"
@@ -82,7 +61,7 @@ let package = Package(
         .testTarget(
             name: "SwiftIMAPTests",
             dependencies: [
-                "SwiftIMAP",
+                "SwiftMail",
                 .product(name: "Testing", package: "swift-testing")
             ],
             resources: [
@@ -92,15 +71,14 @@ let package = Package(
         .testTarget(
             name: "SwiftSMTPTests",
             dependencies: [
-                "SwiftSMTP",
-                "SwiftMailCore",
+                "SwiftMail",
                 .product(name: "Testing", package: "swift-testing")
             ]
         ),
         .testTarget(
             name: "SwiftMailCoreTests",
             dependencies: [
-                "SwiftMailCore",
+                "SwiftMail",
                 .product(name: "Testing", package: "swift-testing")
             ]
         ),

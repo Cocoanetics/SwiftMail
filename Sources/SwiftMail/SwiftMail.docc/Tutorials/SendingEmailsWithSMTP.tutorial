@@ -1,0 +1,79 @@
+@Tutorial(time: 15) {
+    @Intro(title: "Sending Emails with SMTP") {
+        Learn how to use SwiftMail's SMTP functionality to send emails with attachments.
+        
+        @Image(source: placeholder.png, alt: "Illustration showing SMTP email flow")
+    }
+    
+    @Section(title: "Connecting to an SMTP Server") {
+        @ContentAndMedia {
+            Learn how to establish a connection to an SMTP server and authenticate.
+            
+            @Image(source: placeholder.png, alt: "Illustration showing SMTP connection")
+        }
+        
+        @Steps {
+            @Step {
+                First, create an SMTP server instance with your server details.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-1.swift")
+            }
+            
+            @Step {
+                Connect to the server and authenticate with your credentials.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-2.swift")
+            }
+        }
+    }
+    
+    @Section(title: "Creating and Sending Emails") {
+        @ContentAndMedia {
+            Learn how to create and send emails with SwiftMail.
+            
+            @Image(source: placeholder.png, alt: "Illustration showing email creation")
+        }
+        
+        @Steps {
+            @Step {
+                Create email addresses for the sender and recipients.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-3.swift")
+            }
+            
+            @Step {
+                Create an email with subject and body.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-4.swift")
+            }
+            
+            @Step {
+                Optionally add attachments
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-5.swift")
+            }
+        }
+    }
+    
+    @Section(title: "Sending and Cleanup") {
+        @ContentAndMedia {
+            Learn how to send the email and clean up afterwards.
+            
+            @Image(source: placeholder.png, alt: "Illustration showing email attachments")
+        }
+        
+        @Steps {
+            @Step {
+                Send the email and handle the response.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-6.swift")
+            }
+
+            @Step {
+                Clean up by disconnecting from the server.
+                
+                @Code(name: "SMTPExample.swift", file: "smtp-7.swift")
+            }
+        }
+    }
+} 

@@ -4,7 +4,7 @@
 import Foundation
 import Logging
 import SwiftDotenv
-import SwiftIMAP
+import SwiftMail
 
 #if canImport(OSLog)
 

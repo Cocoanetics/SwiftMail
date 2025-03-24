@@ -1,6 +1,6 @@
 import Testing
-@testable import SwiftSMTP
-@testable import SwiftMailCore
+@testable import SwiftMail
+@testable import SwiftMail
 
 struct SMTPTests {
     @Test

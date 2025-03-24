@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import SwiftIMAP
+@testable import SwiftMail
 
 struct IntUtilitiesTests {
     
