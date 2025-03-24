@@ -55,6 +55,38 @@ if let latestMessagesSet = mailboxInfo.latest(10) {
 }
 ```
 
+## Searching Messages
+
+SwiftMail provides powerful search capabilities using different types of message identifiers:
+
+```swift
+// Define message identifier set types for searching
+let unreadMessagesSet: MessageIdentifierSet<SequenceNumber> // Uses temporary sequence numbers
+let sampleMessagesSet: MessageIdentifierSet<UID> // Uses permanent unique identifiers
+
+// Search for unread messages using sequence numbers
+print("\nSearching for unread messages...")
+unreadMessagesSet = try await imapServer.search(criteria: [.unseen])
+print("Found \(unreadMessagesSet.count) unread messages")
+
+// Search for messages with a specific subject using UIDs
+print("\nSearching for sample emails...")
+sampleMessagesSet = try await imapServer.search(criteria: [.subject("SwiftSMTPCLI")])
+print("Found \(sampleMessagesSet.count) sample emails")
+```
+
+The search functionality supports two types of message identifiers:
+- **SequenceNumber**: Temporary numbers assigned to messages in a mailbox that change frequently
+- **UID**: Message identifiers that are more stable than sequence numbers but can still change between sessions or when the mailbox is modified
+
+Common search criteria include:
+- `.unseen`: Find unread messages
+- `.subject(String)`: Search by subject text
+- `.from(String)`: Search by sender
+- `.to(String)`: Search by recipient
+- `.before(Date)`: Find messages before a date
+- `.since(Date)`: Find messages since a date
+
 ## Error Handling
 
 SwiftMail uses Swift's error handling system. Common errors include:
@@ -72,6 +104,81 @@ do {
 } catch {
     print("IMAP error: \(error)")
 }
+```
+
+## Cleanup
+
+Always remember to properly close your connection:
+
+```swift
+// Logout from the server
+try await imapServer.logout()
+
+// Close the connection
+try await imapServer.close()
+```
+
+## Special Mailboxes
+
+SwiftMail provides easy access to common special-use mailboxes:
+
+```swift
+// Get standard mailboxes
+let inbox = try imapServer.inboxFolder
+let sent = try imapServer.sentFolder
+let trash = try imapServer.trashFolder
+let drafts = try imapServer.draftsFolder
+let junk = try imapServer.junkFolder
+let archive = try imapServer.archiveFolder
+```
+
+## Message Operations
+
+### Copying Messages
+
+Copy messages between mailboxes:
+
+```swift
+// Copy messages using sequence numbers or UIDs
+let messageSet: MessageIdentifierSet<UID> = // ... your message set ...
+try await imapServer.copy(messageSet, to: "Archive")
+```
+
+### Managing Message Flags
+
+Set or remove flags on messages:
+
+```swift
+// Mark messages as read
+let unreadSet: MessageIdentifierSet<UID> = // ... your message set ...
+try await imapServer.store(unreadSet, flags: [.seen], operation: .add)
+
+// Mark messages as deleted
+let messageSet: MessageIdentifierSet<UID> = // ... your message set ...
+try await imapServer.store(messageSet, flags: [.deleted], operation: .add)
+```
+
+### Expunging Deleted Messages
+
+Remove messages marked for deletion:
+
+```swift
+// Permanently remove messages marked as deleted
+try await imapServer.expunge()
+```
+
+## Mailbox Management
+
+### Closing a Mailbox
+
+Close the currently selected mailbox:
+
+```swift
+// Close mailbox and expunge deleted messages
+try await imapServer.closeMailbox()
+
+// Close mailbox without expunging (if supported by server)
+try await imapServer.unselectMailbox()
 ```
 
 ## Next Steps
@@ -92,4 +199,19 @@ do {
 - ``IMAPServer/login(username:password:)``
 - ``IMAPServer/listMailboxes()``
 - ``IMAPServer/selectMailbox(_:)``
-- ``IMAPServer/fetchMessages(using:)`` 
+- ``IMAPServer/fetchMessages(using:)``
+- ``IMAPServer/search(criteria:)``
+- ``IMAPServer/copy(_:to:)``
+- ``IMAPServer/store(_:flags:operation:)``
+- ``IMAPServer/expunge()``
+- ``IMAPServer/closeMailbox()``
+- ``IMAPServer/unselectMailbox()``
+
+### Special Mailboxes
+
+- ``IMAPServer/inboxFolder``
+- ``IMAPServer/sentFolder``
+- ``IMAPServer/trashFolder``
+- ``IMAPServer/draftsFolder``
+- ``IMAPServer/junkFolder``
+- ``IMAPServer/archiveFolder`` 

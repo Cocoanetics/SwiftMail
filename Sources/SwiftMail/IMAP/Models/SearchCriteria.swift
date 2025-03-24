@@ -3,49 +3,187 @@ import NIOIMAP
 import NIO
 import NIOIMAPCore
 
+/** A type that represents IMAP search criteria for filtering messages in a mailbox.
+ *
+ * Use `SearchCriteria` to build search queries for finding messages that match specific conditions.
+ * You can combine multiple criteria using logical operators like `.or` and `.not`.
+ *
+ * ## Example
+ * ```swift
+ * // Search for unread messages from a specific sender
+ * let criteria: [SearchCriteria] = [
+ *     .unseen,
+ *     .from("example@email.com")
+ * ]
+ * let messages = try await imapServer.search(criteria: criteria)
+ * ```
+ */
 public indirect enum SearchCriteria {
+    /** Matches all messages in the mailbox. */
     case all
+    
+    /** Matches messages with the `\Answered` flag set. */
     case answered
+    
+    /** Matches messages that contain the specified string in the BCC field.
+     * - Parameter value: The string to search for in the BCC field.
+     */
     case bcc(String)
+    
+    /** Matches messages with an internal date before the specified date.
+     * - Parameter date: The date to compare against.
+     */
     case before(Date)
+    
+    /** Matches messages that contain the specified string in the message body.
+     * - Parameter value: The string to search for in the message body.
+     */
     case body(String)
+    
+    /** Matches messages that contain the specified string in the CC field.
+     * - Parameter value: The string to search for in the CC field.
+     */
     case cc(String)
+    
+    /** Matches messages with the `\Deleted` flag set. */
     case deleted
+    
+    /** Matches messages with the `\Draft` flag set. */
     case draft
+    
+    /** Matches messages with the `\Flagged` flag set. */
     case flagged
+    
+    /** Matches messages that contain the specified string in the FROM field.
+     * - Parameter value: The string to search for in the FROM field.
+     */
     case from(String)
+    
+    /** Matches messages that contain the specified string in the specified header field.
+     * - Parameters:
+     *   - field: The name of the header field to search.
+     *   - value: The string to search for in the header field.
+     */
     case header(String, String)
+    
+    /** Matches messages with the specified keyword flag set.
+     * - Parameter value: The keyword flag to match.
+     */
     case keyword(String)
+    
+    /** Matches messages larger than the specified size in bytes.
+     * - Parameter size: The size in bytes to compare against.
+     */
     case larger(Int)
+    
+    /** Matches messages that have the `\Recent` flag set but not the `\Seen` flag. */
     case new
+    
+    /** Matches messages that do not match the specified search criteria.
+     * - Parameter criteria: The search criteria to negate.
+     */
     case not(SearchCriteria)
+    
+    /** Matches messages that do not have the `\Recent` flag set. */
     case old
+    
+    /** Matches messages whose internal date is within the specified date.
+     * - Parameter date: The date to compare against.
+     */
     case on(Date)
+    
+    /** Matches messages that match either of the specified search criteria.
+     * - Parameters:
+     *   - criteria1: The first search criteria.
+     *   - criteria2: The second search criteria.
+     */
     case or(SearchCriteria, SearchCriteria)
+    
+    /** Matches messages that have the `\Recent` flag set. */
     case recent
+    
+    /** Matches messages that have the `\Seen` flag set. */
     case seen
+    
+    /** Matches messages whose Date: header is before the specified date.
+     * - Parameter date: The date to compare against.
+     */
     case sentBefore(Date)
+    
+    /** Matches messages whose Date: header is within the specified date.
+     * - Parameter date: The date to compare against.
+     */
     case sentOn(Date)
+    
+    /** Matches messages whose Date: header is within or later than the specified date.
+     * - Parameter date: The date to compare against.
+     */
     case sentSince(Date)
+    
+    /** Matches messages whose internal date is within or later than the specified date.
+     * - Parameter date: The date to compare against.
+     */
     case since(Date)
+    
+    /** Matches messages smaller than the specified size in bytes.
+     * - Parameter size: The size in bytes to compare against.
+     */
     case smaller(Int)
+    
+    /** Matches messages that contain the specified string in the Subject field.
+     * - Parameter value: The string to search for in the Subject field.
+     */
     case subject(String)
+    
+    /** Matches messages that contain the specified string in the message text (body and headers).
+     * - Parameter value: The string to search for in the message text.
+     */
     case text(String)
+    
+    /** Matches messages that contain the specified string in the TO field.
+     * - Parameter value: The string to search for in the TO field.
+     */
     case to(String)
+    
+    /** Matches messages with the specified UID.
+     * - Parameter uid: The UID to match.
+     */
     case uid(Int)
+    
+    /** Matches messages that do not have the `\Answered` flag set. */
     case unanswered
+    
+    /** Matches messages that do not have the `\Deleted` flag set. */
     case undeleted
+    
+    /** Matches messages that do not have the `\Draft` flag set. */
     case undraft
+    
+    /** Matches messages that do not have the `\Flagged` flag set. */
     case unflagged
+    
+    /** Matches messages that do not have the specified keyword flag set.
+     * - Parameter value: The keyword flag that should not be set.
+     */
     case unkeyword(String)
+    
+    /** Matches messages that do not have the `\Seen` flag set. */
     case unseen
 
+    /** Converts a Swift string to an NIO ByteBuffer.
+     * - Parameter str: The string to convert.
+     * - Returns: A ByteBuffer containing the string data.
+     */
     private func stringToBuffer(_ str: String) -> ByteBuffer {
         var buffer = ByteBufferAllocator().buffer(capacity: str.utf8.count)
         buffer.writeString(str)
         return buffer
     }
     
+    /** Converts a Swift Date to an IMAP calendar day.
+     * - Parameter date: The date to convert.
+     * - Returns: An IMAPCalendarDay representation of the date.
+     */
     private func dateToCalendarDay(_ date: Date) -> IMAPCalendarDay {
         let calendar = Calendar(identifier: .gregorian)
         let components = calendar.dateComponents([.day, .month, .year], from: date)
@@ -58,10 +196,17 @@ public indirect enum SearchCriteria {
         )!  // Force unwrap since we provide valid values
     }
     
+    /** Converts a string to an IMAP keyword flag.
+     * - Parameter str: The string to convert.
+     * - Returns: A Flag.Keyword representation of the string.
+     */
     private func stringToKeyword(_ str: String) -> NIOIMAPCore.Flag.Keyword {
         NIOIMAPCore.Flag.Keyword(str) ?? NIOIMAPCore.Flag.Keyword("CUSTOM")!
     }
 
+    /** Converts the SwiftMail search criteria to the NIO IMAP search key format.
+     * - Returns: The equivalent NIOIMAP.SearchKey for this search criteria.
+     */
     func toNIO() -> NIOIMAP.SearchKey {
         switch self {
         case .all:
