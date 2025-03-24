@@ -9,12 +9,12 @@ import NIOConcurrencyHelpers
 /// Base class for mail protocol loggers
 class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
     // Type definitions
-    public typealias OutboundIn = Any
-    public typealias OutboundOut = Any
+    typealias OutboundIn = Any
+    typealias OutboundOut = Any
     
     // These must be defined by subclasses
-    public typealias InboundIn = Any
-    public typealias InboundOut = Any
+    typealias InboundIn = Any
+    typealias InboundOut = Any
     
     // Common properties - using protected-like access
     public let outboundLogger: Logging.Logger

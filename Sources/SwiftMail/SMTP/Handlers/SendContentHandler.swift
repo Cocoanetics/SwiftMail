@@ -5,14 +5,14 @@ import Logging
 /**
  Handler for the email content response
  */
-public final class SendContentHandler: BaseSMTPHandler<Void> {
+final class SendContentHandler: BaseSMTPHandler<Void> {
     
     /**
      Process a response from the server
      - Parameter response: The response to process
      - Returns: Whether the handler is complete
      */
-    override public func processResponse(_ response: SMTPResponse) -> Bool {
+    override func processResponse(_ response: SMTPResponse) -> Bool {
         
         // 2xx responses are considered successful
         if response.code >= 200 && response.code < 300 {

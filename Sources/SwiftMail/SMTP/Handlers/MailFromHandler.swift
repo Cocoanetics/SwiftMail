@@ -5,14 +5,14 @@ import Logging
 /**
  Handler for the MAIL FROM command response
  */
-public final class MailFromHandler: BaseSMTPHandler<Bool> {
+final class MailFromHandler: BaseSMTPHandler<Bool> {
     
     /**
      Process a response from the server
      - Parameter response: The response to process
      - Returns: Whether the handler is complete
      */
-    override public func processResponse(_ response: SMTPResponse) -> Bool {
+    override func processResponse(_ response: SMTPResponse) -> Bool {
         
         // 2xx responses are considered successful
         if response.code >= 200 && response.code < 300 {

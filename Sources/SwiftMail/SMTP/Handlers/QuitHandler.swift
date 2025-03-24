@@ -5,14 +5,14 @@ import Logging
 /**
  Handler for SMTP QUIT command responses
  */
-public final class QuitHandler: BaseSMTPHandler<Bool> {
+final class QuitHandler: BaseSMTPHandler<Bool> {
     
     /**
      Process a response from the server to the QUIT command
      - Parameter response: The response to process
      - Returns: Whether the handler is complete
      */
-    override public func processResponse(_ response: SMTPResponse) -> Bool {
+    override func processResponse(_ response: SMTPResponse) -> Bool {
         // For QUIT command, any response is considered successful since we're going to close the connection anyway
         // But we should log the response for debugging purposes
         

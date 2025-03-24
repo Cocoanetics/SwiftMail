@@ -10,8 +10,8 @@ import NIOConcurrencyHelpers
 
 /// A channel handler that logs both outgoing and incoming SMTP messages
 final class SMTPLogger: MailLogger, @unchecked Sendable {
-    public typealias InboundIn = String
-    public typealias InboundOut = String
+    typealias InboundIn = String
+    typealias InboundOut = String
     
     /// Log outgoing commands and forward them to the next handler
     public override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {

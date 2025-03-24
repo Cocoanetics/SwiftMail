@@ -5,14 +5,14 @@ import Logging
 /**
  Handler for the DATA command response
  */
-public final class DataHandler: BaseSMTPHandler<Bool> {
+final class DataHandler: BaseSMTPHandler<Bool> {
     
     /**
      Process a response from the server
      - Parameter response: The response to process
      - Returns: Whether the handler is complete
      */
-    override public func processResponse(_ response: SMTPResponse) -> Bool {
+    override func processResponse(_ response: SMTPResponse) -> Bool {
         
         // 3xx responses are considered successful for DATA command (server is ready for content)
         if response.code >= 300 && response.code < 400 {

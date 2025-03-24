@@ -10,7 +10,7 @@ import NIOConcurrencyHelpers
 /// Handler for IMAP SELECT command
 final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCommandHandler {
     /// The type of result this handler produces
-    public typealias ResultType = Mailbox.Status
+    typealias ResultType = Mailbox.Status
     
     /// The mailbox status being built
     private var mailboxInfo = Mailbox.Status()

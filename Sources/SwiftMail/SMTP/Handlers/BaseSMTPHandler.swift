@@ -3,10 +3,10 @@ import NIOCore
 import Logging
 
 /// Base class for SMTP command handlers that provides common functionality
-open class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, SMTPCommandHandler {
-    public typealias InboundIn = SMTPResponse
-    public typealias InboundOut = Never
-    public typealias ResultType = T
+class BaseSMTPHandler<T>: ChannelInboundHandler, RemovableChannelHandler, SMTPCommandHandler {
+    typealias InboundIn = SMTPResponse
+    typealias InboundOut = Never
+    typealias ResultType = T
     
     /// The command tag (optional for SMTP)
     public let commandTag: String?
