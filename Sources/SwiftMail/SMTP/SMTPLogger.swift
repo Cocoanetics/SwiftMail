@@ -14,7 +14,7 @@ final class SMTPLogger: MailLogger, @unchecked Sendable {
     typealias InboundOut = String
     
     /// Log outgoing commands and forward them to the next handler
-    public override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+	override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         // Try to extract the command from the data
         let command = unwrapOutboundIn(data)
         
@@ -33,7 +33,7 @@ final class SMTPLogger: MailLogger, @unchecked Sendable {
     }
     
     /// Log incoming responses and forward them to the next handler
-    public override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+	override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let responseString = unwrapInboundIn(data) as! String
         
         bufferInboundResponse(responseString)

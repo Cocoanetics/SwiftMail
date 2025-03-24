@@ -13,14 +13,32 @@ import NIOConcurrencyHelpers
 import Glibc
 #endif
 
-/** An actor that represents an SMTP server connection */
+/** 
+ An actor that represents an SMTP server connection.
+ 
+ Use this class to establish and manage connections to SMTP servers, perform authentication,
+ and send emails. The class handles connection lifecycle, command execution, and maintains
+ server state.
+ 
+ Example:
+ ```swift
+ let server = SMTPServer(host: "smtp.example.com", port: 587)
+ try await server.connect()
+ try await server.authenticate(username: "user@example.com", password: "password")
+ ```
+ 
+ - Note: All operations are logged using the Swift Logging package. To view logs in Console.app:
+   1. Open Console.app
+   2. Search for "process:com.cocoanetics.SwiftMail"
+   3. Adjust the "Action" menu to show Debug and Info messages
+ */
 public actor SMTPServer {
     // MARK: - Properties
     
     /** The hostname of the SMTP server */
     private let host: String
     
-    /** The port number of the SMTP server */
+    /** The port number of the SMTP server (typically 587 for STARTTLS or 465 for SMTPS) */
     private let port: Int
     
     /** The event loop group for handling asynchronous operations */
@@ -29,28 +47,45 @@ public actor SMTPServer {
     /** The channel for communication with the server */
     private var channel: Channel?
     
-    /** Flag indicating whether TLS is enabled */
+    /** Flag indicating whether TLS is enabled for the connection */
     private var isTLSEnabled = false
     
     /** Server capabilities reported by EHLO command */
     private var capabilities: [String] = []
     
-    /**
+    /** 
      Logger for SMTP operations
+     
+     This logger is configured to output SMTP-specific operations and events.
+     Log messages are categorized by severity level and include contextual information
+     about the SMTP operations being performed.
+     
+     - Note: Debug and trace level logs include detailed protocol information
      */
     private let logger = Logger(label: "com.cocoanetics.SwiftMail.SMTPServer")
     
-	// A logger on the channel that watches both directions
-	private let duplexLogger: SMTPLogger
+    /** 
+     A logger that monitors both inbound and outbound SMTP traffic
+     
+     This logger captures the raw SMTP protocol communication in both directions,
+     which is useful for debugging connection issues. Sensitive information like
+     passwords is automatically redacted.
+     */
+    private let duplexLogger: SMTPLogger
 
     // MARK: - Initialization
     
-    /**
+    /** 
      Initialize a new SMTP server connection
+     
      - Parameters:
-     - host: The hostname of the SMTP server
-     - port: The port number of the SMTP server
-     - numberOfThreads: The number of threads to use for the event loop group
+       - host: The hostname of the SMTP server
+       - port: The port number of the SMTP server (typically 587 for STARTTLS or 465 for SMTPS)
+       - numberOfThreads: The number of threads to use for the event loop group
+     - Note: The port number determines the initial security mode:
+       - Port 25: Plain SMTP (not recommended)
+       - Port 587: STARTTLS (recommended)
+       - Port 465: SMTPS (implicit TLS)
      */
     public init(host: String, port: Int, numberOfThreads: Int = 1) {
         self.host = host
@@ -69,9 +104,21 @@ public actor SMTPServer {
     
     // MARK: - Connection and Authentication
     
-    /**
+    /** 
      Connect to the SMTP server
-     - Throws: An error if the connection fails
+     
+     This method establishes a connection to the SMTP server and performs initial handshaking:
+     1. Creates a TCP connection to the server
+     2. Sets up SSL/TLS if using port 465 (SMTPS)
+     3. Receives the server's greeting
+     4. Fetches server capabilities using EHLO
+     5. Upgrades to TLS using STARTTLS if on port 587
+     
+     - Throws: 
+       - `SMTPError.connectionFailed` if the connection cannot be established
+       - `SMTPError.tlsFailed` if TLS negotiation fails
+       - `NIOSSLError` if SSL/TLS setup fails
+     - Note: Logs connection attempts and capability retrieval at info level
      */
     public func connect() async throws {
         logger.debug("Connecting to SMTP server at \(host):\(port)")
@@ -150,9 +197,20 @@ public actor SMTPServer {
     
     /**
      Execute a command and return the result
+     
+     This method handles the execution of SMTP commands by:
+     1. Validating the command
+     2. Setting up appropriate handlers
+     3. Managing command timeouts
+     4. Handling command-specific requirements (e.g., LOGIN auth)
+     
      - Parameter command: The command to execute
-     - Returns: The result of the command
-     - Throws: An error if the command fails
+     - Returns: The result of the command execution
+     - Throws: 
+       - `SMTPError.connectionFailed` if not connected
+       - `SMTPError.commandFailed` if the command execution fails
+       - `SMTPError.timeout` if the command times out
+     - Note: Logs command execution at debug level
      */
     @discardableResult func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
         // Ensure we have a valid channel
@@ -237,13 +295,25 @@ public actor SMTPServer {
         }
     }
     
-    /**
+    /** 
      Authenticate with the SMTP server
+     
+     This method authenticates with the SMTP server using the provided credentials.
+     It automatically selects the best available authentication mechanism supported
+     by the server, preferring more secure methods:
+     1. XOAUTH2 (if supported and token provided)
+     2. PLAIN (if TLS is active)
+     3. LOGIN (if TLS is active)
+     
      - Parameters:
-     - username: The username to authenticate with
-     - password: The password to authenticate with
+       - username: The username for authentication
+       - password: The password or access token for authentication
      - Returns: A boolean indicating if authentication was successful
-     - Throws: SMTPError if authentication fails
+     - Throws: 
+       - `SMTPError.authenticationFailed` if credentials are rejected
+       - `SMTPError.connectionFailed` if not connected
+       - `SMTPError.tlsRequired` if attempting to authenticate without TLS
+     - Note: Logs authentication attempts at info level (without credentials)
      */
     public func authenticate(username: String, password: String) async throws -> Bool {
         
@@ -273,9 +343,18 @@ public actor SMTPServer {
         throw SMTPError.authenticationFailed("Authentication failed with all available methods")
     }
     
-    /**
+    /** 
      Disconnect from the SMTP server
-     - Throws: An error if the disconnection fails
+     
+     This method performs a clean disconnect from the server by:
+     1. Sending the QUIT command
+     2. Waiting for the server's response
+     3. Closing the connection
+     
+     - Throws: 
+       - `SMTPError.disconnectFailed` if the quit command fails
+       - `SMTPError.connectionFailed` if already disconnected
+     - Note: Logs disconnection at info level
      */
     public func disconnect() async throws {
         guard let channel = channel else {
@@ -358,16 +437,24 @@ public actor SMTPServer {
     // MARK: - Helper Methods
     
     /**
-     Execute a handler for an SMTP command without sending a command
+     Execute a handler without sending a command
+     
+     This method is used for handling server-initiated responses like the initial
+     greeting. It sets up the handler and manages timeouts without sending any
+     command to the server.
+     
      - Parameters:
-        - handlerType: The type of handler to create
-        - timeoutSeconds: The timeout in seconds
-     - Returns: The result of the handler
-     - Throws: An error if the command fails
+       - handlerType: The type of handler to use
+       - timeoutSeconds: The timeout duration in seconds (default: 5)
+     - Returns: The result from the handler
+     - Throws: 
+       - `SMTPError.connectionFailed` if not connected
+       - `SMTPError.timeout` if the operation times out
+     - Note: Logs handler execution at debug level
      */
     private func executeHandlerOnly<T, HandlerType: SMTPCommandHandler>(
         handlerType: HandlerType.Type,
-        timeoutSeconds: Int = 30
+        timeoutSeconds: Int = 5
     ) async throws -> T where HandlerType.ResultType == T {
         guard let channel = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
@@ -427,9 +514,18 @@ public actor SMTPServer {
         // Error handling is now done directly by the handlers
     }
     
-    /**
-     Start TLS encryption for the connection
-     - Throws: An error if the TLS negotiation fails
+    /** 
+     Upgrade the connection to use TLS
+     
+     This method upgrades a plain connection to use TLS encryption using the
+     STARTTLS command. After successful upgrade, it re-fetches server capabilities
+     as they may change.
+     
+     - Throws: 
+       - `SMTPError.tlsFailed` if TLS negotiation fails
+       - `SMTPError.commandFailed` if STARTTLS command fails
+       - `SMTPError.connectionFailed` if not connected
+     - Note: Logs TLS upgrade attempts at info level
      */
     private func startTLS() async throws {
         // Send STARTTLS command using the modernized command approach
@@ -515,9 +611,17 @@ public actor SMTPServer {
     }
     
     /**
-     Fetch server capabilities by sending EHLO command
-     - Returns: Array of capability strings
-     - Throws: An error if the capability command fails
+     Fetch server capabilities using EHLO command
+     
+     This method sends the EHLO command to the server and processes its response
+     to determine the server's supported features. It's called automatically during
+     connection and after STARTTLS, but can be called manually if needed.
+     
+     - Returns: Array of capability strings reported by the server
+     - Throws: 
+       - `SMTPError.commandFailed` if the EHLO command fails
+       - `SMTPError.connectionFailed` if not connected
+     - Note: Updates the internal capabilities array with the server's response
      */
     @discardableResult
     public func fetchCapabilities() async throws -> [String] {

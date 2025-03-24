@@ -6,8 +6,25 @@ import NIO
 import NIOSSL
 import NIOConcurrencyHelpers
 
-
-/** An actor that represents an IMAP server connection */
+/** 
+ An actor that represents a connection to an IMAP server.
+ 
+ Use this class to establish and manage connections to IMAP servers, perform authentication,
+ and execute IMAP commands. The class handles connection lifecycle, command execution,
+ and maintains server state.
+ 
+ Example:
+ ```swift
+ let server = IMAPServer(host: "imap.example.com", port: 993)
+ try await server.connect()
+ try await server.login(username: "user@example.com", password: "password")
+ ```
+ 
+ - Note: All operations are logged using the Swift Logging package. To view logs in Console.app:
+   1. Open Console.app
+   2. Search for "process:com.cocoanetics.SwiftMail"
+   3. Adjust the "Action" menu to show Debug and Info messages
+ */
 public actor IMAPServer {
 	// MARK: - Properties
 	
@@ -58,12 +75,13 @@ public actor IMAPServer {
 	
 	// MARK: - Initialization
 	
-	/**
+	/** 
 	 Initialize a new IMAP server connection
+	 
 	 - Parameters:
-	 - host: The hostname of the IMAP server
-	 - port: The port number of the IMAP server
-	 - numberOfThreads: The number of threads to use for the event loop group
+	   - host: The hostname of the IMAP server
+	   - port: The port number of the IMAP server (typically 993 for SSL)
+	   - numberOfThreads: The number of threads to use for the event loop group
 	 */
 	public init(host: String, port: Int, numberOfThreads: Int = 1) {
 		self.host = host
@@ -85,9 +103,17 @@ public actor IMAPServer {
 	
 	// MARK: - Connection and Login Commands
 	
-	/**
-	 Connect to the IMAP server
-	 - Throws: An error if the connection fails
+	/** 
+	 Connect to the IMAP server using SSL/TLS
+	 
+	 This method establishes a secure connection to the IMAP server and retrieves
+	 its capabilities. The connection is made using SSL/TLS and includes setting up
+	 the necessary handlers for IMAP protocol communication.
+	 
+	 - Throws: 
+	   - `IMAPError.connectionFailed` if the connection cannot be established
+	   - `NIOSSLError` if SSL/TLS negotiation fails
+	 - Note: Logs connection attempts and capability retrieval at info level
 	 */
 	public func connect() async throws {
 		// Create SSL context for secure connection
@@ -130,10 +156,15 @@ public actor IMAPServer {
 		}
 	}
 	
-	/**
+	/** 
 	 Fetch server capabilities
+	 
+	 This method explicitly requests the server's capabilities. It's called automatically
+	 after connection and login, but can be called manually if needed.
+	 
 	 - Throws: An error if the capability command fails
 	 - Returns: An array of server capabilities
+	 - Note: Updates the internal capabilities set with the server's response
 	 */
 	@discardableResult public func fetchCapabilities() async throws -> [Capability] {
 		let command = CapabilityCommand()
@@ -151,12 +182,20 @@ public actor IMAPServer {
 		return capabilities.contains(where: check)
 	}
 	
-	/**
+	/** 
 	 Login to the IMAP server
+	 
+	 This method authenticates with the IMAP server using the provided credentials.
+	 After successful login, it updates the server capabilities as they may change
+	 after authentication.
+	 
 	 - Parameters:
-	 - username: The username for authentication
-	 - password: The password for authentication
-	 - Throws: An error if the login fails
+	   - username: The username for authentication
+	   - password: The password for authentication
+	 - Throws: 
+	   - `IMAPError.loginFailed` if authentication fails
+	   - `IMAPError.connectionFailed` if not connected
+	 - Note: Logs login attempts at info level (without credentials)
 	 */
 	public func login(username: String, password: String) async throws {
 		let command = LoginCommand(username: username, password: password)
@@ -171,9 +210,14 @@ public actor IMAPServer {
 		}
 	}
 	
-	/**
+	/** 
 	 Disconnect from the server without sending a command
+	 
+	 This method immediately closes the connection to the server without sending
+	 a LOGOUT command. For a graceful disconnect, use logout() instead.
+	 
 	 - Throws: An error if the disconnection fails
+	 - Note: Logs disconnection at debug level
 	 */
 	public func disconnect() async throws
 	{
@@ -188,33 +232,51 @@ public actor IMAPServer {
 	
 	// MARK: - Mailbox Commands
 	
-	/**
+	/** 
 	 Select a mailbox
+	 
+	 This method selects a mailbox and makes it the current mailbox for subsequent
+	 operations. Only one mailbox can be selected at a time.
+	 
 	 - Parameter mailboxName: The name of the mailbox to select
 	 - Returns: Status information about the selected mailbox
-	 - Throws: An error if the select operation fails
+	 - Throws: 
+	   - `IMAPError.selectFailed` if the mailbox cannot be selected
+	   - `IMAPError.connectionFailed` if not connected
+	 - Note: Logs mailbox selection at debug level
 	 */
 	public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Status {
 		let command = SelectMailboxCommand(mailboxName: mailboxName)
 		return try await executeCommand(command)
 	}
 	
-	/**
+	/** 
 	 Close the currently selected mailbox
-	 - Throws: An error if the close operation fails
+	 
+	 This method closes the currently selected mailbox and expunges any messages
+	 marked for deletion. To close without expunging, use unselectMailbox() instead.
+	 
+	 - Throws: 
+	   - `IMAPError.closeFailed` if the close operation fails
+	   - `IMAPError.connectionFailed` if not connected
+	 - Note: Logs mailbox closure at debug level
 	 */
 	public func closeMailbox() async throws {
 		let command = CloseCommand()
 		try await executeCommand(command)
 	}
 	
-	/**
+	/** 
 	 Unselect the currently selected mailbox without expunging deleted messages
 	 
 	 This is an IMAP extension command (RFC 3691) that might not be supported by all servers.
 	 If the server does not support UNSELECT, an IMAPError will be thrown.
 	 
-	 - Throws: An error if the unselect operation fails or is not supported
+	 - Throws: 
+	   - `IMAPError.commandNotSupported` if UNSELECT is not supported
+	   - `IMAPError.unselectFailed` if the unselect operation fails
+	   - `IMAPError.connectionFailed` if not connected
+	 - Note: Logs mailbox unselection at debug level
 	 */
 	public func unselectMailbox() async throws {
 		// Check if the server supports UNSELECT capability
@@ -226,9 +288,16 @@ public actor IMAPServer {
 		try await executeCommand(command)
 	}
 	
-	/**
+	/** 
 	 Logout from the IMAP server
-	 - Throws: An error if the logout fails
+	 
+	 This method performs a clean logout from the server by sending the LOGOUT command
+	 and closing the connection. For an immediate disconnect, use disconnect() instead.
+	 
+	 - Throws: 
+	   - `IMAPError.logoutFailed` if the logout fails
+	   - `IMAPError.connectionFailed` if not connected
+	 - Note: Logs logout at info level
 	 */
 	public func logout() async throws {
 		let command = LogoutCommand()
@@ -237,13 +306,24 @@ public actor IMAPServer {
 	
 	// MARK: - Message Commands
 	
-	/**
-	 Fetch headers for messages in the selected mailbox
+	/** 
+	 Fetches message headers from the selected mailbox.
+	 
+	 This method retrieves headers for messages identified by the provided set.
+	 Headers include subject, from, to, date, and other metadata.
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
 	 - Parameters:
-	 - identifierSet: The set of message identifiers to fetch
-	 - limit: Optional limit on the number of headers to return
+	   - identifierSet: The set of message identifiers to fetch
+	   - limit: Optional maximum number of headers to return
 	 - Returns: An array of email headers
-	 - Throws: An error if the fetch operation fails
+	 - Throws: 
+	   - `IMAPError.fetchFailed` if the fetch operation fails
+	   - `IMAPError.emptyIdentifierSet` if the identifier set is empty
+	 - Note: Logs fetch operations at debug level with message counts
 	 */
 	public func fetchHeaders<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [Header] {
 		let command = FetchHeadersCommand(identifierSet: identifierSet, limit: limit)
@@ -257,49 +337,75 @@ public actor IMAPServer {
 		return headers
 	}
 	
-	/**
-	 Fetch a specific part of a message
+	/** 
+	 Fetches the structure of a message.
+	 
+	 The message structure includes information about MIME parts, attachments,
+	 and the overall organization of the message content.
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
 	 - Parameters:
-	 - identifier: The message identifier (SequenceNumber or UID)
-	 - sectionPath: The section path to fetch as an array of integers (e.g., [1], [1, 1], [2], etc.)
-	 - Returns: The content of the message part as Data
-	 - Throws: An error if the fetch operation fails
+	   - identifier: The identifier of the message to fetch
+	 - Returns: The message's body structure
+	 - Throws: `IMAPError.fetchFailed` if the fetch operation fails
+	 - Note: Logs structure fetch at debug level
 	 */
-	public func fetchMessagePart<T: MessageIdentifier>(identifier: T, sectionPath: [Int]) async throws -> Data {
-		let command = FetchMessagePartCommand(identifier: identifier, sectionPath: sectionPath)
-		return try await executeCommand(command)
-	}
-	
-	/**
-	 Fetch the structure of a message to determine its parts
-	 - Parameter identifier: The message identifier (SequenceNumber or UID)
-	 - Returns: The body structure of the message
-	 - Throws: An error if the fetch operation fails
-	 */
-	public func fetchMessageStructure<T: MessageIdentifier>(identifier: T) async throws -> BodyStructure {
+	public func fetchStructure<T: MessageIdentifier>(_ identifier: T) async throws -> BodyStructure {
 		let command = FetchStructureCommand(identifier: identifier)
 		return try await executeCommand(command)
 	}
 	
-	/**
+	/** 
+	 Fetches a specific part of a message.
+	 
+	 Use this method to retrieve specific MIME parts of a message, such as
+	 the text body, HTML content, or attachments.
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
+	 - Parameters:
+	   - part: The part number to fetch (e.g., "1", "1.1", "2")
+	   - identifier: The identifier of the message
+	 - Returns: The content of the requested message part
+	 - Throws: `IMAPError.fetchFailed` if the fetch operation fails
+	 - Note: Logs part fetch at debug level with part number
+	 */
+	public func fetchPart<T: MessageIdentifier>(_ part: String, of identifier: T) async throws -> Data {
+		let command = FetchMessagePartCommand(identifier: identifier, sectionPath: part.split(separator: ".").map { Int($0)! })
+		return try await executeCommand(command)
+	}
+	
+	/** 
 	 Fetch all parts of a message
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
 	 - Parameter identifier: The message identifier (SequenceNumber or UID)
 	 - Returns: An array of message parts
 	 - Throws: An error if the fetch operation fails
 	 */
 	public func fetchAllMessageParts<T: MessageIdentifier>(identifier: T) async throws -> [MessagePart] {
 		// First, fetch the message structure to determine the parts
-		let structure = try await fetchMessageStructure(identifier: identifier)
+		let structure = try await fetchStructure(identifier)
 		
 		// Process the structure recursively and return the parts
 		return try await recursivelyFetchParts(structure, sectionPath: [], identifier: identifier)
 	}
 	
-	/**
+	/** 
 	 Fetch a complete email with all parts from an email header
+	 
 	 - Parameter header: The email header to fetch the complete email for
 	 - Returns: A complete Email object with all parts
 	 - Throws: An error if the fetch operation fails
+	 - Note: This method will use UID if available in the header, falling back to sequence number if not
 	 */
 	public func fetchMessage(from header: Header) async throws -> Message {
 		// Use the UID from the header if available (non-zero), otherwise fall back to sequence number
@@ -316,11 +422,16 @@ public actor IMAPServer {
 		}
 	}
 	
-	/**
+	/** 
 	 Fetch complete emails with all parts using a message identifier set
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
 	 - Parameters:
-	 - identifierSet: The set of message identifiers to fetch
-	 - limit: Optional limit on the number of emails to fetch
+	   - identifierSet: The set of message identifiers to fetch
+	   - limit: Optional limit on the number of emails to fetch
 	 - Returns: An array of Email objects with all parts
 	 - Throws: An error if the fetch operation fails
 	 */
@@ -342,59 +453,23 @@ public actor IMAPServer {
 		return emails
 	}
 	
-	/**
-	 Copy messages from the current mailbox to another mailbox
+	/** 
+	 Moves messages to another mailbox.
+	 
+	 This method attempts to use the MOVE extension if available, falling back to
+	 COPY+EXPUNGE if necessary.
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
 	 - Parameters:
-	 - messages: The set of message identifiers to copy
-	 - destinationMailbox: The name of the destination mailbox
-	 - Throws: An error if the copy operation fails
-	 */
-	public func copy<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-		let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
-		try await executeCommand(command)
-	}
-	
-	/**
-	 Copy a single message from the current mailbox to another mailbox
-	 - Parameters:
-	 - message: The message identifier to copy
-	 - destinationMailbox: The name of the destination mailbox
-	 - Throws: An error if the copy operation fails
-	 */
-	public func copy<T: MessageIdentifier>(message identifier: T, to destinationMailbox: String) async throws {
-		let set = MessageIdentifierSet<T>(identifier)
-		try await copy(messages: set, to: destinationMailbox)
-	}
-	
-	/**
-	 Expunge deleted messages from the selected mailbox
-	 - Throws: An error if the expunge operation fails
-	 */
-	public func expunge() async throws {
-		let command = ExpungeCommand()
-		try await executeCommand(command)
-	}
-	
-	/**
-	 Internal function to execute the MOVE command
-	 - Parameters:
-	 - messages: The set of message identifiers to move
-	 - destinationMailbox: The name of the destination mailbox
-	 - Throws: An error if the move operation fails
-	 */
-	private func executeMove<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-		let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
-		try await executeCommand(command)
-	}
-	
-	/**
-	 Move messages from the current mailbox to another mailbox
-	 If the server supports the MOVE command and UIDPLUS (when using UIDs), it will use that.
-	 Otherwise, it will fall back to copy + delete + expunge.
-	 - Parameters:
-	 - messages: The set of message identifiers to move
-	 - destinationMailbox: The name of the destination mailbox
-	 - Throws: An error if the move operation fails
+	   - identifierSet: The set of messages to move
+	   - destinationMailbox: The name of the destination mailbox
+	 - Throws: 
+	   - `IMAPError.moveFailed` if the move operation fails
+	   - `IMAPError.emptyIdentifierSet` if the identifier set is empty
+	 - Note: Logs move operations at info level with message count and destination
 	 */
 	public func move<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
 		if capabilities.contains(.move) && (T.self != UID.self || capabilities.contains(.uidPlus)) {
@@ -443,23 +518,40 @@ public actor IMAPServer {
 	 Searches for messages matching the given criteria
 	 
 	 - Parameters:
-	   - identifierSet: Optional set of message identifiers to search within
-	   - criteria: The search criteria to apply
-	 - Returns: A set of message identifiers matching the search criteria
-	 - Throws: An error if the search operation fails
+	   - identifierSet: The set of messages to copy
+	   - destinationMailbox: The name of the destination mailbox
+	 - Throws: 
+	   - `IMAPError.copyFailed` if the copy operation fails
+	   - `IMAPError.emptyIdentifierSet` if the identifier set is empty
+	 - Note: Logs copy operations at info level with message count and destination
 	 */
-	public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria]) async throws -> MessageIdentifierSet<T> {
-		let command = SearchCommand(identifierSet: identifierSet, criteria: criteria)
-		return try await executeCommand(command)
+	public func copy<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
+		let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+		try await executeCommand(command)
 	}
 	
-	/**
-	 Store flags on messages
+	/** 
+	 Updates flags on messages.
+	 
+	 This method can add, remove, or replace flags on messages. Common flags include:
+	 - \Seen (message has been read)
+	 - \Answered (message has been replied to)
+	 - \Flagged (message is marked important)
+	 - \Deleted (message is marked for deletion)
+	 - \Draft (message is a draft)
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
 	 - Parameters:
-	 - flags: The flags to store
-	 - messages: The set of message identifiers to update
-	 - operation: The store operation (.add or .remove)
-	 - Throws: An error if the operation fails
+	   - flags: The flags to modify
+	   - identifierSet: The set of messages to update
+	   - operation: The type of update operation (add, remove, or set)
+	 - Throws: 
+	   - `IMAPError.storeFailed` if the flag update fails
+	   - `IMAPError.emptyIdentifierSet` if the identifier set is empty
+	 - Note: Logs flag updates at debug level with operation type and message count
 	 */
 	public func store<T: MessageIdentifier>(flags: [Flag], on identifierSet: MessageIdentifierSet<T>, operation: StoreOperation) async throws {
 		let storeData = StoreData.flags(flags, operation == .add ? .add : .remove)
@@ -467,9 +559,18 @@ public actor IMAPServer {
 		try await executeCommand(command)
 	}
 	
-	public enum StoreOperation {
-		case add
-		case remove
+	/** 
+	 Permanently removes messages marked for deletion.
+	 
+	 This method removes all messages with the \Deleted flag from the selected mailbox.
+	 The operation cannot be undone.
+	 
+	 - Throws: `IMAPError.expungeFailed` if the expunge operation fails
+	 - Note: Logs expunge operations at info level with number of messages removed
+	 */
+	public func expunge() async throws {
+		let command = ExpungeCommand()
+		try await executeCommand(command)
 	}
 	
 	// MARK: - Sub-Commands
@@ -490,7 +591,7 @@ public actor IMAPServer {
 				let partNumberString = sectionPath.isEmpty ? "1" : sectionPath.map { String($0) }.joined(separator: ".")
 				
 				// Fetch the part content
-				let partData = try await fetchMessagePart(identifier: identifier, sectionPath: sectionPath.isEmpty ? [1] : sectionPath)
+				let partData = try await fetchPart(partNumberString, of: identifier)
 				
 				// Extract content type and other metadata
 				var contentType = ""
@@ -684,19 +785,43 @@ public actor IMAPServer {
 		
 		return "\(tagPrefix)\(String(format: "%03d", commandTagCounter))"
 	}
+	
+	/** 
+	 Execute a move command
+	 
+	 This method executes a move command using the MOVE extension.
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
+	 - Parameters:
+	   - identifierSet: The set of messages to move
+	   - destinationMailbox: The name of the destination mailbox
+	 - Throws: 
+	   - `IMAPError.moveFailed` if the move operation fails
+	   - `IMAPError.emptyIdentifierSet` if the identifier set is empty
+	 - Note: Logs move operations at debug level
+	 */
+	private func executeMove<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
+		let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+		try await executeCommand(command)
+	}
 }
 
 // MARK: - Common Mail Operations
 extension IMAPServer {
-	/**
-	 List mailboxes with SPECIAL-USE attributes and update the folder configuration.
+	/** 
+	 Lists mailboxes with special-use attributes.
 	 
-	 This method is the primary way to detect special folders in IMAP:
-	 - If the server supports SPECIAL-USE capability, it will use the LIST command with SPECIAL-USE return option
-	 - If not, it will detect special mailboxes by name using common folder name patterns
+	 Special-use mailboxes are those designated for specific purposes like
+	 Sent, Drafts, Trash, etc., as defined in RFC 6154.
 	 
-	 - Returns: Array of mailboxes with special-use attributes only
-	 - Throws: An error if the operation fails
+	 - Returns: An array of special-use mailbox information
+	 - Throws: 
+	   - `IMAPError.commandNotSupported` if SPECIAL-USE is not supported
+	   - `IMAPError.commandFailed` if the list operation fails
+	 - Note: Logs special mailbox detection at info level
 	 */
 	public func listSpecialUseMailboxes() async throws -> [Mailbox.Info] {
 		// Check if the server supports SPECIAL-USE capability
@@ -823,16 +948,27 @@ extension IMAPServer {
 
 // MARK: - Mailbox Listing and Special Folders
 extension IMAPServer {
-	/** Get a list of all available mailboxes
-	 - Returns: Array of mailbox information
-	 - Throws: An error if the operation fails
+	/** 
+	 Lists all available mailboxes on the server.
+	 
+	 This method retrieves a list of all mailboxes (folders) available on the server,
+	 including their attributes and hierarchy information.
+	 
+	 - Returns: An array of mailbox information
+	 - Throws: `IMAPError.commandFailed` if the list operation fails
+	 - Note: Logs mailbox listing at info level with count
 	 */
 	public func listMailboxes() async throws -> [Mailbox.Info] {
 		let command = ListCommand()
 		return try await executeCommand(command)
 	}
 	
-	/// Get the inbox folder or throw if not found
+	/** 
+	 Get the inbox folder or throw if not found
+	 
+	 - Returns: The inbox folder information
+	 - Throws: `UndefinedFolderError` if the inbox folder is not found
+	 */
 	public var inboxFolder: Mailbox.Info {
 		get throws {
 			guard let inbox = specialMailboxes.inbox ?? mailboxes.inbox else {
@@ -842,7 +978,12 @@ extension IMAPServer {
 		}
 	}
 	
-	/// Get the trash folder or throw if not found
+	/** 
+	 Get the trash folder or throw if not found
+	 
+	 - Returns: The trash folder information
+	 - Throws: `UndefinedFolderError` if the trash folder is not found
+	 */
 	public var trashFolder: Mailbox.Info {
 		get throws {
 			guard let trash = specialMailboxes.trash else {
@@ -852,7 +993,12 @@ extension IMAPServer {
 		}
 	}
 	
-	/// Get the archive folder or throw if not found
+	/** 
+	 Get the archive folder or throw if not found
+	 
+	 - Returns: The archive folder information
+	 - Throws: `UndefinedFolderError` if the archive folder is not found
+	 */
 	public var archiveFolder: Mailbox.Info {
 		get throws {
 			guard let archive = specialMailboxes.archive else {
@@ -862,7 +1008,12 @@ extension IMAPServer {
 		}
 	}
 	
-	/// Get the sent folder or throw if not found
+	/** 
+	 Get the sent folder or throw if not found
+	 
+	 - Returns: The sent folder information
+	 - Throws: `UndefinedFolderError` if the sent folder is not found
+	 */
 	public var sentFolder: Mailbox.Info {
 		get throws {
 			guard let sent = specialMailboxes.sent else {
@@ -872,7 +1023,12 @@ extension IMAPServer {
 		}
 	}
 	
-	/// Get the drafts folder or throw if not found
+	/** 
+	 Get the drafts folder or throw if not found
+	 
+	 - Returns: The drafts folder information
+	 - Throws: `UndefinedFolderError` if the drafts folder is not found
+	 */
 	public var draftsFolder: Mailbox.Info {
 		get throws {
 			guard let drafts = specialMailboxes.drafts else {
@@ -882,7 +1038,12 @@ extension IMAPServer {
 		}
 	}
 	
-	/// Get the junk folder or throw if not found
+	/** 
+	 Get the junk folder or throw if not found
+	 
+	 - Returns: The junk folder information
+	 - Throws: `UndefinedFolderError` if the junk folder is not found
+	 */
 	public var junkFolder: Mailbox.Info {
 		get throws {
 			guard let junk = specialMailboxes.junk else {
@@ -895,19 +1056,59 @@ extension IMAPServer {
 
 // Update the existing folder operations to use the throwing getters
 extension IMAPServer {
+	/** 
+	 Move messages to the trash folder
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
+	 - Parameter identifierSet: The set of messages to move
+	 - Throws: An error if the move operation fails or trash folder is not found
+	 */
 	public func moveToTrash<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
 		try await move(messages: identifierSet, to: try trashFolder.name)
 	}
 	
+	/** 
+	 Archive messages by marking them as seen and moving them to the archive folder
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
+	 - Parameter identifierSet: The set of messages to archive
+	 - Throws: An error if the archive operation fails or archive folder is not found
+	 */
 	public func archive<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
 		try await store(flags: [.seen], on: identifierSet, operation: .add)
 		try await move(messages: identifierSet, to: try archiveFolder.name)
 	}
 	
+	/** 
+	 Mark messages as junk by moving them to the junk folder
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
+	 - Parameter identifierSet: The set of messages to mark as junk
+	 - Throws: An error if the operation fails or junk folder is not found
+	 */
 	public func markAsJunk<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
 		try await move(messages: identifierSet, to: try junkFolder.name)
 	}
 	
+	/** 
+	 Save messages as drafts by adding the draft flag and moving them to the drafts folder
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
+	 - Parameter identifierSet: The set of messages to save as drafts
+	 - Throws: An error if the operation fails or drafts folder is not found
+	 */
 	public func saveAsDraft<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
 		try await store(flags: [.draft], on: identifierSet, operation: .add)
 		try await move(messages: identifierSet, to: try draftsFolder.name)

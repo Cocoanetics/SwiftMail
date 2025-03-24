@@ -33,7 +33,7 @@ final class LoginAuthHandler: BaseSMTPHandler<AuthResult> {
     /// Process a response line from the server
     /// - Parameter response: The response line to process
     /// - Returns: Whether the handler is complete
-    override public func processResponse(_ response: SMTPResponse) -> Bool {
+    override func processResponse(_ response: SMTPResponse) -> Bool {
         
         // Use the state machine to process the response
         let result = stateMachine.processResponse(response) { [weak self] credential in
@@ -67,24 +67,24 @@ final class LoginAuthHandler: BaseSMTPHandler<AuthResult> {
     private var context: ChannelHandlerContext?
     
     /// Store the context when added to the pipeline
-    public func channelRegistered(context: ChannelHandlerContext) {
+	func channelRegistered(context: ChannelHandlerContext) {
         self.context = context
         context.fireChannelRegistered()
     }
     
     /// Store the context when handler is added to the pipeline (alternative to channelRegistered)
-    public func handlerAdded(context: ChannelHandlerContext) {
+	func handlerAdded(context: ChannelHandlerContext) {
         self.context = context
     }
     
     /// Store the context when the channel becomes active
-    public func channelActive(context: ChannelHandlerContext) {
+	func channelActive(context: ChannelHandlerContext) {
         self.context = context
         context.fireChannelActive()
     }
     
     /// Clear the context when removed from the pipeline
-    public func handlerRemoved(context: ChannelHandlerContext) {
+	func handlerRemoved(context: ChannelHandlerContext) {
         self.context = nil
     }
 } 

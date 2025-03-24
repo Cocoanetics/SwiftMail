@@ -63,10 +63,4 @@ struct MailFromCommand: SMTPCommand {
             throw SMTPError.invalidEmailAddress("Invalid sender address: \(senderAddress)")
         }
     }
-    
-    func validateResponse(_ response: SMTPResponse) throws {
-        guard response.code == SMTPResponseCode.commandOK.rawValue else {
-            throw SMTPError.unexpectedResponse(response)
-        }
-    }
 } 

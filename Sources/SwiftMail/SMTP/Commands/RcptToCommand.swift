@@ -51,10 +51,4 @@ struct RcptToCommand: SMTPCommand {
             throw SMTPError.invalidEmailAddress("Invalid recipient address: \(recipientAddress)")
         }
     }
-    
-    func validateResponse(_ response: SMTPResponse) throws {
-        guard response.code == SMTPResponseCode.commandOK.rawValue else {
-            throw SMTPError.unexpectedResponse(response)
-        }
-    }
 } 
