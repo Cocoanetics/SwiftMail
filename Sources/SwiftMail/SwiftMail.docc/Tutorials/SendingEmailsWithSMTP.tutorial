@@ -48,27 +48,27 @@
             }
             
             @Step {
-                Send the email and handle the response.
+                Optionally add attachments
                 
                 @Code(name: "SMTPExample.swift", file: "smtp-5.swift")
             }
         }
     }
     
-    @Section(title: "Adding Attachments") {
+    @Section(title: "Sending and Cleanup") {
         @ContentAndMedia {
-            Learn how to add attachments to your emails.
+            Learn how to send the email and clean up afterwards.
             
             @Image(source: placeholder.png, alt: "Illustration showing email attachments")
         }
         
         @Steps {
             @Step {
-                Create an email with attachments.
+                Send the email and handle the response.
                 
                 @Code(name: "SMTPExample.swift", file: "smtp-6.swift")
             }
-            
+
             @Step {
                 Clean up by disconnecting from the server.
                 

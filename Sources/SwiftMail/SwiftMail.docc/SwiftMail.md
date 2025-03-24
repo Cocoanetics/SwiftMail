@@ -4,45 +4,42 @@ A Swift package for comprehensive email functionality, providing robust IMAP and
 
 ## Overview
 
-SwiftMail is a powerful email package that enables you to work with email protocols in your Swift applications. Whether you need to fetch emails from a server or send new messages, SwiftMail provides an intuitive API to handle your email communication needs.
+SwiftMail is a powerful email package that enables you to work with email protocols in your Swift applications. The package provides two main components:
 
-The package is organized into two main components:
-- IMAP functionality for retrieving and managing emails
-- SMTP functionality for sending emails
+### IMAPServer
+Handles IMAP server connections for retrieving and managing emails. Implements key IMAP capabilities including:
+- Mailbox operations (SELECT, LIST, COPY, MOVE)
+- Message operations (FETCH headers/parts/structure, STORE flags)
+- Special-use mailbox support
+- TLS encryption
+- UID-based operations via UIDPLUS
 
-Core features include:
-- Email address handling and formatting
-- MIME content encoding and decoding
-- Secure credential management
-- Comprehensive logging system
+Learn more: <doc:GettingStartedWithIMAP>
+Tutorial: <doc:WorkingWithIMAP>
 
-```swift
-import SwiftMail
+### SMTPServer
+Handles email sending via SMTP with support for:
+- Multiple authentication methods (PLAIN, LOGIN)
+- TLS encryption
+- 8BITMIME support
+- Full MIME email composition
+- Multiple recipients (To, CC, BCC)
 
-// Create and configure an SMTP server connection
-let smtpServer = SMTPServer(host: "smtp.example.com", port: 587)
-try await smtpServer.connect()
-
-// Send an email
-let email = Email(
-    sender: EmailAddress(address: "sender@example.com"),
-    recipients: [EmailAddress(address: "recipient@example.com")],
-    subject: "Hello from SwiftMail",
-    body: "This is a test email sent using SwiftMail."
-)
-try await smtpServer.sendEmail(email)
-```
+Learn more: <doc:GettingStartedWithSMTP>
+Tutorial: <doc:SendingEmailsWithSMTP>
 
 ## Topics
 
 ### Getting Started
 
 - <doc:Installation>
-- <doc:GettingStarted>
+- <doc:GettingStartedWithIMAP>
+- <doc:GettingStartedWithSMTP>
 
 ### Tutorials
 
-- <doc:SwiftMailTutorials>
+- <doc:WorkingWithIMAP>
+- <doc:SendingEmailsWithSMTP>
 
 ### Core Types
 
