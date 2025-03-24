@@ -64,12 +64,39 @@ public actor IMAPServer {
 	// A logger on the channel that watches both directions
 	private let duplexLogger: IMAPLogger
 	
-	/// Error thrown when a standard folder is not defined
-	public struct UndefinedFolderError: Error, CustomStringConvertible {
-		public let folderType: String
+	/** 
+	 Error thrown when a standard folder is not defined.
+	 
+	 This error is thrown when attempting to access a special-use folder
+	 that has not been defined on the server or has not been detected yet.
+	 
+	 Call `listSpecialUseMailboxes()` first to detect special folders.
+	 */
+	public enum UndefinedFolderError: Error, CustomStringConvertible {
+		/// The inbox folder is not defined
+		case inbox
+		/// The trash folder is not defined
+		case trash
+		/// The archive folder is not defined
+		case archive
+		/// The sent folder is not defined
+		case sent
+		/// The drafts folder is not defined
+		case drafts
+		/// The junk folder is not defined
+		case junk
 		
 		public var description: String {
-			return "Standard folder '\(folderType)' is not defined. Call listSpecialUseMailboxes() first to detect special folders."
+			let folderName: String
+			switch self {
+				case .inbox: folderName = "Inbox"
+				case .trash: folderName = "Trash"
+				case .archive: folderName = "Archive"
+				case .sent: folderName = "Sent"
+				case .drafts: folderName = "Drafts"
+				case .junk: folderName = "Junk"
+			}
+			return "Standard folder '\(folderName)' is not defined. Call listSpecialUseMailboxes() first to detect special folders."
 		}
 	}
 	
@@ -995,12 +1022,12 @@ extension IMAPServer {
 	 Get the inbox folder or throw if not found
 	 
 	 - Returns: The inbox folder information
-	 - Throws: `UndefinedFolderError` if the inbox folder is not found
+	 - Throws: `UndefinedFolderError.inbox` if the inbox folder is not found
 	 */
 	public var inboxFolder: Mailbox.Info {
 		get throws {
 			guard let inbox = specialMailboxes.inbox ?? mailboxes.inbox else {
-				throw UndefinedFolderError(folderType: "Inbox")
+				throw UndefinedFolderError.inbox
 			}
 			return inbox
 		}
@@ -1010,12 +1037,12 @@ extension IMAPServer {
 	 Get the trash folder or throw if not found
 	 
 	 - Returns: The trash folder information
-	 - Throws: `UndefinedFolderError` if the trash folder is not found
+	 - Throws: `UndefinedFolderError.trash` if the trash folder is not found
 	 */
 	public var trashFolder: Mailbox.Info {
 		get throws {
 			guard let trash = specialMailboxes.trash else {
-				throw UndefinedFolderError(folderType: "Trash")
+				throw UndefinedFolderError.trash
 			}
 			return trash
 		}
@@ -1025,12 +1052,12 @@ extension IMAPServer {
 	 Get the archive folder or throw if not found
 	 
 	 - Returns: The archive folder information
-	 - Throws: `UndefinedFolderError` if the archive folder is not found
+	 - Throws: `UndefinedFolderError.archive` if the archive folder is not found
 	 */
 	public var archiveFolder: Mailbox.Info {
 		get throws {
 			guard let archive = specialMailboxes.archive else {
-				throw UndefinedFolderError(folderType: "Archive")
+				throw UndefinedFolderError.archive
 			}
 			return archive
 		}
@@ -1040,12 +1067,12 @@ extension IMAPServer {
 	 Get the sent folder or throw if not found
 	 
 	 - Returns: The sent folder information
-	 - Throws: `UndefinedFolderError` if the sent folder is not found
+	 - Throws: `UndefinedFolderError.sent` if the sent folder is not found
 	 */
 	public var sentFolder: Mailbox.Info {
 		get throws {
 			guard let sent = specialMailboxes.sent else {
-				throw UndefinedFolderError(folderType: "Sent")
+				throw UndefinedFolderError.sent
 			}
 			return sent
 		}
@@ -1055,12 +1082,12 @@ extension IMAPServer {
 	 Get the drafts folder or throw if not found
 	 
 	 - Returns: The drafts folder information
-	 - Throws: `UndefinedFolderError` if the drafts folder is not found
+	 - Throws: `UndefinedFolderError.drafts` if the drafts folder is not found
 	 */
 	public var draftsFolder: Mailbox.Info {
 		get throws {
 			guard let drafts = specialMailboxes.drafts else {
-				throw UndefinedFolderError(folderType: "Drafts")
+				throw UndefinedFolderError.drafts
 			}
 			return drafts
 		}
@@ -1070,12 +1097,12 @@ extension IMAPServer {
 	 Get the junk folder or throw if not found
 	 
 	 - Returns: The junk folder information
-	 - Throws: `UndefinedFolderError` if the junk folder is not found
+	 - Throws: `UndefinedFolderError.junk` if the junk folder is not found
 	 */
 	public var junkFolder: Mailbox.Info {
 		get throws {
 			guard let junk = specialMailboxes.junk else {
-				throw UndefinedFolderError(folderType: "Junk")
+				throw UndefinedFolderError.junk
 			}
 			return junk
 		}
