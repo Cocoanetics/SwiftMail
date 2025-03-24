@@ -2,14 +2,14 @@
     @Intro(title: "Working with IMAP") {
         Learn how to use SwiftMail's IMAP functionality to connect to email servers and manage messages.
         
-        @Image(source: imap-overview.png, alt: "Illustration showing IMAP email flow")
+        @Image(source: placeholder.png, alt: "Illustration showing IMAP email flow")
     }
     
     @Section(title: "Connecting to an IMAP Server") {
         @ContentAndMedia {
             Learn how to establish a connection to an IMAP server and authenticate with your credentials.
             
-            @Image(source: imap-connect.png, alt: "Illustration showing IMAP connection")
+            @Image(source: placeholder.png, alt: "Illustration showing IMAP connection")
         }
         
         @Steps {
@@ -31,7 +31,7 @@
         @ContentAndMedia {
             Learn how to list and select mailboxes on the IMAP server.
             
-            @Image(source: mailboxes.png, alt: "Illustration showing mailbox structure")
+            @Image(source: placeholder.png, alt: "Illustration showing mailbox structure")
         }
         
         @Steps {
@@ -53,7 +53,7 @@
         @ContentAndMedia {
             Learn how to fetch and read email messages from a mailbox.
             
-            @Image(source: fetch-messages.png, alt: "Illustration showing message fetching")
+            @Image(source: placeholder.png, alt: "Illustration showing message fetching")
         }
         
         @Steps {

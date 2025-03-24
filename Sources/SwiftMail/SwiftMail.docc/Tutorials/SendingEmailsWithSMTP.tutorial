@@ -2,14 +2,14 @@
     @Intro(title: "Sending Emails with SMTP") {
         Learn how to use SwiftMail's SMTP functionality to send emails with attachments.
         
-        @Image(source: smtp-overview.png, alt: "Illustration showing SMTP email flow")
+        @Image(source: placeholder.png, alt: "Illustration showing SMTP email flow")
     }
     
     @Section(title: "Connecting to an SMTP Server") {
         @ContentAndMedia {
             Learn how to establish a connection to an SMTP server and authenticate.
             
-            @Image(source: smtp-connect.png, alt: "Illustration showing SMTP connection")
+            @Image(source: placeholder.png, alt: "Illustration showing SMTP connection")
         }
         
         @Steps {
@@ -31,7 +31,7 @@
         @ContentAndMedia {
             Learn how to create and send emails with SwiftMail.
             
-            @Image(source: create-email.png, alt: "Illustration showing email creation")
+            @Image(source: placeholder.png, alt: "Illustration showing email creation")
         }
         
         @Steps {
@@ -59,7 +59,7 @@
         @ContentAndMedia {
             Learn how to add attachments to your emails.
             
-            @Image(source: attachments.png, alt: "Illustration showing email attachments")
+            @Image(source: placeholder.png, alt: "Illustration showing email attachments")
         }
         
         @Steps {

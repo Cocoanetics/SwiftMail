@@ -1,0 +1,16 @@
+@Tutorials(name: "SwiftMail Tutorials") {
+    @Intro(title: "Getting Started with SwiftMail") {
+        Learn how to use SwiftMail to work with email in your Swift applications.
+        
+        @Image(source: placeholder.png, alt: "SwiftMail Tutorial Overview")
+    }
+    
+    @Chapter(name: "Working with Email") {
+        Learn the basics of working with email using SwiftMail.
+        
+        @Image(source: placeholder.png, alt: "Working with Email")
+        
+        @TutorialReference(tutorial: "doc:WorkingWithIMAP")
+        @TutorialReference(tutorial: "doc:SendingEmailsWithSMTP")
+    }
+} 

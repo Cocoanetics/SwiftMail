@@ -68,14 +68,12 @@ SMTP_PASSWORD=your_password
 
 ## Next Steps
 
-- Follow the <doc:GettingStarted> guide to start using SwiftMail
 - Learn about IMAP operations in <doc:WorkingWithIMAP>
 - Explore SMTP functionality in <doc:SendingEmailsWithSMTP>
 
 ## Topics
 
-### Essentials
+### Tutorials
 
-- <doc:GettingStarted>
 - <doc:WorkingWithIMAP>
 - <doc:SendingEmailsWithSMTP> 
