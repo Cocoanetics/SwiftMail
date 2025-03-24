@@ -6,7 +6,7 @@ import NIO
 
 
 /// SMTP specific command extensions
-public protocol SMTPMailCommand: MailCommand {
+protocol SMTPMailCommand: MailCommand {
     /// Convert this command to a string that can be sent to the SMTP server
     func toCommandString() -> String
     
@@ -17,7 +17,7 @@ public protocol SMTPMailCommand: MailCommand {
 }
 
 /// Default implementations for SMTP commands
-public extension SMTPMailCommand {
+extension SMTPMailCommand {
     /// Default implementation that defers to toString
     func toCommandString() -> String {
         fatalError("Must be implemented by subclass - either toCommandString() or toString(localHostname:)")
@@ -30,7 +30,7 @@ public extension SMTPMailCommand {
 }
 
 /// Response handler protocol for SMTP commands
-public protocol SMTPCommandResponseHandler: MailCommandHandler {
+protocol SMTPCommandResponseHandler: MailCommandHandler {
     /// The type of response this handler processes
     associatedtype SMTPResponseType
     

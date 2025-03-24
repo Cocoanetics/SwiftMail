@@ -12,9 +12,9 @@ import Logging
 
 /// Handler for processing LIST command responses
 final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, IMAPCommandHandler, @unchecked Sendable {
-    public typealias ResultType = [Mailbox.Info]
-    public typealias InboundIn = Response
-    public typealias InboundOut = Never
+	typealias ResultType = [Mailbox.Info]
+	typealias InboundIn = Response
+	typealias InboundOut = Never
     
     private var mailboxes: [NIOIMAPCore.MailboxInfo] = []
     

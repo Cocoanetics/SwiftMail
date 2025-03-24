@@ -10,16 +10,16 @@ import NIOConcurrencyHelpers
 import NIOIMAPCore
 
 /// A channel handler that logs both outgoing and incoming IMAP messages
-public final class IMAPLogger: MailLogger, @unchecked Sendable {
-    public typealias InboundIn = Response
-    public typealias InboundOut = Response
+final class IMAPLogger: MailLogger, @unchecked Sendable {
+	typealias InboundIn = Response
+	typealias InboundOut = Response
     
     // Regular expressions for redacting sensitive information
     private let loginRegex = try! NSRegularExpression(pattern: "^[A-Za-z0-9]+ LOGIN", options: [])
     private let authRegex = try! NSRegularExpression(pattern: "^[A-Za-z0-9]+ AUTH", options: [])
     
     /// Process outgoing IMAP commands
-    public override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+	override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let command = unwrapOutboundIn(data)
         
         // Get string representation of the command
@@ -43,7 +43,7 @@ public final class IMAPLogger: MailLogger, @unchecked Sendable {
     }
     
     /// Process incoming IMAP responses
-    public override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+	override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
         
         // Add the response to the buffer

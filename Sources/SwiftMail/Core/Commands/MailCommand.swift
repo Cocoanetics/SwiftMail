@@ -5,7 +5,7 @@ import Foundation
 import NIO
 
 /// A generic protocol for mail commands across different protocols
-public protocol MailCommand {
+protocol MailCommand {
     /// The result type this command produces
     associatedtype ResultType
     
@@ -20,7 +20,7 @@ public protocol MailCommand {
 }
 
 /// Default implementation for common command behaviors
-public extension MailCommand {
+extension MailCommand {
     var timeoutSeconds: Int { return 10 }
     
     func validate() throws {
@@ -29,7 +29,7 @@ public extension MailCommand {
 }
 
 /// A marker protocol for command handlers
-public protocol MailCommandHandler {
+protocol MailCommandHandler {
     /// The result type for this handler
     associatedtype ResultType
     

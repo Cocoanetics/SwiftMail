@@ -6,7 +6,7 @@ import NIO
 
 
 /// IMAP specific command extensions
-public protocol IMAPMailCommand: MailCommand {
+protocol IMAPMailCommand: MailCommand {
     /// The type of the tagged command
     associatedtype TaggedCommandType
     
@@ -17,7 +17,7 @@ public protocol IMAPMailCommand: MailCommand {
 }
 
 /// Response handler protocol for IMAP commands
-public protocol IMAPCommandResponseHandler: MailCommandHandler {
+protocol IMAPCommandResponseHandler: MailCommandHandler {
     /// The type of response this handler processes
     associatedtype IMAPResponseType
     

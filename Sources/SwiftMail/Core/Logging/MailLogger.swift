@@ -7,7 +7,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Base class for mail protocol loggers
-open class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
+class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
     // Type definitions
     public typealias OutboundIn = Any
     public typealias OutboundOut = Any
@@ -22,26 +22,26 @@ open class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
     public let lock = NIOLock()
     
     // Make inboundBuffer accessible for modification by subclasses
-    public var inboundBuffer: [String] = []
+	var inboundBuffer: [String] = []
     
     /// Initialize a new mail logger
     /// - Parameters:
     ///   - outboundLogger: Logger for outbound messages
     ///   - inboundLogger: Logger for inbound messages
-    public init(outboundLogger: Logging.Logger, inboundLogger: Logging.Logger) {
+	init(outboundLogger: Logging.Logger, inboundLogger: Logging.Logger) {
         self.outboundLogger = outboundLogger
         self.inboundLogger = inboundLogger
     }
     
     /// Add a response to the inbound buffer
-    open func bufferInboundResponse(_ message: String) {
+	func bufferInboundResponse(_ message: String) {
         lock.withLock {
             inboundBuffer.append(message)
         }
     }
     
     /// Flush the inbound buffer
-    open func flushInboundBuffer() {
+	func flushInboundBuffer() {
         lock.withLock {
             if !inboundBuffer.isEmpty {
 				let lines = inboundBuffer.joined(separator: ", ")
@@ -52,14 +52,14 @@ open class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
     }
     
     /// Check if there are buffered messages
-    open func hasBufferedMessages() -> Bool {
+	func hasBufferedMessages() -> Bool {
         lock.withLock {
             return !inboundBuffer.isEmpty
         }
     }
     
     /// Helper method for extracting string representation from various types
-    open func stringRepresentation(from command: Any) -> String {
+	func stringRepresentation(from command: Any) -> String {
         if let ioData = command as? IOData {
             switch ioData {
             case .byteBuffer(let buffer):
@@ -81,11 +81,11 @@ open class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
     }
     
     // Abstract methods that must be implemented by subclasses
-    open func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+	func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         fatalError("write(context:data:promise:) must be implemented by subclasses")
     }
     
-    open func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+	func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         fatalError("channelRead(context:data:) must be implemented by subclasses")
     }
 } 

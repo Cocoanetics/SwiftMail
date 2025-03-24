@@ -50,13 +50,13 @@ final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
     
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response
-    override public func handleTaggedOKResponse(_ response: TaggedResponse) {
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
         succeedWithResult(())
     }
     
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
-    override public func handleTaggedErrorResponse(_ response: TaggedResponse) {
+    override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.copyFailed(String(describing: response.state)))
     }
 }
@@ -66,13 +66,13 @@ final class StoreHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
 
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response
-    override public func handleTaggedOKResponse(_ response: TaggedResponse) {
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
         succeedWithResult(())
     }
     
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
-    override public func handleTaggedErrorResponse(_ response: TaggedResponse) {
+    override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.storeFailed(String(describing: response.state)))
     }
 }
@@ -82,13 +82,13 @@ final class ExpungeHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
 
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response
-    override public func handleTaggedOKResponse(_ response: TaggedResponse) {
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
         succeedWithResult(())
     }
     
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
-    override public func handleTaggedErrorResponse(_ response: TaggedResponse) {
+    override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.expungeFailed(String(describing: response.state)))
     }
 } 

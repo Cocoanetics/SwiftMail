@@ -9,7 +9,7 @@ import NIOConcurrencyHelpers
 
 
 /// A channel handler that logs both outgoing and incoming SMTP messages
-public final class SMTPLogger: MailLogger, @unchecked Sendable {
+final class SMTPLogger: MailLogger, @unchecked Sendable {
     public typealias InboundIn = String
     public typealias InboundOut = String
     
