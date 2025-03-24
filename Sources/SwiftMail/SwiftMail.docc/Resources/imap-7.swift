@@ -14,7 +14,7 @@ let mailboxes = try await imapServer.listMailboxes()
 
 // Print mailbox names
 for mailbox in mailboxes {
-    print("📬 \(mailbox.name)")
+	print("📬 \(mailbox.name)")
 }
 
 // Select the INBOX mailbox
@@ -25,24 +25,17 @@ print("Mailbox contains \(mailboxInfo.messageCount) messages")
 
 // Get the latest 10 messages
 if let latestMessagesSet = mailboxInfo.latest(10) {
-    // Fetch the messages
-    let emails = try await imapServer.fetchMessages(using: latestMessagesSet)
-    print("\nFetched \(emails.count) messages")
+	// Fetch the messages
+	let emails = try await imapServer.fetchMessages(using: latestMessagesSet)
+	print("\nFetched \(emails.count) messages")
 }
 
-// Process each email
-for (index, email) in emails.enumerated() {
-    print("\n[\(index + 1)] From: \(email.from)")
-    print("Subject: \(email.subject)")
-    print("Date: \(email.date)")
-    
-    if let textBody = email.textBody {
-        print("Content: \(textBody)")
-    }
-}
+// Will store results using sequence numbers
+let unreadMessagesSet: MessageIdentifierSet<SequenceNumber>
 
-// Logout from the server
-try await imapServer.logout()
+// Will store results using UIDs
+let sampleMessagesSet: MessageIdentifierSet<UID>
 
-// Close the connection
-try await imapServer.close()
+// Search for unread messages
+let unreadMessagesSet = try await imapServer.search(criteria: [.unseen])
+print("\nFound \(unreadMessagesSet.count) unread messages")

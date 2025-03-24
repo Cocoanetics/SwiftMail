@@ -14,7 +14,7 @@ let mailboxes = try await imapServer.listMailboxes()
 
 // Print mailbox names
 for mailbox in mailboxes {
-    print("📬 \(mailbox.name)")
+	print("📬 \(mailbox.name)")
 }
 
 // Select the INBOX mailbox
@@ -25,7 +25,7 @@ print("Mailbox contains \(mailboxInfo.messageCount) messages")
 
 // Get the latest 10 messages
 if let latestMessagesSet = mailboxInfo.latest(10) {
-    // Fetch the messages
-    let emails = try await imapServer.fetchMessages(using: latestMessagesSet)
-    print("\nFetched \(emails.count) messages")
+	// Fetch the messages
+	let emails = try await imapServer.fetchMessages(using: latestMessagesSet)
+	print("\nFetched \(emails.count) messages")
 }

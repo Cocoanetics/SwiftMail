@@ -7,7 +7,7 @@
     
     @Section(title: "Connecting to an IMAP Server") {
         @ContentAndMedia {
-            Learn how to establish a connection to an IMAP server and authenticate with your credentials.
+            Learn how to establish a connection to an IMAP server, fetch emails, search for eamails and to disconnect from the server.
             
             @Image(source: placeholder.png, alt: "Illustration showing IMAP connection")
         }
@@ -24,56 +24,48 @@
                 
                 @Code(name: "IMAPExample.swift", file: "imap-2.swift")
             }
-        }
-    }
-    
-    @Section(title: "Working with Mailboxes") {
-        @ContentAndMedia {
-            Learn how to list and select mailboxes on the IMAP server.
-            
-            @Image(source: placeholder.png, alt: "Illustration showing mailbox structure")
-        }
+			
+			@Step {
+				List available mailboxes on the server.
+				
+				@Code(name: "IMAPExample.swift", file: "imap-3.swift")
+			}
         
-        @Steps {
-            @Step {
-                List available mailboxes on the server.
-                
-                @Code(name: "IMAPExample.swift", file: "imap-3.swift")
-            }
-            
-            @Step {
-                Select a mailbox to work with.
-                
-                @Code(name: "IMAPExample.swift", file: "imap-4.swift")
-            }
-        }
-    }
-    
-    @Section(title: "Fetching Messages") {
-        @ContentAndMedia {
-            Learn how to fetch and read email messages from a mailbox.
-            
-            @Image(source: placeholder.png, alt: "Illustration showing message fetching")
-        }
-        
-        @Steps {
+			@Step {
+				Select a mailbox to work with.
+				
+				@Code(name: "IMAPExample.swift", file: "imap-4.swift")
+			}
+			
             @Step {
                 Fetch the latest messages from the selected mailbox.
                 
                 @Code(name: "IMAPExample.swift", file: "imap-5.swift")
             }
-            
+
             @Step {
-                Process the fetched messages.
+                Define message identifier set types for searching. SwiftMail supports two types of message identifiers: SequenceNumber and UID.
                 
                 @Code(name: "IMAPExample.swift", file: "imap-6.swift")
             }
             
             @Step {
-                Clean up by logging out and closing the connection.
+                Search for unread messages using sequence numbers.
                 
                 @Code(name: "IMAPExample.swift", file: "imap-7.swift")
             }
+            
+            @Step {
+                Search for messages by subject using UIDs.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-8.swift")
+            }
+			
+			@Step {
+				Logout and close the connection to maintain server resources and ensure a clean disconnection.
+				
+				@Code(name: "IMAPExample.swift", file: "imap-9.swift")
+			}
         }
     }
 } 

@@ -106,7 +106,17 @@ do {
     } else {
         print("No messages found in INBOX")
     }
+	
+	// search for unread message
+	print("\nSearching for unread messages...")
+	let unreadMessagesSet: MessageIdentifierSet<SequenceNumber> = try await server.search(criteria: [.unseen])
+	print("Found \(unreadMessagesSet.count) unread messages")
     
+	// search for sample emails
+	print("\nSearching for sample emails...")
+	let sampleMessagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("SwiftSMTPCLI")])
+	print("Found \(sampleMessagesSet.count) sample emails")
+	
     // Disconnect from the server
     try await server.disconnect()
     print("✅ Successfully disconnected from server")

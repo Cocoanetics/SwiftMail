@@ -1,12 +1,34 @@
+import SwiftMail
+
+// Create an SMTP server instance
+let smtpServer = SMTPServer(host: "smtp.example.com", port: 587)
+
+// Connect to the SMTP server
+try await smtpServer.connect()
+
+// Authenticate with your credentials
+try await smtpServer.login(username: "user@example.com", password: "password")
+
+// Create sender and recipients
+let sender = EmailAddress(name: "Test Sender", address: "sender@example.org")
+let recipient = EmailAddress(name: "Test Recipient", address: "recipient@example.org") // Primary recipient
+
+// Create an attachment
+let attachment = Attachment(filename: "document.pdf",
+                            data: documentData,
+                            mimeType: "application/pdf"
+                           )
+
+// Create a new email message
+let email = Email(sender: sender,
+                  recipients: [recipient],
+                  subject: "Hello from SwiftMail",
+                  textBody: "This is a test email sent using SwiftMail."
+			      attachments: [attachment]
+            )
+
 // Send the email
-do {
-    try await smtpServer.sendEmail(email)
-    print("Email sent successfully!")
-} catch {
-    print("Failed to send email: \(error)")
-}
+try await smtpServer.sendEmail(email)
 
 // Disconnect from the SMTP server
 try await smtpServer.disconnect()
-
-print("Disconnected from SMTP server") 

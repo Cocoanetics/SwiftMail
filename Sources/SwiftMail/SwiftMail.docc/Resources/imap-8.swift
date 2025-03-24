@@ -35,3 +35,11 @@ let unreadMessagesSet: MessageIdentifierSet<SequenceNumber>
 
 // Will store results using UIDs
 let sampleMessagesSet: MessageIdentifierSet<UID>
+
+// Search for unread messages
+let unreadMessagesSet = try await imapServer.search(criteria: [.unseen])
+print("\nFound \(unreadMessagesSet.count) unread messages")
+
+// Search for messages by subject
+let sampleMessagesSet = try await imapServer.search(criteria: [.subject("SwiftSMTPCLI")])
+print("Found \(sampleMessagesSet.count) sample emails")

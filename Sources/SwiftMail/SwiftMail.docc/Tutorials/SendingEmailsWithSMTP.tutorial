@@ -7,7 +7,7 @@
     
     @Section(title: "Connecting to an SMTP Server") {
         @ContentAndMedia {
-            Learn how to establish a connection to an SMTP server and authenticate.
+            Learn how to establish a connection to an SMTP server, authenticate, send an email with attachment and then disconnect.
             
             @Image(source: placeholder.png, alt: "Illustration showing SMTP connection")
         }
@@ -24,17 +24,7 @@
                 
                 @Code(name: "SMTPExample.swift", file: "smtp-2.swift")
             }
-        }
-    }
-    
-    @Section(title: "Creating and Sending Emails") {
-        @ContentAndMedia {
-            Learn how to create and send emails with SwiftMail.
-            
-            @Image(source: placeholder.png, alt: "Illustration showing email creation")
-        }
-        
-        @Steps {
+       
             @Step {
                 Create email addresses for the sender and recipients.
                 
@@ -52,17 +42,7 @@
                 
                 @Code(name: "SMTPExample.swift", file: "smtp-5.swift")
             }
-        }
-    }
-    
-    @Section(title: "Sending and Cleanup") {
-        @ContentAndMedia {
-            Learn how to send the email and clean up afterwards.
-            
-            @Image(source: placeholder.png, alt: "Illustration showing email attachments")
-        }
         
-        @Steps {
             @Step {
                 Send the email and handle the response.
                 
