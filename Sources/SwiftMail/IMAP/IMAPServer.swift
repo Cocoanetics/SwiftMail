@@ -515,6 +515,34 @@ public actor IMAPServer {
 	}
 	
 	/**
+	 Searches for messages matching the given criteria.
+	 
+	 This method performs a search in the selected mailbox using the provided criteria.
+	 Common search criteria include:
+	 - Text content (in subject, body, etc.)
+	 - Date ranges (before, on, since)
+	 - Flags (seen, answered, flagged, etc.)
+	 - Size ranges
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
+	 - Parameters:
+	   - identifierSet: Optional set of message identifiers to search within. If nil, searches all messages.
+	   - criteria: The search criteria to apply. Multiple criteria are combined with AND logic.
+	 - Returns: A set of message identifiers matching all the search criteria
+	 - Throws: 
+	   - `IMAPError.searchFailed` if the search operation fails
+	   - `IMAPError.connectionFailed` if not connected
+	 - Note: Logs search operations at debug level with criteria count and results count
+	 */
+	public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria]) async throws -> MessageIdentifierSet<T> {
+		let command = SearchCommand(identifierSet: identifierSet, criteria: criteria)
+		return try await executeCommand(command)
+	}
+	
+	/**
 	 Searches for messages matching the given criteria
 	 
 	 - Parameters:
