@@ -3,12 +3,12 @@ import NIOCore
 import Logging
 
 /// Handler for SMTP LOGIN authentication
-public class LoginAuthHandler: BaseSMTPHandler<AuthResult> {
+final class LoginAuthHandler: BaseSMTPHandler<AuthResult> {
     /// State machine to handle the authentication process
     private var stateMachine: AuthHandlerStateMachine
     
     /// Required initializer
-    public required init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
+    required init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
         // Create state machine with default values - these will be set in the command
         self.stateMachine = AuthHandlerStateMachine(
             method: AuthMethod.login,
@@ -19,7 +19,7 @@ public class LoginAuthHandler: BaseSMTPHandler<AuthResult> {
     }
     
     /// Custom initializer with command parameters
-    public convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>, 
+	convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>,
                          command: LoginAuthCommand) {
         self.init(commandTag: commandTag, promise: promise)
         // Update the state machine with the actual credentials from the command

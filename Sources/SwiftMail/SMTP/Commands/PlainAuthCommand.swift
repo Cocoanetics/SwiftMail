@@ -4,21 +4,21 @@ import NIO
 /**
  Command to authenticate with SMTP server using PLAIN method
  */
-public struct PlainAuthCommand: SMTPCommand {
+struct PlainAuthCommand: SMTPCommand {
     /// The result type for this command
-    public typealias ResultType = AuthResult
+    typealias ResultType = AuthResult
     
     /// The handler type for this command
-    public typealias HandlerType = PlainAuthHandler
+    typealias HandlerType = PlainAuthHandler
     
     /// Username for authentication
-    public let username: String
+    let username: String
     
     /// Password for authentication
-    public let password: String
+    let password: String
     
     /// Default timeout in seconds
-    public let timeoutSeconds: Int = 30
+    let timeoutSeconds: Int = 30
     
     /**
      Initialize a new PLAIN authentication command
@@ -26,7 +26,7 @@ public struct PlainAuthCommand: SMTPCommand {
        - username: The username for authentication
        - password: The password for authentication
      */
-    public init(username: String, password: String) {
+    init(username: String, password: String) {
         self.username = username
         self.password = password
     }
@@ -35,7 +35,7 @@ public struct PlainAuthCommand: SMTPCommand {
      Convert the command to a string to send to the server
      - Returns: The command string
      */
-    public func toCommandString() -> String {
+    func toCommandString() -> String {
         // For PLAIN auth, format should be: \0username\0password
         // The proper format is actually: \0<authzid>\0<authcid>\0<passwd>
         // where authzid can be empty, and authcid is the username
@@ -59,7 +59,7 @@ public struct PlainAuthCommand: SMTPCommand {
      Validate that the command parameters are valid
      - Throws: SMTPError if validation fails
      */
-    public func validate() throws {
+    func validate() throws {
         guard !username.isEmpty else {
             throw SMTPError.authenticationFailed("Username cannot be empty")
         }

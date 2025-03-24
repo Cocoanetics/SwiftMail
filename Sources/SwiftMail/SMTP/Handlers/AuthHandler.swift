@@ -3,7 +3,7 @@ import NIOCore
 import Logging
 
 /// Handler for SMTP authentication
-public class AuthHandler: BaseSMTPHandler<AuthResult> {
+final class AuthHandler: BaseSMTPHandler<AuthResult> {
     /// Current state of the authentication process
     private enum AuthState {
         case initial
@@ -30,13 +30,13 @@ public class AuthHandler: BaseSMTPHandler<AuthResult> {
     /// - Parameters:
     ///   - commandTag: Optional tag for the command
     ///   - promise: The promise to fulfill when the command completes
-    public required convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
+   required convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
         // These will be set in the designated initializer
         self.init(commandTag: commandTag, promise: promise, method: .plain, username: "", password: "", channel: nil)
     }
     
     /// Designated initializer
-    public init(commandTag: String?, promise: EventLoopPromise<AuthResult>,
+    init(commandTag: String?, promise: EventLoopPromise<AuthResult>,
                method: AuthMethod, username: String, password: String, channel: Channel?) {
         self.method = method
         self.username = username
@@ -48,7 +48,7 @@ public class AuthHandler: BaseSMTPHandler<AuthResult> {
     /// Process a response line from the server
     /// - Parameter response: The response line to process
     /// - Returns: Whether the handler is complete
-    override public func processResponse(_ response: SMTPResponse) -> Bool {
+    override func processResponse(_ response: SMTPResponse) -> Bool {
         // Handle authentication based on the method and current state
         switch method {
         case .plain:
@@ -125,28 +125,28 @@ public class AuthHandler: BaseSMTPHandler<AuthResult> {
 }
 
 /// Authentication methods supported by SMTP
-public enum AuthMethod: String {
+enum AuthMethod: String {
     case plain = "PLAIN"
     case login = "LOGIN"
 }
 
 /// Result of authentication attempt
-public struct AuthResult {
+struct AuthResult {
     /// Method used for authentication
-    public let method: AuthMethod
+    let method: AuthMethod
     
     /// Whether authentication was successful
-    public let success: Bool
+    let success: Bool
     
     /// Error message, if authentication failed
-    public let errorMessage: String?
+    let errorMessage: String?
     
     /// Initialize a new authentication result
     /// - Parameters:
     ///   - method: Method used for authentication
     ///   - success: Whether authentication was successful
     ///   - errorMessage: Error message, if authentication failed
-    public init(method: AuthMethod, success: Bool, errorMessage: String? = nil) {
+    init(method: AuthMethod, success: Bool, errorMessage: String? = nil) {
         self.method = method
         self.success = success
         self.errorMessage = errorMessage

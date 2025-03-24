@@ -3,22 +3,22 @@ import NIOCore
 import Logging
 
 /// State machine for handling SMTP authentication processes
-public class AuthHandlerStateMachine {
+final class AuthHandlerStateMachine {
     /// Current state of the authentication process
-    public enum AuthState {
+    enum AuthState {
         case initial
         case usernameProvided
         case completed
     }
     
     /// Authentication method in use
-    public let method: AuthMethod
+    let method: AuthMethod
     
     /// Username for authentication
-    public let username: String
+    let username: String
     
     /// Password for authentication
-    public let password: String
+    let password: String
     
     /// Current state in the authentication process
     private var state: AuthState = .initial
@@ -28,7 +28,7 @@ public class AuthHandlerStateMachine {
     ///   - method: The authentication method to use
     ///   - username: The username for authentication
     ///   - password: The password for authentication
-    public init(method: AuthMethod, username: String, password: String) {
+    init(method: AuthMethod, username: String, password: String) {
         self.method = method
         self.username = username
         self.password = password
@@ -39,7 +39,7 @@ public class AuthHandlerStateMachine {
     ///   - response: The SMTP response to process
     ///   - sendCredential: Closure to send credentials when needed
     /// - Returns: A tuple with a boolean indicating if auth is complete and the result if complete
-    public func processResponse(_ response: SMTPResponse, 
+	func processResponse(_ response: SMTPResponse,
                                sendCredential: (String) -> Void) -> (isComplete: Bool, result: AuthResult?) {
         switch method {
         case .plain:
@@ -91,7 +91,7 @@ public class AuthHandlerStateMachine {
     }
     
     /// Get the current auth state
-    public var currentState: AuthState {
+    var currentState: AuthState {
         return state
     }
 } 
