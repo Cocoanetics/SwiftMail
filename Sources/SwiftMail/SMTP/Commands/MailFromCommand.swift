@@ -5,12 +5,12 @@ import NIOCore
 /**
  Command to specify the sender of an email
  */
-public struct MailFromCommand: SMTPCommand {
+struct MailFromCommand: SMTPCommand {
     /// The result type is a simple success Boolean
-    public typealias ResultType = Bool
+	typealias ResultType = Bool
     
     /// The handler type that will process responses for this command
-    public typealias HandlerType = MailFromHandler
+	typealias HandlerType = MailFromHandler
     
     /// The email address of the sender
     private let senderAddress: String
@@ -19,7 +19,7 @@ public struct MailFromCommand: SMTPCommand {
     private let use8BitMIME: Bool
     
     /// Default timeout in seconds
-    public let timeoutSeconds: Int = 30
+	let timeoutSeconds: Int = 30
     
     /**
      Initialize a new MAIL FROM command
@@ -27,7 +27,7 @@ public struct MailFromCommand: SMTPCommand {
        - senderAddress: The email address of the sender
        - use8BitMIME: Whether to use 8BITMIME extension if available
      */
-    public init(senderAddress: String, use8BitMIME: Bool = false) throws {
+	init(senderAddress: String, use8BitMIME: Bool = false) throws {
         // Validate email format
         guard senderAddress.isValidEmail() else {
             throw SMTPError.invalidEmailAddress("Invalid sender address: \(senderAddress)")
@@ -40,7 +40,7 @@ public struct MailFromCommand: SMTPCommand {
     /**
      Convert the command to a string that can be sent to the server
      */
-    public func toCommandString() -> String {
+	func toCommandString() -> String {
         if use8BitMIME {
             // Add the BODY=8BITMIME parameter when 8BITMIME is supported
             return "MAIL FROM:<\(senderAddress)> BODY=8BITMIME"
@@ -53,7 +53,7 @@ public struct MailFromCommand: SMTPCommand {
     /**
      Validate that the sender address is valid
      */
-    public func validate() throws {
+	func validate() throws {
         guard !senderAddress.isEmpty else {
             throw SMTPError.sendFailed("Sender address cannot be empty")
         }
