@@ -35,19 +35,27 @@ try await smtpServer.sendEmail(email)
 
 ## Topics
 
-### Essentials
+### Getting Started
 
-- <doc:GettingStarted>
 - <doc:Installation>
+- <doc:GettingStarted>
 
 ### Tutorials
 
-- <doc:WorkingWithIMAP>
-- <doc:SendingEmailsWithSMTP>
+- <doc:SwiftMailTutorials>
 
-### Core Features
+### Core Types
 
 - ``IMAPServer``
 - ``SMTPServer``
 - ``Email``
 - ``EmailAddress``
+
+### Email Operations
+
+- ``IMAPServer/connect()``
+- ``IMAPServer/login(username:password:)``
+- ``IMAPServer/selectMailbox(_:)``
+- ``SMTPServer/connect()``
+- ``SMTPServer/authenticate(username:password:)``
+- ``SMTPServer/sendEmail(_:)``
