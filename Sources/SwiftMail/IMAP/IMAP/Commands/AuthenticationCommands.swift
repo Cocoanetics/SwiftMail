@@ -16,9 +16,6 @@ struct LoginCommand: IMAPCommand {
     /// The password for authentication
     let password: String
     
-    /// The handler type for processing this command
-   var handlerType: HandlerType.Type { LoginHandler.self }
-    
     /// Initialize a new login command
     /// - Parameters:
     ///   - username: The username for authentication
@@ -43,9 +40,6 @@ struct LoginCommand: IMAPCommand {
 struct LogoutCommand: IMAPCommand {
     typealias ResultType = Void
     typealias HandlerType = LogoutHandler
-    
-    /// The handler type for processing this command
-    var handlerType: HandlerType.Type { LogoutHandler.self }
     
     /// Convert to an IMAP tagged command
     /// - Parameter tag: The command tag

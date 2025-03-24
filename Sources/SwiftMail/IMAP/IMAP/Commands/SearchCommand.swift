@@ -11,8 +11,6 @@ struct SearchCommand<T: MessageIdentifier>: IMAPCommand {
     let identifierSet: MessageIdentifierSet<T>?
     let criteria: [SearchCriteria]
     
-    var handlerType: HandlerType.Type { SearchHandler<T>.self }
-    
     var timeoutSeconds: Int { return 10 }
     
     init(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria]) {

@@ -13,8 +13,8 @@ protocol IMAPCommand {
     /// The handler type used to process this command
     associatedtype HandlerType: IMAPCommandHandler where HandlerType.ResultType == ResultType
     
-    /// Returns the handler type for processing this command
-    var handlerType: HandlerType.Type { get }
+//    /// Returns the handler type for processing this command
+//    var handlerType: HandlerType.Type { get }
     
     /// Convert this high-level command to a NIO TaggedCommand
     func toTaggedCommand(tag: String) -> TaggedCommand
@@ -30,9 +30,9 @@ protocol IMAPCommand {
 extension IMAPCommand {
     var timeoutSeconds: Int { return 5 }
     
-	var handlerType: HandlerType.Type {
-		return HandlerType.self
-	}
+//	var handlerType: HandlerType.Type {
+//		return HandlerType.self
+//	}
 	
     func validate() throws {
         // Default implementation does no validation

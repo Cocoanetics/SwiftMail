@@ -12,10 +12,6 @@ struct ListCommand: IMAPCommand {
     // Return options for the LIST command
     private let returnOptions: [ReturnOption]
     
-    var handlerType: HandlerType.Type {
-        return ListCommandHandler.self
-    }
-    
     /// Initialize a new LIST command
     /// - Parameter returnOptions: Optional list of return options for the LIST command (e.g. SPECIAL-USE)
     init(returnOptions: [ReturnOption] = []) {

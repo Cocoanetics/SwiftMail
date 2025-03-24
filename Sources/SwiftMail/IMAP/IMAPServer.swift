@@ -579,7 +579,7 @@ public actor IMAPServer {
 		let tag = generateCommandTag()
 		
 		// Create the handler for this command
-		let handler = command.handlerType.init(commandTag: tag, promise: resultPromise)
+		let handler = CommandType.HandlerType.init(commandTag: tag, promise: resultPromise)
 		
 		// Get timeout value for this command
 		let timeoutSeconds = command.timeoutSeconds

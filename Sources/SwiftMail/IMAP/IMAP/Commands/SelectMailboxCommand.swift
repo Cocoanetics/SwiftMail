@@ -10,10 +10,6 @@ struct SelectMailboxCommand: IMAPCommand {
     let mailboxName: String
     let timeoutSeconds: Int = 30
     
-    var handlerType: HandlerType.Type {
-        return SelectHandler.self
-    }
-    
     init(mailboxName: String) {
         self.mailboxName = mailboxName
     }

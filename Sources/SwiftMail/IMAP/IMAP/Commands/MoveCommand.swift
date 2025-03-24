@@ -16,9 +16,6 @@ struct MoveCommand<T: MessageIdentifier>: IMAPCommand {
     /// The destination mailbox name
     let destinationMailbox: String
     
-    /// The handler type for processing this command
-    var handlerType: HandlerType.Type { MoveHandler.self }
-    
     /// Initialize a new move command
     /// - Parameters:
     ///   - identifierSet: The set of message identifiers to move

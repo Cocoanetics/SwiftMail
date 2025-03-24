@@ -10,9 +10,6 @@ struct CapabilityCommand: IMAPCommand {
 	typealias ResultType = [Capability]
 	typealias HandlerType = CapabilityHandler
     
-    /// The handler type for processing this command
-    var handlerType: HandlerType.Type { CapabilityHandler.self }
-    
     /// Convert to an IMAP tagged command
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server
@@ -31,9 +28,6 @@ struct CopyCommand<T: MessageIdentifier>: IMAPCommand {
     
     /// The destination mailbox name
     let destinationMailbox: String
-    
-    /// The handler type for processing this command
-    var handlerType: HandlerType.Type { CopyHandler.self }
     
     /// Initialize a new copy command
     /// - Parameters:
@@ -76,9 +70,6 @@ struct StoreCommand<T: MessageIdentifier>: IMAPCommand {
     /// The data to store
     let data: StoreData
     
-    /// The handler type for processing this command
-    var handlerType: HandlerType.Type { StoreHandler.self }
-    
     /// Initialize a new store command
     /// - Parameters:
     ///   - identifierSet: The set of message identifiers to update
@@ -111,9 +102,6 @@ struct StoreCommand<T: MessageIdentifier>: IMAPCommand {
 struct ExpungeCommand: IMAPCommand {
     typealias ResultType = Void
     typealias HandlerType = ExpungeHandler
-    
-    /// The handler type for processing this command
-	var handlerType: HandlerType.Type { ExpungeHandler.self }
     
     /// Convert to an IMAP tagged command
     /// - Parameter tag: The command tag

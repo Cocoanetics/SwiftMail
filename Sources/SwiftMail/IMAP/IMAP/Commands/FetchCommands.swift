@@ -16,9 +16,6 @@ struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
     /// Optional limit on the number of headers to return
 	let limit: Int?
     
-    /// The handler type for processing this command
-	var handlerType: HandlerType.Type { FetchHeadersHandler.self }
-    
     /// Custom timeout for this operation
 	let timeoutSeconds = 10
     
@@ -73,9 +70,6 @@ struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
     /// The section path to fetch (e.g., [1], [1, 1], [2], etc.)
 	let sectionPath: [Int]
     
-    /// The handler type for processing this command
-	var handlerType: HandlerType.Type { FetchPartHandler.self }
-    
     /// Custom timeout for this operation
 	var timeoutSeconds: Int { return 10 }
     
@@ -121,9 +115,6 @@ struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
     
     /// The message identifier to fetch
     let identifier: T
-    
-    /// The handler type for processing this command
-    var handlerType: HandlerType.Type { FetchStructureHandler.self }
     
     /// Custom timeout for this operation
     var timeoutSeconds: Int { return 10 }
