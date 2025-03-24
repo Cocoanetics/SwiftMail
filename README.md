@@ -1,37 +1,26 @@
 # SwiftMail
 
-A Swift package for email functionality, including IMAP and SMTP clients.
+A Swift package for comprehensive email functionality, providing robust IMAP and SMTP client implementations.
 
 ## Overview
 
-SwiftMail is a comprehensive email package that includes:
+SwiftMail is a powerful email package that enables you to work with email protocols in your Swift applications. The package provides two main components:
 
-- **SwiftIMAP**: Library for interacting with IMAP servers
-- **SwiftSMTP**: Library for sending emails via SMTP servers
-- **SwiftMailCore**: Core functionality shared between email protocols
+### IMAPServer
+Handles IMAP server connections for retrieving and managing emails. Implements key IMAP capabilities including:
+- Mailbox operations (SELECT, LIST, COPY, MOVE)
+- Message operations (FETCH headers/parts/structure, STORE flags)
+- Special-use mailbox support
+- TLS encryption
+- UID-based operations via UIDPLUS
 
-## Features
-
-### SwiftIMAP
-- Connect to IMAP servers securely using SSL/TLS
-- Authenticate with username and password
-- Select mailboxes and retrieve mailbox information
-- Fetch email headers and message parts
-- Handle MIME-encoded content and quoted-printable encoding
-
-### SwiftSMTP
-- Connect to SMTP servers with support for secure connections
-- Support for both plain and SSL/TLS connections
-- STARTTLS support for upgrading connections
-- Authentication using PLAIN and LOGIN methods
-- Send emails with attachments
-- Properly formatted MIME content
-
-### SwiftMailCore
-- Shared networking utilities
-- Email address handling and formatting
-- Credential redaction for secure logging
-- String and data utilities for email processing
+### SMTPServer
+Handles email sending via SMTP with support for:
+- Multiple authentication methods (PLAIN, LOGIN)
+- TLS encryption
+- 8BITMIME support
+- Full MIME email composition
+- Multiple recipients (To, CC, BCC)
 
 ## Command Line Demos
 
@@ -73,87 +62,6 @@ ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift run SwiftSMTPCLI
 The debug logging options:
 - `ENABLE_DEBUG_OUTPUT=1`: Enables trace level logging
 - `OS_ACTIVITY_DT_MODE=debug`: Formats debug output in a readable way
-
-## Usage
-
-### SwiftIMAP Example
-
-```swift
-import SwiftMail
-
-// Create an IMAP server connection
-let imapServer = IMAPServer(host: "imap.example.com", port: 993)
-
-// Connect to the server
-try await imapServer.connect()
-
-// Login with credentials
-try await imapServer.login(username: "user@example.com", password: "password")
-
-// Select a mailbox
-let mailboxInfo = try await imapServer.selectMailbox("INBOX")
-print("Mailbox has \(mailboxInfo.messageCount) messages")
-
-// Use the convenience method to get the latest 10 messages
-if let latestMessagesSet = mailboxStatus.latest(10) {
-				
-   let emails = try await server.fetchMessages(using: latestMessagesSet)
-				
-   print("\n📧 Latest Emails (\(emails.count)) 📧")
-				
-   for (index, email) in emails.enumerated() {
-      print("\n[\(index + 1)/\(emails.count)] \(email.debugDescription)")
-      print("---")
-   }
-}
-else
-{
-   print("No messages found in INBOX")
-}
-
-// Logout and close the connection
-try await imapServer.logout()
-try await imapServer.close()
-```
-
-### SwiftSMTP Example
-
-```swift
-import SwiftMail
-
-// Create an SMTP server connection
-let smtpServer = SMTPServer(host: "smtp.example.com", port: 587)
-
-// Connect to the server
-try await smtpServer.connect()
-
-// Authenticate with the server
-try await smtpServer.authenticate(username: "user@example.com", password: "password")
-
-// Create an email
-let sender = EmailAddress(address: "sender@example.com", name: "Sender Name")
-let recipient = EmailAddress(address: "recipient@example.com", name: "Recipient Name")
-let email = Email(
-    sender: sender,
-    recipients: [recipient],
-    subject: "Hello from SwiftSMTP",
-    body: "This is a test email sent using SwiftSMTP."
-)
-
-// Send the email
-try await smtpServer.sendEmail(email)
-
-// Disconnect from the server
-try await smtpServer.disconnect()
-```
-
-## Testing
-
-The project uses [Swift Testing](https://github.com/apple/swift-testing) for unit tests. To run the tests:
-
-```bash
-swift test
-```
 
 ## Requirements
 
