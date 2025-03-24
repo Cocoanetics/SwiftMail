@@ -2,7 +2,7 @@
 // Tests for MIME-related String extensions
 
 import XCTest
-@testable import SwiftMailCore
+@testable import SwiftMail
 
 final class StringMIMETests: XCTestCase {
     func testFileExtensionForMIMEType() {

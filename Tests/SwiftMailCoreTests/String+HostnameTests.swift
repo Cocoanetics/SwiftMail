@@ -2,7 +2,7 @@
 // Tests for hostname-related String extensions
 
 import XCTest
-@testable import SwiftMailCore
+@testable import SwiftMail
 
 final class StringHostnameTests: XCTestCase {
     func testLocalHostname() {

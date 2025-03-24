@@ -3,8 +3,8 @@ import Foundation
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
-import SwiftSMTP
-import SwiftMailCore
+import SwiftMail
+import SwiftMail
 
 extension Email {
     /// Creates a demo email with Swift logo embedded inline
