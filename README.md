@@ -45,6 +45,8 @@ SMTP_USERNAME=your_username
 SMTP_PASSWORD=your_password
 ```
 
+**Note for Gmail Users**: When using Gmail, you cannot authenticate with your Google account password. Instead, you must create an [app-specific password](https://myaccount.google.com/apppasswords) and use that as your password in the configuration above.
+
 To run the demos:
 
 ```bash
