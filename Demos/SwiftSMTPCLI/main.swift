@@ -80,14 +80,7 @@ do {
             // Login with credentials
             print("Authenticating...")
 
-			let authSuccess = try await server.authenticate(username: username, password: password)
-            
-            if authSuccess {
-                logger.info("Authentication successful")
-            } else {
-                logger.error("Authentication failed")
-                throw SMTPError.authenticationFailed("Authentication failed")
-            }
+			try await server.login(username: username, password: password)
             
             // Create sender and recipients
             let sender = EmailAddress(name: "Test Sender", address: username)

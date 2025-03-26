@@ -224,106 +224,6 @@ public actor SMTPServer {
     }
     
     /**
-     Execute a command and return the result
-     
-     This method handles the execution of SMTP commands by:
-     1. Validating the command
-     2. Setting up appropriate handlers
-     3. Managing command timeouts
-     4. Handling command-specific requirements (e.g., LOGIN auth)
-     
-     - Parameter command: The command to execute
-     - Returns: The result of the command execution
-     - Throws: 
-       - `SMTPError.connectionFailed` if not connected
-       - `SMTPError.commandFailed` if the command execution fails
-       - `SMTPError.timeout` if the command times out
-     - Note: Logs command execution at debug level
-     */
-    @discardableResult func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
-        // Ensure we have a valid channel
-        guard let channel = channel else {
-            throw SMTPError.connectionFailed("Not connected to SMTP server")
-        }
-        
-        // Validate the command
-        try command.validate()
-        
-        // Create a promise for the result
-        let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
-        
-        // Generate a command tag for traceability
-        let commandTag = UUID().uuidString
-        
-        // Create the command string
-        let commandString = command.toCommandString()
-        
-        // Create the handler using standard initialization
-        let commandHandler = CommandType.HandlerType(commandTag: commandTag, promise: resultPromise)
-        
-        // Create special handlers with additional parameters if needed
-        var handler: ChannelHandler
-        
-        // Special case for LoginAuthHandler which needs the command parameters
-        if let _ = commandHandler as? LoginAuthHandler,
-           let loginCommand = command as? LoginAuthCommand {
-            
-            // Re-init with command parameters
-            let loginHandler = LoginAuthHandler(
-                commandTag: commandTag,
-                promise: resultPromise as! EventLoopPromise<AuthResult>,
-                command: loginCommand
-            )
-            
-            // Store the handler
-            handler = loginHandler
-        } else {
-            // For all other handlers, use the standard cast
-            guard let channelHandler = commandHandler as? ChannelHandler else {
-                throw SMTPError.connectionFailed("Handler is not a ChannelHandler")
-            }
-            handler = channelHandler
-        }
-        
-        // Create a timeout for the command
-		let timeoutSeconds = command.timeoutSeconds
-		
-		let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
-            resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
-        }
-        
-        do {
-            // Add the command handler to the pipeline
-            try await channel.pipeline.addHandler(handler).get()
-            
-            // Send the command to the server
-            let buffer = channel.allocator.buffer(string: commandString + "\r\n")
-            try await channel.writeAndFlush(buffer).get()
-            
-            // Wait for the result
-            let result = try await resultPromise.futureResult.get()
-            
-            // Cancel the timeout
-            scheduledTask.cancel()
-			
-			// Flush the DuplexLogger's buffer after command execution
-			duplexLogger.flushInboundBuffer()
-            
-            return result
-        } catch {
-            // Cancel the timeout
-            scheduledTask.cancel()
-            
-            // If it's a timeout error, throw a more specific error
-            if error is SMTPError {
-                throw error
-            } else {
-                throw SMTPError.connectionFailed("Command failed: \(error.localizedDescription)")
-            }
-        }
-    }
-    
-    /** 
      Authenticate with the SMTP server
      
      This method authenticates with the SMTP server using the provided credentials.
@@ -336,14 +236,13 @@ public actor SMTPServer {
      - Parameters:
        - username: The username for authentication
        - password: The password or access token for authentication
-     - Returns: A boolean indicating if authentication was successful
-     - Throws: 
+     - Throws:
        - `SMTPError.authenticationFailed` if credentials are rejected
        - `SMTPError.connectionFailed` if not connected
        - `SMTPError.tlsRequired` if attempting to authenticate without TLS
      - Note: Logs authentication attempts at info level (without credentials)
      */
-    public func authenticate(username: String, password: String) async throws -> Bool {
+    public func login(username: String, password: String) async throws {
         
         // Check if we have PLAIN auth support
         if capabilities.contains("AUTH PLAIN") {
@@ -352,7 +251,7 @@ public actor SMTPServer {
             
             // If successful, return success
             if result.success {
-                return true
+                return
             }
         }
         
@@ -363,7 +262,7 @@ public actor SMTPServer {
             
             // If successful, return success
             if result.success {
-                return true
+                return
             }
         }
         
@@ -479,6 +378,106 @@ public actor SMTPServer {
     
     // MARK: - Helper Methods
     
+	/**
+	 Execute a command and return the result
+	 
+	 This method handles the execution of SMTP commands by:
+	 1. Validating the command
+	 2. Setting up appropriate handlers
+	 3. Managing command timeouts
+	 4. Handling command-specific requirements (e.g., LOGIN auth)
+	 
+	 - Parameter command: The command to execute
+	 - Returns: The result of the command execution
+	 - Throws:
+	   - `SMTPError.connectionFailed` if not connected
+	   - `SMTPError.commandFailed` if the command execution fails
+	   - `SMTPError.timeout` if the command times out
+	 - Note: Logs command execution at debug level
+	 */
+	@discardableResult func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+		// Ensure we have a valid channel
+		guard let channel = channel else {
+			throw SMTPError.connectionFailed("Not connected to SMTP server")
+		}
+		
+		// Validate the command
+		try command.validate()
+		
+		// Create a promise for the result
+		let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
+		
+		// Generate a command tag for traceability
+		let commandTag = UUID().uuidString
+		
+		// Create the command string
+		let commandString = command.toCommandString()
+		
+		// Create the handler using standard initialization
+		let commandHandler = CommandType.HandlerType(commandTag: commandTag, promise: resultPromise)
+		
+		// Create special handlers with additional parameters if needed
+		var handler: ChannelHandler
+		
+		// Special case for LoginAuthHandler which needs the command parameters
+		if let _ = commandHandler as? LoginAuthHandler,
+		   let loginCommand = command as? LoginAuthCommand {
+			
+			// Re-init with command parameters
+			let loginHandler = LoginAuthHandler(
+				commandTag: commandTag,
+				promise: resultPromise as! EventLoopPromise<AuthResult>,
+				command: loginCommand
+			)
+			
+			// Store the handler
+			handler = loginHandler
+		} else {
+			// For all other handlers, use the standard cast
+			guard let channelHandler = commandHandler as? ChannelHandler else {
+				throw SMTPError.connectionFailed("Handler is not a ChannelHandler")
+			}
+			handler = channelHandler
+		}
+		
+		// Create a timeout for the command
+		let timeoutSeconds = command.timeoutSeconds
+		
+		let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+			resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
+		}
+		
+		do {
+			// Add the command handler to the pipeline
+			try await channel.pipeline.addHandler(handler).get()
+			
+			// Send the command to the server
+			let buffer = channel.allocator.buffer(string: commandString + "\r\n")
+			try await channel.writeAndFlush(buffer).get()
+			
+			// Wait for the result
+			let result = try await resultPromise.futureResult.get()
+			
+			// Cancel the timeout
+			scheduledTask.cancel()
+			
+			// Flush the DuplexLogger's buffer after command execution
+			duplexLogger.flushInboundBuffer()
+			
+			return result
+		} catch {
+			// Cancel the timeout
+			scheduledTask.cancel()
+			
+			// If it's a timeout error, throw a more specific error
+			if error is SMTPError {
+				throw error
+			} else {
+				throw SMTPError.connectionFailed("Command failed: \(error.localizedDescription)")
+			}
+		}
+	}
+	
     /**
      Execute a handler without sending a command
      
