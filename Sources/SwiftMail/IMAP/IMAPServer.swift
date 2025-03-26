@@ -89,7 +89,10 @@ public actor IMAPServer {
 	}
 	
 	deinit {
-		try? group.syncShutdownGracefully()
+		// Schedule shutdown on a background thread to avoid EventLoop issues
+		Task {  @MainActor [group] in
+			try? await group.shutdownGracefully()
+		}
 	}
 	
 	// MARK: - Connection and Login Commands
