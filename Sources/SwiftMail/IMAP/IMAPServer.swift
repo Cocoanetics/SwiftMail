@@ -634,6 +634,7 @@ public actor IMAPServer {
 				// Extract disposition and filename if available
 				var disposition: String? = nil
 				var filename: String? = nil
+				let encoding: String? = part.fields.encoding?.debugDescription
 				
 				if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
 					if let disp = dispAndLang.disposition {
@@ -656,6 +657,7 @@ public actor IMAPServer {
 					contentType: contentType,
 					contentSubtype: contentSubtype,
 					disposition: disposition,
+					encoding: encoding,
 					filename: filename,
 					contentId: contentId,
 					data: partData

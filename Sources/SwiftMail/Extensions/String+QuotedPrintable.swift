@@ -34,6 +34,7 @@ extension String {
         
         var result = ""
         var index = withoutSoftBreaks.startIndex
+        var bytes: [UInt8] = []
         
         while index < withoutSoftBreaks.endIndex {
             let char = withoutSoftBreaks[index]
@@ -49,17 +50,35 @@ extension String {
                 // Get the two hex characters
                 let hex = String(withoutSoftBreaks[nextIndex...nextNextIndex])
                 
-                // Convert hex to character
-                guard let hexValue = UInt8(hex, radix: 16),
-                      let decodedChar = String(bytes: [hexValue], encoding: enc) else {
+                // Convert hex to byte
+                guard let byte = UInt8(hex, radix: 16) else {
                     return nil // Invalid hex sequence
                 }
                 
-                result.append(decodedChar)
+                bytes.append(byte)
                 index = withoutSoftBreaks.index(after: nextNextIndex)
             } else {
+                // If we have collected bytes, try to decode them
+                if !bytes.isEmpty {
+                    if let decodedChar = String(bytes: bytes, encoding: enc) {
+                        result.append(decodedChar)
+                    } else {
+                        return nil // Invalid byte sequence
+                    }
+                    bytes.removeAll()
+                }
+                
                 result.append(char)
                 index = withoutSoftBreaks.index(after: index)
+            }
+        }
+        
+        // Handle any remaining bytes
+        if !bytes.isEmpty {
+            if let decodedChar = String(bytes: bytes, encoding: enc) {
+                result.append(decodedChar)
+            } else {
+                return nil // Invalid byte sequence
             }
         }
         
