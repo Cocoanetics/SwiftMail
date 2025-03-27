@@ -9,7 +9,7 @@ import Foundation
 import NIOIMAPCore
 
 /// Represents an IMAP message flag
-public enum Flag: Sendable {
+public enum Flag: Codable, Sendable {
     case seen
     case answered
     case flagged

@@ -4,7 +4,7 @@
 import Foundation
 
 /// Structure to hold email header information
-public struct Header: Sendable {
+public struct Header: Codable, Sendable {
     /// The sequence number of the message
     public var sequenceNumber: Int
     

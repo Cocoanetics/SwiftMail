@@ -4,7 +4,7 @@
 import Foundation
 
 /// Structure to represent a complete email with all parts
-public struct Message: Sendable {
+public struct Message: Codable, Sendable {
     /// The email header information
     public let header: Header
     
@@ -152,10 +152,4 @@ public struct Message: Sendable {
         
         return "No preview available"
     }
-    
-    /// Get the formatted size of the email
-    /// - Returns: A formatted string representing the email size
-    public func formattedSize(locale: Locale = .current) -> String {
-        return size.formattedFileSize(locale: locale)
-    }
-} 
+}

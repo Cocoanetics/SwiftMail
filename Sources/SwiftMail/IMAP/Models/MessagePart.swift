@@ -4,7 +4,7 @@
 import Foundation
 
 /// Structure to hold information about a message part
-public struct MessagePart: Sendable {
+public struct MessagePart: Codable, Sendable {
 	/// The part number (e.g., "1", "1.1", "2", etc.)
 	public let partNumber: String
 	
