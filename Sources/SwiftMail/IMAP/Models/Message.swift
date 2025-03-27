@@ -141,48 +141,6 @@ public struct Message: Codable, Sendable {
         return nil
     }
     
-    /// Decode QUOTED-PRINTABLE encoded data
-    /// - Parameter data: The QUOTED-PRINTABLE encoded data
-    /// - Returns: The decoded string, or nil if decoding fails
-    private func decodeQuotedPrintable(_ data: Data) -> String? {
-        guard let text = String(data: data, encoding: .utf8) else {
-            return nil
-        }
-        
-        // Replace common QUOTED-PRINTABLE encodings
-        let decoded = text
-            .replacingOccurrences(of: "=\r\n", with: "") // Remove soft line breaks
-            .replacingOccurrences(of: "=20", with: " ")  // Space
-            .replacingOccurrences(of: "=09", with: "\t") // Tab
-            .replacingOccurrences(of: "=0A", with: "\n") // Line feed
-            .replacingOccurrences(of: "=0D", with: "\r") // Carriage return
-            .replacingOccurrences(of: "=3D", with: "=")  // Equals sign
-            .replacingOccurrences(of: "=22", with: "\"") // Double quote
-            .replacingOccurrences(of: "=27", with: "'")  // Single quote
-            .replacingOccurrences(of: "=28", with: "(")  // Left parenthesis
-            .replacingOccurrences(of: "=29", with: ")")  // Right parenthesis
-            .replacingOccurrences(of: "=2C", with: ",")  // Comma
-            .replacingOccurrences(of: "=2E", with: ".")  // Period
-            .replacingOccurrences(of: "=2F", with: "/")  // Forward slash
-            .replacingOccurrences(of: "=3A", with: ":")  // Colon
-            .replacingOccurrences(of: "=3B", with: ";")  // Semicolon
-            .replacingOccurrences(of: "=3C", with: "<")  // Less than
-            .replacingOccurrences(of: "=3E", with: ">")  // Greater than
-            .replacingOccurrences(of: "=40", with: "@")  // At symbol
-            .replacingOccurrences(of: "=5B", with: "[")  // Left bracket
-            .replacingOccurrences(of: "=5C", with: "\\") // Backslash
-            .replacingOccurrences(of: "=5D", with: "]")  // Right bracket
-            .replacingOccurrences(of: "=5E", with: "^")  // Caret
-            .replacingOccurrences(of: "=5F", with: "_")  // Underscore
-            .replacingOccurrences(of: "=60", with: "`")  // Backtick
-            .replacingOccurrences(of: "=7B", with: "{")  // Left brace
-            .replacingOccurrences(of: "=7C", with: "|")  // Vertical bar
-            .replacingOccurrences(of: "=7D", with: "}")  // Right brace
-            .replacingOccurrences(of: "=7E", with: "~")  // Tilde
-        
-        return decoded
-    }
-    
     /// Find all attachments in the email
     /// - Returns: An array of message parts that are attachments
     private func findAttachments() -> [MessagePart] {
