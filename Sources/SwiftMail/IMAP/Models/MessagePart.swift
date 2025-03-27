@@ -17,6 +17,9 @@ public struct MessagePart: Codable, Sendable {
 	/// The content disposition of the part (e.g., "attachment", "inline")
 	public let disposition: String?
 	
+	/// How the content is encoded
+	public let encoding: String?
+	
 	/// The filename of the part (if available)
 	public let filename: String?
 	
@@ -40,11 +43,12 @@ public struct MessagePart: Codable, Sendable {
 	///   - filename: The filename
 	///   - contentId: The content ID
 	///   - data: The content data
-	public init(partNumber: String, contentType: String, contentSubtype: String, disposition: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data) {
+	public init(partNumber: String, contentType: String, contentSubtype: String, disposition: String? = nil, encoding: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data) {
 		self.partNumber = partNumber
 		self.contentType = contentType
 		self.contentSubtype = contentSubtype
 		self.disposition = disposition
+		self.encoding = encoding
 		self.filename = filename
 		self.contentId = contentId
 		self.data = data
