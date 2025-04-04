@@ -211,7 +211,7 @@ final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHa
     private func formatAddress(_ address: EmailAddressListElement) -> String {
         switch address {
             case .singleAddress(let emailAddress):
-                let name = emailAddress.personName?.stringValue ?? ""
+                let name = emailAddress.personName?.stringValue.decodeMIMEHeader() ?? ""
                 let mailbox = emailAddress.mailbox?.stringValue ?? ""
                 let host = emailAddress.host?.stringValue ?? ""
                 
@@ -222,7 +222,7 @@ final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHa
                 }
                 
             case .group(let group):
-                let groupName = group.groupName.stringValue
+                let groupName = group.groupName.stringValue.decodeMIMEHeader()
                 let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
                 return "\(groupName): \(members)"
         }
