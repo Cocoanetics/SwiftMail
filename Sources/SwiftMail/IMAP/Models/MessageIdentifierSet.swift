@@ -7,7 +7,7 @@ import NIOIMAPCore
 // MARK: - MessageIdentifier Protocol
 
 /// Protocol for message identifiers (UID and SequenceNumber)
-public protocol MessageIdentifier: Hashable, Comparable, Sendable, Encodable {
+public protocol MessageIdentifier: Hashable, Comparable, Sendable, Codable {
     var value: UInt32 { get }
     init(_ value: UInt32)
     static var latest: Self { get }
@@ -46,11 +46,16 @@ public struct UID: MessageIdentifier, Sendable {
     }
 }
 
-// MARK: - Encodable Implementation for UID
-extension UID: Encodable {
+// MARK: - Codable Implementation for UID
+extension UID: Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(value)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.value = try container.decode(UInt32.self)
     }
 }
 
@@ -72,11 +77,16 @@ public struct SequenceNumber: MessageIdentifier, Sendable {
     }
 }
 
-// MARK: - Encodable Implementation for SequenceNumber
-extension SequenceNumber: Encodable {
+// MARK: - Codable Implementation for SequenceNumber
+extension SequenceNumber: Codable {
     public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(value)
+    }
+    
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.value = try container.decode(UInt32.self)
     }
 }
 

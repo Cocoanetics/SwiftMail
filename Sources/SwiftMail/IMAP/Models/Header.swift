@@ -2,10 +2,9 @@
 // Structure to hold email header information
 
 import Foundation
-@preconcurrency import NIOIMAPCore
 
 /// Structure to hold email header information
-public struct Header: Sendable {
+public struct Header: Codable, Sendable {
     /// The sequence number of the message
     public var sequenceNumber: SequenceNumber
     
@@ -31,92 +30,50 @@ public struct Header: Sendable {
     public var messageId: String?
     
     /// The flags of the message
-    public var flags: [Flag] = []
+    public var flags: [Flag]
     
     /// The message parts
-    public var parts: [MessagePart] = []
+    public var parts: [MessagePart]
     
     /// Additional header fields
     public var additionalFields: [String: String]?
     
     /// Initialize a new email header
-    /// - Parameter sequenceNumber: The sequence number of the message
-    public init(sequenceNumber: SequenceNumber) {
+    /// - Parameters:
+    ///   - sequenceNumber: The sequence number of the message
+    ///   - uid: The UID of the message (if available)
+    ///   - subject: The subject of the message
+    ///   - from: The sender of the message
+    ///   - to: The recipients of the message
+    ///   - cc: The CC recipients of the message
+    ///   - date: The date of the message
+    ///   - messageId: The message ID
+    ///   - flags: The flags of the message
+    ///   - parts: The message parts
+    ///   - additionalFields: Additional header fields
+    public init(
+        sequenceNumber: SequenceNumber,
+        uid: SwiftMail.UID? = nil,
+        subject: String? = nil,
+        from: String? = nil,
+        to: String? = nil,
+        cc: String? = nil,
+        date: Date? = nil,
+        messageId: String? = nil,
+        flags: [Flag] = [],
+        parts: [MessagePart] = [],
+        additionalFields: [String: String]? = nil
+    ) {
         self.sequenceNumber = sequenceNumber
-    }
-	
-//	public func getPart(_ section: Section) -> Part?
-//	{
-//		let section = SectionSpecifier.Part(section)
-//		if let part = bodyStructure?.find(section)
-//		{
-//			switch part {
-//				case .multipart(let multipart):
-//					print(multipart)
-//
-//				case .singlepart(let singlepart):
-//					
-//					switch singlepart.kind {
-//							case .text:
-//								break
-//							
-//						case .basic(let mediaType):
-//							
-//							let mediaType = mediaType.topLevel.debugDescription + "/" + mediaType.sub.debugDescription
-//							//let fields = Dictionary<String, String>(uniqueKeysWithValues: singlepart.fields.parameters.map(\.name, \.value))
-//							
-//							
-//							
-//							return Part(mediaType: mediaType)
-//
-//							
-//							break
-//							
-//						case .message(let message):
-//							break
-//					}
-//					
-//					print(singlepart)
-//					
-//					break
-//				
-//			}
-//			print(part)
-//		}
-//		
-//		return nil
-//	}
-}
-
-public struct Part
-{
-	let mediaType: String
-	//let fields: [String: String]
-}
-
-// MARK: - Encodable Implementation
-extension Header: Encodable {
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        
-        try container.encode(sequenceNumber, forKey: .sequenceNumber)
-        try container.encodeIfPresent(uid, forKey: .uid)
-        try container.encodeIfPresent(subject, forKey: .subject)
-        try container.encodeIfPresent(from, forKey: .from)
-        try container.encodeIfPresent(to, forKey: .to)
-        try container.encodeIfPresent(cc, forKey: .cc)
-        try container.encodeIfPresent(date, forKey: .date)
-        try container.encodeIfPresent(messageId, forKey: .messageId)
-        try container.encode(flags, forKey: .flags)
-        try container.encode(parts, forKey: .parts)
-        
-        // Only encode additionalFields if it exists and is not empty
-        if let fields = additionalFields, !fields.isEmpty {
-            try container.encode(fields, forKey: .additionalFields)
-        }
-    }
-    
-    private enum CodingKeys: String, CodingKey {
-        case sequenceNumber, uid, subject, from, to, cc, date, messageId, flags, parts, additionalFields
+        self.uid = uid
+        self.subject = subject
+        self.from = from
+        self.to = to
+        self.cc = cc
+        self.date = date
+        self.messageId = messageId
+        self.flags = flags
+        self.parts = parts
+        self.additionalFields = additionalFields
     }
 }

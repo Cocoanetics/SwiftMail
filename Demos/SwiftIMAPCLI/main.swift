@@ -82,7 +82,7 @@ do {
 	
     // Search for messages from YouTube
     print("\nSearching for messages from YouTube...")
-    let youtubeMessagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("Invoice")])
+	let youtubeMessagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("invoice"), .text(".pdf")])
     print("Found \(youtubeMessagesSet.count) messages from YouTube")
     
     // Fetch and display YouTube message headers
