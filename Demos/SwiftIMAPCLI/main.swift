@@ -73,11 +73,11 @@ do {
 
     print("\nSearching for invoices with PDF ...")
 	let messagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("invoice"), .text(".pdf")])
-    print("Found \(messagesSet.count) messages from YouTube")
+    print("Found \(messagesSet.count) messages")
     
-    // Fetch and display YouTube message headers
     if !messagesSet.isEmpty {
 		
+		// Fetch and display message headers
 		let headers = try await server.fetchHeaders(using: messagesSet)
 		
         print("\n📧 Invoice Emails (\(headers.count)) 📧")
@@ -85,6 +85,7 @@ do {
 			print("\n[\(index + 1)/\(headers.count)]\n\(header)")
             print("---")
 			
+			// here we can get and decode specific parts
 			for part in header.parts {
 
 				// find an part that's an attached PDF
