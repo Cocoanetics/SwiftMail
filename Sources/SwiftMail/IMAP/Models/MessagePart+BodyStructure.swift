@@ -21,7 +21,7 @@ extension Array where Element == MessagePart {
         switch structure {
         case .singlepart(let part):
             // Determine the part number as Section type for IMAP
-            let section: Section = sectionPath.isEmpty ? [1] : sectionPath
+            let section = Section(sectionPath.isEmpty ? [1] : sectionPath)
             
             // Extract content type and other metadata
             var contentType = ""

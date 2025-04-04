@@ -393,7 +393,7 @@ public actor IMAPServer {
 		return try await recursivelyFetchParts(structure, sectionPath: [], identifier: identifier)
 	}
 	
-	public func fetchMessagePart(part: String, from header: Header) async throws -> Data {
+	public func fetchData(part: String, from header: Header) async throws -> Data {
 		// Use the UID from the header if available (non-zero), otherwise fall back to sequence number
 		if let uid = header.uid {
 			// Use UID for fetching
@@ -659,7 +659,7 @@ public actor IMAPServer {
 				
 				// Create a message part
 				let messagePart = MessagePart(
-					section: sectionPath,
+					section: Section(sectionPath),
 					contentType: contentType,
 					disposition: disposition,
 					encoding: encoding,

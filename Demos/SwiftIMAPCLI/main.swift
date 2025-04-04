@@ -111,25 +111,21 @@ do {
 		
 		print("\n\(second.description)")
 		
-//		let data = second.decodedContent()
-//		let url = URL(fileURLWithPath: "/Users/oliver/Desktop/test1.pdf")
-//		try data.write(to: url)
+
 		
-		//first.getPart([2])
-		
-		let base64Data = try await server.fetchMessagePart(part: "2", from: first)
-		
-		if let base64String = String(data: base64Data, encoding: .utf8)
-		{
-			let normalized = base64String.replacingOccurrences(of: "\r", with: "")
-										   .replacingOccurrences(of: "\n", with: "")
-			
-			if let decodedData = Data(base64Encoded: normalized) {
-				let url = URL(fileURLWithPath: "/Users/oliver/Desktop/test2.pdf")
-				try decodedData.write(to: url)
-			}
-			
-		}
+//		let base64Data = try await server.fetchMessagePart(part: "2", from: first)
+//		
+//		if let base64String = String(data: base64Data, encoding: .utf8)
+//		{
+//			let normalized = base64String.replacingOccurrences(of: "\r", with: "")
+//										   .replacingOccurrences(of: "\n", with: "")
+//			
+//			if let decodedData = Data(base64Encoded: normalized) {
+//				let url = URL(fileURLWithPath: "/Users/oliver/Desktop/test2.pdf")
+//				try decodedData.write(to: url)
+//			}
+//			
+//		}
 //			
 //
 //			
