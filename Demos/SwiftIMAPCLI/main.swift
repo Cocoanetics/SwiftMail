@@ -71,16 +71,6 @@ do {
     let mailboxStatus = try await server.selectMailbox(inbox.name)
     print("Selected mailbox: \(inbox.name) with \(mailboxStatus.messageCount) messages")
 
-//	// Search for messages from YouTube
-//	let lunaMessagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("Luna")])
-//	print("Found \(lunaMessagesSet.count) messages from YouTube")
-//	
-//	let messages = try await server.fetchMessages(using: lunaMessagesSet)
-//	
-//	let first = messages.first!
-//	let text = first.htmlBody ?? "No text body"
-	
-    // Search for messages from YouTube
     print("\nSearching for invoices with PDF ...")
 	let messagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("invoice"), .text(".pdf")])
     print("Found \(messagesSet.count) messages from YouTube")
