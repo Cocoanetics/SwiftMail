@@ -6,18 +6,20 @@ import Foundation
 import NIOIMAPCore
 import NIO
 import NIOConcurrencyHelpers
+import os
 
 /// Handler for IMAP FETCH STRUCTURE command
-final class FetchStructureHandler: BaseIMAPCommandHandler<BodyStructure>, IMAPCommandHandler {
+final class FetchStructureHandler: BaseIMAPCommandHandler<[MessagePart]>, IMAPCommandHandler {
     /// The body structure from the response
     private var bodyStructure: BodyStructure?
     
-    /// Handle a tagged OK response by succeeding the promise with the body structure
+    /// Handle a tagged OK response by succeeding the promise with the message parts
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
         lock.withLock {
             if let structure = self.bodyStructure {
-                succeedWithResult(structure)
+                let parts = Array<MessagePart>(structure)
+                succeedWithResult(parts)
             } else {
                 failWithError(IMAPError.fetchFailed("No body structure received"))
             }

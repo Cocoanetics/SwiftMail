@@ -11,6 +11,8 @@ import NIOConcurrencyHelpers
 final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected message part data
     private var partData: Data = Data()
+	
+	private var parts: [MessagePart]?
     
     /// Expected byte count for the streaming data
     private var expectedByteCount: Int?
@@ -71,9 +73,12 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
     /// - Parameter attribute: The attribute to process
     private func processMessageAttribute(_ attribute: MessageAttribute) {
         switch attribute {
-            case .body(_, _):
-                // We're primarily interested in the body data which comes through streaming
-                break
+            case .body(let bodyStructure, _):
+                if case .valid(let structure) = bodyStructure {
+                    lock.withLock {
+						self.parts = .init(structure)
+                    }
+                }
                 
             default:
                 break

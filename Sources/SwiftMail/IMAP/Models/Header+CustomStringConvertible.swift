@@ -19,7 +19,7 @@ extension Header: CustomStringConvertible {
         if !parts.isEmpty {
             result += "\n\nParts:"
             for part in parts {
-                result += "\n- \(part.sectionString): \(part.contentType)"
+                result += "\n- \(part.section): \(part.contentType)"
                 if let filename = part.filename {
                     result += " (\(filename))"
                 }

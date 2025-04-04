@@ -54,7 +54,7 @@ extension Data {
     /// Decode the data based on the message part's content type and encoding
     /// - Parameter part: The message part containing content type and encoding information
     /// - Returns: The decoded data, or the original data if decoding is not needed or fails
-    func decodedData(for part: MessagePart) -> Data {
+    public func decoded(for part: MessagePart) -> Data {
         // For text content, try to handle quoted-printable encoding
         if part.contentType.lowercased().hasPrefix("text/"),
            let textContent = String(data: self, encoding: .utf8) {

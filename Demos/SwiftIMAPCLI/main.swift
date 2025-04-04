@@ -81,63 +81,35 @@ do {
 //	let text = first.htmlBody ?? "No text body"
 	
     // Search for messages from YouTube
-    print("\nSearching for messages from YouTube...")
-	let youtubeMessagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("invoice"), .text(".pdf")])
-    print("Found \(youtubeMessagesSet.count) messages from YouTube")
+    print("\nSearching for invoices with PDF ...")
+	let messagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("invoice"), .text(".pdf")])
+    print("Found \(messagesSet.count) messages from YouTube")
     
     // Fetch and display YouTube message headers
-    if !youtubeMessagesSet.isEmpty {
-		let youtubeHeaders = try await server.fetchHeaders(using: youtubeMessagesSet).prefix(1)
+    if !messagesSet.isEmpty {
 		
-        print("\n📧 YouTube Emails (\(youtubeHeaders.count)) 📧")
-        for (index, header) in youtubeHeaders.enumerated() {
-			print("\n[\(index + 1)/\(youtubeHeaders.count)]\n\(header)")
+		let headers = try await server.fetchHeaders(using: messagesSet)
+		
+        print("\n📧 Invoice Emails (\(headers.count)) 📧")
+        for (index, header) in headers.enumerated() {
+			print("\n[\(index + 1)/\(headers.count)]\n\(header)")
             print("---")
 			
-			let encoder = JSONEncoder()
-			encoder.outputFormatting = [.prettyPrinted]
-			let data = try encoder.encode(header)
-			let string = String(data: data, encoding: .utf8)!
-			print(string)
-			
-			
-        }
-		
-		let first = youtubeHeaders.first!
-		
-		let parts = try await server.fetchAllMessageParts(identifier: first.uid!)
-		
-		let second = parts.last!
-		
-		print("\n\(second.description)")
-		
+			for part in header.parts {
 
-		
-//		let base64Data = try await server.fetchMessagePart(part: "2", from: first)
-//		
-//		if let base64String = String(data: base64Data, encoding: .utf8)
-//		{
-//			let normalized = base64String.replacingOccurrences(of: "\r", with: "")
-//										   .replacingOccurrences(of: "\n", with: "")
-//			
-//			if let decodedData = Data(base64Encoded: normalized) {
-//				let url = URL(fileURLWithPath: "/Users/oliver/Desktop/test2.pdf")
-//				try decodedData.write(to: url)
-//			}
-//			
-//		}
-//			
-//
-//			
-//			
-//
-//		{
-//			
-//			try decodedData.write(to: url)
-//		}
-		
-    } else {
-        print("No YouTube messages found.")
+				// find an part that's an attached PDF
+				guard part.contentType == "application/pdf" else
+				{
+					continue
+				}
+
+				// get the body data for the part
+				let data = try await server.fetchAndDecodeMessagePartData(header: header, part: part)
+				
+				let url = URL(fileURLWithPath: "/Users/oliver/Desktop/").appendingPathComponent(part.suggestedFilename)
+				try data.write(to: url)
+			}
+        }
     }
     
     // Get the latest 5 messages

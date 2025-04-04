@@ -42,3 +42,25 @@ extension Section: ExpressibleByArrayLiteral {
 		self.init(elements)
 	}
 }
+
+extension Section: Comparable {
+	/// Compare two sections based on their components
+	/// - Parameters:
+	///   - lhs: The left-hand section
+	///   - rhs: The right-hand section
+	/// - Returns: true if lhs comes before rhs in natural order
+	public static func < (lhs: Section, rhs: Section) -> Bool {
+		// Compare each component in order until we find a difference
+		let maxLength = min(lhs.components.count, rhs.components.count)
+		
+		for i in 0..<maxLength {
+			if lhs.components[i] != rhs.components[i] {
+				return lhs.components[i] < rhs.components[i]
+			}
+		}
+		
+		// If all components match up to the shorter length,
+		// the shorter section comes first
+		return lhs.components.count < rhs.components.count
+	}
+}

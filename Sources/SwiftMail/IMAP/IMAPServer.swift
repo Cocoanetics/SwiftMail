@@ -343,11 +343,11 @@ public actor IMAPServer {
 	 
 	 - Parameters:
 	   - identifier: The identifier of the message to fetch
-	 - Returns: The message's body structure
+	 - Returns: The message's body parts
 	 - Throws: `IMAPError.fetchFailed` if the fetch operation fails
 	 - Note: Logs structure fetch at debug level
 	 */
-	public func fetchStructure<T: MessageIdentifier>(_ identifier: T) async throws -> BodyStructure {
+	public func fetchStructure<T: MessageIdentifier>(_ identifier: T) async throws -> [MessagePart] {
 		let command = FetchStructureCommand(identifier: identifier)
 		return try await executeCommand(command)
 	}
@@ -363,45 +363,59 @@ public actor IMAPServer {
 	 - Use `UID` for permanent message identifiers that remain stable
 	 
 	 - Parameters:
-	   - part: The part number to fetch (e.g., "1", "1.1", "2")
+	   - section: The part number to fetch (e.g., "1", "1.1", "2")
 	   - identifier: The identifier of the message
 	 - Returns: The content of the requested message part
 	 - Throws: `IMAPError.fetchFailed` if the fetch operation fails
 	 - Note: Logs part fetch at debug level with part number
 	 */
-	public func fetchPart<T: MessageIdentifier>(_ part: String, of identifier: T) async throws -> Data {
-		let command = FetchMessagePartCommand(identifier: identifier, sectionPath: part.split(separator: ".").map { Int($0)! })
+	public func fetchPart<T: MessageIdentifier>(section: Section, of identifier: T) async throws -> Data {
+		let command = FetchMessagePartCommand(identifier: identifier, section: section)
 		return try await executeCommand(command)
 	}
 	
-	/** 
-	 Fetch all parts of a message
-	 
-	 The generic type T determines the identifier type:
-	 - Use `SequenceNumber` for temporary message numbers that may change
-	 - Use `UID` for permanent message identifiers that remain stable
-	 
-	 - Parameter identifier: The message identifier (SequenceNumber or UID)
-	 - Returns: An array of message parts
-	 - Throws: An error if the fetch operation fails
+	/**
+	 Fetch all message parts and their data for a message
+	 - Parameter identifier: The message identifier (UID or sequence number)
+	 - Returns: An array of message parts with their data populated
+	 - Throws: IMAPError if any fetch operation fails
 	 */
 	public func fetchAllMessageParts<T: MessageIdentifier>(identifier: T) async throws -> [MessagePart] {
-		// First, fetch the message structure to determine the parts
-		let structure = try await fetchStructure(identifier)
+
+		var parts = try await fetchStructure(identifier)
 		
-		// Process the structure recursively and return the parts
-		return try await recursivelyFetchParts(structure, sectionPath: [], identifier: identifier)
+		for (index, part) in parts.enumerated() {
+			parts[index].data = try await self.fetchPart(section: part.section, of: identifier)
+		}
+			
+		return parts
 	}
 	
-	public func fetchData(part: String, from header: Header) async throws -> Data {
+	/**
+	 Fetches and decodes the data for a specific message part.
+	 
+	 This method will:
+	 1. Use the message's UID if available, falling back to sequence number if not
+	 2. Fetch the raw data for the specified part
+	 3. Automatically decode the data based on the part's content encoding
+	 
+	 - Parameters:
+		- header: The message header containing the part
+		- part: The message part to fetch, containing section and encoding information
+	 - Returns: The decoded data for the message part
+	 - Throws: 
+		- `IMAPError.fetchFailed` if the fetch operation fails
+		- Decoding errors if the part's encoding cannot be processed
+	 */
+	public func fetchAndDecodeMessagePartData(header: Header, part: MessagePart) async throws -> Data {
 		// Use the UID from the header if available (non-zero), otherwise fall back to sequence number
 		if let uid = header.uid {
 			// Use UID for fetching
-			return try await fetchPart(part, of: uid)
+			return try await fetchPart(section: part.section, of: uid).decoded(for: part)
 		} else {
 			// Fall back to sequence number
 			let sequenceNumber = header.sequenceNumber
-			return try await fetchPart(part, of: sequenceNumber)
+			return try await fetchPart(section: part.section, of: sequenceNumber).decoded(for: part)
 		}
 	}
 	
@@ -611,19 +625,16 @@ public actor IMAPServer {
 	 Process a body structure recursively to fetch all parts
 	 - Parameters:
 	 - structure: The body structure to process
-	 - sectionPath: Array of integers representing the hierarchical section path
+	 - section: The section to process
 	 - identifier: The message identifier (SequenceNumber or UID)
 	 - Returns: An array of message parts
 	 - Throws: An error if the fetch operation fails
 	 */
-	private func recursivelyFetchParts<T: MessageIdentifier>(_ structure: BodyStructure, sectionPath: [Int], identifier: T) async throws -> [MessagePart] {
+	private func recursivelyFetchParts<T: MessageIdentifier>(_ structure: BodyStructure, section: Section, identifier: T) async throws -> [MessagePart] {
 		switch structure {
 			case .singlepart(let part):
-				// Determine the part number string for IMAP (e.g., "1.2.3")
-				let partNumberString = sectionPath.isEmpty ? "1" : sectionPath.map { String($0) }.joined(separator: ".")
-				
 				// Fetch the part content
-				let partData = try await fetchPart(partNumberString, of: identifier)
+				let partData = try await fetchPart(section: section, of: identifier)
 				
 				// Extract content type
 				var contentType = ""
@@ -659,7 +670,7 @@ public actor IMAPServer {
 				
 				// Create a message part
 				let messagePart = MessagePart(
-					section: Section(sectionPath),
+					section: section,
 					contentType: contentType,
 					disposition: disposition,
 					encoding: encoding,
@@ -676,9 +687,9 @@ public actor IMAPServer {
 				var allParts: [MessagePart] = []
 				
 				for (index, childPart) in multipart.parts.enumerated() {
-					// Create a new section path array by appending the current index + 1
-					let childSectionPath = sectionPath.isEmpty ? [index + 1] : sectionPath + [index + 1]
-					let childParts = try await recursivelyFetchParts(childPart, sectionPath: childSectionPath, identifier: identifier)
+					// Create a new section by appending the current index + 1
+					let childSection = Section(section.components + [index + 1])
+					let childParts = try await recursivelyFetchParts(childPart, section: childSection, identifier: identifier)
 					allParts.append(contentsOf: childParts)
 				}
 				

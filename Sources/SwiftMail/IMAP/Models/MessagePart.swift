@@ -24,7 +24,7 @@ public struct MessagePart: Sendable {
 	public let contentId: String?
 	
 	/// The content data (if any)
-	public let data: Data?
+	public var data: Data?
 	
 	/// Creates a new message part
 	/// - Parameters:
@@ -63,22 +63,18 @@ public struct MessagePart: Sendable {
 		self.data = data
 	}
 	
-	/// Get the section number as a dot-separated string
-	/// - Returns: The section number as a dot-separated string (e.g., "1.2.3")
-	public var sectionString: String {
-		section.description
-	}
-	
 	/// Get a suggested filename for the part
 	/// - Returns: A filename based on part information
-	public func suggestedFilename() -> String {
+	public var suggestedFilename: String {
 		if let filename = self.filename, !filename.isEmpty {
 			// Use the original filename if available
 			return filename.sanitizedFileName()
 		} else {
 			// Create a filename based on section number and content type
 			let fileExtension = String.fileExtension(for: contentType) ?? "dat"
-			return "part_\(sectionString.replacingOccurrences(of: ".", with: "_")).\(fileExtension)"
+			
+			print(contentId)
+			return "part_\(section.description.replacingOccurrences(of: ".", with: "_")).\(fileExtension)"
 		}
 	}
 	
@@ -89,28 +85,18 @@ public struct MessagePart: Sendable {
 			return nil
 		}
 		
-		let decodedData = data.decodedData(for: self)
+		let decodedData = data.decoded(for: self)
 		return String(data: decodedData, encoding: .utf8)
 	}
 	
 	/// Decode the part content using appropriate decoding based on content type and encoding
 	/// - Returns: The decoded data, or nil if no data is available
-	public func decodedContent() -> Data? {
+	public func decodedData() -> Data? {
 		guard let data = data else {
 			return nil
 		}
 		
-		return data.decodedData(for: self)
-	}
-	
-	/// Get a preview of the part content
-	/// - Parameter maxLength: The maximum length of the preview
-	/// - Returns: A string preview of the content
-	public func contentPreview(maxLength: Int = 500) -> String {
-		guard let decodedData = decodedContent() else {
-			return "[Content not available]"
-		}
-		return decodedData.preview(maxLength: maxLength)
+		return data.decoded(for: self)
 	}
 }
 

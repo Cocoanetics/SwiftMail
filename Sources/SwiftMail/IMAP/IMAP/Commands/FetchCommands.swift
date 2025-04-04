@@ -68,7 +68,7 @@ struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
 	let identifier: T
     
     /// The section path to fetch (e.g., [1], [1, 1], [2], etc.)
-	let sectionPath: [Int]
+	let section: Section
     
     /// Custom timeout for this operation
 	var timeoutSeconds: Int { return 10 }
@@ -77,9 +77,9 @@ struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
     /// - Parameters:
     ///   - identifier: The message identifier to fetch
     ///   - sectionPath: The section path to fetch as an array of integers
-	init(identifier: T, sectionPath: [Int]) {
+	 init(identifier: T, section: Section) {
         self.identifier = identifier
-        self.sectionPath = sectionPath
+        self.section = section
     }
     
     /// Convert to an IMAP tagged command
@@ -89,7 +89,7 @@ struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
         let set = MessageIdentifierSet<T>(identifier)
         
         // Create the section path directly from the array
-        let part = SectionSpecifier.Part(sectionPath)
+		let part = SectionSpecifier.Part(section.components)
         let section = SectionSpecifier(part: part)
         
         let attributes: [FetchAttribute] = [
@@ -110,7 +110,7 @@ struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
 
 /// Command for fetching the structure of a message
  struct FetchStructureCommand<T: MessageIdentifier>: IMAPCommand {
-    typealias ResultType = BodyStructure
+    typealias ResultType = [MessagePart]
     typealias HandlerType = FetchStructureHandler
     
     /// The message identifier to fetch
