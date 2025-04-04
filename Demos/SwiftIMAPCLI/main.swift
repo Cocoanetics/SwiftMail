@@ -106,7 +106,8 @@ do {
 				// get the body data for the part
 				let data = try await server.fetchAndDecodeMessagePartData(header: header, part: part)
 				
-				let url = URL(fileURLWithPath: "/Users/oliver/Desktop/").appendingPathComponent(part.suggestedFilename)
+				let desktopURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+				let url = desktopURL.appendingPathComponent(part.suggestedFilename)
 				try data.write(to: url)
 			}
         }
