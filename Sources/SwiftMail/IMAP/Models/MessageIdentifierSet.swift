@@ -7,7 +7,7 @@ import NIOIMAPCore
 // MARK: - MessageIdentifier Protocol
 
 /// Protocol for message identifiers (UID and SequenceNumber)
-public protocol MessageIdentifier: Hashable, Comparable {
+public protocol MessageIdentifier: Hashable, Comparable, Sendable, Encodable {
     var value: UInt32 { get }
     init(_ value: UInt32)
     static var latest: Self { get }
@@ -39,12 +39,25 @@ public struct UID: MessageIdentifier, Sendable {
     internal func toNIO() -> NIOIMAPCore.UID {
         return NIOIMAPCore.UID(rawValue: self.value)
     }
+    
+    // Convert from NIO UID
+    public init(nio: NIOIMAPCore.UID) {
+        self.value = nio.rawValue
+    }
+}
+
+// MARK: - Encodable Implementation for UID
+extension UID: Encodable {
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(value)
+    }
 }
 
 // MARK: - SequenceNumber Implementation
 
 /// Represents a Sequence Number in IMAP
-public struct SequenceNumber: MessageIdentifier {
+public struct SequenceNumber: MessageIdentifier, Sendable {
     public let value: UInt32
     
     public init(_ value: UInt32) {
@@ -56,6 +69,14 @@ public struct SequenceNumber: MessageIdentifier {
     // Convert to NIO SequenceNumber
     internal func toNIO() -> NIOIMAPCore.SequenceNumber {
         return NIOIMAPCore.SequenceNumber(rawValue: self.value)
+    }
+}
+
+// MARK: - Encodable Implementation for SequenceNumber
+extension SequenceNumber: Encodable {
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(value)
     }
 }
 
@@ -287,22 +308,6 @@ extension MessageIdentifierSet where Identifier == SequenceNumber {
         }
         
         return NIOIMAPCore.MessageIdentifierSetNonEmpty(set: nioSet)
-    }
-}
-
-// MARK: - Conversion from NIO types
-
-extension UID {
-    /// Create a UID from a NIO UID
-    public init(nio: NIOIMAPCore.UID) {
-        self.init(nio.rawValue)
-    }
-}
-
-extension SequenceNumber {
-    /// Create a SequenceNumber from a NIO SequenceNumber
-    public init(nio: NIOIMAPCore.SequenceNumber) {
-        self.init(nio.rawValue)
     }
 }
 

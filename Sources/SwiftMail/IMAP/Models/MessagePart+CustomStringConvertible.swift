@@ -7,12 +7,12 @@ extension MessagePart: CustomStringConvertible {
     /// A string representation of the message part
     public var description: String {
         return """
-        Part #\(partNumber)
-        Content-Type: \(contentType)/\(contentSubtype)
+        Part #\(sectionString)
+        Content-Type: \(contentType)
         \(disposition != nil ? "Content-Disposition: \(disposition!)" : "")
         \(filename != nil ? "Filename: \(filename!)" : "")
         \(contentId != nil ? "Content-ID: \(contentId!)" : "")
-        Size: \(size) bytes
+        \(data != nil ? "Data size: \(data!.count) bytes" : "No data")
         """
     }
 } 

@@ -6,7 +6,9 @@ import Foundation
 // Standard description - simple and concise
 extension Message: CustomStringConvertible {
     public var description: String {
-        return "Email #\(sequenceNumber) | \(subject.truncated(maxLength: 50)) | From: \(from.truncated(maxLength: 30))"
+        let subjectStr = subject ?? "No subject"
+        let fromStr = from ?? "No sender"
+        return "Email #\(sequenceNumber) | \(subjectStr.truncated(maxLength: 50)) | From: \(fromStr.truncated(maxLength: 30))"
     }
 }
 

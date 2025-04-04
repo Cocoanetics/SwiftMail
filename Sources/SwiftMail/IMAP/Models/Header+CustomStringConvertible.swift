@@ -2,10 +2,30 @@ import Foundation
 
 extension Header: CustomStringConvertible {
     public var description: String {
-        """
-        From: \(from)
-        Subject: \(subject)
-        Date: \(date.formattedForDisplay())
-        """
+        var result = ""
+        
+        if let from = from {
+            result += "From: \(from)\n"
+        }
+        
+        if let subject = subject {
+            result += "Subject: \(subject)\n"
+        }
+        
+        if let date = date {
+            result += "Date: \(date.formattedForDisplay())"
+        }
+        
+        if !parts.isEmpty {
+            result += "\n\nParts:"
+            for part in parts {
+                result += "\n- \(part.sectionString): \(part.contentType)"
+                if let filename = part.filename {
+                    result += " (\(filename))"
+                }
+            }
+        }
+        
+        return result
     }
-} 
+}

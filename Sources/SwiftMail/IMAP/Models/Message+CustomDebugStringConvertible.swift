@@ -6,12 +6,20 @@ import Foundation
 // Detailed debug description - comprehensive information for debugging
 extension Message: CustomDebugStringConvertible {
     public var debugDescription: String {
+        // Format date safely
+        let dateString = date?.formattedForDisplay() ?? "No date"
+        
+        // Safely unwrap other optional values
+        let fromString = from ?? "No sender"
+        let toString = to ?? "No recipients"
+        let subjectString = subject ?? "No subject"
+        
         // Compact header information
         let headerInfo = """
-        Email #\(sequenceNumber) (UID: \(uid)) | \(date.formattedForDisplay())
-        From: \(from.truncated(maxLength: 100))
-        To: \(to.truncated(maxLength: 100))
-        Subject: \(subject.truncated(maxLength: 200))
+        Email #\(sequenceNumber) (UID: \(String(describing: uid)) | \(dateString)
+        From: \(fromString.truncated(maxLength: 100))
+        To: \(toString.truncated(maxLength: 100))
+        Subject: \(subjectString.truncated(maxLength: 200))
         Flags: \(flags.isEmpty ? "none" : flags.map(String.init(describing:)).sorted().joined(separator: " "))
         """
         
@@ -22,12 +30,12 @@ extension Message: CustomDebugStringConvertible {
         var contentTypes = [String]()
         
         // Check for plain text part
-        if parts.contains(where: { $0.contentType.lowercased() == "text" && $0.contentSubtype.lowercased() == "plain" }) {
+        if parts.contains(where: { $0.contentType.lowercased() == "text/plain" }) {
             contentTypes.append("✓ Plain")
         }
         
         // Check for HTML part
-        if parts.contains(where: { $0.contentType.lowercased() == "text" && $0.contentSubtype.lowercased() == "html" }) {
+        if parts.contains(where: { $0.contentType.lowercased() == "text/html" }) {
             contentTypes.append("✓ HTML")
         }
         
@@ -40,27 +48,24 @@ extension Message: CustomDebugStringConvertible {
         if !attachments.isEmpty {
             let attachmentsInfo = attachments.map { attachment -> String in
                 let filename = attachment.filename ?? "unnamed"
-                let mimeType = "\(attachment.contentType)/\(attachment.contentSubtype)"
-                let size = attachment.size.formattedFileSize()
+                let mimeType = attachment.contentType
                 let id = attachment.contentId ?? "no-id"
                 
-                return "- \(filename.truncated(maxLength: 30)) | \(mimeType) | \(size) | ID: \(id.truncated(maxLength: 15))"
+                return "- \(filename.truncated(maxLength: 30)) | \(mimeType) | ID: \(id.truncated(maxLength: 15))"
             }.joined(separator: "\n")
             
             debugInfo += "\n\nAttachments:\n\(attachmentsInfo)"
         }
-        
-//        // Add preview of the email content
-//        let textPreview = preview(maxLength: 200).trimmingCharacters(in: .whitespacesAndNewlines)
-//        if !textPreview.isEmpty {
-//            debugInfo += "\n\n\(textPreview)"
-//        }
         
         return debugInfo
     }
 
     /// Format the date for display
     private func formatDate() -> String {
+        guard let date = date else {
+            return "No date"
+        }
+        
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .medium

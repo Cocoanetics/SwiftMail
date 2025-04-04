@@ -393,7 +393,19 @@ public actor IMAPServer {
 		return try await recursivelyFetchParts(structure, sectionPath: [], identifier: identifier)
 	}
 	
-	/** 
+	public func fetchMessagePart(part: String, from header: Header) async throws -> Data {
+		// Use the UID from the header if available (non-zero), otherwise fall back to sequence number
+		if let uid = header.uid {
+			// Use UID for fetching
+			return try await fetchPart(part, of: uid)
+		} else {
+			// Fall back to sequence number
+			let sequenceNumber = header.sequenceNumber
+			return try await fetchPart(part, of: sequenceNumber)
+		}
+	}
+	
+	/**
 	 Fetch a complete email with all parts from an email header
 	 
 	 - Parameter header: The email header to fetch the complete email for
@@ -403,14 +415,13 @@ public actor IMAPServer {
 	 */
 	public func fetchMessage(from header: Header) async throws -> Message {
 		// Use the UID from the header if available (non-zero), otherwise fall back to sequence number
-		if header.uid > 0 {
+		if let uid = header.uid {
 			// Use UID for fetching
-			let uid = UID(UInt32(header.uid))
 			let parts = try await fetchAllMessageParts(identifier: uid)
 			return Message(header: header, parts: parts)
 		} else {
 			// Fall back to sequence number
-			let sequenceNumber = SequenceNumber(UInt32(header.sequenceNumber))
+			let sequenceNumber = header.sequenceNumber
 			let parts = try await fetchAllMessageParts(identifier: sequenceNumber)
 			return Message(header: header, parts: parts)
 		}
@@ -497,13 +508,12 @@ public actor IMAPServer {
 	 */
 	public func move(header: Header, to destinationMailbox: String) async throws {
 		// Use the UID from the header if available (non-zero), otherwise fall back to sequence number
-		if header.uid > 0 {
+		if let uid = header.uid {
 			// Use UID for moving
-			let uid = UID(UInt32(header.uid))
 			try await move(message: uid, to: destinationMailbox)
 		} else {
 			// Fall back to sequence number
-			let sequenceNumber = SequenceNumber(UInt32(header.sequenceNumber))
+			let sequenceNumber = header.sequenceNumber
 			try await move(message: sequenceNumber, to: destinationMailbox)
 		}
 	}
@@ -615,20 +625,16 @@ public actor IMAPServer {
 				// Fetch the part content
 				let partData = try await fetchPart(partNumberString, of: identifier)
 				
-				// Extract content type and other metadata
+				// Extract content type
 				var contentType = ""
-				var contentSubtype = ""
 				
 				switch part.kind {
 					case .basic(let mediaType):
-						contentType = String(mediaType.topLevel)
-						contentSubtype = String(mediaType.sub)
+						contentType = "\(String(mediaType.topLevel))/\(String(mediaType.sub))"
 					case .text(let text):
-						contentType = "text"
-						contentSubtype = String(text.mediaSubtype)
+						contentType = "text/\(String(text.mediaSubtype))"
 					case .message(let message):
-						contentType = "message"
-						contentSubtype = String(message.message)
+						contentType = "message/\(String(message.message))"
 				}
 				
 				// Extract disposition and filename if available
@@ -653,9 +659,8 @@ public actor IMAPServer {
 				
 				// Create a message part
 				let messagePart = MessagePart(
-					partNumber: partNumberString,
+					section: sectionPath,
 					contentType: contentType,
-					contentSubtype: contentSubtype,
 					disposition: disposition,
 					encoding: encoding,
 					filename: filename,

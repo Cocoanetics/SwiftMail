@@ -82,34 +82,76 @@ do {
 	
     // Search for messages from YouTube
     print("\nSearching for messages from YouTube...")
-    let youtubeMessagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.from("YouTube")])
+    let youtubeMessagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("Invoice")])
     print("Found \(youtubeMessagesSet.count) messages from YouTube")
     
     // Fetch and display YouTube message headers
     if !youtubeMessagesSet.isEmpty {
-        let youtubeHeaders = try await server.fetchHeaders(using: youtubeMessagesSet)
-        
+		let youtubeHeaders = try await server.fetchHeaders(using: youtubeMessagesSet).prefix(1)
+		
         print("\n📧 YouTube Emails (\(youtubeHeaders.count)) 📧")
         for (index, header) in youtubeHeaders.enumerated() {
-            print("\n[\(index + 1)/\(youtubeHeaders.count)] \(header.subject)")
-            print("   From: \(header.from)")
-            print("   Date: \(header.date)")
+			print("\n[\(index + 1)/\(youtubeHeaders.count)]\n\(header)")
             print("---")
+			
+			let encoder = JSONEncoder()
+			encoder.outputFormatting = [.prettyPrinted]
+			let data = try encoder.encode(header)
+			let string = String(data: data, encoding: .utf8)!
+			print(string)
+			
+			
         }
+		
+		let first = youtubeHeaders.first!
+		
+		let parts = try await server.fetchAllMessageParts(identifier: first.uid!)
+		
+		let second = parts.last!
+		
+		print("\n\(second.description)")
+		
+//		let data = second.decodedContent()
+//		let url = URL(fileURLWithPath: "/Users/oliver/Desktop/test1.pdf")
+//		try data.write(to: url)
+		
+		//first.getPart([2])
+		
+		let base64Data = try await server.fetchMessagePart(part: "2", from: first)
+		
+		if let base64String = String(data: base64Data, encoding: .utf8)
+		{
+			let normalized = base64String.replacingOccurrences(of: "\r", with: "")
+										   .replacingOccurrences(of: "\n", with: "")
+			
+			if let decodedData = Data(base64Encoded: normalized) {
+				let url = URL(fileURLWithPath: "/Users/oliver/Desktop/test2.pdf")
+				try decodedData.write(to: url)
+			}
+			
+		}
+//			
+//
+//			
+//			
+//
+//		{
+//			
+//			try decodedData.write(to: url)
+//		}
+		
     } else {
         print("No YouTube messages found.")
     }
     
     // Get the latest 5 messages
     print("\nFetching the latest 5 messages...")
-    if let latestMessagesSet = mailboxStatus.latest(5) {
+    if let latestMessagesSet = mailboxStatus.latest(100) {
         let latestHeaders = try await server.fetchHeaders(using: latestMessagesSet)
         
         print("\n📧 Latest Emails (\(latestHeaders.count)) 📧")
         for (index, header) in latestHeaders.enumerated() {
-            print("\n[\(index + 1)/\(latestHeaders.count)] \(header.subject)")
-            print("   From: \(header.from)")
-            print("   Date: \(header.date)")
+            print("\n[\(index + 1)/\(latestHeaders.count)]\n\(header)")
             print("---")
         }
     } else {

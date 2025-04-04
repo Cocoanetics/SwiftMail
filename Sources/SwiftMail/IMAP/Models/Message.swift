@@ -4,42 +4,42 @@
 import Foundation
 
 /// Structure to represent a complete email with all parts
-public struct Message: Codable, Sendable {
+public struct Message: Sendable {
     /// The email header information
     public let header: Header
     
     /// The UID of the message
-    public var uid: Int {
+    public var uid: UID? {
         return header.uid
     }
     
     /// The sequence number of the message
-    public var sequenceNumber: Int {
+    public var sequenceNumber: SequenceNumber {
         return header.sequenceNumber
     }
     
     /// The subject of the message
-    public var subject: String {
+    public var subject: String? {
         return header.subject
     }
     
     /// The sender of the message
-    public var from: String {
+    public var from: String? {
         return header.from
     }
     
     /// The recipients of the message
-    public var to: String {
+    public var to: String? {
         return header.to
     }
     
     /// The CC recipients of the message
-    public var cc: String {
+    public var cc: String? {
         return header.cc
     }
     
     /// The date of the message
-    public var date: Date {
+    public var date: Date? {
         return header.date
     }
     
@@ -66,11 +66,6 @@ public struct Message: Codable, Sendable {
         return findAttachments()
     }
     
-    /// The size of the email in bytes
-    public var size: Int {
-        return parts.reduce(0) { $0 + $1.size }
-    }
-    
     /// Initialize a new email
     /// - Parameters:
     ///   - header: The email header
@@ -84,10 +79,10 @@ public struct Message: Codable, Sendable {
     /// - Returns: The plain text body, or nil if not found
     private func findTextBody() -> String? {
         // First look for a part with content type "text/plain" that is not an attachment
-        for part in parts where part.contentType.lowercased() == "text" && 
-                               part.contentSubtype.lowercased() == "plain" && 
+        for part in parts where part.contentType.lowercased() == "text/plain" && 
                                part.disposition?.lowercased() != "attachment" {
-            guard let text = String(data: part.data, encoding: .utf8) else {
+            guard let partData = part.data,
+                  let text = String(data: partData, encoding: .utf8) else {
                 continue
             }
             
@@ -101,8 +96,9 @@ public struct Message: Codable, Sendable {
         }
         
         // If not found, look for any text part
-        for part in parts where part.contentType.lowercased() == "text" {
-            guard let text = String(data: part.data, encoding: .utf8) else {
+        for part in parts where part.contentType.lowercased().hasPrefix("text/") {
+            guard let partData = part.data,
+                  let text = String(data: partData, encoding: .utf8) else {
                 continue
             }
             
@@ -122,10 +118,10 @@ public struct Message: Codable, Sendable {
     /// - Returns: The HTML body, or nil if not found
     private func findHtmlBody() -> String? {
         // Look for a part with content type "text/html" that is not an attachment
-        for part in parts where part.contentType.lowercased() == "text" && 
-                               part.contentSubtype.lowercased() == "html" && 
+        for part in parts where part.contentType.lowercased() == "text/html" && 
                                part.disposition?.lowercased() != "attachment" {
-            guard let text = String(data: part.data, encoding: .utf8) else {
+            guard let partData = part.data,
+                  let text = String(data: partData, encoding: .utf8) else {
                 continue
             }
             

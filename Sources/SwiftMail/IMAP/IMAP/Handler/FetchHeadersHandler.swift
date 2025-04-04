@@ -51,7 +51,7 @@ final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHa
                 
             case .start(let sequenceNumber):
                 // Create a new header for this sequence number
-                let header = Header(sequenceNumber: Int(sequenceNumber.rawValue))
+                let header = Header(sequenceNumber: SequenceNumber(sequenceNumber.rawValue))
                 lock.withLock {
                     self.emailHeaders.append(header)
                 }
@@ -90,7 +90,7 @@ final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHa
         }
         
         // Find or create a header for this sequence number
-        let seqNum = Int(sequenceNumber.value)
+        let seqNum = SequenceNumber(sequenceNumber.value)
         lock.withLock {
             if let index = self.emailHeaders.firstIndex(where: { $0.sequenceNumber == seqNum }) {
                 var header = self.emailHeaders[index]
@@ -126,6 +126,11 @@ final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHa
                 header.to = formatAddress(envelope.to[0])
             }
             
+            // Handle cc addresses - check if array is not empty
+            if !envelope.cc.isEmpty {
+                header.cc = formatAddress(envelope.cc[0])
+            }
+            
             if let date = envelope.date {
                 let dateString = String(date)
                 
@@ -149,12 +154,14 @@ final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHa
                     formatter.dateFormat = format
                     if let parsedDate = formatter.date(from: cleanDateString) {
                         header.date = parsedDate
-                        return
+                        break
                     }
                 }
                 
-                // If we get here, none of the formats worked
-                fatalError("Failed to parse email date: \(dateString)")
+                // If no format worked, log the issue instead of crashing
+                if header.date == nil {
+                    print("Warning: Failed to parse email date: \(dateString)")
+                }
             }
             
             if let messageID = envelope.messageID {
@@ -162,10 +169,15 @@ final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHa
             }
             
         case .uid(let uid):
-            header.uid = Int(uid)
+				header.uid = UID(nio: uid)
             
         case .flags(let flags):
             header.flags = flags.map(self.convertFlag)
+            
+        case .body(let bodyStructure, _):
+            if case .valid(let structure) = bodyStructure {
+                header.parts = Array<MessagePart>(structure)
+            }
             
         default:
             break
