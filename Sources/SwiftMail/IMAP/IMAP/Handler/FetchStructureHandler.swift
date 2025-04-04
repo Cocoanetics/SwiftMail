@@ -6,7 +6,6 @@ import Foundation
 import NIOIMAPCore
 import NIO
 import NIOConcurrencyHelpers
-import os
 
 /// Handler for IMAP FETCH STRUCTURE command
 final class FetchStructureHandler: BaseIMAPCommandHandler<[MessagePart]>, IMAPCommandHandler {
