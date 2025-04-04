@@ -73,7 +73,6 @@ public struct MessagePart: Sendable {
 			// Create a filename based on section number and content type
 			let fileExtension = String.fileExtension(for: contentType) ?? "dat"
 			
-			print(contentId)
 			return "part_\(section.description.replacingOccurrences(of: ".", with: "_")).\(fileExtension)"
 		}
 	}
