@@ -301,10 +301,10 @@ public actor IMAPServer {
 	// MARK: - Message Commands
 	
 	/** 
-	 Fetches message headers from the selected mailbox.
+	 Fetches message information from the selected mailbox.
 	 
 	 This method retrieves headers for messages identified by the provided set.
-	 Headers include subject, from, to, date, and other metadata.
+	 Headers include subject, from, to, date, and other metadata, like the body structure.
 	 
 	 The generic type T determines the identifier type:
 	 - Use `SequenceNumber` for temporary message numbers that may change
@@ -319,8 +319,8 @@ public actor IMAPServer {
 	   - `IMAPError.emptyIdentifierSet` if the identifier set is empty
 	 - Note: Logs fetch operations at debug level with message counts
 	 */
-	public func fetchHeaders<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [Header] {
-		let command = FetchHeadersCommand(identifierSet: identifierSet, limit: limit)
+	public func fetchMessageInfo<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [MessageInfo] {
+		let command = FetchMessageInfoCommand(identifierSet: identifierSet, limit: limit)
 		var headers = try await executeCommand(command)
 		
 		// Apply limit if specified
@@ -407,14 +407,14 @@ public actor IMAPServer {
 		- `IMAPError.fetchFailed` if the fetch operation fails
 		- Decoding errors if the part's encoding cannot be processed
 	 */
-	public func fetchAndDecodeMessagePartData(header: Header, part: MessagePart) async throws -> Data {
+	public func fetchAndDecodeMessagePartData(messageInfo: MessageInfo, part: MessagePart) async throws -> Data {
 		// Use the UID from the header if available (non-zero), otherwise fall back to sequence number
-		if let uid = header.uid {
+		if let uid = messageInfo.uid {
 			// Use UID for fetching
 			return try await fetchPart(section: part.section, of: uid).decoded(for: part)
 		} else {
 			// Fall back to sequence number
-			let sequenceNumber = header.sequenceNumber
+			let sequenceNumber = messageInfo.sequenceNumber
 			return try await fetchPart(section: part.section, of: sequenceNumber).decoded(for: part)
 		}
 	}
@@ -427,7 +427,7 @@ public actor IMAPServer {
 	 - Throws: An error if the fetch operation fails
 	 - Note: This method will use UID if available in the header, falling back to sequence number if not
 	 */
-	public func fetchMessage(from header: Header) async throws -> Message {
+	public func fetchMessage(from header: MessageInfo) async throws -> Message {
 		// Use the UID from the header if available (non-zero), otherwise fall back to sequence number
 		if let uid = header.uid {
 			// Use UID for fetching
@@ -460,7 +460,7 @@ public actor IMAPServer {
 		}
 		
 		// First fetch the headers
-		let headers = try await fetchHeaders(using: identifierSet, limit: limit)
+		let headers = try await fetchMessageInfo(using: identifierSet, limit: limit)
 		
 		// Then fetch the complete email for each header
 		var emails: [Message] = []
@@ -520,7 +520,7 @@ public actor IMAPServer {
 	 - destinationMailbox: The name of the destination mailbox
 	 - Throws: An error if the move operation fails
 	 */
-	public func move(header: Header, to destinationMailbox: String) async throws {
+	public func move(header: MessageInfo, to destinationMailbox: String) async throws {
 		// Use the UID from the header if available (non-zero), otherwise fall back to sequence number
 		if let uid = header.uid {
 			// Use UID for moving

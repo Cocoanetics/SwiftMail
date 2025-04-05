@@ -78,15 +78,15 @@ do {
     if !messagesSet.isEmpty {
 		
 		// Fetch and display message headers
-		let headers = try await server.fetchHeaders(using: messagesSet)
+		let messageInfos = try await server.fetchMessageInfo(using: messagesSet)
 		
-        print("\n📧 Invoice Emails (\(headers.count)) 📧")
-        for (index, header) in headers.enumerated() {
-			print("\n[\(index + 1)/\(headers.count)]\n\(header)")
+        print("\n📧 Invoice Emails (\(messageInfos.count)) 📧")
+        for (index, messageInfo) in messageInfos.enumerated() {
+			print("\n[\(index + 1)/\(messageInfos.count)]\n\(messageInfo)")
             print("---")
 			
 			// here we can get and decode specific parts
-			for part in header.parts {
+			for part in messageInfo.parts {
 
 				// find an part that's an attached PDF
 				guard part.contentType == "application/pdf" else
@@ -95,7 +95,7 @@ do {
 				}
 
 				// get the body data for the part
-				let data = try await server.fetchAndDecodeMessagePartData(header: header, part: part)
+				let data = try await server.fetchAndDecodeMessagePartData(messageInfo: messageInfo, part: part)
 				
 				let desktopURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
 				let url = desktopURL.appendingPathComponent(part.suggestedFilename)
@@ -107,7 +107,7 @@ do {
     // Get the latest 5 messages
     print("\nFetching the latest 5 messages...")
     if let latestMessagesSet = mailboxStatus.latest(100) {
-        let latestHeaders = try await server.fetchHeaders(using: latestMessagesSet)
+        let latestHeaders = try await server.fetchMessageInfo(using: latestMessagesSet)
         
         print("\n📧 Latest Emails (\(latestHeaders.count)) 📧")
         for (index, header) in latestHeaders.enumerated() {

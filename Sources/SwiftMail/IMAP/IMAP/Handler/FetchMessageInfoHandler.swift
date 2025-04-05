@@ -8,15 +8,15 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH HEADERS command
-final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHandler {
+final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAPCommandHandler {
     /// Collected email headers
-    private var emailHeaders: [Header] = []
+    private var messageInfos: [MessageInfo] = []
     
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
         // Succeed with the collected headers
-        succeedWithResult(lock.withLock { self.emailHeaders })
+        succeedWithResult(lock.withLock { self.messageInfos })
     }
     
     /// Handle a tagged error response
@@ -51,9 +51,9 @@ final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHa
                 
             case .start(let sequenceNumber):
                 // Create a new header for this sequence number
-                let header = Header(sequenceNumber: SequenceNumber(sequenceNumber.rawValue))
+                let messageInfo = MessageInfo(sequenceNumber: SequenceNumber(sequenceNumber.rawValue))
                 lock.withLock {
-                    self.emailHeaders.append(header)
+                    self.messageInfos.append(messageInfo)
                 }
                 
             case .streamingBegin(_, _):
@@ -80,10 +80,10 @@ final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHa
         guard let sequenceNumber = sequenceNumber else {
             // For attributes that come without a sequence number, we assume they belong to the last header
             lock.withLock {
-                if let lastIndex = self.emailHeaders.indices.last {
-                    var header = self.emailHeaders[lastIndex]
+                if let lastIndex = self.messageInfos.indices.last {
+                    var header = self.messageInfos[lastIndex]
                     updateHeader(&header, with: attribute)
-                    self.emailHeaders[lastIndex] = header
+                    self.messageInfos[lastIndex] = header
                 }
             }
             return
@@ -92,14 +92,14 @@ final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHa
         // Find or create a header for this sequence number
         let seqNum = SequenceNumber(sequenceNumber.value)
         lock.withLock {
-            if let index = self.emailHeaders.firstIndex(where: { $0.sequenceNumber == seqNum }) {
-                var header = self.emailHeaders[index]
+            if let index = self.messageInfos.firstIndex(where: { $0.sequenceNumber == seqNum }) {
+                var header = self.messageInfos[index]
                 updateHeader(&header, with: attribute)
-                self.emailHeaders[index] = header
+                self.messageInfos[index] = header
             } else {
-                var header = Header(sequenceNumber: seqNum)
+                var header = MessageInfo(sequenceNumber: seqNum)
                 updateHeader(&header, with: attribute)
-                self.emailHeaders.append(header)
+                self.messageInfos.append(header)
             }
         }
     }
@@ -108,7 +108,7 @@ final class FetchHeadersHandler: BaseIMAPCommandHandler<[Header]>, IMAPCommandHa
     /// - Parameters:
     ///   - header: The header to update
     ///   - attribute: The attribute containing the information
-    private func updateHeader(_ header: inout Header, with attribute: MessageAttribute) {
+    private func updateHeader(_ header: inout MessageInfo, with attribute: MessageAttribute) {
         switch attribute {
         case .envelope(let envelope):
             // Extract information from envelope

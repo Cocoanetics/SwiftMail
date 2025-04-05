@@ -1,6 +1,6 @@
 import Foundation
 
-extension Header: CustomStringConvertible {
+extension MessageInfo: CustomStringConvertible {
     public var description: String {
         var result = ""
         

@@ -1,10 +1,10 @@
-// Header.swift
+// MessageInfo.swift
 // Structure to hold email header information
 
 import Foundation
 
-/// Structure to hold email header information
-public struct Header: Codable, Sendable {
+/// Structure to hold email header and part structure information
+public struct MessageInfo: Codable, Sendable {
     /// The sequence number of the message
     public var sequenceNumber: SequenceNumber
     

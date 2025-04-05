@@ -6,9 +6,9 @@ import NIO
 import NIOIMAP
 
 /// Command for fetching message headers
-struct FetchHeadersCommand<T: MessageIdentifier>: IMAPCommand {
-	typealias ResultType = [Header]
-	typealias HandlerType = FetchHeadersHandler
+struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPCommand {
+	typealias ResultType = [MessageInfo]
+	typealias HandlerType = FetchMessageInfoHandler
     
     /// The set of message identifiers to fetch
 	let identifierSet: MessageIdentifierSet<T>

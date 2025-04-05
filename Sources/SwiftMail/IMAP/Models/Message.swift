@@ -6,7 +6,7 @@ import Foundation
 /// Structure to represent a complete email with all parts
 public struct Message: Sendable {
     /// The email header information
-    public let header: Header
+    public let header: MessageInfo
     
     /// The UID of the message
     public var uid: UID? {
@@ -70,7 +70,7 @@ public struct Message: Sendable {
     /// - Parameters:
     ///   - header: The email header
     ///   - parts: The message parts
-    public init(header: Header, parts: [MessagePart]) {
+    public init(header: MessageInfo, parts: [MessagePart]) {
         self.header = header
         self.parts = parts
     }
