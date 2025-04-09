@@ -3,7 +3,7 @@ import NIOCore
 import Logging
 
 /// Handler for SMTP authentication
-final class AuthHandler: BaseSMTPHandler<AuthResult> {
+final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// Current state of the authentication process
     private enum AuthState {
         case initial

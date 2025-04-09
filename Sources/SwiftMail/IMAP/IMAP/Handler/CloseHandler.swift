@@ -4,7 +4,7 @@ import NIO
 import Logging
 
 /** Handler for the CLOSE command */
-final class CloseHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
+final class CloseHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
 	typealias ResultType = Void
 	typealias InboundIn = Response
 	typealias InboundOut = Never

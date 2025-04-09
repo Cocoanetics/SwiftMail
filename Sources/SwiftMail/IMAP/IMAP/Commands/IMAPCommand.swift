@@ -6,7 +6,7 @@ import NIO
 import NIOIMAP
 
 /// A protocol for all IMAP commands that know their handler type
-protocol IMAPCommand {
+protocol IMAPCommand where ResultType: Sendable {
     /// The result type this command produces
     associatedtype ResultType
     

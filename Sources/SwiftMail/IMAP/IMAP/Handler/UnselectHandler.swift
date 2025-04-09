@@ -10,7 +10,7 @@ import Logging
  The UNSELECT command is an extension to IMAP defined in RFC 3691 that allows
  a client to deselect the current mailbox without expunging deleted messages.
  */
-final class UnselectHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
+final class UnselectHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
     typealias ResultType = Void
     typealias InboundIn = Response
     typealias InboundOut = Never

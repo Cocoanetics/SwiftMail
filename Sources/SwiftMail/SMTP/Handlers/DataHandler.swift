@@ -5,7 +5,7 @@ import Logging
 /**
  Handler for the DATA command response
  */
-final class DataHandler: BaseSMTPHandler<Bool> {
+final class DataHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
     
     /**
      Process a response from the server

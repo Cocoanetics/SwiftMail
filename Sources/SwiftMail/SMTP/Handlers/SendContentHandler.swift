@@ -5,7 +5,7 @@ import Logging
 /**
  Handler for the email content response
  */
-final class SendContentHandler: BaseSMTPHandler<Void> {
+final class SendContentHandler: BaseSMTPHandler<Void>, @unchecked Sendable {
     
     /**
      Process a response from the server

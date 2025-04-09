@@ -8,7 +8,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH STRUCTURE command
-final class FetchStructureHandler: BaseIMAPCommandHandler<[MessagePart]>, IMAPCommandHandler {
+final class FetchStructureHandler: BaseIMAPCommandHandler<[MessagePart]>, IMAPCommandHandler, @unchecked Sendable {
     /// The body structure from the response
     private var bodyStructure: BodyStructure?
     

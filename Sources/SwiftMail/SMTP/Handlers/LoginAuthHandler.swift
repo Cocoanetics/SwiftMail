@@ -3,7 +3,7 @@ import NIOCore
 import Logging
 
 /// Handler for SMTP LOGIN authentication
-final class LoginAuthHandler: BaseSMTPHandler<AuthResult> {
+final class LoginAuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// State machine to handle the authentication process
     private var stateMachine: AuthHandlerStateMachine
     

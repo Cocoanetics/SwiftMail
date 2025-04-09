@@ -5,7 +5,7 @@ import Logging
 /**
  Handler for the RCPT TO command response
  */
-final class RcptToHandler: BaseSMTPHandler<Bool> {
+final class RcptToHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
     
     /**
      Process a response from the server

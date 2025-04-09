@@ -8,7 +8,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP LOGOUT command
-final class LogoutHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
+final class LogoutHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
 
     /// Process an incoming response
     /// - Parameter response: The response to process

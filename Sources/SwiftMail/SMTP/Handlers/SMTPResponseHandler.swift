@@ -6,7 +6,7 @@ import NIOSSL
 /**
  A channel handler for processing SMTP responses and forwarding them to the appropriate command handler
  */
-final class SMTPResponseHandler: ChannelInboundHandler {
+final class SMTPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
 	typealias InboundIn = String
 	typealias InboundOut = SMTPResponse
     

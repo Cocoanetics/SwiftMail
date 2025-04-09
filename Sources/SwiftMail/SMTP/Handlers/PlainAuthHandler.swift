@@ -3,7 +3,7 @@ import NIOCore
 import Logging
 
 /// Handler for SMTP PLAIN authentication
-class PlainAuthHandler: BaseSMTPHandler<AuthResult> {
+class PlainAuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// Process a response line from the server
     /// - Parameter response: The response line to process
     /// - Returns: Whether the handler is complete

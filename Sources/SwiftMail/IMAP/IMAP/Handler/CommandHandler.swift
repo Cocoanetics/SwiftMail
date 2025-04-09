@@ -23,7 +23,7 @@ protocol CommandHandler: ChannelInboundHandler where InboundIn == Response {
 }
 
 /// Base implementation of CommandHandler with common functionality
-class BaseIMAPCommandHandler<ResultType>: CommandHandler, RemovableChannelHandler {
+class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableChannelHandler, @unchecked Sendable {
     typealias InboundIn = Response
     typealias InboundOut = Response
     

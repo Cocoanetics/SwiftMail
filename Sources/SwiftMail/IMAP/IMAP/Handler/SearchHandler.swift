@@ -11,7 +11,7 @@ the message identifiers that match the search criteria.
 
 The generic parameter T specifies the exact MessageIdentifier type to be collected.
 */
-final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageIdentifierSet<T>>, IMAPCommandHandler {
+final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageIdentifierSet<T>>, IMAPCommandHandler, @unchecked Sendable {
     typealias ResultType = MessageIdentifierSet<T>
     typealias InboundIn = Response
     typealias InboundOut = Never

@@ -8,7 +8,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH HEADERS command
-final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAPCommandHandler {
+final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected email headers
     private var messageInfos: [MessageInfo] = []
     

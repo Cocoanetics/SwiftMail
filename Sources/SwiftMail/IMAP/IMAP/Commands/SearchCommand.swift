@@ -3,7 +3,7 @@ import NIO
 import NIOIMAP
 import NIOIMAPCore
 
-struct SearchCommand<T: MessageIdentifier>: IMAPCommand {
+struct SearchCommand<T: MessageIdentifier>: IMAPCommand, Sendable {
     // Update the result type to return a MessageIdentifierSet
     typealias ResultType = MessageIdentifierSet<T>
     typealias HandlerType = SearchHandler<T>

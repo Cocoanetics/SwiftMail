@@ -9,7 +9,7 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP CAPABILITY command
-final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler {
+final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected capabilities
     private var capabilities: [Capability] = []
     
@@ -46,7 +46,7 @@ final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommand
 }
 
 /// Handler for IMAP COPY command
-final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
+final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
     
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response
@@ -62,7 +62,7 @@ final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
 }
 
 /// Handler for IMAP STORE command
-final class StoreHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
+final class StoreHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
 
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response
@@ -78,7 +78,7 @@ final class StoreHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
 }
 
 /// Handler for IMAP EXPUNGE command
-final class ExpungeHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler {
+final class ExpungeHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
 
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response

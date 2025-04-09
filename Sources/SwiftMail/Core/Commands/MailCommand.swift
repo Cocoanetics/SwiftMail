@@ -5,7 +5,7 @@ import Foundation
 import NIO
 
 /// A generic protocol for mail commands across different protocols
-protocol MailCommand {
+protocol MailCommand where ResultType: Sendable {
     /// The result type this command produces
     associatedtype ResultType
     
@@ -29,7 +29,7 @@ extension MailCommand {
 }
 
 /// A marker protocol for command handlers
-protocol MailCommandHandler {
+protocol MailCommandHandler: Sendable where ResultType: Sendable {
     /// The result type for this handler
     associatedtype ResultType
     

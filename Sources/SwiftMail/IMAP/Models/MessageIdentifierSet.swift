@@ -94,7 +94,7 @@ extension SequenceNumber: Codable {
 
 /// A type-safe set for message identifiers that provides an efficient
 /// representation of non-contiguous ranges
-public struct MessageIdentifierSet<Identifier: MessageIdentifier> {
+public struct MessageIdentifierSet<Identifier: MessageIdentifier>: Sendable {
     /// The underlying Foundation IndexSet that stores the actual data
     private var indexSet: Foundation.IndexSet
     

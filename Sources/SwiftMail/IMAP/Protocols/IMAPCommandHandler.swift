@@ -6,7 +6,7 @@ import NIO
 import Logging
 
 /// Protocol for IMAP command handlers
-protocol IMAPCommandHandler: ChannelInboundHandler {
+protocol IMAPCommandHandler: ChannelInboundHandler, Sendable {
     associatedtype ResultType
     
     /// Initialize the handler

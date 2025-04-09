@@ -8,21 +8,12 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP SELECT command
-final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCommandHandler {
+final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCommandHandler, @unchecked Sendable {
     /// The type of result this handler produces
     typealias ResultType = Mailbox.Status
     
     /// The mailbox status being built
     private var mailboxInfo = Mailbox.Status()
-    
-    /// Static property to hold the mailbox name between command creation and handler initialization
-    private static var pendingMailboxName: String = ""
-    
-    /// Prepare the handler for a specific mailbox
-    /// - Parameter mailboxName: The name of the mailbox to select
-	static func prepareForMailbox(_ mailboxName: String) {
-        pendingMailboxName = mailboxName
-    }
     
     /// Initialize a new select handler
     /// - Parameters:

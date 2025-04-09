@@ -5,7 +5,7 @@ import Logging
 /**
  A protocol representing an SMTP command
  */
-protocol SMTPCommand {
+protocol SMTPCommand where ResultType: Sendable {
     /// The type of result this command returns
     associatedtype ResultType
     

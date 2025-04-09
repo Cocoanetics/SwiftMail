@@ -767,7 +767,7 @@ public actor IMAPServer {
 	 - Returns: The result from the handler
 	 - Throws: An error if the operation fails
 	 */
-	private func executeHandlerOnly<T, HandlerType: IMAPCommandHandler>(
+	private func executeHandlerOnly<T: Sendable, HandlerType: IMAPCommandHandler>(
 		handlerType: HandlerType.Type,
 		timeoutSeconds: Int = 5
 	) async throws -> T where HandlerType.ResultType == T {

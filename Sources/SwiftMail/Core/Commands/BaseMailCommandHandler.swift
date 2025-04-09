@@ -6,7 +6,7 @@ import NIO
 import Logging
 
 /// Base class for mail command handlers that provides common functionality
-class BaseMailCommandHandler<T>: ChannelInboundHandler, RemovableChannelHandler, MailCommandHandler {
+class BaseMailCommandHandler<T: Sendable>: ChannelInboundHandler, RemovableChannelHandler, MailCommandHandler, @unchecked Sendable {
 	typealias InboundIn = Any
 	typealias InboundOut = Never
 	typealias ResultType = T

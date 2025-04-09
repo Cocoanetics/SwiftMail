@@ -13,7 +13,9 @@ import NIOConcurrencyHelpers
 import Glibc
 #endif
 
-/** 
+extension ByteToMessageHandler: @retroactive @unchecked Sendable {}
+
+/**
  An actor that represents an SMTP server connection.
  
  This class provides functionality to:
@@ -159,12 +161,6 @@ public actor SMTPServer {
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
             .channelInitializer { channel in
-                let handlers: [ChannelHandler] = [
-                    ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-                    self.duplexLogger,
-                    SMTPResponseHandler()
-                ]
-                
                 if useSSL {
                     do {
                         // Create SSL context with proper configuration for secure connection
@@ -177,14 +173,22 @@ public actor SMTPServer {
                         
                         // Add SSL handler first, then SMTP handlers
                         return channel.pipeline.addHandler(sslHandler).flatMap {
-                            channel.pipeline.addHandlers(handlers)
+                            channel.pipeline.addHandlers([
+								ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
+		self.duplexLogger,
+		SMTPResponseHandler()
+	])
                         }
                     } catch {
                         return channel.eventLoop.makeFailedFuture(error)
                     }
                 } else {
                     // Just add SMTP handlers without SSL
-                    return channel.pipeline.addHandlers(handlers)
+                    return channel.pipeline.addHandlers([
+						ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
+	  self.duplexLogger,
+	  SMTPResponseHandler()
+  ])
                 }
             }
         
@@ -395,7 +399,7 @@ public actor SMTPServer {
 	   - `SMTPError.timeout` if the command times out
 	 - Note: Logs command execution at debug level
 	 */
-	@discardableResult func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+	@discardableResult private func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
 		// Ensure we have a valid channel
 		guard let channel = channel else {
 			throw SMTPError.connectionFailed("Not connected to SMTP server")
@@ -494,7 +498,7 @@ public actor SMTPServer {
        - `SMTPError.timeout` if the operation times out
      - Note: Logs handler execution at debug level
      */
-    private func executeHandlerOnly<T, HandlerType: SMTPCommandHandler>(
+	private func executeHandlerOnly<T: Sendable, HandlerType: SMTPCommandHandler>(
         handlerType: HandlerType.Type,
         timeoutSeconds: Int = 5
     ) async throws -> T where HandlerType.ResultType == T {
@@ -693,7 +697,7 @@ public actor SMTPServer {
      - Returns: The result of the operation
      - Throws: An error if the operation fails or times out
      */
-    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping () async throws -> T, onTimeout: @escaping () throws -> Void) async throws -> T {
+	private func withTimeout<T: Sendable>(seconds: TimeInterval, operation: @escaping @Sendable () async throws -> T, onTimeout: @escaping @Sendable () throws -> Void) async throws -> T {
         return try await withThrowingTaskGroup(of: T.self) { group in
             // Add the main operation
             group.addTask {

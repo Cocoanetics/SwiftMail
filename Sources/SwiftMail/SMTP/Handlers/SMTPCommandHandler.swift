@@ -3,7 +3,7 @@ import NIOCore
 import Logging
 
 /// Protocol for SMTP command handlers
-protocol SMTPCommandHandler {
+protocol SMTPCommandHandler: Sendable where ResultType: Sendable {
     /// The result type for this handler
     associatedtype ResultType
     

@@ -5,7 +5,7 @@ import Logging
 /**
  Handler for SMTP QUIT command responses
  */
-final class QuitHandler: BaseSMTPHandler<Bool> {
+final class QuitHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
     
     /**
      Process a response from the server to the QUIT command

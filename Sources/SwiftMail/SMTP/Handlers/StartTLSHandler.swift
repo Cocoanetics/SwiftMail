@@ -6,7 +6,7 @@ import Logging
 /**
  Handler for SMTP STARTTLS command responses
  */
-final class StartTLSHandler: BaseSMTPHandler<Bool> {
+final class StartTLSHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
     /**
      Process a response from the server
      - Parameter response: The response to process

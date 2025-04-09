@@ -3,7 +3,7 @@ import NIOCore
 import Logging
 
 /// Handler for processing the initial greeting from the SMTP server
-class SMTPGreetingHandler: BaseSMTPHandler<SMTPGreeting> {
+final class SMTPGreetingHandler: BaseSMTPHandler<SMTPGreeting>, @unchecked Sendable {
     /// Handle a successful response by parsing the greeting
     override func handleSuccess(response: SMTPResponse) {
         // Create a greeting object from the response

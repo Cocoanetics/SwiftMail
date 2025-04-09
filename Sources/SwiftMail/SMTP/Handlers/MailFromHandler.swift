@@ -5,7 +5,7 @@ import Logging
 /**
  Handler for the MAIL FROM command response
  */
-final class MailFromHandler: BaseSMTPHandler<Bool> {
+final class MailFromHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
     
     /**
      Process a response from the server

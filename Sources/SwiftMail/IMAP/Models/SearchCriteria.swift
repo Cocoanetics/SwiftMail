@@ -8,7 +8,7 @@ import NIOIMAPCore
 Use `SearchCriteria` to build search queries for finding messages that match specific conditions.
 You can combine multiple criteria using logical operators like `.or` and `.not`.
 */
-public indirect enum SearchCriteria {
+public indirect enum SearchCriteria: Sendable {
     /** Matches all messages in the mailbox. */
     case all
     
