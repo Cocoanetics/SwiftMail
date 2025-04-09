@@ -6,7 +6,7 @@ import Foundation
 /**
  A struct representing an email message
  */
-public struct Email {
+public struct Email: Sendable {
     /** The sender of the email */
     public var sender: EmailAddress
     

@@ -6,7 +6,7 @@ import Foundation
 /**
  A struct representing an email attachment
  */
-public struct Attachment {
+public struct Attachment: Codable, Sendable {
     /** The filename of the attachment */
     public let filename: String
     

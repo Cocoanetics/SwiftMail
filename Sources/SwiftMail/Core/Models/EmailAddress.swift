@@ -6,7 +6,7 @@ import NIO
 import NIOSSL
 
 /// Email address representation
-public struct EmailAddress: Hashable, Codable {
+public struct EmailAddress: Hashable, Codable, Sendable {
     /// The name part of the address (optional)
     public let name: String?
     

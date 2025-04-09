@@ -418,30 +418,15 @@ public actor SMTPServer {
 		let commandString = command.toCommandString()
 		
 		// Create the handler using standard initialization
-		let commandHandler = CommandType.HandlerType(commandTag: commandTag, promise: resultPromise)
-		
-		// Create special handlers with additional parameters if needed
-		var handler: ChannelHandler
+		let handler: any SMTPCommandHandler
 		
 		// Special case for LoginAuthHandler which needs the command parameters
-		if let _ = commandHandler as? LoginAuthHandler,
-		   let loginCommand = command as? LoginAuthCommand {
-			
-			// Re-init with command parameters
-			let loginHandler = LoginAuthHandler(
-				commandTag: commandTag,
-				promise: resultPromise as! EventLoopPromise<AuthResult>,
-				command: loginCommand
-			)
-			
-			// Store the handler
-			handler = loginHandler
-		} else {
-			// For all other handlers, use the standard cast
-			guard let channelHandler = commandHandler as? ChannelHandler else {
-				throw SMTPError.connectionFailed("Handler is not a ChannelHandler")
-			}
-			handler = channelHandler
+		if let loginCommand = command as? LoginAuthCommand {
+			handler = LoginAuthHandler(commandTag: commandTag, promise: resultPromise as! EventLoopPromise<AuthResult>, command: loginCommand)
+		}
+		else
+		{
+			handler = CommandType.HandlerType(commandTag: commandTag, promise: resultPromise)
 		}
 		
 		// Create a timeout for the command
@@ -515,20 +500,16 @@ public actor SMTPServer {
         do {
             // Wait for the handler to complete with a timeout
             return try await withTimeout(seconds: Double(timeoutSeconds), operation: {
-                // Add the handler to the pipeline
-                if let channelHandler = handler as? ChannelHandler {
-                    try await channel.pipeline.addHandler(channelHandler).get()
-                    
-                    // Wait for the result
-                    let result = try await promise.futureResult.get()
-                    
-                    // Flush the DuplexLogger's buffer even if there was an error
-                    self.duplexLogger.flushInboundBuffer()
-                    
-                    return result
-                } else {
-                    throw SMTPError.connectionFailed("Handler is not a ChannelHandler")
-                }
+				// Add the handler to the pipeline
+				try await channel.pipeline.addHandler(handler).get()
+				
+				// Wait for the result
+				let result = try await promise.futureResult.get()
+				
+				// Flush the DuplexLogger's buffer even if there was an error
+				self.duplexLogger.flushInboundBuffer()
+				
+				return result
             }, onTimeout: {
                 // Fulfill the promise with an error to prevent leaks
                 promise.fail(SMTPError.connectionFailed("Response timeout"))
