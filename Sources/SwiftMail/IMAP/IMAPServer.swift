@@ -239,7 +239,7 @@ public actor IMAPServer {
 	   - `IMAPError.connectionFailed` if not connected
 	 - Note: Logs mailbox selection at debug level
 	 */
-	public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Status {
+	@discardableResult public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Status {
 		let command = SelectMailboxCommand(mailboxName: mailboxName)
 		return try await executeCommand(command)
 	}
