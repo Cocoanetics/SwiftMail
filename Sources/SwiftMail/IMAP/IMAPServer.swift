@@ -736,7 +736,9 @@ public actor IMAPServer {
 			try await channel.pipeline.addHandler(handler).get()
 			
 			// Write the command to the channel wrapped as CommandStreamPart
-			try await channel.writeAndFlush(CommandStreamPart.tagged(command.toTaggedCommand(tag: tag))).get()
+			let taggedCommand = command.toTaggedCommand(tag: tag)
+			let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(taggedCommand))
+			try await channel.writeAndFlush(wrapped).get()
 			
 			// Wait for the result
 			let result = try await resultPromise.futureResult.get()

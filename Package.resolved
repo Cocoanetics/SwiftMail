@@ -1,5 +1,4 @@
 {
-  "originHash" : "111dae3e81596c1c5b17f7e7f387fafff80c6943a1557c68b5a9ce49649d10b7",
   "pins" : [
     {
       "identity" : "swift-atomics",
@@ -70,7 +69,7 @@
       "location" : "https://github.com/apple/swift-nio-imap",
       "state" : {
         "branch" : "main",
-        "revision" : "adfb504006e6f002580b533a8d16caeb9e0c92b3"
+        "revision" : "ae9498d7dd1532fe29fc1b94e12c5398adc4c8d9"
       }
     },
     {
@@ -119,5 +118,5 @@
       }
     }
   ],
-  "version" : 3
+  "version" : 2
 }
