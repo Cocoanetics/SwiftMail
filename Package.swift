@@ -27,7 +27,7 @@ let package = Package(
         .package(url: "https://github.com/thebarndog/swift-dotenv", from: "2.1.0"),
 		.package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-nio", from: "2.0.0"),
-		.package(url: "https://github.com/apple/swift-nio-imap", branch: "main"),
+		.package(url: "https://github.com/apple/swift-nio-imap", revision: "adfb504006e6f002580b533a8d16caeb9e0c92b3"),
         .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-testing", branch: "main"),
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
