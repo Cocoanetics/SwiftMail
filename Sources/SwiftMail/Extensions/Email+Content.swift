@@ -1,6 +1,19 @@
 import Foundation
 
 extension Email {
+    /**
+     Build the MIME encoded email body.
+
+     This helper assembles the full message body including all MIME headers
+     and boundaries. The method automatically chooses between quoted
+     printable and 8bit transfer encoding based on the provided flag and the
+     content of the email.
+
+     - Parameter use8BitMIME: Set to `true` if the SMTP server announced the
+       `8BITMIME` capability. The text and HTML bodies are only transmitted as
+       8bit if they are deemed safe via ``String/isSafe8BitContent()``.
+     - Returns: The complete message body ready to be sent via SMTP.
+     */
     public func constructContent(use8BitMIME: Bool = false) -> String {
         var content = ""
 
