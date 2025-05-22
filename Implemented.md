@@ -48,7 +48,7 @@
 - [x] STORE - Store flags on messages.
   - [x] STORE (ADD) - Add flags to messages.
   - [x] STORE (REMOVE) - Remove flags from messages.
-- [ ] SEARCH - Allows the client to search for messages based on various criteria.
+ - [x] SEARCH - Allows the client to search for messages based on various criteria.
 - [ ] ESEARCH - Extended search command that provides additional search capabilities.
 
 #### TLS Commands
