@@ -49,8 +49,11 @@ public actor IMAPServer {
 	/** The list of all mailboxes with their attributes */
 	public private(set) var mailboxes: [Mailbox.Info] = []
 	
-	/** Special folders - mailboxes with SPECIAL-USE attributes */
-	public private(set) var specialMailboxes: [Mailbox.Info] = []
+        /** Special folders - mailboxes with SPECIAL-USE attributes */
+        public private(set) var specialMailboxes: [Mailbox.Info] = []
+
+        /// Active handler managing an IDLE session, if any
+        private var idleHandler: IdleHandler?
 	
 	/**
 	 Logger for IMAP operations
@@ -272,15 +275,63 @@ public actor IMAPServer {
 	   - `IMAPError.connectionFailed` if not connected
 	 - Note: Logs mailbox unselection at debug level
 	 */
-	public func unselectMailbox() async throws {
-		// Check if the server supports UNSELECT capability
-		if !capabilities.contains(.unselect) {
-			throw IMAPError.commandNotSupported("UNSELECT command not supported by server")
-		}
-		
-		let command = UnselectCommand()
-		try await executeCommand(command)
-	}
+        public func unselectMailbox() async throws {
+                // Check if the server supports UNSELECT capability
+                if !capabilities.contains(.unselect) {
+                        throw IMAPError.commandNotSupported("UNSELECT command not supported by server")
+                }
+
+                let command = UnselectCommand()
+                try await executeCommand(command)
+        }
+
+        // MARK: - Idle
+
+        /// Begin an IDLE session and receive server events
+        public func idle() async throws -> AsyncStream<IMAPServerEvent> {
+                // Ensure the server advertises IDLE support
+                if !capabilities.contains(.idle) {
+                        throw IMAPError.commandNotSupported("IDLE command not supported by server")
+                }
+
+                guard idleHandler == nil else {
+                        throw IMAPError.commandFailed("IDLE session already active")
+                }
+
+                guard let channel = self.channel else {
+                        throw IMAPError.connectionFailed("Channel not initialized")
+                }
+
+                var continuationRef: AsyncStream<IMAPServerEvent>.Continuation!
+                let stream = AsyncStream<IMAPServerEvent> { continuation in
+                        continuationRef = continuation
+                }
+
+                let promise = channel.eventLoop.makePromise(of: Void.self)
+                let tag = generateCommandTag()
+                let handler = IdleHandler(commandTag: tag, promise: promise, continuation: continuationRef)
+                idleHandler = handler
+
+                try await channel.pipeline.addHandler(handler).get()
+                let command = IdleCommand()
+                let tagged = command.toTaggedCommand(tag: tag)
+                let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+                try await channel.writeAndFlush(wrapped).get()
+
+                return stream
+        }
+
+        /// Terminate the current IDLE session
+        public func done() async throws {
+                guard let handler = idleHandler, let channel = self.channel else { return }
+
+                idleHandler = nil
+
+                try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.idleDone)).get()
+
+                // Wait for server confirmation
+                try await handler.promise.futureResult.get()
+        }
 	
 	/** 
 	 Logout from the IMAP server
