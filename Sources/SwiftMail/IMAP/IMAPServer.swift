@@ -43,8 +43,11 @@ public actor IMAPServer {
 	/** Counter for generating unique command tags */
 	private var commandTagCounter: Int = 0
 	
-	/** Server capabilities */
-	private var capabilities: Set<NIOIMAPCore.Capability> = []
+        /** Server capabilities */
+        private var capabilities: Set<NIOIMAPCore.Capability> = []
+
+        /** Active IDLE handler if an IDLE session is running */
+        private var idleHandler: IdleHandler?
 	
 	/** The list of all mailboxes with their attributes */
 	public private(set) var mailboxes: [Mailbox.Info] = []
@@ -293,10 +296,54 @@ public actor IMAPServer {
 	   - `IMAPError.connectionFailed` if not connected
 	 - Note: Logs logout at info level
 	 */
-	public func logout() async throws {
-		let command = LogoutCommand()
-		try await executeCommand(command)
-	}
+        public func logout() async throws {
+                let command = LogoutCommand()
+                try await executeCommand(command)
+        }
+
+        // MARK: - IDLE
+
+        /**
+         Enter IDLE mode to receive real-time mailbox updates.
+
+         - Returns: An ``AsyncStream`` of ``IMAPServerEvent`` values.
+         - Throws: ``IMAPError.commandNotSupported`` if the server does not support IDLE.
+         */
+        public func idle() async throws -> AsyncStream<IMAPServerEvent> {
+                guard let channel = self.channel else {
+                        throw IMAPError.connectionFailed("Channel not initialized")
+                }
+
+                guard capabilities.contains(NIOIMAPCore.Capability("IDLE")) else {
+                        throw IMAPError.commandNotSupported("IDLE not supported by server")
+                }
+
+                precondition(idleHandler == nil, "IDLE already active")
+
+                var continuation: AsyncStream<IMAPServerEvent>.Continuation!
+                let stream = AsyncStream<IMAPServerEvent> { continuation = $0 }
+
+                let promise = channel.eventLoop.makePromise(of: Void.self)
+                let tag = generateCommandTag()
+                let handler = IdleHandler(commandTag: tag, promise: promise, continuation: continuation)
+                idleHandler = handler
+
+                try await channel.pipeline.addHandler(handler).get()
+
+                let command = IdleCommand()
+                let tagged = command.toTaggedCommand(tag: tag)
+                try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(tagged))).get()
+
+                return stream
+        }
+
+        /// Exit IDLE mode.
+        public func done() async throws {
+                guard let channel = self.channel, let handler = idleHandler else { return }
+                try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.idleDone)).get()
+                _ = try await handler.promise.futureResult.get()
+                idleHandler = nil
+        }
 	
 	// MARK: - Message Commands
 	

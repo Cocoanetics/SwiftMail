@@ -77,6 +77,15 @@ public struct SequenceNumber: MessageIdentifier, Sendable {
     }
 }
 
+// Convert from NIO SequenceNumber
+extension SequenceNumber {
+    /// Initialize from a `NIOIMAPCore.SequenceNumber` value
+    /// - Parameter nio: The NIO IMAP sequence number
+    public init(nio: NIOIMAPCore.SequenceNumber) {
+        self.value = nio.rawValue
+    }
+}
+
 // MARK: - Codable Implementation for SequenceNumber
 extension SequenceNumber: Codable {
     public func encode(to encoder: Encoder) throws {

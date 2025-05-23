@@ -35,6 +35,7 @@ Tutorial: <doc:SendingEmailsWithSMTP>
 - <doc:Installation>
 - <doc:GettingStartedWithIMAP>
 - <doc:GettingStartedWithSMTP>
+- <doc:UsingIMAPIDLE>
 
 ### Tutorials
 

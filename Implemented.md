@@ -7,7 +7,7 @@
 - [x] SPECIAL-USE - Used to list mailboxes with special-use attributes.
 - [x] UIDPLUS - Checked when determining if the server supports the MOVE command with UIDs.
 - [x] MOVE - Used to check if the server supports the MOVE command directly.
-- [ ] IDLE - Allows the server to notify the client of new messages or changes in real-time without the need for the client to poll the server.
+- [x] IDLE - Allows the server to notify the client of new messages or changes in real-time without the need for the client to poll the server.
 - [ ] LITERAL+ - Allows the use of literals in commands without requiring the client to wait for the server's continuation response.
 - [ ] COMPRESS=DEFLATE - Enables compression of data sent between the client and server to reduce bandwidth usage.
 - [ ] QUOTA - Provides support for managing and querying storage quotas on the server.
