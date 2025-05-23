@@ -71,6 +71,25 @@ do {
     let mailboxStatus = try await server.selectMailbox(inbox.name)
     print("Selected mailbox: \(inbox.name) with \(mailboxStatus.messageCount) messages")
 
+    // --- IMAP IDLE TEST BLOCK ---
+    print("\nTesting IMAP IDLE for 30 seconds. Any new events will be logged.\n")
+    do {
+        let idleStream = try await server.idle()
+        let idleTask = Task {
+            for await event in idleStream {
+                print("[IMAP IDLE EVENT] \(event)")
+            }
+        }
+        // Wait for 30 seconds, then exit IDLE
+        try await Task.sleep(nanoseconds: 30 * 1_000_000_000)
+        try await server.done()
+        idleTask.cancel()
+        print("\nExited IMAP IDLE mode.\n")
+    } catch {
+        print("❌ Error during IMAP IDLE: \(error)")
+    }
+    // --- END IMAP IDLE TEST BLOCK ---
+
     print("\nSearching for invoices with PDF ...")
 	let messagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("invoice"), .text(".pdf")])
     print("Found \(messagesSet.count) messages")
