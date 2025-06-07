@@ -2,6 +2,18 @@ import Foundation
 import Testing
 @testable import SwiftMail
 
+// Use existing tag definitions and add new ones
+extension Tag {
+    @Tag static var encoding: Self
+    @Tag static var decoding: Self
+    @Tag static var imap: Self
+    @Tag static var performance: Self
+    @Tag static var mime: Self
+    @Tag static var fileHandling: Self
+    @Tag static var security: Self
+}
+
+@Suite("Quoted-Printable Encoding Tests", .tags(.imap, .encoding, .decoding))
 struct QuotedPrintableTests {
     
     // MARK: - Test Resources
@@ -24,8 +36,8 @@ struct QuotedPrintableTests {
     
     // MARK: - Basic Decoding Tests
     
-    @Test
-    func testBasicQuotedPrintableDecoding() {
+    @Test("Basic quoted-printable decoding", .tags(.decoding))
+    func basicQuotedPrintableDecoding() {
         // Test basic quoted-printable decoding
         let encoded = "Hello=20World"
         #expect(encoded.decodeQuotedPrintable() == "Hello World")
@@ -43,8 +55,8 @@ struct QuotedPrintableTests {
         #expect(equalsSign.decodeQuotedPrintable() == "3=2+1")
     }
     
-    @Test
-    func testEncodingDetection() {
+    @Test("Encoding detection", .tags(.encoding))
+    func encodingDetection() {
         // Test ISO-8859-1 encoding detection
         let isoContent = "Content-Type: text/plain; charset=iso-8859-1\r\n\r\nThis has special chars: =E4=F6=FC=DF"
         #expect(isoContent.detectCharsetEncoding() == .isoLatin1)
@@ -62,9 +74,8 @@ struct QuotedPrintableTests {
         #expect(noCharset.detectCharsetEncoding() == .utf8)
     }
     
-    // Skip this test for now as the implementation might be different
-    @Test
-    func testAutoDetectionDecoding() {
+    @Test("Auto-detection decoding", .tags(.decoding))
+    func autoDetectionDecoding() {
         // Simple test with basic content
         let basicContent = "Hello=20World"
         #expect(basicContent.decodeQuotedPrintable() == "Hello World")
@@ -72,8 +83,8 @@ struct QuotedPrintableTests {
     
     // MARK: - MIME Header Tests
     
-    @Test
-    func testMIMEHeaderDecoding() {
+    @Test("MIME header decoding", .tags(.decoding, .mime))
+    func mimeHeaderDecoding() {
         // Test Q-encoded header
         let qEncoded = "=?UTF-8?Q?Hello=20World?="
         #expect(qEncoded.decodeMIMEHeader() == "Hello World")
@@ -94,8 +105,8 @@ struct QuotedPrintableTests {
     
     // MARK: - HTML File Tests
     
-    @Test
-    func testISO8859HTMLFile() throws {
+    @Test("ISO-8859-1 HTML file processing", .tags(.fileHandling))
+    func iso8859HTMLFile() throws {
         let content = try loadResourceContent(name: "sample_quoted_printable", withExtension: "html")
         
         // Test that the content was loaded
@@ -109,8 +120,8 @@ struct QuotedPrintableTests {
         #expect(simpleTest.decodeQuotedPrintable() == "Hello World")
     }
     
-    @Test
-    func testUTF8HTMLFile() throws {
+    @Test("UTF-8 HTML file processing", .tags(.fileHandling))
+    func utf8HTMLFile() throws {
         let content = try loadResourceContent(name: "sample_quoted_printable_utf8", withExtension: "html")
         
         // Test that the content was loaded
@@ -124,8 +135,8 @@ struct QuotedPrintableTests {
         #expect(simpleTest.decodeQuotedPrintable() == "Hello World")
     }
     
-    @Test
-    func testMIMEHeaderFile() throws {
+    @Test("MIME header file processing", .tags(.fileHandling, .mime))
+    func mimeHeaderFile() throws {
         let content = try loadResourceContent(name: "sample_mime_header", withExtension: "txt")
         
         // Split the content into lines
@@ -154,6 +165,39 @@ struct QuotedPrintableTests {
         } else {
             throw TestFailure("Subject header not found")
         }
+    }
+    
+    // MARK: - Additional Edge Cases
+    
+    @Test("Edge cases and malformed input", .tags(.decoding, .security))
+    func edgeCasesAndMalformedInput() {
+        // Test empty string
+        #expect("".decodeQuotedPrintable() == "")
+        
+        // Test string without encoding
+        #expect("Plain text".decodeQuotedPrintable() == "Plain text")
+        
+        // Test malformed encoding (incomplete hex) - should return nil for invalid input
+        let malformed = "Hello=2World"  // Missing second hex digit
+        let result = malformed.decodeQuotedPrintable()
+        #expect(result == nil, "Should return nil for malformed input")
+        
+        // Test with invalid hex characters - should return nil for invalid input
+        let invalidHex = "Hello=ZZ"
+        let invalidResult = invalidHex.decodeQuotedPrintable()
+        #expect(invalidResult == nil, "Should return nil for invalid hex")
+    }
+    
+    @Test("Performance with large content", .tags(.performance, .decoding))
+    func performanceWithLargeContent() {
+        // Create a large quoted-printable encoded string
+        let baseString = "This=20is=20a=20test=20string=20with=20spaces=0D=0A"
+        let largeContent = String(repeating: baseString, count: 1000)
+        
+        // Test that decoding completes without hanging
+        let decoded = largeContent.decodeQuotedPrintable()
+        #expect(decoded != nil, "Should decode large content successfully")
+        #expect(decoded?.contains("This is a test string with spaces") ?? false, "Should contain expected decoded content")
     }
 }
 

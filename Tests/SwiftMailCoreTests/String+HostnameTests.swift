@@ -1,38 +1,43 @@
 // String+HostnameTests.swift
 // Tests for hostname-related String extensions
 
-import XCTest
+import Testing
+import Foundation
 @testable import SwiftMail
 
-final class StringHostnameTests: XCTestCase {
-    func testLocalHostname() {
+@Suite("String Hostname Extensions Tests")
+struct StringHostnameTests {
+    
+    @Test("Local hostname resolution returns valid hostname")
+    func localHostname() {
         let hostname = String.localHostname
         
         // Test that hostname is not empty
-        XCTAssertFalse(hostname.isEmpty)
+        #expect(!hostname.isEmpty, "Hostname should not be empty")
         
         // Test that hostname is not the fallback value unless all other methods fail
         if !hostname.hasPrefix("[") && !hostname.hasSuffix("]") {
             // If it's not an IP address format, it should be a valid hostname
-            XCTAssertNotEqual(hostname, "localhost")
-            XCTAssertNotEqual(hostname, "swift-mail-client.local")
+            #expect(hostname != "localhost", "Should not default to localhost unless necessary")
+            #expect(hostname != "swift-mail-client.local", "Should not default to fallback unless necessary")
         }
         
         // Test hostname format
         if hostname.hasPrefix("[") && hostname.hasSuffix("]") {
             // IP address format
             let ip = String(hostname.dropFirst().dropLast())
-            XCTAssertTrue(isValidIP(ip), "Invalid IP address format: \(ip)")
+            #expect(isValidIP(ip), "Invalid IP address format: \(ip)")
         } else {
             // Hostname format
-            XCTAssertTrue(isValidHostname(hostname), "Invalid hostname format: \(hostname)")
+            #expect(isValidHostname(hostname), "Invalid hostname format: \(hostname)")
         }
     }
     
-    func testLocalIPAddress() {
+    @Test("Local IP address resolution returns valid IP when available")
+    func localIPAddress() {
         if let ipAddress = String.localIPAddress {
             // Test that we got a valid IP address
-            XCTAssertTrue(isValidIP(ipAddress), "Invalid IP address format: \(ipAddress)")
+            #expect(isValidIP(ipAddress), "Invalid IP address format: \(ipAddress)")
         }
         // Note: We don't fail if no IP is found, as this might be legitimate in some environments
     }
