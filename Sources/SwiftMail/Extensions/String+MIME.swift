@@ -22,10 +22,14 @@ extension String {
         #else
         // Map common MIME types to extensions
         let mimeToExtension: [String: String] = [
+            // Images
             "image/jpeg": "jpg",
             "image/png": "png",
             "image/gif": "gif",
+            "image/bmp": "bmp",
             "image/svg+xml": "svg",
+            
+            // Documents
             "application/pdf": "pdf",
             "text/plain": "txt",
             "text/html": "html",
@@ -33,7 +37,25 @@ extension String {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
             "application/vnd.ms-excel": "xls",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
-            "application/zip": "zip"
+            
+            // Archives
+            "application/zip": "zip",
+            
+            // Audio
+            "audio/mpeg": "mp3",
+            "audio/wav": "wav",
+            "audio/ogg": "ogg",
+            
+            // Video
+            "video/mp4": "mp4",
+            "video/x-msvideo": "avi",
+            "video/quicktime": "mov",
+            
+            // Development
+            "application/json": "json",
+            "text/css": "css",
+            "text/javascript": "js",
+            "application/xml": "xml"
         ]
         
         return mimeToExtension[mimeType]
@@ -54,11 +76,15 @@ extension String {
         #else
         // Map common extensions to MIME types
         let extensionToMime: [String: String] = [
+            // Images
             "jpg": "image/jpeg",
             "jpeg": "image/jpeg",
             "png": "image/png",
             "gif": "image/gif",
+            "bmp": "image/bmp",
             "svg": "image/svg+xml",
+            
+            // Documents
             "pdf": "application/pdf",
             "txt": "text/plain",
             "html": "text/html",
@@ -67,7 +93,25 @@ extension String {
             "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "xls": "application/vnd.ms-excel",
             "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "zip": "application/zip"
+            
+            // Archives
+            "zip": "application/zip",
+            
+            // Audio
+            "mp3": "audio/mpeg",
+            "wav": "audio/wav",
+            "ogg": "audio/ogg",
+            
+            // Video
+            "mp4": "video/mp4",
+            "avi": "video/x-msvideo",
+            "mov": "video/quicktime",
+            
+            // Development
+            "json": "application/json",
+            "css": "text/css",
+            "js": "text/javascript",
+            "xml": "application/xml"
         ]
         
         return extensionToMime[fileExtension.lowercased()] ?? "application/octet-stream"
