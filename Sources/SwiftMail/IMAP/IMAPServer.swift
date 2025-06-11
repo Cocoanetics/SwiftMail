@@ -808,6 +808,8 @@ public actor IMAPServer {
 			// Flush the DuplexLogger's buffer even if there was an error
 			duplexLogger.flushInboundBuffer()
 			
+			resultPromise.fail(error)
+			
 			throw error
 		}
 	}
@@ -860,6 +862,8 @@ public actor IMAPServer {
 			
 			// Flush the DuplexLogger's buffer even if there was an error
 			duplexLogger.flushInboundBuffer()
+			
+			resultPromise.fail(error)
 			
 			throw error
 		}
