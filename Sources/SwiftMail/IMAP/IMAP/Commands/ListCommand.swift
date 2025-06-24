@@ -21,14 +21,14 @@ struct ListCommand: IMAPCommand {
     func toTaggedCommand(tag: String) -> TaggedCommand {
         // Standard LIST parameters
         let reference = MailboxName(ByteBuffer(string: ""))
-        let pattern = MailboxPatterns.pattern([ByteBuffer(string: "*")])
+        let mailbox = MailboxPatterns.mailbox(ByteBuffer(string: "*"))
         
         // Use return options if provided
         if !returnOptions.isEmpty {
-            return TaggedCommand(tag: tag, command: .list(nil, reference: reference, pattern, returnOptions))
+            return TaggedCommand(tag: tag, command: .list(nil, reference: reference, mailbox, returnOptions))
         } else {
             // Standard LIST command without return options
-            return TaggedCommand(tag: tag, command: .list(nil, reference: reference, pattern))
+            return TaggedCommand(tag: tag, command: .list(nil, reference: reference, mailbox))
         }
     }
 }
