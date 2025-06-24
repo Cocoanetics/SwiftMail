@@ -5,6 +5,7 @@ import Foundation
 import Logging
 import NIO
 import NIOConcurrencyHelpers
+import NIOIMAP
 
 /// Base class for mail protocol loggers
 class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
@@ -73,6 +74,12 @@ class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
             }
         } else if let string = command as? String {
             return string
+        } else if let message = command as? NIOIMAP.IMAPClientHandler.Message {
+            if case .part(let streamPart) = message {
+                return streamPart.debugDescription
+            } else {
+                return String(describing: message)
+            }
         } else if let debuggable = command as? CustomDebugStringConvertible {
             return debuggable.debugDescription
         } else {
