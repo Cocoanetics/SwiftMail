@@ -85,6 +85,16 @@ do {
         try await server.done()
         idleTask.cancel()
         print("\nExited IMAP IDLE mode.\n")
+        
+        // --- IMAP NOOP TEST BLOCK ---
+        print("\nSending IMAP NOOP command right after IDLE...")
+        do {
+            let noopEvents = try await server.noop()
+            print("NOOP events: \(noopEvents)")
+        } catch {
+            print("❌ Error during IMAP NOOP: \(error)")
+        }
+        // --- END IMAP NOOP TEST BLOCK ---
     } catch {
         print("❌ Error during IMAP IDLE: \(error)")
     }
