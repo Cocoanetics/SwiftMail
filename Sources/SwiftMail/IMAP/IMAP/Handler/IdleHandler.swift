@@ -1,5 +1,6 @@
 import Foundation
 import NIOIMAPCore
+import NIOIMAP
 import NIO
 
 /// Handler managing the IMAP IDLE session
@@ -29,29 +30,76 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
         continuation.finish()
     }
 
+    private var currentSeq: SequenceNumber?
+    private var currentAttributes: [IMAPMessageAttribute] = []
+
     override func handleUntaggedResponse(_ response: Response) -> Bool {
-        if case .untagged(let payload) = response {
-            switch payload {
-            case .mailboxData(let mailboxData):
-                switch mailboxData {
-                case .exists(let count):
-                    continuation.yield(.exists(Int(count)))
-                case .recent(let count):
-                    continuation.yield(.recent(Int(count)))
-                default:
-                    break
-                }
-            case .messageData(let messageData):
-                switch messageData {
-                case .expunge(let seq):
-                    continuation.yield(.expunge(SequenceNumber(seq.rawValue)))
-                default:
-                    break
-                }
+        switch response {
+        case .untagged(let payload):
+            handlePayload(payload)
+        case .fetch(let fetch):
+            handleFetch(fetch)
+        case .fatal(let text):
+            continuation.yield(.bye(text.text))
+        default:
+            break
+        }
+        return false
+    }
+
+    private func handlePayload(_ payload: ResponsePayload) {
+        switch payload {
+        case .mailboxData(let mailboxData):
+            switch mailboxData {
+            case .exists(let count):
+                continuation.yield(.exists(Int(count)))
+            case .recent(let count):
+                continuation.yield(.recent(Int(count)))
             default:
                 break
             }
+        case .messageData(let messageData):
+            switch messageData {
+            case .expunge(let seq):
+                continuation.yield(.expunge(SequenceNumber(seq.rawValue)))
+            default:
+                break
+            }
+        case .conditionalState(let status):
+            switch status {
+            case .ok(let text):
+                if text.code == .alert {
+                    continuation.yield(.alert(text.text))
+                }
+            case .bye(let text):
+                continuation.yield(.bye(text.text))
+            default:
+                break
+            }
+        case .capabilityData(let caps):
+            continuation.yield(.capability(caps.map { String($0) }))
+        default:
+            break
         }
-        return false
+    }
+
+    private func handleFetch(_ fetch: FetchResponse) {
+        switch fetch {
+        case .start(let seq):
+            currentSeq = SequenceNumber(seq.rawValue)
+            currentAttributes = []
+        case .simpleAttribute(let attribute):
+            if let att = IMAPMessageAttribute.from(attribute) {
+                currentAttributes.append(att)
+            }
+        case .finish:
+            if let seq = currentSeq {
+                continuation.yield(.fetch(seq, currentAttributes))
+            }
+            currentSeq = nil
+            currentAttributes = []
+        default:
+            break
+        }
     }
 }
