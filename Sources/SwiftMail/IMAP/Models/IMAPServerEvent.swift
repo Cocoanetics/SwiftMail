@@ -1,4 +1,5 @@
 import Foundation
+import NIOIMAPCore
 
 /// Events emitted by `IMAPServer` while an IDLE session is active.
 public enum IMAPServerEvent: Sendable {
@@ -12,7 +13,7 @@ public enum IMAPServerEvent: Sendable {
     case recent(Int)
 
     /// A message has updated attributes.
-    case fetch(SequenceNumber, [IMAPMessageAttribute])
+    case fetch(SequenceNumber, [MessageAttribute])
 
     /// An alert from the server.
     case alert(String)

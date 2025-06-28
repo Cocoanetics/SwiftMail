@@ -7,7 +7,7 @@ import NIO
 final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandHandler, @unchecked Sendable {
     private var events: [IMAPServerEvent] = []
     private var currentSeq: SequenceNumber?
-    private var currentAttributes: [IMAPMessageAttribute] = []
+    private var currentAttributes: [MessageAttribute] = []
 
     override func processResponse(_ response: Response) -> Bool {
         let handled = super.processResponse(response)
@@ -75,9 +75,7 @@ final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandH
             currentSeq = SequenceNumber(seq.rawValue)
             currentAttributes = []
         case .simpleAttribute(let attribute):
-            if let attr = IMAPMessageAttribute.from(attribute) {
-                currentAttributes.append(attr)
-            }
+            currentAttributes.append(attribute)
         case .finish:
             if let seq = currentSeq {
                 events.append(.fetch(seq, currentAttributes))

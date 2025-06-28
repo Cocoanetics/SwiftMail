@@ -31,7 +31,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
     }
 
     private var currentSeq: SequenceNumber?
-    private var currentAttributes: [IMAPMessageAttribute] = []
+    private var currentAttributes: [MessageAttribute] = []
 
     override func handleUntaggedResponse(_ response: Response) -> Bool {
         switch response {
@@ -89,9 +89,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
             currentSeq = SequenceNumber(seq.rawValue)
             currentAttributes = []
         case .simpleAttribute(let attribute):
-            if let att = IMAPMessageAttribute.from(attribute) {
-                currentAttributes.append(att)
-            }
+            currentAttributes.append(attribute)
         case .finish:
             if let seq = currentSeq {
                 continuation.yield(.fetch(seq, currentAttributes))
