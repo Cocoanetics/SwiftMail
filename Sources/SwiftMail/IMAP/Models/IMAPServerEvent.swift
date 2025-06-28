@@ -10,4 +10,16 @@ public enum IMAPServerEvent: Sendable {
 
     /// Number of messages with the \Recent flag.
     case recent(Int)
+
+    /// A message has updated attributes.
+    case fetch(SequenceNumber, [IMAPMessageAttribute])
+
+    /// An alert from the server.
+    case alert(String)
+
+    /// Updated capabilities announced by the server.
+    case capability([String])
+
+    /// The server is closing the connection.
+    case bye(String?)
 }

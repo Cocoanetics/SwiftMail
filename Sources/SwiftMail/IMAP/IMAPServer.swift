@@ -332,6 +332,12 @@ public actor IMAPServer {
                 // Wait for server confirmation
                 try await handler.promise.futureResult.get()
         }
+
+        /// Send a NOOP command and collect unsolicited responses.
+        public func noop() async throws -> [IMAPServerEvent] {
+                let command = NoopCommand()
+                return try await executeCommand(command)
+        }
 	
 	/** 
 	 Logout from the IMAP server
