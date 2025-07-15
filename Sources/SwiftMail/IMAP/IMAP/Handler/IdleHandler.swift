@@ -41,6 +41,10 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
             handleFetch(fetch)
         case .fatal(let text):
             continuation.yield(.bye(text.text))
+            // Server-initiated termination - complete the IDLE session
+            succeedWithResult(())
+            continuation.finish()
+            return true  // Indicate this response was fully handled
         default:
             break
         }
@@ -73,6 +77,9 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
                 }
             case .bye(let text):
                 continuation.yield(.bye(text.text))
+                // Server-initiated termination - complete the IDLE session
+                succeedWithResult(())
+                continuation.finish()
             default:
                 break
             }

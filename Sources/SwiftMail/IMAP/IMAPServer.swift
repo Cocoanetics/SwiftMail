@@ -288,6 +288,14 @@ public actor IMAPServer {
         // MARK: - Idle
 
         /// Begin an IDLE session and receive server events
+        /// 
+        /// - Important: If you receive a `.bye` event, the server is terminating the entire
+        ///   connection, not just the IDLE session. You should stop processing the stream 
+        ///   immediately and avoid calling `done()` afterward, as the connection will be
+        ///   closed by the server.
+        /// 
+        /// - Returns: An AsyncStream of server events during the IDLE session
+        /// - Throws: IMAPError if IDLE is not supported or already active
         public func idle() async throws -> AsyncStream<IMAPServerEvent> {
                 // Ensure the server advertises IDLE support
                 if !capabilities.contains(.idle) {
@@ -322,14 +330,24 @@ public actor IMAPServer {
         }
 
         /// Terminate the current IDLE session
+        /// 
+        /// This method is safe to call even if the server has already terminated the IDLE session
+        /// (e.g., by sending a BYE response). In such cases, the method will complete without error.
         public func done() async throws {
                 guard let handler = idleHandler, let channel = self.channel else { return }
 
                 idleHandler = nil
 
-                try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.idleDone)).get()
+                do {
+                        try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.idleDone)).get()
+                } catch {
+                        // If writing fails (e.g., connection closed by server BYE), that's acceptable
+                        // since the IDLE session is already terminated
+                }
 
                 // Wait for server confirmation
+                // If the server already terminated the session (e.g., via BYE), 
+                // the promise will already be fulfilled and this will return immediately
                 try await handler.promise.futureResult.get()
         }
 
