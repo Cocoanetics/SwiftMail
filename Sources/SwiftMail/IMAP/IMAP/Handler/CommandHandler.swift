@@ -42,11 +42,14 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
     /// Promise for the command result
     let promise: EventLoopPromise<ResultType>
     
+    /// Collected untagged responses during command execution
+    private(set) var untaggedResponses: [Response] = []
+    
     /// Initialize a new command handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the command completes
-   init(commandTag: String, promise: EventLoopPromise<ResultType>) {
+    init(commandTag: String, promise: EventLoopPromise<ResultType>) {
         self.commandTag = commandTag
         self.promise = promise
     }
@@ -129,7 +132,26 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
     /// - Parameter response: The untagged response
     /// - Returns: Whether the response was handled by this handler
     func handleUntaggedResponse(_ response: Response) -> Bool {
-        // Default implementation doesn't handle untagged responses
+        // Collect all untagged responses for later inspection
+        untaggedResponses.append(response)
+        
+        // Check for BYE responses which can come at any time and terminate the connection
+        if case .untagged(let payload) = response,
+           case .conditionalState(let status) = payload,
+           case .bye(let text) = status {
+            // Fail the current command - executeCommand will handle disconnection
+            failWithError(IMAPError.connectionFailed("Server terminated connection: \(text.text)"))
+            return true
+        }
+        
+        // Check for FATAL responses which also terminate the connection
+        if case .fatal(let text) = response {
+            // Fail the current command - executeCommand will handle disconnection
+            failWithError(IMAPError.connectionFailed("Server fatal error: \(text.text)"))
+            return true
+        }
+        
+        // Default implementation doesn't handle other untagged responses
         return false
     }
     

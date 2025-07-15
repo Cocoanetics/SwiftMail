@@ -774,6 +774,25 @@ public actor IMAPServer {
 	
 	// MARK: - Command Helpers
 	
+	/// Check untagged responses for BYE/FATAL and auto-disconnect if found
+	/// - Parameter untaggedResponses: Array of untagged responses to check
+	fileprivate func handleConnectionTerminationInResponses(_ untaggedResponses: [Response]) async {
+		for response in untaggedResponses {
+			if case .untagged(let payload) = response,
+			   case .conditionalState(let status) = payload,
+			   case .bye = status {
+				// Server sent BYE - disconnect automatically
+				try? await self.disconnect()
+				break
+			}
+			if case .fatal = response {
+				// Server sent FATAL - disconnect automatically  
+				try? await self.disconnect()
+				break
+			}
+		}
+	}
+	
 	/**
 	 Execute an IMAP command
 	 - Parameter command: The command to execute
@@ -821,6 +840,9 @@ public actor IMAPServer {
 			// Cancel the timeout
 			scheduledTask.cancel()
 			
+			// Check for BYE responses in untagged responses and auto-disconnect
+			await handleConnectionTerminationInResponses(handler.untaggedResponses)
+			
 			// Flush the DuplexLogger's buffer after command execution
 			duplexLogger.flushInboundBuffer()
 
@@ -828,6 +850,9 @@ public actor IMAPServer {
 		} catch {
 			// Cancel the timeout
 			scheduledTask.cancel()
+			
+			// Check for BYE responses even when command failed and auto-disconnect
+			await handleConnectionTerminationInResponses(handler.untaggedResponses)
 			
 			// Flush the DuplexLogger's buffer even if there was an error
 			duplexLogger.flushInboundBuffer()
@@ -876,6 +901,9 @@ public actor IMAPServer {
 			// Cancel the timeout
 			scheduledTask.cancel()
 			
+            			// Check for BYE responses in untagged responses and auto-disconnect
+			await handleConnectionTerminationInResponses(handler.untaggedResponses)
+			
 			// Flush the DuplexLogger's buffer after command execution
 			duplexLogger.flushInboundBuffer()
 			
@@ -883,6 +911,9 @@ public actor IMAPServer {
 		} catch {
 			// Cancel the timeout
 			scheduledTask.cancel()
+			
+			// Check for BYE responses even when handler failed and auto-disconnect
+			await handleConnectionTerminationInResponses(handler.untaggedResponses)
 			
 			// Flush the DuplexLogger's buffer even if there was an error
 			duplexLogger.flushInboundBuffer()

@@ -36,7 +36,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
     override func handleUntaggedResponse(_ response: Response) -> Bool {
         switch response {
         case .untagged(let payload):
-            handlePayload(payload)
+            return handlePayload(payload)
         case .fetch(let fetch):
             handleFetch(fetch)
         case .fatal(let text):
@@ -51,7 +51,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
         return false
     }
 
-    private func handlePayload(_ payload: ResponsePayload) {
+    private func handlePayload(_ payload: ResponsePayload) -> Bool {
         switch payload {
         case .mailboxData(let mailboxData):
             switch mailboxData {
@@ -80,6 +80,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
                 // Server-initiated termination - complete the IDLE session
                 succeedWithResult(())
                 continuation.finish()
+                return true  // Indicate this response was fully handled
             default:
                 break
             }
@@ -88,6 +89,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
         default:
             break
         }
+        return false  // Most responses are handled but don't terminate the command
     }
 
     private func handleFetch(_ fetch: FetchResponse) {

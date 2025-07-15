@@ -10,19 +10,36 @@ final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandH
     private var currentAttributes: [MessageAttribute] = []
 
     override func processResponse(_ response: Response) -> Bool {
-        let handled = super.processResponse(response)
-
+        // Handle our specific responses first, then call super
         switch response {
         case .untagged(let payload):
             handleUntagged(payload)
+            return false  // Let base class handle tagged responses
         case .fetch(let fetch):
             handleFetch(fetch)
+            return false  // Let base class handle tagged responses
         case .fatal(let text):
             events.append(.bye(text.text))
+            return false  // Let base class handle tagged responses
         default:
             break
         }
-        return handled
+        
+        // For tagged responses and anything else, use base class handling
+        return super.processResponse(response)
+    }
+    
+    override func handleUntaggedResponse(_ response: Response) -> Bool {
+        // NoopHandler collects BYE as an event rather than terminating immediately
+        if case .untagged(let payload) = response,
+           case .conditionalState(let status) = payload,
+           case .bye(let text) = status {
+            events.append(.bye(text.text))
+            return true  // Indicate we handled this BYE
+        }
+        
+        // Let base class handle other untagged responses
+        return super.handleUntaggedResponse(response)
     }
 
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
