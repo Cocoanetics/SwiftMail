@@ -43,6 +43,14 @@ let mailboxInfo = try await imapServer.selectMailbox("INBOX")
 print("Mailbox contains \(mailboxInfo.messageCount) messages")
 ```
 
+By default `listMailboxes()` uses the `"*"` wildcard, but you can specify a
+different pattern if needed:
+
+```swift
+// Only list top-level mailboxes
+let mailboxes = try await imapServer.listMailboxes(wildcard: "%")
+```
+
 ## Fetching Messages
 
 Fetch messages from the selected mailbox:
