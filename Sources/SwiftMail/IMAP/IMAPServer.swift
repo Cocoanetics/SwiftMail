@@ -1100,20 +1100,21 @@ extension IMAPServer {
 
 // MARK: - Mailbox Listing and Special Folders
 extension IMAPServer {
-	/** 
-	 Lists all available mailboxes on the server.
-	 
-	 This method retrieves a list of all mailboxes (folders) available on the server,
-	 including their attributes and hierarchy information.
-	 
-	 - Returns: An array of mailbox information
-	 - Throws: `IMAPError.commandFailed` if the list operation fails
-	 - Note: Logs mailbox listing at info level with count
-	 */
-	public func listMailboxes() async throws -> [Mailbox.Info] {
-		let command = ListCommand()
-		return try await executeCommand(command)
-	}
+        /**
+         Lists all available mailboxes on the server.
+
+         This method retrieves a list of all mailboxes (folders) available on the server,
+         including their attributes and hierarchy information.
+
+         - Parameter wildcard: The wildcard pattern used when listing mailboxes. Defaults to "*".
+         - Returns: An array of mailbox information
+         - Throws: `IMAPError.commandFailed` if the list operation fails
+         - Note: Logs mailbox listing at info level with count
+         */
+        public func listMailboxes(wildcard: String = "*") async throws -> [Mailbox.Info] {
+                let command = ListCommand(wildcard: wildcard)
+                return try await executeCommand(command)
+        }
 	
 	/** 
 	 Get the inbox folder or throw if not found
