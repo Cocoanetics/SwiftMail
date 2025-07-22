@@ -4,17 +4,17 @@ import OrderedCollections
 
 /// Command for IMAP ID.
 struct IDCommand: IMAPCommand {
-    typealias ResultType = IDResponse
+    typealias ResultType = Identification
     typealias HandlerType = IDHandler
 
     /// Client identification parameters.
-    let parameters: OrderedDictionary<String, String?>
+    let identification: Identification
 
-    init(parameters: OrderedDictionary<String, String?> = [:]) {
-        self.parameters = parameters
+    init(identification: Identification = Identification()) {
+        self.identification = identification
     }
 
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        TaggedCommand(tag: tag, command: .id(parameters))
+        TaggedCommand(tag: tag, command: .id(identification.nioParameters))
     }
 }
