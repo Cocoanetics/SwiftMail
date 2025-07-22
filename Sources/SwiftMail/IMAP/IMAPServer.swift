@@ -306,10 +306,13 @@ public actor IMAPServer {
 
         /// Begin an IDLE session and receive server events
         /// 
+        /// **Automatic Cleanup**: The IDLE session will be automatically terminated with a
+        ///   `DONE` command when the returned AsyncStream is cancelled or deallocated. 
+        ///   You don't need to manually call `done()` in cancellation handlers.
+        /// 
         /// - Important: If you receive a `.bye` event, the server is terminating the entire
         ///   connection, not just the IDLE session. You should stop processing the stream 
-        ///   immediately and avoid calling `done()` afterward, as the connection will be
-        ///   closed by the server.
+        ///   immediately, as the connection will be closed by the server.
         /// 
         /// - Returns: An AsyncStream of server events during the IDLE session
         /// - Throws: IMAPError if IDLE is not supported or already active
@@ -330,6 +333,25 @@ public actor IMAPServer {
                 var continuationRef: AsyncStream<IMAPServerEvent>.Continuation!
                 let stream = AsyncStream<IMAPServerEvent> { continuation in
                         continuationRef = continuation
+                        
+                        // Automatically call done() when the stream is cancelled/deallocated
+                        continuation.onTermination = { @Sendable termination in
+                                switch termination {
+                                case .cancelled:
+                                        // Stream was cancelled - send DONE command to clean up
+                                        Task {
+                                                try? await self.done()
+                                        }
+                                case .finished:
+                                        // Stream finished normally - no cleanup needed
+                                        break
+                                @unknown default:
+                                        // Future termination types - be safe and cleanup
+                                        Task {
+                                                try? await self.done()
+                                        }
+                                }
+                        }
                 }
 
                 let promise = channel.eventLoop.makePromise(of: Void.self)
@@ -348,8 +370,11 @@ public actor IMAPServer {
 
         /// Terminate the current IDLE session
         /// 
+        /// **Note**: IDLE sessions are automatically terminated when the AsyncStream is cancelled
+        ///   or deallocated, so calling this method manually is often not necessary.
+        /// 
         /// This method is safe to call even if the server has already terminated the IDLE session
-        /// (e.g., by sending a BYE response). In such cases, the method will complete without error.
+        /// (e.g., by sending a BYE response) or if automatic cleanup has already occurred.
         public func done() async throws {
                 guard let handler = idleHandler, let channel = self.channel else { return }
 
