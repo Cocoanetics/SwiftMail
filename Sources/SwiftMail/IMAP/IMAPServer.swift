@@ -53,6 +53,9 @@ public actor IMAPServer {
         /** Special folders - mailboxes with SPECIAL-USE attributes */
         public private(set) var specialMailboxes: [Mailbox.Info] = []
 
+        /// Namespaces discovered from the server
+        public private(set) var namespaces: Namespace.Response?
+
         /// Active handler managing an IDLE session, if any
         private var idleHandler: IdleHandler?
 	
@@ -707,10 +710,28 @@ public actor IMAPServer {
 	 - Throws: `IMAPError.expungeFailed` if the expunge operation fails
 	 - Note: Logs expunge operations at info level with number of messages removed
 	 */
-	public func expunge() async throws {
-		let command = ExpungeCommand()
-		try await executeCommand(command)
-	}
+        public func expunge() async throws {
+                let command = ExpungeCommand()
+                try await executeCommand(command)
+        }
+
+        /**
+         Retrieve storage quota information for a quota root.
+
+         - Parameter quotaRoot: The quota root to query. Defaults to the empty string.
+         - Returns: The quota details for the specified root.
+         - Throws:
+           - `IMAPError.commandNotSupported` if the server does not advertise QUOTA support.
+           - `IMAPError.commandFailed` if the command fails.
+         */
+        public func getQuota(quotaRoot: String = "") async throws -> Quota {
+                guard supportsCapability({ $0 == .quota }) else {
+                        throw IMAPError.commandNotSupported("QUOTA command not supported by server")
+                }
+
+                let command = GetQuotaCommand(quotaRoot: quotaRoot)
+                return try await executeCommand(command)
+        }
 	
 	// MARK: - Sub-Commands
 	
@@ -981,8 +1002,18 @@ public actor IMAPServer {
 
 // MARK: - Common Mail Operations
 extension IMAPServer {
-	/** 
-	 Lists mailboxes with special-use attributes.
+        /// Retrieve namespace information from the server.
+        /// - Returns: The namespace response describing personal, other user and shared namespaces.
+        /// - Throws: `IMAPError.commandFailed` if the command fails.
+        public func fetchNamespaces() async throws -> Namespace.Response {
+                let command = NamespaceCommand()
+                let response = try await executeCommand(command)
+                self.namespaces = response
+                return response
+        }
+
+        /**
+         Lists mailboxes with special-use attributes.
 	 
 	 Special-use mailboxes are those designated for specific purposes like
 	 Sent, Drafts, Trash, etc., as defined in RFC 6154.
