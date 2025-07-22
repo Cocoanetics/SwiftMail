@@ -58,6 +58,9 @@ public actor IMAPServer {
 
         /// Active handler managing an IDLE session, if any
         private var idleHandler: IdleHandler?
+        
+        /// Flag to prevent concurrent IDLE termination operations
+        private var idleTerminationInProgress: Bool = false
 	
 	/**
 	 Logger for IMAP operations
@@ -325,6 +328,9 @@ public actor IMAPServer {
                 guard idleHandler == nil else {
                         throw IMAPError.commandFailed("IDLE session already active")
                 }
+                
+                // Ensure clean state for new IDLE session
+                idleTerminationInProgress = false
 
                 guard let channel = self.channel else {
                         throw IMAPError.connectionFailed("Channel not initialized")
@@ -377,8 +383,21 @@ public actor IMAPServer {
         /// (e.g., by sending a BYE response) or if automatic cleanup has already occurred.
         public func done() async throws {
                 guard let handler = idleHandler, let channel = self.channel else { return }
-
-                idleHandler = nil
+                
+                // Prevent concurrent termination attempts
+                guard !idleTerminationInProgress else { 
+                        // Another termination is already in progress - wait for it to complete
+                        try await handler.promise.futureResult.get()
+                        return 
+                }
+                
+                idleTerminationInProgress = true
+                
+                defer {
+                        // Always clear the termination flag and handler when done
+                        idleTerminationInProgress = false
+                        idleHandler = nil
+                }
 
                 do {
                         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.idleDone)).get()
