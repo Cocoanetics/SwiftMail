@@ -689,10 +689,28 @@ public actor IMAPServer {
 	 - Throws: `IMAPError.expungeFailed` if the expunge operation fails
 	 - Note: Logs expunge operations at info level with number of messages removed
 	 */
-	public func expunge() async throws {
-		let command = ExpungeCommand()
-		try await executeCommand(command)
-	}
+        public func expunge() async throws {
+                let command = ExpungeCommand()
+                try await executeCommand(command)
+        }
+
+        /**
+         Retrieve storage quota information for a quota root.
+
+         - Parameter quotaRoot: The quota root to query. Defaults to the empty string.
+         - Returns: The quota details for the specified root.
+         - Throws:
+           - `IMAPError.commandNotSupported` if the server does not advertise QUOTA support.
+           - `IMAPError.commandFailed` if the command fails.
+         */
+        public func getQuota(quotaRoot: String = "") async throws -> Quota {
+                guard supportsCapability({ $0 == .quota }) else {
+                        throw IMAPError.commandNotSupported("QUOTA command not supported by server")
+                }
+
+                let command = GetQuotaCommand(quotaRoot: quotaRoot)
+                return try await executeCommand(command)
+        }
 	
 	// MARK: - Sub-Commands
 	
