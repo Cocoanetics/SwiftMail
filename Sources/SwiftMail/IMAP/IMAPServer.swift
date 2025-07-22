@@ -212,19 +212,15 @@ public actor IMAPServer {
         }
 
         /// Identify the client to the server using the `ID` command.
-        /// - Parameter parameters: Key/value pairs describing the client. Pass an empty dictionary to send no information.
+        /// - Parameter identification: Information describing the client. Pass the default value to send no information.
         /// - Returns: Information returned by the server.
         /// - Throws: ``IMAPError.commandNotSupported`` if the server does not support the command or ``IMAPError.commandFailed`` on failure.
-        public func id(parameters: [String: String?] = [:]) async throws -> IDResponse {
+        public func id(_ identification: Identification = Identification()) async throws -> Identification {
                 guard capabilities.contains(.id) else {
                         throw IMAPError.commandNotSupported("ID command not supported by server")
                 }
 
-                var ordered = OrderedDictionary<String, String?>()
-                for (key, value) in parameters {
-                        ordered[key] = value
-                }
-                let command = IDCommand(parameters: ordered)
+                let command = IDCommand(identification: identification)
                 return try await executeCommand(command)
         }
 	

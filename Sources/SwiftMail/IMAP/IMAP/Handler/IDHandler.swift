@@ -6,7 +6,7 @@ import NIOConcurrencyHelpers
 import OrderedCollections
 
 /// Handler for the IMAP ID command.
-final class IDHandler: BaseIMAPCommandHandler<IDResponse>, IMAPCommandHandler, @unchecked Sendable {
+final class IDHandler: BaseIMAPCommandHandler<Identification>, IMAPCommandHandler, @unchecked Sendable {
     private var responseParams: OrderedDictionary<String, String?> = [:]
 
     override func handleUntaggedResponse(_ response: Response) -> Bool {
@@ -19,7 +19,7 @@ final class IDHandler: BaseIMAPCommandHandler<IDResponse>, IMAPCommandHandler, @
 
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
         let params = lock.withLock { responseParams }
-        succeedWithResult(IDResponse(parameters: params))
+        succeedWithResult(Identification(parameters: params))
     }
 
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
