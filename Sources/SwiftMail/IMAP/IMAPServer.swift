@@ -5,6 +5,7 @@ import NIOIMAPCore
 import NIO
 import NIOSSL
 import NIOConcurrencyHelpers
+import OrderedCollections
 
 /** 
  An actor that represents a connection to an IMAP server.
@@ -197,9 +198,9 @@ public actor IMAPServer {
 	   - `IMAPError.connectionFailed` if not connected
 	 - Note: Logs login attempts at info level (without credentials)
 	 */
-	public func login(username: String, password: String) async throws {
-		let command = LoginCommand(username: username, password: password)
-		let loginCapabilities = try await executeCommand(command)
+        public func login(username: String, password: String) async throws {
+                let command = LoginCommand(username: username, password: password)
+                let loginCapabilities = try await executeCommand(command)
 		
 		// If we got capabilities from the login response, use them
 		if !loginCapabilities.isEmpty {
@@ -207,8 +208,25 @@ public actor IMAPServer {
 		} else {
 			// Otherwise, fetch capabilities explicitly
 			try await fetchCapabilities()
-		}
-	}
+                }
+        }
+
+        /// Identify the client to the server using the `ID` command.
+        /// - Parameter parameters: Key/value pairs describing the client. Pass an empty dictionary to send no information.
+        /// - Returns: Information returned by the server.
+        /// - Throws: ``IMAPError.commandNotSupported`` if the server does not support the command or ``IMAPError.commandFailed`` on failure.
+        public func id(parameters: [String: String?] = [:]) async throws -> IDResponse {
+                guard capabilities.contains(.id) else {
+                        throw IMAPError.commandNotSupported("ID command not supported by server")
+                }
+
+                var ordered = OrderedDictionary<String, String?>()
+                for (key, value) in parameters {
+                        ordered[key] = value
+                }
+                let command = IDCommand(parameters: ordered)
+                return try await executeCommand(command)
+        }
 	
 	/** 
 	 Disconnect from the server without sending a command

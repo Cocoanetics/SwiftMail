@@ -27,7 +27,7 @@ implements support for each capability.
 | **IDLE** | Push new message alerts (RFC 2177) | ✅ | ✅ | ✅ |
 | **NAMESPACE** | Query folder structure roots (RFC 2342) | ✅ | ✅ | ❌ |
 | **QUOTA** | Storage quota reporting (RFC 2087) | ✅ | ✅ | ✅ |
-| **ID** | Identify client/server (RFC 2971) | ✅ | ✅ | ❌ |
+| **ID** | Identify client/server (RFC 2971) | ✅ | ✅ | ✅ |
 | **XLIST** | Gmail folder role mapping (legacy) | ✅ | ❌ | ❌ |
 | **CHILDREN** | Show folder substructure (RFC 3348) | ✅ | ❌ | ❌ |
 | **X-GM-EXT-1** | Gmail labels, threads, msg IDs | ✅ | ❌ | ❌ |

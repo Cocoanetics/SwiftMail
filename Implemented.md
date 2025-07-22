@@ -59,7 +59,7 @@
 #### Other Commands
 
 - [ ] ENABLE - Allows the client to enable server-side extensions.
-- [ ] ID - Allows the client to identify itself to the server.
+ - [x] ID - Allows the client to identify itself to the server.
 - [ ] CONDSTORE - Provides support for conditional STORE operations.
 - [ ] QRESYNC - Provides support for quick resynchronization of the mailbox.
 - [ ] METADATA - Allows the client to retrieve and store metadata associated with mailboxes.
