@@ -39,6 +39,7 @@
 - [x] EXPUNGE - Expunge deleted messages from the selected mailbox.
 - [x] UNSELECT - Allows the client to unselect the current mailbox without selecting a new one.
 - [x] GETQUOTA - Retrieve storage quota information.
+- [x] GETQUOTAROOT - Retrieve quota information for a mailbox.
 
 #### Message Commands
 
