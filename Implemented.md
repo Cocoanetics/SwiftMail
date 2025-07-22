@@ -10,7 +10,7 @@
 - [x] IDLE - Allows the server to notify the client of new messages or changes in real-time without the need for the client to poll the server.
 - [ ] LITERAL+ - Allows the use of literals in commands without requiring the client to wait for the server's continuation response.
 - [ ] COMPRESS=DEFLATE - Enables compression of data sent between the client and server to reduce bandwidth usage.
-- [ ] QUOTA - Provides support for managing and querying storage quotas on the server.
+- [x] QUOTA - Provides support for managing and querying storage quotas on the server.
 - [ ] NAMESPACE - Allows the client to discover the namespaces available on the server, which can be useful for clients that need to manage multiple mailboxes.
 - [ ] ACL - Provides support for Access Control Lists, allowing clients to manage permissions on mailboxes.
 - [ ] SORT - Allows the client to request that the server sort messages based on various criteria, such as date, subject, or sender.
@@ -38,6 +38,7 @@
 - [x] MOVE - Move messages to another mailbox.
 - [x] EXPUNGE - Expunge deleted messages from the selected mailbox.
 - [x] UNSELECT - Allows the client to unselect the current mailbox without selecting a new one.
+- [x] GETQUOTA - Retrieve storage quota information.
 
 #### Message Commands
 
