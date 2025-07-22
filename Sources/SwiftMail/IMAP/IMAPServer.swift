@@ -732,6 +732,19 @@ public actor IMAPServer {
                 let command = GetQuotaCommand(quotaRoot: quotaRoot)
                 return try await executeCommand(command)
         }
+
+        /// Retrieve quota information for a mailbox using GETQUOTAROOT.
+        /// - Parameter mailboxName: The mailbox name to query. Uses "INBOX" if nil.
+        /// - Returns: The quota details for the mailbox's quota root.
+        /// - Throws: ``IMAPError.commandNotSupported`` if QUOTA is not supported or ``IMAPError.commandFailed`` on failure.
+        public func getQuotaRoot(mailboxName: String? = nil) async throws -> Quota {
+                guard supportsCapability({ $0 == .quota }) else {
+                        throw IMAPError.commandNotSupported("QUOTA command not supported by server")
+                }
+
+                let command = GetQuotaRootCommand(mailboxName: mailboxName)
+                return try await executeCommand(command)
+        }
 	
 	// MARK: - Sub-Commands
 	
