@@ -18,10 +18,10 @@ public struct MessageInfo: Codable, Sendable {
     public var from: String?
     
     /// The recipients of the message
-    public var to: String?
-    
+    public var to: [String] = []
+
     /// The CC recipients of the message
-    public var cc: String?
+    public var cc: [String] = []
     
     /// The date of the message
     public var date: Date?
@@ -56,8 +56,8 @@ public struct MessageInfo: Codable, Sendable {
         uid: SwiftMail.UID? = nil,
         subject: String? = nil,
         from: String? = nil,
-        to: String? = nil,
-        cc: String? = nil,
+        to: [String] = [],
+        cc: [String] = [],
         date: Date? = nil,
         messageId: String? = nil,
         flags: [Flag] = [],
