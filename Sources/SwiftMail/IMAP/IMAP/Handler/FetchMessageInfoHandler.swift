@@ -121,15 +121,11 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 header.from = formatAddress(envelope.from[0])
             }
             
-            // Handle to addresses - check if array is not empty
-            if !envelope.to.isEmpty {
-                header.to = formatAddress(envelope.to[0])
-            }
-            
-            // Handle cc addresses - check if array is not empty
-            if !envelope.cc.isEmpty {
-                header.cc = formatAddress(envelope.cc[0])
-            }
+            // Handle to addresses - capture all recipients
+            header.to = envelope.to.map { formatAddress($0) }
+
+            // Handle cc addresses - capture all recipients
+            header.cc = envelope.cc.map { formatAddress($0) }
             
             if let date = envelope.date {
                 let dateString = String(date)

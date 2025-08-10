@@ -29,12 +29,12 @@ public struct Message: Codable, Sendable {
     }
     
     /// The recipients of the message
-    public var to: String? {
+    public var to: [String] {
         return header.to
     }
-    
+
     /// The CC recipients of the message
-    public var cc: String? {
+    public var cc: [String] {
         return header.cc
     }
     

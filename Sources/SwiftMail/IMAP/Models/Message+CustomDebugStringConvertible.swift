@@ -11,7 +11,7 @@ extension Message: CustomDebugStringConvertible {
         
         // Safely unwrap other optional values
         let fromString = from ?? "No sender"
-        let toString = to ?? "No recipients"
+        let toString = to.isEmpty ? "No recipients" : to.joined(separator: ", ")
         let subjectString = subject ?? "No subject"
         
         // Compact header information
