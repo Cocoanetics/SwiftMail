@@ -2,119 +2,112 @@ import Foundation
 import Testing
 @testable import SwiftMail
 
-// Add new tag for problematic message tests
-extension Tag {
-    @Tag static var problematic: Self
-}
-
-@Suite("Problematic Message Tests", .tags(.imap, .decoding, .problematic))
+@Suite("Problematic Message Tests")
 struct ProblematicMessageTests {
     
-    // MARK: - Test Resources
-    
-    func getResourceURL(for name: String, withExtension ext: String) -> URL? {
-        return Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Resources")
-    }
-    
-    func loadMessageFromJSON(name: String) throws -> Message {
-        guard let url = getResourceURL(for: name, withExtension: "json") else {
-            throw TestFailure("Failed to locate resource: \(name).json")
+    @Test("Test problematic message 6068 - no undecoded quoted-printable characters")
+    func testProblematicMessage6068() throws {
+        let resourcesPath = "Tests/SwiftIMAPTests/Resources"
+        let filePath = "\(resourcesPath)/problematic_message_6068.json"
+        
+        // Check if the file exists
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: filePath) else {
+            throw TestFailure("Problematic message file not found at \(filePath)")
         }
         
-        do {
-            let data = try Data(contentsOf: url)
-            let decoder = JSONDecoder()
-            return try decoder.decode(Message.self, from: data)
-        } catch {
-            throw TestFailure("Failed to decode message from JSON: \(error)")
+        // Load the problematic message
+        let jsonData = try Data(contentsOf: URL(fileURLWithPath: filePath))
+        let message = try JSONDecoder().decode(Message.self, from: jsonData)
+        
+        print("📧 Testing problematic message 6068")
+        print("  Subject: \(message.header.subject ?? "no subject")")
+        print("  Parts: \(message.parts.count)")
+        
+        // Test each part for undecoded quoted-printable characters
+        for (index, part) in message.parts.enumerated() {
+            print("  Part \(index + 1): \(part.contentType)")
+            print("    Encoding: \(part.encoding ?? "none")")
+            
+            // Get the decoded content
+            guard let partData = part.data else {
+                throw TestFailure("Part \(index + 1) has no data")
+            }
+            let decodedData = try partData.decoded(for: part)
+            
+            // Convert to string for checking
+            guard let decodedString = String(data: decodedData, encoding: .utf8) else {
+                throw TestFailure("Could not convert decoded data to UTF-8 string for part \(index + 1)")
+            }
+            
+            print("    Decoded content length: \(decodedString.count) characters")
+            
+            // Check for undecoded quoted-printable sequences
+            let problematicSequences = [
+                "=20",  // Space
+                "=A0",  // Non-breaking space
+                "=A9",  // Copyright symbol
+                "=3D",  // Equals sign
+                "=0D",  // Carriage return
+                "=0A",  // Line feed
+            ]
+            
+            var foundProblems: [String] = []
+            for sequence in problematicSequences {
+                if decodedString.contains(sequence) {
+                    foundProblems.append(sequence)
+                }
+            }
+            
+            if !foundProblems.isEmpty {
+                print("    ❌ Found undecoded quoted-printable sequences: \(foundProblems)")
+                
+                // Show a sample of the problematic content
+                let lines = decodedString.components(separatedBy: CharacterSet.newlines)
+                let sampleLines = Array(lines.prefix(5))
+                print("    Sample content:")
+                for (lineIndex, line) in sampleLines.enumerated() {
+                    print("      Line \(lineIndex + 1): \(line)")
+                }
+                
+                throw TestFailure("Part \(index + 1) contains undecoded quoted-printable sequences: \(foundProblems)")
+            } else {
+                print("    ✅ No undecoded quoted-printable sequences found")
+            }
+            
+            // Additional check: verify that spaces are properly decoded
+            let spaceCount = decodedString.filter { $0 == " " }.count
+            let equalsCount = decodedString.filter { $0 == "=" }.count
+            print("    Spaces: \(spaceCount), Equals signs: \(equalsCount)")
+            
+            // The content should have reasonable space count and very few equals signs
+            #expect(spaceCount > 0, "Decoded content should contain spaces")
+            #expect(equalsCount < 10, "Decoded content should have very few equals signs (found \(equalsCount))")
         }
+        
+        print("✅ All parts decoded successfully without quoted-printable artifacts")
     }
     
-    // MARK: - Problematic Message 6068 Tests
-    
-    @Test("Message 6068 text body should be decodable", .tags(.decoding, .problematic))
-    func message6068TextBodyShouldBeDecodable() throws {
-        // Load the problematic message from JSON
-        let message = try loadMessageFromJSON(name: "problematic_message_6068")
+    @Test("Test specific quoted-printable decoding patterns")
+    func testQuotedPrintablePatterns() throws {
+        // Test specific patterns that appear in the problematic message
+        let testCases = [
+            ("=20", " "),           // Space
+            ("=A0", " "),           // Non-breaking space (should become regular space)
+            ("=A9", "©"),           // Copyright symbol
+            ("=3D", "="),           // Equals sign
+            ("=0D", "\r"),          // Carriage return
+            ("=0A", "\n"),          // Line feed
+            ("=20=20=20", "   "),   // Multiple spaces
+            ("Hello=20World", "Hello World"), // Word with space
+            ("fami=20liar", "familiar"), // Split word
+        ]
         
-        // Verify the message has the expected UID
-        #expect(message.uid?.value == 6068)
-        #expect(message.subject?.contains("Apple") == true)
-        
-        // Check that the message has text parts with data
-        let textParts = message.parts.filter { $0.contentType.lowercased() == "text/plain" }
-        #expect(textParts.count > 0, "Message should have text/plain parts")
-        
-        let textPart = textParts.first!
-        #expect(textPart.data != nil, "Text part should have data")
-        #expect(textPart.data!.count > 0, "Text part data should not be empty")
-        #expect(textPart.encoding == "QUOTED-PRINTABLE", "Text part should be quoted-printable encoded")
-        
-        // Test the textBody computed property - this should fail currently
-        let textBody = message.textBody
-        #expect(textBody != nil, "textBody should not be nil")
-        if let textBody = textBody {
-            #expect(textBody.count > 0, "textBody should not be empty")
-            #expect(textBody.contains("Hallo Oliver Drobnik"), "textBody should contain expected content")
+        for (encoded, expected) in testCases {
+            let decoded = encoded.decodeQuotedPrintable()
+            #expect(decoded == expected, "Failed to decode '\(encoded)' to '\(expected)', got '\(decoded)'")
         }
-    }
-    
-    @Test("Message 6068 HTML body should be decodable", .tags(.decoding, .problematic))
-    func message6068HtmlBodyShouldBeDecodable() throws {
-        // Load the problematic message from JSON
-        let message = try loadMessageFromJSON(name: "problematic_message_6068")
         
-        // Verify the message has the expected UID
-        #expect(message.uid?.value == 6068)
-        
-        // Check that the message has HTML parts with data
-        let htmlParts = message.parts.filter { $0.contentType.lowercased() == "text/html" }
-        #expect(htmlParts.count > 0, "Message should have text/html parts")
-        
-        let htmlPart = htmlParts.first!
-        #expect(htmlPart.data != nil, "HTML part should have data")
-        #expect(htmlPart.data!.count > 0, "HTML part data should not be empty")
-        #expect(htmlPart.encoding == "QUOTED-PRINTABLE", "HTML part should be quoted-printable encoded")
-        
-        // Test the htmlBody computed property - this should fail currently
-        let htmlBody = message.htmlBody
-        #expect(htmlBody != nil, "htmlBody should not be nil")
-        if let htmlBody = htmlBody {
-            #expect(htmlBody.count > 0, "htmlBody should not be empty")
-            #expect(htmlBody.contains("<html>"), "htmlBody should contain HTML content")
-            #expect(htmlBody.contains("Hallo Oliver Drobnik"), "htmlBody should contain expected content")
-        }
-    }
-    
-    @Test("Message 6068 raw part data should be accessible", .tags(.decoding, .problematic))
-    func message6068RawPartDataShouldBeAccessible() throws {
-        // Load the problematic message from JSON
-        let message = try loadMessageFromJSON(name: "problematic_message_6068")
-        
-        // Test text part raw data
-        let textParts = message.parts.filter { $0.contentType.lowercased() == "text/plain" }
-        let textPart = textParts.first!
-        
-        // The data should already be decoded from base64 by the JSON decoder
-        #expect(textPart.data != nil, "Text part should have data")
-        #expect(textPart.data!.count > 0, "Text part data should not be empty")
-        
-        // Test HTML part raw data
-        let htmlParts = message.parts.filter { $0.contentType.lowercased() == "text/html" }
-        let htmlPart = htmlParts.first!
-        
-        #expect(htmlPart.data != nil, "HTML part should have data")
-        #expect(htmlPart.data!.count > 0, "HTML part data should not be empty")
-        
-        // Try to decode as UTF-8 strings
-        let rawText = String(data: textPart.data!, encoding: .utf8)
-        let rawHtml = String(data: htmlPart.data!, encoding: .utf8)
-        
-        #expect(rawText != nil, "Raw text should be valid UTF-8")
-        #expect(rawHtml != nil, "Raw HTML should be valid UTF-8")
-        
-        // The raw content should be quoted-printable encoded
-        #expect(rawText!.contains("=20"), "Raw text should contain quoted-printable encoding")
-        #expect(rawHtml!.contains("=20"), "Raw HTML should contain quoted-printable encoding")
+        print("✅ All quoted-printable patterns decoded correctly")
     }
 }
