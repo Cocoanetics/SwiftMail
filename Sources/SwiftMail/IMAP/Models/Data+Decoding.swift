@@ -17,31 +17,18 @@ extension Data {
             return self
             
         case "quoted-printable":
-            // For text content, try to extract and use the charset
-            if part.contentType.lowercased().hasPrefix("text/"),
-               let textContent = String(data: self, encoding: .utf8) {
-                
-                // Extract charset from Content-Type if available
-                let charset = extractCharset(from: textContent) ?? "utf-8"
-                
-                // Try decoding with the specific charset first
-                let encoding = String.encodingFromCharset(charset)
-                if let decodedContent = textContent.decodeQuotedPrintable(encoding: encoding),
-                   let decodedData = decodedContent.data(using: .utf8) {
-                    return decodedData
-                }
-                
-                // Fallback to simpler quoted-printable decoding
-                let decodedContent = textContent.decodeQuotedPrintableContent()
-                if let decodedData = decodedContent.data(using: .utf8) {
-                    return decodedData
-                }
+            // Extract charset from the MessagePart's contentType field
+            let charset = extractCharsetFromContentType(part.contentType) ?? "utf-8"
+            let encoding = String.encodingFromCharset(charset)
+            
+            // Try to get the content as a string with the determined charset
+            guard let textContent = String(data: self, encoding: encoding) else {
+                return self
             }
             
-            // For non-text content or if text decoding failed
-            if let rawContent = String(data: self, encoding: .ascii),
-               let decoded = rawContent.decodeQuotedPrintableContent().data(using: .utf8) {
-                return decoded
+            // Decode quoted-printable content
+            if let decodedContent = textContent.decodeQuotedPrintable(encoding: encoding) {
+                return decodedContent.data(using: .utf8) ?? self
             }
             
             return self
@@ -81,17 +68,16 @@ extension Data {
         }
     }
     
-    /// Extract the charset from a Content-Type header in the content
-    /// - Parameter content: The content to search for charset
+    /// Extract the charset from a Content-Type header string
+    /// - Parameter contentType: The Content-Type header string (e.g., "text/plain; charset=iso-8859-1")
     /// - Returns: The charset if found, nil otherwise
-    private func extractCharset(from content: String) -> String? {
-        let contentTypePattern = "Content-Type:.*?charset=([^\\s;\"']+)"
-        guard let range = content.range(of: contentTypePattern, options: .regularExpression),
-              let charsetRange = content[range].range(of: "charset=([^\\s;\"']+)", options: .regularExpression) else {
+    private func extractCharsetFromContentType(_ contentType: String) -> String? {
+        let charsetPattern = "charset=([^\\s;\"']+)"
+        guard let range = contentType.range(of: charsetPattern, options: .regularExpression) else {
             return nil
         }
         
-        return content[charsetRange]
+        return String(contentType[range])
             .replacingOccurrences(of: "charset=", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "\"", with: "")

@@ -86,10 +86,7 @@ struct StringEmailTests {
         ]
         
         for email in internationalEmails {
-            let result = email.isValidEmail()
-            // Implementation might vary on international domain support
-            // Just verify that the function doesn't crash and returns a boolean
-            #expect(result is Bool, "Email validation should return a boolean for '\(email)'")
+            _ = email.isValidEmail() // Just verify that the function doesn't crash
         }
     }
     
@@ -123,9 +120,7 @@ struct StringEmailTests {
         // Test long domain
         let longDomain = String(repeating: "test.", count: 50) + "com"
         let longDomainEmail = "user@\(longDomain)"
-        let domainResult = longDomainEmail.isValidEmail()
-        // Just verify it handles the input without crashing
-        #expect(domainResult is Bool, "Email validation should handle long domains gracefully")
+        _ = longDomainEmail.isValidEmail()
     }
     
     @Test("Unicode and special character handling", .tags(.validation))
@@ -140,13 +135,11 @@ struct StringEmailTests {
         ]
         
         for email in unicodeEmails {
-            let result = email.isValidEmail()
-            // Implementation may vary on unicode support
-            // Just verify that the function doesn't crash and returns a boolean
-            #expect(result is Bool, "Email validation should return a boolean for '\(email)'")
+            _ = email.isValidEmail() // Just verify that the function doesn't crash
         }
         
         // Test that plus sign is typically allowed (common use case)
         #expect("user+tag@example.com".isValidEmail(), "Plus sign should typically be allowed in email addresses")
     }
 } 
+
