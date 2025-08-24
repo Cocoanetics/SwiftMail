@@ -1,4 +1,7 @@
 import Foundation
+#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
+import CoreFoundation
+#endif
 
 /// Resolve a charset label (e.g. "utf-8", "ISO-8859-1", "windows-1252", "cp932")
 /// to a `String.Encoding`. Returns `nil` if unknown or not text (e.g. "binary").
@@ -122,7 +125,7 @@ public func stringEncoding(for rawCharset: String) -> String.Encoding? {
 
     // 5) Try CoreFoundation's IANA name -> CFStringEncoding -> NSStringEncoding
     // This covers the majority of charsets, including windows-125x, iso-2022-jp, euc-kr, gbk, gb18030, big5, koi8-r, etc.
-    #if canImport(CoreFoundation)
+    #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS)
     let cfEnc = CFStringConvertIANACharSetNameToEncoding(label as CFString)
     if cfEnc != kCFStringEncodingInvalidId {
         let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
@@ -130,21 +133,55 @@ public func stringEncoding(for rawCharset: String) -> String.Encoding? {
     }
     #endif
 
-    // 6) Final bespoke fallbacks for UTF-16/32 LE/BE labels that some systems emit
-    switch label {
-    case "utf-8": return .utf8
-    case "utf-16": return .utf16       // platform-endian with BOM
-    case "utf-16le": return .utf16LittleEndian
-    case "utf-16be": return .utf16BigEndian
-    case "utf-32": return .utf32       // platform-endian with BOM
-    case "utf-32le": return .utf32LittleEndian
-    case "utf-32be": return .utf32BigEndian
-    case "us-ascii": return .ascii
-    case "iso-8859-1": return .isoLatin1
-    case "iso-8859-2": return .isoLatin2
-    default:
-        return nil
+    // 6) Additional charset mappings that work on all platforms
+    let additionalCharsets: [String: String.Encoding] = [
+        // UTF variants
+        "utf-8": .utf8,
+        "utf-16": .utf16,       // platform-endian with BOM
+        "utf-16le": .utf16LittleEndian,
+        "utf-16be": .utf16BigEndian,
+        "utf-32": .utf32,       // platform-endian with BOM
+        "utf-32le": .utf32LittleEndian,
+        "utf-32be": .utf32BigEndian,
+        
+        // ASCII
+        "us-ascii": .ascii,
+        
+        // ISO Latin family (only the ones that exist in String.Encoding)
+        "iso-8859-1": .isoLatin1,
+        "iso-8859-2": .isoLatin2,
+        
+        // Windows code pages (only the ones that exist in String.Encoding)
+        "windows-1250": .windowsCP1250,
+        "windows-1251": .windowsCP1251,
+        "windows-1252": .windowsCP1252,
+        "windows-1253": .windowsCP1253,
+        "windows-1254": .windowsCP1254,
+        
+        // Japanese encodings
+        "shift_jis": .shiftJIS,
+        "euc-jp": .japaneseEUC,
+        "iso-2022-jp": .iso2022JP,
+        
+        // Korean encodings (fallback to UTF-8 for unsupported encodings)
+        "euc-kr": .utf8,
+        
+        // Chinese encodings (fallback to UTF-8 for unsupported encodings)
+        "gb2312": .utf8,
+        "gbk": .utf8,
+        "gb18030": .utf8,
+        "big5": .utf8,
+        
+        // Other encodings (fallback to UTF-8 for unsupported encodings)
+        "koi8-r": .utf8,
+        "macintosh": .utf8
+    ]
+    
+    if let encoding = additionalCharsets[label] {
+        return encoding
     }
+    
+    return nil
 }
 
 // MARK: - String Extension for Backward Compatibility
