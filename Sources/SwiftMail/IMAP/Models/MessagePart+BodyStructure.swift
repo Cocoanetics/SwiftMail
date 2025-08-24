@@ -35,6 +35,11 @@ extension Array where Element == MessagePart {
                     contentType = "message/\(String(message.message))"
             }
             
+            // Add charset parameter if present
+            if let charset = part.fields.parameters.first(where: { $0.key.lowercased() == "charset" })?.value {
+                contentType += "; charset=\(charset)"
+            }
+            
             // Extract disposition and filename if available
             var disposition: String? = nil
             var filename: String? = nil
