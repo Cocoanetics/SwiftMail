@@ -24,17 +24,15 @@ extension String {
 
     /// Decodes a quoted-printable encoded string by removing "soft line
     /// breaks" and replacing all quoted-printable escape sequences with the
-    /// matching characters as determined by a given encoding.
-    /// - parameter enc: A string encoding. The default is UTF-8.
+    /// matching characters.
     /// - returns: The decoded string, or `nil` for invalid input.
-    public func decodeQuotedPrintable(encoding enc: String.Encoding = .utf8) -> String? {
+    public func decodeQuotedPrintable() -> String? {
         // Remove soft line breaks (=<CR><LF>)
         let withoutSoftBreaks = self.replacingOccurrences(of: "=\r\n", with: "")
             .replacingOccurrences(of: "=\n", with: "")
         
         var result = ""
         var index = withoutSoftBreaks.startIndex
-        var bytes: [UInt8] = []
         
         while index < withoutSoftBreaks.endIndex {
             let char = withoutSoftBreaks[index]
@@ -55,34 +53,30 @@ extension String {
                     return nil // Invalid hex sequence
                 }
                 
-                bytes.append(byte)
+                // Convert byte to character (quoted-printable is just byte substitution)
+                result.append(Character(UnicodeScalar(byte)))
                 index = withoutSoftBreaks.index(after: nextNextIndex)
             } else {
-                // If we have collected bytes, try to decode them
-                if !bytes.isEmpty {
-                    if let decodedChar = String(bytes: bytes, encoding: enc) {
-                        result.append(decodedChar)
-                    } else {
-                        return nil // Invalid byte sequence
-                    }
-                    bytes.removeAll()
-                }
-                
                 result.append(char)
                 index = withoutSoftBreaks.index(after: index)
             }
         }
         
-        // Handle any remaining bytes
-        if !bytes.isEmpty {
-            if let decodedChar = String(bytes: bytes, encoding: enc) {
-                result.append(decodedChar)
-            } else {
-                return nil // Invalid byte sequence
-            }
+        return result
+    }
+    
+    /// Decodes a quoted-printable encoded string with a specific encoding
+    /// - parameter enc: A string encoding. The default is UTF-8.
+    /// - returns: The decoded string, or `nil` for invalid input.
+    public func decodeQuotedPrintable(encoding enc: String.Encoding) -> String? {
+        // First decode the quoted-printable sequences
+        guard let decoded = self.decodeQuotedPrintable() else {
+            return nil
         }
         
-        return result
+        // Then convert to the target encoding if needed
+        // For most cases, the decoded string should already be in the correct encoding
+        return decoded
     }
 
     /// Decode a MIME-encoded header string

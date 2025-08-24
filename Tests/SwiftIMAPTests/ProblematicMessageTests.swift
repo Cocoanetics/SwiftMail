@@ -82,7 +82,10 @@ struct ProblematicMessageTests {
             
             // The content should have reasonable space count and very few equals signs
             #expect(spaceCount > 0, "Decoded content should contain spaces")
-            #expect(equalsCount < 10, "Decoded content should have very few equals signs (found \(equalsCount))")
+            // HTML content naturally contains many equals signs for attributes, so we don't check this for HTML parts
+           if !part.contentType.contains("text/html") {
+               #expect(equalsCount < 10, "Decoded content should have very few equals signs (found \(equalsCount))")
+           }
         }
         
         print("✅ All parts decoded successfully without quoted-printable artifacts")
@@ -93,19 +96,27 @@ struct ProblematicMessageTests {
         // Test specific patterns that appear in the problematic message
         let testCases = [
             ("=20", " "),           // Space
-            ("=A0", " "),           // Non-breaking space (should become regular space)
+            ("=A0", " "),           // Non-breaking space (U+00A0) - note: this is different from regular space
             ("=A9", "©"),           // Copyright symbol
             ("=3D", "="),           // Equals sign
             ("=0D", "\r"),          // Carriage return
             ("=0A", "\n"),          // Line feed
             ("=20=20=20", "   "),   // Multiple spaces
             ("Hello=20World", "Hello World"), // Word with space
-            ("fami=20liar", "familiar"), // Split word
+            ("fami=20liar", "fami liar"), // Split word with space
         ]
         
         for (encoded, expected) in testCases {
             let decoded = encoded.decodeQuotedPrintable()
-            #expect(decoded == expected, "Failed to decode '\(encoded)' to '\(expected)', got '\(decoded)'")
+            
+            // Special handling for non-breaking space comparison
+            if encoded == "=A0" {
+                // =A0 decodes to non-breaking space (U+00A0), not regular space (U+0020)
+                let nonBreakingSpace = Character(UnicodeScalar(0x00A0)!)
+                #expect(decoded == String(nonBreakingSpace), "Failed to decode '\(encoded)' to non-breaking space, got '\(decoded ?? "nil")'")
+            } else {
+                #expect(decoded == expected, "Failed to decode '\(encoded)' to '\(expected)', got '\(decoded ?? "nil")'")
+            }
         }
         
         print("✅ All quoted-printable patterns decoded correctly")
