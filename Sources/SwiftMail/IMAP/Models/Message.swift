@@ -110,11 +110,72 @@ private extension Message {
         // First look for a part with content type "text/plain" that is not an attachment
         for part in parts where part.contentType.lowercased() == "text/plain" &&
             part.disposition?.lowercased() != "attachment" {
-                guard let partData = part.data,
-                      let text = String(data: partData, encoding: .utf8) else {
-                    continue
+                
+                // Try to get decoded data using the MessagePart's decodedData method
+                if let decodedData = part.decodedData(),
+                   let text = String(data: decodedData, encoding: .utf8) {
+                    return text
                 }
+                
+                // Fallback: try direct decoding if decodedData fails
+                guard let partData = part.data else { continue }
+                
+                // First try to decode as base64 if the data looks like base64
+                if let base64String = String(data: partData, encoding: .utf8),
+                   let base64Data = Data(base64Encoded: base64String),
+                   let base64Text = String(data: base64Data, encoding: .utf8) {
+                    
+                    // If the part encoding is quoted-printable, decode the base64 result
+                    if part.encoding?.lowercased() == "quoted-printable" {
+                        if let decodedText = base64Text.decodeQuotedPrintable() {
+                            return decodedText
+                        }
+                    } else {
+                        return base64Text
+                    }
+                }
+                
+                // Try direct UTF-8 decoding
+                if let text = String(data: partData, encoding: .utf8) {
+                    let decodedText = part.encoding?.lowercased() == "quoted-printable" ?
+                        text.decodeQuotedPrintable() :
+                        text
 
+                    if let decodedText = decodedText {
+                        return decodedText
+                    }
+                }
+        }
+
+        // If not found, look for any text part
+        for part in parts where part.contentType.lowercased().hasPrefix("text/") {
+            
+            // Try to get decoded data using the MessagePart's decodedData method
+            if let decodedData = part.decodedData(),
+               let text = String(data: decodedData, encoding: .utf8) {
+                return text
+            }
+            
+            // Fallback: try direct decoding if decodedData fails
+            guard let partData = part.data else { continue }
+            
+            // First try to decode as base64 if the data looks like base64
+            if let base64String = String(data: partData, encoding: .utf8),
+               let base64Data = Data(base64Encoded: base64String),
+               let base64Text = String(data: base64Data, encoding: .utf8) {
+                
+                // If the part encoding is quoted-printable, decode the base64 result
+                if part.encoding?.lowercased() == "quoted-printable" {
+                    if let decodedText = base64Text.decodeQuotedPrintable() {
+                        return decodedText
+                    }
+                } else {
+                    return base64Text
+                }
+            }
+            
+            // Try direct UTF-8 decoding
+            if let text = String(data: partData, encoding: .utf8) {
                 let decodedText = part.encoding?.lowercased() == "quoted-printable" ?
                     text.decodeQuotedPrintable() :
                     text
@@ -122,21 +183,6 @@ private extension Message {
                 if let decodedText = decodedText {
                     return decodedText
                 }
-        }
-
-        // If not found, look for any text part
-        for part in parts where part.contentType.lowercased().hasPrefix("text/") {
-            guard let partData = part.data,
-                  let text = String(data: partData, encoding: .utf8) else {
-                continue
-            }
-
-            let decodedText = part.encoding?.lowercased() == "quoted-printable" ?
-                text.decodeQuotedPrintable() :
-                text
-
-            if let decodedText = decodedText {
-                return decodedText
             }
         }
 
@@ -149,17 +195,40 @@ private extension Message {
         // Look for a part with content type "text/html" that is not an attachment
         for part in parts where part.contentType.lowercased() == "text/html" &&
             part.disposition?.lowercased() != "attachment" {
-                guard let partData = part.data,
-                      let text = String(data: partData, encoding: .utf8) else {
-                    continue
+                
+                // Try to get decoded data using the MessagePart's decodedData method
+                if let decodedData = part.decodedData(),
+                   let text = String(data: decodedData, encoding: .utf8) {
+                    return text
                 }
+                
+                // Fallback: try direct decoding if decodedData fails
+                guard let partData = part.data else { continue }
+                
+                // First try to decode as base64 if the data looks like base64
+                if let base64String = String(data: partData, encoding: .utf8),
+                   let base64Data = Data(base64Encoded: base64String),
+                   let base64Text = String(data: base64Data, encoding: .utf8) {
+                    
+                    // If the part encoding is quoted-printable, decode the base64 result
+                    if part.encoding?.lowercased() == "quoted-printable" {
+                        if let decodedText = base64Text.decodeQuotedPrintable() {
+                            return decodedText
+                        }
+                    } else {
+                        return base64Text
+                    }
+                }
+                
+                // Try direct UTF-8 decoding
+                if let text = String(data: partData, encoding: .utf8) {
+                    let decodedHtml = part.encoding?.lowercased() == "quoted-printable" ?
+                        text.decodeQuotedPrintable() :
+                        text
 
-                let decodedHtml = part.encoding?.lowercased() == "quoted-printable" ?
-                    text.decodeQuotedPrintable() :
-                    text
-
-                if let decodedHtml = decodedHtml {
-                    return decodedHtml
+                    if let decodedHtml = decodedHtml {
+                        return decodedHtml
+                    }
                 }
         }
 
