@@ -77,15 +77,41 @@ public struct MessagePart: Sendable {
 		}
 	}
 	
-	/// Get the text content of the part if it's a text part
-	/// - Returns: The text content, or nil if not a text part or can't be decoded
-	public func textContent() -> String? {
-		guard contentType.lowercased().hasPrefix("text/"), let data = data, data.isTextContent() else {
-			return nil
+	/// The text content of the part
+	/// - Returns: The text content, or nil if can't be decoded
+	public var textContent: String? {
+		// Try to get decoded data using the MessagePart's decodedData method
+		if let decodedData = decodedData(),
+		   let text = String(data: decodedData, encoding: .utf8) {
+			return text
 		}
 		
-		let decodedData = data.decoded(for: self)
-		return String(data: decodedData, encoding: .utf8)
+		// Fallback: try direct decoding if decodedData fails
+		guard let partData = data else { return nil }
+		
+		// First try to decode as base64 if the data looks like base64
+		if let base64String = String(data: partData, encoding: .utf8),
+		   let base64Data = Data(base64Encoded: base64String),
+		   let base64Text = String(data: base64Data, encoding: .utf8) {
+			
+			// If the part encoding is quoted-printable, decode the base64 result
+			if encoding?.lowercased() == "quoted-printable" {
+				return base64Text.decodeQuotedPrintable()
+			} else {
+				return base64Text
+			}
+		}
+		
+		// Try direct UTF-8 decoding
+		if let text = String(data: partData, encoding: .utf8) {
+			let decodedText = encoding?.lowercased() == "quoted-printable" ?
+				text.decodeQuotedPrintable() :
+				text
+
+			return decodedText
+		}
+		
+		return nil
 	}
 	
 	/// Decode the part content using appropriate decoding based on content type and encoding

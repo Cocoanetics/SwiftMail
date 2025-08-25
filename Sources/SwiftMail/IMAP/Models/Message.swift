@@ -53,17 +53,30 @@ public struct Message: Codable, Sendable {
     
     /// The plain text body of the email (if available)
     public var textBody: String? {
-        return findTextBody()
+        return bodyContent(for: "text/plain")
     }
     
     /// The HTML body of the email (if available)
     public var htmlBody: String? {
-        return findHtmlBody()
+        return bodyContent(for: "text/html")
     }
     
     /// All attachments in the email
     public var attachments: [MessagePart] {
-        return findAttachments()
+        // Look for parts with disposition "attachment" or filename
+        return parts.filter { part in
+            (part.disposition?.lowercased() == "attachment") ||
+            (part.filename != nil && !part.filename!.isEmpty)
+        }
+    }
+    
+    /// All body parts in the email (text and HTML)
+    public var bodies: [MessagePart] {
+        return parts.filter { part in
+            // Look for text parts that are not attachments
+            part.contentType.lowercased().hasPrefix("text/") &&
+            part.disposition?.lowercased() != "attachment"
+        }
     }
     
     /// Initialize a new email
@@ -104,145 +117,31 @@ public struct Message: Codable, Sendable {
 
 // MARK: - Helper Methods
 private extension Message {
-    /// Find the plain text body of the email
-    /// - Returns: The plain text body, or `nil` if not found
-    func findTextBody() -> String? {
-        // First look for a part with content type "text/plain" that is not an attachment
-        for part in parts where part.contentType.lowercased() == "text/plain" &&
-            part.disposition?.lowercased() != "attachment" {
-                
-                // Try to get decoded data using the MessagePart's decodedData method
-                if let decodedData = part.decodedData(),
-                   let text = String(data: decodedData, encoding: .utf8) {
-                    return text
-                }
-                
-                // Fallback: try direct decoding if decodedData fails
-                guard let partData = part.data else { continue }
-                
-                // First try to decode as base64 if the data looks like base64
-                if let base64String = String(data: partData, encoding: .utf8),
-                   let base64Data = Data(base64Encoded: base64String),
-                   let base64Text = String(data: base64Data, encoding: .utf8) {
-                    
-                    // If the part encoding is quoted-printable, decode the base64 result
-                    if part.encoding?.lowercased() == "quoted-printable" {
-                        if let decodedText = base64Text.decodeQuotedPrintable() {
-                            return decodedText
-                        }
-                    } else {
-                        return base64Text
-                    }
-                }
-                
-                // Try direct UTF-8 decoding
-                if let text = String(data: partData, encoding: .utf8) {
-                    let decodedText = part.encoding?.lowercased() == "quoted-printable" ?
-                        text.decodeQuotedPrintable() :
-                        text
-
-                    if let decodedText = decodedText {
-                        return decodedText
-                    }
-                }
+    
+    /// Find body content of a specific type
+    /// - Parameter type: The content type to search for (e.g., "text/plain", "text/html")
+    /// - Returns: The body content, or `nil` if not found
+    func bodyContent(for type: String) -> String? {
+        // Find the first part with the exact content type in the bodies
+        guard let part = bodies.first(where: { $0.contentType.lowercased().hasPrefix(type) }) else {
+            return nil
         }
-
-        // If not found, look for any text part
-        for part in parts where part.contentType.lowercased().hasPrefix("text/") {
-            
-            // Try to get decoded data using the MessagePart's decodedData method
-            if let decodedData = part.decodedData(),
-               let text = String(data: decodedData, encoding: .utf8) {
-                return text
-            }
-            
-            // Fallback: try direct decoding if decodedData fails
-            guard let partData = part.data else { continue }
-            
-            // First try to decode as base64 if the data looks like base64
-            if let base64String = String(data: partData, encoding: .utf8),
-               let base64Data = Data(base64Encoded: base64String),
-               let base64Text = String(data: base64Data, encoding: .utf8) {
-                
-                // If the part encoding is quoted-printable, decode the base64 result
-                if part.encoding?.lowercased() == "quoted-printable" {
-                    if let decodedText = base64Text.decodeQuotedPrintable() {
-                        return decodedText
-                    }
-                } else {
-                    return base64Text
-                }
-            }
-            
-            // Try direct UTF-8 decoding
-            if let text = String(data: partData, encoding: .utf8) {
-                let decodedText = part.encoding?.lowercased() == "quoted-printable" ?
-                    text.decodeQuotedPrintable() :
-                    text
-
-                if let decodedText = decodedText {
-                    return decodedText
-                }
-            }
-        }
-
-        return nil
-    }
-
-    /// Find the HTML body of the email
-    /// - Returns: The HTML body, or `nil` if not found
-    func findHtmlBody() -> String? {
-        // Look for a part with content type "text/html" that is not an attachment
-        for part in parts where part.contentType.lowercased() == "text/html" &&
-            part.disposition?.lowercased() != "attachment" {
-                
-                // Try to get decoded data using the MessagePart's decodedData method
-                if let decodedData = part.decodedData(),
-                   let text = String(data: decodedData, encoding: .utf8) {
-                    return text
-                }
-                
-                // Fallback: try direct decoding if decodedData fails
-                guard let partData = part.data else { continue }
-                
-                // First try to decode as base64 if the data looks like base64
-                if let base64String = String(data: partData, encoding: .utf8),
-                   let base64Data = Data(base64Encoded: base64String),
-                   let base64Text = String(data: base64Data, encoding: .utf8) {
-                    
-                    // If the part encoding is quoted-printable, decode the base64 result
-                    if part.encoding?.lowercased() == "quoted-printable" {
-                        if let decodedText = base64Text.decodeQuotedPrintable() {
-                            return decodedText
-                        }
-                    } else {
-                        return base64Text
-                    }
-                }
-                
-                // Try direct UTF-8 decoding
-                if let text = String(data: partData, encoding: .utf8) {
-                    let decodedHtml = part.encoding?.lowercased() == "quoted-printable" ?
-                        text.decodeQuotedPrintable() :
-                        text
-
-                    if let decodedHtml = decodedHtml {
-                        return decodedHtml
-                    }
-                }
-        }
-
-        return nil
-    }
-
-    /// Find all attachments in the email
-    /// - Returns: An array of message parts that are attachments
-    func findAttachments() -> [MessagePart] {
-        // Look for parts with disposition "attachment" or filename
-        return parts.filter { part in
-            (part.disposition?.lowercased() == "attachment") ||
-            (part.filename != nil && !part.filename!.isEmpty)
-        }
+        
+        return part.textContent
     }
 }
 
+// MARK: - Public Body Finding Extensions
+public extension Message {
+    /// Find the text body part
+    /// - Returns: The text body part, or `nil` if not found
+    func findTextBodyPart() -> MessagePart? {
+        return bodies.first { $0.contentType.lowercased().hasPrefix("text/plain") }
+    }
+    
+    /// Find the HTML body part
+    /// - Returns: The HTML body part, or `nil` if not found
+    func findHtmlBodyPart() -> MessagePart? {
+        return bodies.first { $0.contentType.lowercased().hasPrefix("text/html") }
+    }
+}
