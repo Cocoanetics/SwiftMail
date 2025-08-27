@@ -15,9 +15,13 @@ struct StringHostnameTests {
         // Test that hostname is not empty
         #expect(!hostname.isEmpty, "Hostname should not be empty")
         
-        // Test hostname format - allow fallback values in CI environments
-        if !hostname.hasPrefix("[") && !hostname.hasSuffix("]") {
-            // If it's not an IP address format, it should be a valid hostname
+        // Test hostname format
+        if hostname.hasPrefix("[") && hostname.hasSuffix("]") {
+            // IP address format
+            let ip = String(hostname.dropFirst().dropLast())
+            #expect(isValidIP(ip), "Invalid IP address format: \(ip)")
+        } else {
+            // Hostname format - allow fallback values in CI environments
             // Note: In CI environments, fallback values like "localhost" and "swift-mail-client.local" are legitimate
             if hostname == "localhost" || hostname == "swift-mail-client.local" {
                 // These fallback values are acceptable in CI/container environments
@@ -26,16 +30,6 @@ struct StringHostnameTests {
                 // Should be a valid hostname format
                 #expect(isValidHostname(hostname), "Invalid hostname format: \(hostname)")
             }
-        }
-        
-        // Test hostname format
-        if hostname.hasPrefix("[") && hostname.hasSuffix("]") {
-            // IP address format
-            let ip = String(hostname.dropFirst().dropLast())
-            #expect(isValidIP(ip), "Invalid IP address format: \(ip)")
-        } else {
-            // Hostname format
-            #expect(isValidHostname(hostname), "Invalid hostname format: \(hostname)")
         }
     }
     
