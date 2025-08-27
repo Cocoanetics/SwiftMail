@@ -106,17 +106,6 @@ final class MessageBodyTests: XCTestCase {
     }
     
     func testGetTextContentFromPart() throws {
-        let header = MessageInfo(
-            sequenceNumber: SequenceNumber(1),
-            uid: UID(1),
-            subject: "Test Email",
-            from: "test@example.com",
-            to: ["recipient@example.com"],
-            cc: [],
-            date: Date(),
-            flags: []
-        )
-        
         let htmlPart = MessagePart(
             section: Section([1]),
             contentType: "text/html; charset=utf-8",
@@ -126,8 +115,6 @@ final class MessageBodyTests: XCTestCase {
             contentId: nil,
             data: "<html><body>Test HTML content</body></html>".data(using: .utf8)
         )
-        
-        let message = Message(header: header, parts: [htmlPart])
         
         // Test the new textContent property
         let content = htmlPart.textContent
