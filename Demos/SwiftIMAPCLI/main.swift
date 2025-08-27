@@ -71,34 +71,68 @@ do {
     let mailboxStatus = try await server.selectMailbox(inbox.name)
     print("Selected mailbox: \(inbox.name) with \(mailboxStatus.messageCount) messages")
 
-    // --- IMAP IDLE TEST BLOCK ---
-    print("\nTesting IMAP IDLE for 30 seconds. Any new events will be logged.\n")
-    do {
-        let idleStream = try await server.idle()
-        let idleTask = Task {
-            for await event in idleStream {
-                print("[IMAP IDLE EVENT] \(event)")
-            }
-        }
-        // Wait for 30 seconds, then exit IDLE
-        try await Task.sleep(nanoseconds: 30 * 1_000_000_000)
-        try await server.done()
-        idleTask.cancel()
-        print("\nExited IMAP IDLE mode.\n")
-        
-        // --- IMAP NOOP TEST BLOCK ---
-        print("\nSending IMAP NOOP command right after IDLE...")
+    // --- MULTIPLE IDLE/DONE CYCLES TEST ---
+    print("\n🧪 Testing Multiple IDLE/DONE Cycles (3 cycles, 5 seconds each)...")
+    
+    for cycle in 1...3 {
+        print("\n🔄 Starting IDLE Cycle \(cycle)/3...")
         do {
-            let noopEvents = try await server.noop()
-            print("NOOP events: \(noopEvents)")
+            let idleStream = try await server.idle()
+            print("✅ IDLE session \(cycle) started successfully")
+            
+            let idleTask = Task {
+                for await event in idleStream {
+                    print("[IDLE \(cycle)] \(event)")
+                }
+            }
+            
+            // Wait for 5 seconds, then exit IDLE
+            print("⏱️  Waiting 5 seconds for IDLE cycle \(cycle)...")
+            try await Task.sleep(nanoseconds: 5 * 1_000_000_000)
+            
+            print("🛑 Terminating IDLE cycle \(cycle)...")
+            try await server.done()
+            idleTask.cancel()
+            print("✅ IDLE cycle \(cycle) completed successfully")
+            
+            // Test superfluous DONE calls after each cycle
+            print("🧪 Testing superfluous DONE calls...")
+            for i in 1...3 {
+                print("  📞 Calling done() #\(i) (should be safe)...")
+                try await server.done()
+                print("  ✅ Superfluous done() #\(i) completed safely")
+            }
+            
+            // Small delay between cycles
+            if cycle < 3 {
+                print("⏳ Waiting 2 seconds before next cycle...")
+                try await Task.sleep(nanoseconds: 2 * 1_000_000_000)
+            }
+            
         } catch {
-            print("❌ Error during IMAP NOOP: \(error)")
+            print("❌ Error during IDLE cycle \(cycle): \(error)")
         }
-        // --- END IMAP NOOP TEST BLOCK ---
-    } catch {
-        print("❌ Error during IMAP IDLE: \(error)")
     }
-    // --- END IMAP IDLE TEST BLOCK ---
+    
+    print("\n🎉 All IDLE cycles completed successfully!")
+    
+    // Test multiple superfluous DONE calls at the end
+    print("\n🧪 Testing multiple superfluous DONE calls at the end...")
+    for i in 1...5 {
+        print("📞 Calling done() #\(i) (no active IDLE session)...")
+        try await server.done()
+        print("✅ Superfluous done() #\(i) completed safely")
+    }
+    
+    // Test NOOP after all IDLE cycles and superfluous DONE calls
+    print("\n📡 Testing NOOP command after all cycles and superfluous DONE calls...")
+    do {
+        let noopEvents = try await server.noop()
+        print("✅ NOOP successful, events: \(noopEvents)")
+    } catch {
+        print("❌ Error during NOOP: \(error)")
+    }
+    // --- END MULTIPLE IDLE/DONE CYCLES TEST ---
 
     print("\nSearching for invoices with PDF ...")
 	let messagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("invoice"), .text(".pdf")])

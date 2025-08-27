@@ -188,6 +188,17 @@ public actor IMAPServer {
 		return capabilities.contains(where: check)
 	}
 	
+	/**
+	 Check if the connection to the IMAP server is currently active
+	 - Returns: True if the connection is active and ready for commands
+	 */
+	public var isConnected: Bool {
+		guard let channel = self.channel else {
+			return false
+		}
+		return channel.isActive
+	}
+	
 	/** 
 	 Login to the IMAP server
 	 
@@ -368,7 +379,13 @@ public actor IMAPServer {
         /// This method is safe to call even if the server has already terminated the IDLE session
         /// (e.g., by sending a BYE response) or if automatic cleanup has already occurred.
         public func done() async throws {
-                guard let handler = idleHandler, let channel = self.channel else { return }
+                // Only send DONE if there's an active IDLE handler
+                guard let handler = idleHandler else {
+                        logger.debug("No active IDLE session, skipping DONE command")
+                        return
+                }
+                
+                guard let channel = self.channel else { return }
                 
                 // Prevent concurrent termination attempts
                 guard !idleTerminationInProgress else { 
@@ -1388,4 +1405,6 @@ extension IMAPServer {
 		try await store(flags: [.draft], on: identifierSet, operation: .add)
 		try await move(messages: identifierSet, to: try draftsFolder.name)
 	}
+	
+
 }
