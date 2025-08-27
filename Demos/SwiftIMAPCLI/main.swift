@@ -71,111 +71,61 @@ do {
     let mailboxStatus = try await server.selectMailbox(inbox.name)
     print("Selected mailbox: \(inbox.name) with \(mailboxStatus.messageCount) messages")
 
-    // --- MULTIPLE IDLE/DONE CYCLES TEST ---
-    print("\n🧪 Testing Multiple IDLE/DONE Cycles (3 cycles, 5 seconds each)...")
-    
-    for cycle in 1...3 {
-        print("\n🔄 Starting IDLE Cycle \(cycle)/3...")
-        do {
-            let idleStream = try await server.idle()
-            print("✅ IDLE session \(cycle) started successfully")
-            
-            let idleTask = Task {
-                for await event in idleStream {
-                    print("[IDLE \(cycle)] \(event)")
-                }
-            }
-            
-            // Wait for 5 seconds, then exit IDLE
-            print("⏱️  Waiting 5 seconds for IDLE cycle \(cycle)...")
-            try await Task.sleep(nanoseconds: 5 * 1_000_000_000)
-            
-            print("🛑 Terminating IDLE cycle \(cycle)...")
-            try await server.done()
-            idleTask.cancel()
-            print("✅ IDLE cycle \(cycle) completed successfully")
-            
-            // Test superfluous DONE calls after each cycle
-            print("🧪 Testing superfluous DONE calls...")
-            for i in 1...3 {
-                print("  📞 Calling done() #\(i) (should be safe)...")
-                try await server.done()
-                print("  ✅ Superfluous done() #\(i) completed safely")
-            }
-            
-            // Small delay between cycles
-            if cycle < 3 {
-                print("⏳ Waiting 2 seconds before next cycle...")
-                try await Task.sleep(nanoseconds: 2 * 1_000_000_000)
-            }
-            
-        } catch {
-            print("❌ Error during IDLE cycle \(cycle): \(error)")
-        }
-    }
-    
-    print("\n🎉 All IDLE cycles completed successfully!")
-    
-    // Test multiple superfluous DONE calls at the end
-    print("\n🧪 Testing multiple superfluous DONE calls at the end...")
-    for i in 1...5 {
-        print("📞 Calling done() #\(i) (no active IDLE session)...")
-        try await server.done()
-        print("✅ Superfluous done() #\(i) completed safely")
-    }
-    
-    // Test NOOP after all IDLE cycles and superfluous DONE calls
-    print("\n📡 Testing NOOP command after all cycles and superfluous DONE calls...")
-    do {
-        let noopEvents = try await server.noop()
-        print("✅ NOOP successful, events: \(noopEvents)")
-    } catch {
-        print("❌ Error during NOOP: \(error)")
-    }
-    // --- END MULTIPLE IDLE/DONE CYCLES TEST ---
+
 
     print("\nSearching for invoices with PDF ...")
-	let messagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("invoice"), .text(".pdf")])
-    print("Found \(messagesSet.count) messages")
-    
-    if !messagesSet.isEmpty {
-		
-		// Fetch and display message headers
-		let messageInfos = try await server.fetchMessageInfo(using: messagesSet)
-		
-        print("\n📧 Invoice Emails (\(messageInfos.count)) 📧")
-        for (index, messageInfo) in messageInfos.enumerated() {
-			print("\n[\(index + 1)/\(messageInfos.count)]\n\(messageInfo)")
-            print("---")
-			
-			// here we can get and decode specific parts
-			for part in messageInfo.parts {
+    do {
+        let messagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("invoice"), .text(".pdf")])
+        print("Found \(messagesSet.count) messages")
+        
+        if !messagesSet.isEmpty {
+            // Fetch and display message headers
+            let messageInfos = try await server.fetchMessageInfo(using: messagesSet)
+            
+            print("\n📧 Invoice Emails (\(messageInfos.count)) 📧")
+            for (index, messageInfo) in messageInfos.enumerated() {
+                print("\n[\(index + 1)/\(messageInfos.count)]")
+                print("Subject: \(messageInfo.subject ?? "No subject")")
+                print("From: \(messageInfo.from ?? "Unknown")")
+                print("---")
+                
+                // here we can get and decode specific parts
+                for part in messageInfo.parts {
+                    // find an part that's an attached PDF
+                    guard part.contentType == "application/pdf" else {
+                        continue
+                    }
 
-				// find an part that's an attached PDF
-				guard part.contentType == "application/pdf" else
-				{
-					continue
-				}
-
-				// get the body data for the part
-				let data = try await server.fetchAndDecodeMessagePartData(messageInfo: messageInfo, part: part)
-				
-				let desktopURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-				let url = desktopURL.appendingPathComponent(part.suggestedFilename)
-				try data.write(to: url)
-			}
+                    // get the body data for the part
+                    let data = try await server.fetchAndDecodeMessagePartData(messageInfo: messageInfo, part: part)
+                    
+                    let desktopURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
+                    let url = desktopURL.appendingPathComponent(part.suggestedFilename)
+                    try data.write(to: url)
+                }
+            }
         }
+    } catch {
+        print("❌ Error during search: \(error)")
     }
     
     // Get the latest 5 messages
     print("\nFetching the latest 5 messages...")
-    if let latestMessagesSet = mailboxStatus.latest(100) {
-        let latestHeaders = try await server.fetchMessageInfo(using: latestMessagesSet)
-        
-        print("\n📧 Latest Emails (\(latestHeaders.count)) 📧")
-        for (index, header) in latestHeaders.enumerated() {
-            print("\n[\(index + 1)/\(latestHeaders.count)]\n\(header)")
-            print("---")
+    if let latestMessagesSet = mailboxStatus.latest(5) { // Reduced to 5 messages
+        do {
+            let latestHeaders = try await server.fetchMessageInfo(using: latestMessagesSet)
+            
+            print("\n📧 Latest Emails (\(latestHeaders.count)) 📧")
+            for (index, header) in latestHeaders.enumerated() {
+                print("\n[\(index + 1)/\(latestHeaders.count)]")
+                print("Subject: \(header.subject ?? "No subject")")
+                print("From: \(header.from ?? "Unknown")")
+                print("Date: \(header.date?.description ?? "No date")")
+                print("---")
+            }
+        } catch {
+            print("❌ Error fetching message headers: \(error)")
+            print("⚠️  This might be due to malformed email headers in the mailbox")
         }
     } else {
         print("No messages found in INBOX")
@@ -183,13 +133,21 @@ do {
 	
 	// search for unread message
 	print("\nSearching for unread messages...")
-	let unreadMessagesSet: MessageIdentifierSet<SequenceNumber> = try await server.search(criteria: [.unseen])
-	print("Found \(unreadMessagesSet.count) unread messages")
+	do {
+		let unreadMessagesSet: MessageIdentifierSet<SequenceNumber> = try await server.search(criteria: [.unseen])
+		print("Found \(unreadMessagesSet.count) unread messages")
+	} catch {
+		print("❌ Error searching for unread messages: \(error)")
+	}
     
 	// search for sample emails
 	print("\nSearching for sample emails...")
-	let sampleMessagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("SwiftSMTPCLI")])
-	print("Found \(sampleMessagesSet.count) sample emails")
+	do {
+		let sampleMessagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("SwiftSMTPCLI")])
+		print("Found \(sampleMessagesSet.count) sample emails")
+	} catch {
+		print("❌ Error searching for sample emails: \(error)")
+	}
 	
     // Disconnect from the server
     try await server.disconnect()
