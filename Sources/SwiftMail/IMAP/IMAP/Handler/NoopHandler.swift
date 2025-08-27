@@ -42,9 +42,12 @@ final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandH
         return super.handleUntaggedResponse(response)
     }
 
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        succeedWithResult(events)
-    }
+    	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
+		
+		succeedWithResult(events)
+	}
 
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPProtocolError.unexpectedTaggedResponse(String(describing: response.state)))

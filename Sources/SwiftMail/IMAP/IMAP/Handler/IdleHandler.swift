@@ -20,10 +20,13 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
         fatalError("Use init(commandTag:promise:continuation:) instead")
     }
 
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        succeedWithResult(())
-        continuation.finish()
-    }
+    	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
+		
+		succeedWithResult(())
+		continuation.finish()
+	}
 
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.commandFailed(String(describing: response.state)))

@@ -15,6 +15,9 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Call super to handle CLIENTBUG warnings
+        super.handleTaggedOKResponse(response)
+        
         // Succeed with the collected headers
         succeedWithResult(lock.withLock { self.messageInfos })
     }

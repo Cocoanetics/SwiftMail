@@ -274,6 +274,8 @@ public actor IMAPServer {
 	   - `IMAPError.selectFailed` if the mailbox cannot be selected
 	   - `IMAPError.connectionFailed` if not connected
 	 - Note: Logs mailbox selection at debug level
+	 - Important: The returned status does not include an unseen count, as this is not provided by the IMAP SELECT command.
+	   To get the count of unseen messages, use `getUnseenCount()` instead.
 	 */
 	@discardableResult public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Status {
 		let command = SelectMailboxCommand(mailboxName: mailboxName)
@@ -700,6 +702,69 @@ public actor IMAPServer {
 	}
 	
 	/**
+	 Get the count of unseen messages in the currently selected mailbox
+	 
+	 This method searches for messages with the \Seen flag not set and returns the count.
+	 This is the recommended way to get the actual unseen count, as the SELECT command
+	 only provides the sequence number of the first unseen message, not the count.
+	 
+	 - Returns: The number of unseen messages in the mailbox
+	 - Throws: 
+	   - `IMAPError.searchFailed` if the search operation fails
+	   - `IMAPError.connectionFailed` if not connected
+	 - Note: Logs the unseen count at debug level
+	 */
+	public func getUnseenCount() async throws -> Int {
+		let unreadMessagesSet: MessageIdentifierSet<SequenceNumber> = try await search(criteria: [.unseen])
+		logger.debug("Found \(unreadMessagesSet.count) unseen messages")
+		return unreadMessagesSet.count
+	}
+	
+	/**
+	 Get status information about a mailbox without selecting it
+	 
+	 This method uses the IMAP STATUS command to retrieve standard attributes of a mailbox
+	 without having to select it. It automatically requests standard attributes (MESSAGES,
+	 RECENT, UNSEEN) and optional attributes based on server capabilities.
+	 
+	 - Parameter mailboxName: The name of the mailbox to get status for
+	 - Returns: Status information about the mailbox
+	 - Throws: 
+	   - `IMAPError.commandFailed` if the status operation fails
+	   - `IMAPError.connectionFailed` if not connected
+	 - Note: Logs status retrieval at debug level
+	 */
+	public func mailboxStatus(_ mailboxName: String) async throws -> NIOIMAPCore.MailboxStatus {
+		// Always request standard attributes
+		var attributes: [NIOIMAPCore.MailboxAttribute] = [
+			.messageCount,
+			.recentCount,
+			.unseenCount
+		]
+		
+		// Add optional attributes based on server capabilities
+		if capabilities.contains(.uidPlus) {
+			attributes.append(.uidNext)
+			attributes.append(.uidValidity)
+		}
+		if capabilities.contains(.condStore) {
+			attributes.append(.highestModificationSequence)
+		}
+		if capabilities.contains(.objectID) {
+			attributes.append(.mailboxID)
+		}
+		if capabilities.contains(.status(.size)) {
+			attributes.append(.size)
+		}
+		if capabilities.contains(.mailboxSpecificAppendLimit) {
+			attributes.append(.appendLimit)
+		}
+		
+		let command = StatusCommand(mailboxName: mailboxName, attributes: attributes)
+		return try await executeCommand(command)
+	}
+	
+    /**
 	 Searches for messages matching the given criteria
 	 
 	 - Parameters:

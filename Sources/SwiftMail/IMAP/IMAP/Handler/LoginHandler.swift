@@ -13,23 +13,26 @@ final class LoginHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandl
     /// Collected capabilities from untagged responses
     private var capabilities: [Capability] = []
     
-    /// Handle a tagged OK response
-    /// - Parameter response: The tagged response
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        // Check if we have collected capabilities from untagged responses
-        let collectedCapabilities = lock.withLock { self.capabilities }
-        
-        if !collectedCapabilities.isEmpty {
-            // If we have collected capabilities from untagged responses, use those
-            succeedWithResult(collectedCapabilities)
-        } else if case .ok(let responseText) = response.state, let code = responseText.code, case .capability(let capabilities) = code {
-            // If the OK response contains capabilities, use those
-            succeedWithResult(capabilities)
-        } else {
-            // No capabilities found
-            succeedWithResult([])
-        }
-    }
+    	/// Handle a tagged OK response
+	/// - Parameter response: The tagged response
+	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
+		
+		// Check if we have collected capabilities from untagged responses
+		let collectedCapabilities = lock.withLock { self.capabilities }
+		
+		if !collectedCapabilities.isEmpty {
+			// If we have collected capabilities from untagged responses, use those
+			succeedWithResult(collectedCapabilities)
+		} else if case .ok(let responseText) = response.state, let code = responseText.code, case .capability(let capabilities) = code {
+			// If the OK response contains capabilities, use those
+			succeedWithResult(capabilities)
+		} else {
+			// No capabilities found
+			succeedWithResult([])
+		}
+	}
     
     /// Handle a tagged error response
     /// - Parameter response: The tagged response

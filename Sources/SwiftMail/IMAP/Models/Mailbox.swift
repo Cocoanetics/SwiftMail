@@ -150,9 +150,6 @@ public enum Mailbox {
         /// The number of recent messages in the mailbox
         public var recentCount: Int = 0
         
-        /// The number of unseen messages in the mailbox
-        public var unseenCount: Int = 0
-        
         /// The sequence number of the first unseen message
         public var firstUnseen: Int = 0
         
@@ -231,8 +228,8 @@ extension Mailbox.Status: CustomStringConvertible {
         var desc = "Status("
 
         desc += "messages=\(messageCount)"
-        if unseenCount > 0 {
-            desc += ", unseen=\(unseenCount)"
+        if firstUnseen > 0 {
+            desc += ", firstUnseen=\(firstUnseen)"
         }
         if recentCount > 0 {
             desc += ", recent=\(recentCount)"

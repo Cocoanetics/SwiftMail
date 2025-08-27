@@ -7,13 +7,16 @@ import NIO
 final class QuotaHandler: BaseIMAPCommandHandler<Quota>, IMAPCommandHandler, @unchecked Sendable {
     private var quota: Quota?
 
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        if let quota = quota {
-            succeedWithResult(quota)
-        } else {
-            failWithError(IMAPError.commandFailed("QUOTA response missing"))
-        }
-    }
+    	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
+		
+		if let quota = quota {
+			succeedWithResult(quota)
+		} else {
+			failWithError(IMAPError.commandFailed("QUOTA response missing"))
+		}
+	}
 
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.commandFailed(String(describing: response.state)))

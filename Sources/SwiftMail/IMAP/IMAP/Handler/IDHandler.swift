@@ -17,10 +17,13 @@ final class IDHandler: BaseIMAPCommandHandler<Identification>, IMAPCommandHandle
         return super.handleUntaggedResponse(response)
     }
 
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        let params = lock.withLock { responseParams }
-        succeedWithResult(Identification(parameters: params))
-    }
+    	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
+		
+		let params = lock.withLock { responseParams }
+		succeedWithResult(Identification(parameters: params))
+	}
 
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.commandFailed(String(describing: response.state)))

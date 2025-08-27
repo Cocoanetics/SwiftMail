@@ -12,18 +12,21 @@ final class FetchStructureHandler: BaseIMAPCommandHandler<[MessagePart]>, IMAPCo
     /// The body structure from the response
     private var bodyStructure: BodyStructure?
     
-    /// Handle a tagged OK response by succeeding the promise with the message parts
-    /// - Parameter response: The tagged response
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        lock.withLock {
-            if let structure = self.bodyStructure {
-                let parts = Array<MessagePart>(structure)
-                succeedWithResult(parts)
-            } else {
-                failWithError(IMAPError.fetchFailed("No body structure received"))
-            }
-        }
-    }
+    	/// Handle a tagged OK response by succeeding the promise with the message parts
+	/// - Parameter response: The tagged response
+	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
+		
+		lock.withLock {
+			if let structure = self.bodyStructure {
+				let parts = Array<MessagePart>(structure)
+				succeedWithResult(parts)
+			} else {
+				failWithError(IMAPError.fetchFailed("No body structure received"))
+			}
+		}
+	}
     
     /// Handle a tagged error response
     /// - Parameter response: The tagged response

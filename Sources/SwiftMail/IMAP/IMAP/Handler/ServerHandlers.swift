@@ -13,12 +13,15 @@ final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommand
     /// Collected capabilities
     private var capabilities: [Capability] = []
     
-    /// Handle a tagged OK response by succeeding the promise with the capabilities
-    /// - Parameter response: The tagged response
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        let caps = lock.withLock { self.capabilities }
-        succeedWithResult(caps)
-    }
+    	/// Handle a tagged OK response by succeeding the promise with the capabilities
+	/// - Parameter response: The tagged response
+	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
+		
+		let caps = lock.withLock { self.capabilities }
+		succeedWithResult(caps)
+	}
     
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
@@ -51,6 +54,9 @@ final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Call super to handle CLIENTBUG warnings
+        super.handleTaggedOKResponse(response)
+        
         succeedWithResult(())
     }
     
@@ -67,6 +73,9 @@ final class StoreHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unc
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Call super to handle CLIENTBUG warnings
+        super.handleTaggedOKResponse(response)
+        
         succeedWithResult(())
     }
     
@@ -83,6 +92,9 @@ final class ExpungeHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @u
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Call super to handle CLIENTBUG warnings
+        super.handleTaggedOKResponse(response)
+        
         succeedWithResult(())
     }
     

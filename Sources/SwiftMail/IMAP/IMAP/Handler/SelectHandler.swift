@@ -25,18 +25,15 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCommandHa
         super.init(commandTag: commandTag, promise: promise)
     }
     
-    /// Handle a tagged OK response by succeeding the promise with the mailbox info
-    /// - Parameter response: The tagged response
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        // If we have a first unseen message but unseen count is 0,
-        // calculate the unseen count as (total messages - first unseen + 1)
-        if mailboxInfo.firstUnseen > 0 && mailboxInfo.unseenCount == 0 {
-            mailboxInfo.unseenCount = mailboxInfo.messageCount - mailboxInfo.firstUnseen + 1
-        }
-        
-        // Succeed with the mailbox info
-        succeedWithResult(mailboxInfo)
-    }
+    	/// Handle a tagged OK response by succeeding the promise with the mailbox info
+	/// - Parameter response: The tagged response
+	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
+		
+		// Succeed with the mailbox info
+		succeedWithResult(mailboxInfo)
+	}
     
     /// Handle a tagged error response
     /// - Parameter response: The tagged response

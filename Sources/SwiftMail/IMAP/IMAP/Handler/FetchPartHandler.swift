@@ -17,12 +17,15 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
     /// Expected byte count for the streaming data
     private var expectedByteCount: Int?
     
-    /// Handle a tagged OK response by succeeding the promise with the collected data
-    /// - Parameter response: The tagged response
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        // Succeed with the collected data
-        succeedWithResult(lock.withLock { self.partData })
-    }
+    	/// Handle a tagged OK response by succeeding the promise with the collected data
+	/// - Parameter response: The tagged response
+	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
+		
+		// Succeed with the collected data
+		succeedWithResult(lock.withLock { self.partData })
+	}
     
     /// Handle a tagged error response
     /// - Parameter response: The tagged response

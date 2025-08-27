@@ -52,19 +52,22 @@ final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageI
         return handled
     }
     
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        // When we receive an OK response, the search is complete
-        // Return the collected search results as a MessageIdentifierSet
-        print("Search complete, returning \(searchResults.count) results")
-        
-        // Create a MessageIdentifierSet from the array of results
-        var resultSet = MessageIdentifierSet<T>()
-        for identifier in searchResults {
-            resultSet.insert(identifier)
-        }
-        
-        succeedWithResult(resultSet)
-    }
+    	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
+		
+		// When we receive an OK response, the search is complete
+		// Return the collected search results as a MessageIdentifierSet
+		print("Search complete, returning \(searchResults.count) results")
+		
+		// Create a MessageIdentifierSet from the array of results
+		var resultSet = MessageIdentifierSet<T>()
+		for identifier in searchResults {
+			resultSet.insert(identifier)
+		}
+		
+		succeedWithResult(resultSet)
+	}
     
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         // If the search command fails, report the error with more specific information
