@@ -13,8 +13,6 @@ import NIOConcurrencyHelpers
 import Glibc
 #endif
 
-extension ByteToMessageHandler: @retroactive @unchecked Sendable {}
-
 /**
  An actor that represents an SMTP server connection.
  
@@ -171,24 +169,27 @@ public actor SMTPServer {
                         let sslContext = try NIOSSLContext(configuration: tlsConfig)
                         let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: self.host)
                         
-                        // Add SSL handler first, then SMTP handlers
-                        return channel.pipeline.addHandler(sslHandler).flatMap {
-                            channel.pipeline.addHandlers([
-								ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-		self.duplexLogger,
-		SMTPResponseHandler()
-	])
-                        }
+                        // Add SSL handler first, then SMTP handlers using syncOperations
+                        try! channel.pipeline.syncOperations.addHandler(sslHandler)
+                        try! channel.pipeline.syncOperations.addHandlers([
+							ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
+							self.duplexLogger,
+							SMTPResponseHandler()
+						])
+                        
+                        return channel.eventLoop.makeSucceededFuture(())
                     } catch {
                         return channel.eventLoop.makeFailedFuture(error)
                     }
                 } else {
-                    // Just add SMTP handlers without SSL
-                    return channel.pipeline.addHandlers([
+                    // Just add SMTP handlers without SSL using syncOperations
+                    try! channel.pipeline.syncOperations.addHandlers([
 						ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-	  self.duplexLogger,
-	  SMTPResponseHandler()
-  ])
+						self.duplexLogger,
+						SMTPResponseHandler()
+					])
+                    
+                    return channel.eventLoop.makeSucceededFuture(())
                 }
             }
         
@@ -573,11 +574,12 @@ public actor SMTPServer {
         tlsConfig.certificateVerification = .fullVerification
         tlsConfig.trustRoots = .default
         
-        let sslContext = try NIOSSLContext(configuration: tlsConfig)
-        let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: self.host)
-        
-        // Add SSL handler to the pipeline
-        try await channel.pipeline.addHandler(sslHandler, position: .first).get()
+        // Add SSL handler to the pipeline using EventLoop submission to ensure correct thread
+        try await channel.eventLoop.submit {
+            let sslContext = try NIOSSLContext(configuration: tlsConfig)
+            let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: self.host)
+            try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
+        }.get()
         
         // Set TLS flag
         isTLSEnabled = true
