@@ -574,9 +574,12 @@ public actor SMTPServer {
         tlsConfig.certificateVerification = .fullVerification
         tlsConfig.trustRoots = .default
         
+        // Capture the configuration before the closure to avoid concurrency issues
+        let finalTlsConfig = tlsConfig
+        
         // Add SSL handler to the pipeline using EventLoop submission to ensure correct thread
         try await channel.eventLoop.submit {
-            let sslContext = try NIOSSLContext(configuration: tlsConfig)
+            let sslContext = try NIOSSLContext(configuration: finalTlsConfig)
             let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: self.host)
             try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
         }.get()
