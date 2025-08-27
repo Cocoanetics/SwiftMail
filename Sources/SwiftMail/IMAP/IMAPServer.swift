@@ -134,11 +134,13 @@ public actor IMAPServer {
 				let sslHandler = try! NIOSSLClientHandler(context: sslContext, serverHostname: host)
 				
 				// Create the IMAP client pipeline
-				return channel.pipeline.addHandlers([
+                try! channel.pipeline.syncOperations.addHandlers([
 					sslHandler,
 					IMAPClientHandler(),
 					self.duplexLogger
 				])
+                
+                return channel.eventLoop.makeSucceededFuture(())
 			}
 		
 		// Connect to the server
