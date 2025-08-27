@@ -884,6 +884,15 @@ public actor IMAPServer {
 		// Validate the command before execution
 		try command.validate()
 		
+		// Check if channel is invalid and clear it
+		clearInvalidChannel()
+		
+		// Check if channel is nil and re-establish connection if needed
+		if self.channel == nil {
+			logger.info("Channel is nil, re-establishing connection before sending command")
+			try await connect()
+		}
+		
 		guard let channel = self.channel else {
 			throw IMAPError.connectionFailed("Channel not initialized")
 		}
@@ -956,6 +965,15 @@ public actor IMAPServer {
 		handlerType: HandlerType.Type,
 		timeoutSeconds: Int = 5
 	) async throws -> T where HandlerType.ResultType == T {
+		// Check if channel is invalid and clear it
+		clearInvalidChannel()
+		
+		// Check if channel is nil and re-establish connection if needed
+		if self.channel == nil {
+			logger.info("Channel is nil, re-establishing connection before executing handler")
+			try await connect()
+		}
+		
 		guard let channel = self.channel else {
 			throw IMAPError.connectionFailed("Channel not initialized")
 		}
@@ -1002,6 +1020,17 @@ public actor IMAPServer {
 			resultPromise.fail(error)
 			
 			throw error
+		}
+	}
+	
+	/**
+	 Clear the channel when it becomes invalid
+	 This method should be called when the channel becomes inactive or encounters errors
+	 */
+	private func clearInvalidChannel() {
+		if let channel = self.channel, !channel.isActive {
+			logger.info("Channel is no longer active, clearing channel reference")
+			self.channel = nil
 		}
 	}
 	
