@@ -91,4 +91,4 @@ extension Flag: Codable {
         default: self = .custom(value)
         }
     }
-} 
+}
