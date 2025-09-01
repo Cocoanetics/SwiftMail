@@ -238,6 +238,37 @@ public struct MessageIdentifierSet<Identifier: MessageIdentifier>: Sendable {
     public func toArray() -> [Identifier] {
         return indexSet.map { Identifier(UInt32($0)) }
     }
+    
+    /// Splits the set into smaller chunks of the specified size
+    /// - Parameter chunkSize: The maximum number of identifiers per chunk
+    /// - Returns: An array of MessageIdentifierSet chunks
+    public func chunked(size chunkSize: Int) -> [MessageIdentifierSet<Identifier>] {
+        guard chunkSize > 0 else {
+            return isEmpty ? [] : [self]
+        }
+        
+        guard !isEmpty else {
+            return []
+        }
+        
+        // If the set is smaller than chunk size, return it as a single chunk
+        if count <= chunkSize {
+            return [self]
+        }
+        
+        var chunks: [MessageIdentifierSet<Identifier>] = []
+        let allValues = toArray().sorted()
+        
+        // Split into chunks of the specified size
+        for chunkStart in stride(from: 0, to: allValues.count, by: chunkSize) {
+            let chunkEnd = min(chunkStart + chunkSize, allValues.count)
+            let chunkValues = Array(allValues[chunkStart..<chunkEnd])
+            let chunk = MessageIdentifierSet<Identifier>(chunkValues)
+            chunks.append(chunk)
+        }
+        
+        return chunks
+    }
 }
 
 // MARK: - Type Aliases

@@ -473,6 +473,53 @@ public actor IMAPServer {
 	}
 	
 	/** 
+	 Fetches message information from the selected mailbox using chunking to handle large sets.
+	 
+	 This method automatically splits large message sets into smaller chunks to avoid
+	 payload size errors. It processes chunks sequentially and combines the results.
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
+	 - Parameters:
+	   - identifierSet: The set of message identifiers to fetch
+	   - chunkSize: Maximum number of messages to fetch per chunk (default: 50)
+	   - limit: Optional maximum number of headers to return
+	 - Returns: An array of email headers
+	 - Throws: 
+	   - `IMAPError.fetchFailed` if any fetch operation fails
+	   - `IMAPError.emptyIdentifierSet` if the identifier set is empty
+	 - Note: Logs chunk processing at debug level
+	 */
+	public func fetchMessageInfoChunked<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, chunkSize: Int = 50, limit: Int? = nil) async throws -> [MessageInfo] {
+		guard !identifierSet.isEmpty else {
+			throw IMAPError.emptyIdentifierSet
+		}
+		
+		let chunks = identifierSet.chunked(size: chunkSize)
+		logger.debug("Fetching message info in \(chunks.count) chunks of max size \(chunkSize)")
+		
+		var allHeaders: [MessageInfo] = []
+		
+		for (index, chunk) in chunks.enumerated() {
+			logger.debug("Processing chunk \(index + 1)/\(chunks.count) with \(chunk.count) messages")
+			
+			let chunkHeaders = try await fetchMessageInfo(using: chunk)
+			allHeaders.append(contentsOf: chunkHeaders)
+			
+			// Check if we've reached the limit
+			if let limit = limit, allHeaders.count >= limit {
+				allHeaders = Array(allHeaders.prefix(limit))
+				break
+			}
+		}
+		
+		logger.debug("Successfully fetched \(allHeaders.count) message headers from \(chunks.count) chunks")
+		return allHeaders
+	}
+	
+	/** 
 	 Fetches the structure of a message.
 	 
 	 The message structure includes information about MIME parts, attachments,
@@ -614,6 +661,50 @@ public actor IMAPServer {
 	}
 	
 	/** 
+	 Fetch complete emails with all parts using chunking to handle large sets
+	 
+	 This method automatically splits large message sets into smaller chunks to avoid
+	 payload size errors. It processes chunks sequentially and combines the results.
+	 
+	 The generic type T determines the identifier type:
+	 - Use `SequenceNumber` for temporary message numbers that may change
+	 - Use `UID` for permanent message identifiers that remain stable
+	 
+	 - Parameters:
+	   - identifierSet: The set of message identifiers to fetch
+	   - chunkSize: Maximum number of messages to fetch per chunk (default: 50)
+	   - limit: Optional limit on the number of emails to fetch
+	 - Returns: An array of Email objects with all parts
+	 - Throws: An error if any fetch operation fails
+	 */
+	public func fetchMessagesChunked<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, chunkSize: Int = 50, limit: Int? = nil) async throws -> [Message] {
+		guard !identifierSet.isEmpty else {
+			throw IMAPError.emptyIdentifierSet
+		}
+		
+		let chunks = identifierSet.chunked(size: chunkSize)
+		logger.debug("Fetching complete messages in \(chunks.count) chunks of max size \(chunkSize)")
+		
+		var allMessages: [Message] = []
+		
+		for (index, chunk) in chunks.enumerated() {
+			logger.debug("Processing chunk \(index + 1)/\(chunks.count) with \(chunk.count) messages")
+			
+			let chunkMessages = try await fetchMessages(using: chunk)
+			allMessages.append(contentsOf: chunkMessages)
+			
+			// Check if we've reached the limit
+			if let limit = limit, allMessages.count >= limit {
+				allMessages = Array(allMessages.prefix(limit))
+				break
+			}
+		}
+		
+		logger.debug("Successfully fetched \(allMessages.count) complete messages from \(chunks.count) chunks")
+		return allMessages
+	}
+	
+	/** 
 	 Moves messages to another mailbox.
 	 
 	 This method attempts to use the MOVE extension if available, falling back to
@@ -718,6 +809,35 @@ public actor IMAPServer {
 		let unreadMessagesSet: MessageIdentifierSet<SequenceNumber> = try await search(criteria: [.unseen])
 		logger.debug("Found \(unreadMessagesSet.count) unseen messages")
 		return unreadMessagesSet.count
+	}
+	
+	/**
+	 Fetch all messages from the currently selected mailbox using chunking
+	 
+	 This is a convenience method that automatically fetches all messages in the mailbox
+	 using chunking to avoid payload size errors. It searches for all messages first to
+	 get an accurate count, then fetches them in chunks.
+	 
+	 - Parameters:
+	   - chunkSize: Maximum number of messages to fetch per chunk (default: 50)
+	   - limit: Optional maximum number of messages to return
+	 - Returns: An array of message headers for all messages in the mailbox
+	 - Throws: 
+	   - `IMAPError.fetchFailed` if any fetch operation fails
+	   - `IMAPError.connectionFailed` if not connected
+	 - Note: This method uses sequence numbers and searches for all messages to ensure accuracy.
+	 */
+	public func fetchAllMessagesChunked(chunkSize: Int = 50, limit: Int? = nil) async throws -> [MessageInfo] {
+		// Search for all messages to get an accurate set
+		let allMessagesSet: MessageIdentifierSet<SequenceNumber> = try await search(criteria: [.all])
+		
+		if allMessagesSet.isEmpty {
+			logger.debug("No messages found in selected mailbox")
+			return []
+		}
+		
+		logger.debug("Found \(allMessagesSet.count) messages in mailbox, fetching in chunks")
+		return try await fetchMessageInfoChunked(using: allMessagesSet, chunkSize: chunkSize, limit: limit)
 	}
 	
 	/**

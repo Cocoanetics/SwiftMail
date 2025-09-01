@@ -66,6 +66,49 @@ if let latestMessagesSet = mailboxInfo.latest(10) {
 }
 ```
 
+### Handling Large Message Sets with Chunking
+
+When working with large numbers of messages, you may encounter payload size errors. SwiftMail provides chunked methods to handle this automatically:
+
+```swift
+// Fetch all messages using chunking (recommended for large mailboxes)
+let allMessages = try await imapServer.fetchAllMessagesChunked(chunkSize: 50, limit: 100)
+print("Fetched \(allMessages.count) messages using chunking")
+
+// Or fetch a specific large set with chunking
+let largeMessageSet: MessageIdentifierSet<UID> = // ... your large message set ...
+let messages = try await imapServer.fetchMessageInfoChunked(
+    using: largeMessageSet, 
+    chunkSize: 50
+)
+print("Fetched \(messages.count) message headers in chunks")
+```
+
+**When to use chunked methods:**
+- Fetching more than 100 messages at once
+- When you get `PayloadTooLargeError` exceptions
+- Working with mailboxes containing thousands of messages
+- When your IMAP server has strict size limits
+
+**Chunk size recommendations:**
+- **Small chunks (10-25)**: Very conservative, slower but most reliable
+- **Medium chunks (50-100)**: Good balance of speed and reliability (default)
+- **Large chunks (200+)**: Faster but may hit limits on some servers
+
+```swift
+// Example: Fetch message info for a large mailbox
+do {
+    let messageSet = MessageIdentifierSet<SequenceNumber>(1...1000) // 1000 messages
+    let headers = try await imapServer.fetchMessageInfoChunked(
+        using: messageSet,
+        chunkSize: 50  // Process 50 messages at a time
+    )
+    print("Successfully fetched \(headers.count) headers")
+} catch {
+    print("Error fetching messages: \(error)")
+}
+```
+
 ## Searching Messages
 
 SwiftMail provides powerful search capabilities using different types of message identifiers:

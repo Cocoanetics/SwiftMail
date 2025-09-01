@@ -131,6 +131,50 @@ do {
         print("No messages found in INBOX")
     }
 	
+	// Demonstrate chunked fetching for larger message sets
+	print("\nDemonstrating chunked message fetching...")
+	if mailboxStatus.messageCount > 10 {
+		// Create a set for fetching more messages (up to 20)
+		let messageCount = min(mailboxStatus.messageCount, 20)
+		let startSequence = max(1, mailboxStatus.messageCount - messageCount + 1)
+		let largeSet = MessageIdentifierSet<SequenceNumber>(startSequence...mailboxStatus.messageCount)
+		
+		do {
+			print("Fetching \(largeSet.count) messages using chunked method (chunk size: 5)...")
+			let chunkedHeaders = try await server.fetchMessageInfoChunked(using: largeSet, chunkSize: 5)
+			print("✅ Successfully fetched \(chunkedHeaders.count) message headers using chunking")
+			
+			// Show first few as examples
+			for (index, header) in chunkedHeaders.prefix(3).enumerated() {
+				print("[\(index + 1)] \(header.subject ?? "No subject")")
+			}
+			if chunkedHeaders.count > 3 {
+				print("... and \(chunkedHeaders.count - 3) more")
+			}
+		} catch {
+			print("❌ Error during chunked fetch: \(error)")
+		}
+	} else if mailboxStatus.messageCount > 0 {
+		// Demonstrate the convenience method for fetching all messages
+		do {
+			print("Using convenience method to fetch all messages with chunking (chunk size: 5, limit: 10)...")
+			let allHeaders = try await server.fetchAllMessagesChunked(chunkSize: 5, limit: 10)
+			print("✅ Successfully fetched \(allHeaders.count) message headers using fetchAllMessagesChunked")
+			
+			// Show first few as examples
+			for (index, header) in allHeaders.prefix(3).enumerated() {
+				print("[\(index + 1)] \(header.subject ?? "No subject")")
+			}
+			if allHeaders.count > 3 {
+				print("... and \(allHeaders.count - 3) more")
+			}
+		} catch {
+			print("❌ Error during fetchAllMessagesChunked: \(error)")
+		}
+	} else {
+		print("Not enough messages in mailbox for chunking demo (have \(mailboxStatus.messageCount))")
+	}
+	
 	// search for unread message
 	print("\nSearching for unread messages...")
 	do {
