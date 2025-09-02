@@ -62,13 +62,24 @@ stream messages one by one and cancel early if needed:
 ```swift
 // Get the latest 10 messages
 if let latestMessagesSet = mailboxInfo.latest(10) {
-    for try await email in imapServer.fetchMessagesStream(using: latestMessagesSet) {
+    for try await email in imapServer.fetchMessages(using: latestMessagesSet) {
         print("Fetched message #\(email.sequenceNumber)")
     }
 }
 ```
 If you prefer to receive all messages at once, you can still use
 ``fetchMessages(using:)`` which collects the stream into an array.
+
+You can also stream message headers without fetching bodies:
+
+```swift
+// Stream headers for the latest 10 messages
+if let latestMessagesSet = mailboxInfo.latest(10) {
+    for try await header in imapServer.fetchMessageInfos(using: latestMessagesSet) {
+        print("Header: \(header.subject ?? \"No subject\")")
+    }
+}
+```
 
 ## Searching Messages
 

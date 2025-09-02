@@ -104,11 +104,11 @@ do {
         
         if !messagesSet.isEmpty {
             // Fetch and display message headers
-            let messageInfos = try await server.fetchMessageInfo(using: messagesSet)
-            
-            print("\n📧 Invoice Emails (\(messageInfos.count)) 📧")
-            for (index, messageInfo) in messageInfos.enumerated() {
-                print("\n[\(index + 1)/\(messageInfos.count)]")
+            print("\n📧 Invoice Emails 📧")
+            var index = 0
+            for try await messageInfo in server.fetchMessageInfos(using: messagesSet) {
+                index += 1
+                print("\n[\(index)]")
                 print("Subject: \(messageInfo.subject ?? "No subject")")
                 print("From: \(messageInfo.from ?? "Unknown")")
                 print("---")
@@ -137,11 +137,11 @@ do {
     print("\nFetching the latest 5 messages...")
     if let latestMessagesSet = mailboxStatus.latest(5) { // Reduced to 5 messages
         do {
-            let latestHeaders = try await server.fetchMessageInfo(using: latestMessagesSet)
-            
-            print("\n📧 Latest Emails (\(latestHeaders.count)) 📧")
-            for (index, header) in latestHeaders.enumerated() {
-                print("\n[\(index + 1)/\(latestHeaders.count)]")
+            print("\n📧 Latest Emails 📧")
+            var idx = 0
+            for try await header in server.fetchMessageInfos(using: latestMessagesSet) {
+                idx += 1
+                print("\n[\(idx)]")
                 print("Subject: \(header.subject ?? "No subject")")
                 print("From: \(header.from ?? "Unknown")")
                 print("Date: \(header.date?.description ?? "No date")")
