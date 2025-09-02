@@ -275,7 +275,7 @@ public actor IMAPServer {
 	   - `IMAPError.connectionFailed` if not connected
 	 - Note: Logs mailbox selection at debug level
 	 - Important: The returned status does not include an unseen count, as this is not provided by the IMAP SELECT command.
-	   To get the count of unseen messages, use `getUnseenCount()` instead.
+	   To get the count of unseen messages, use `mailboxStatus("INBOX").unseenCount` instead.
 	 */
 	@discardableResult public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Status {
 		let command = SelectMailboxCommand(mailboxName: mailboxName)
@@ -701,24 +701,7 @@ public actor IMAPServer {
 		return try await executeCommand(command)
 	}
 	
-	/**
-	 Get the count of unseen messages in the currently selected mailbox
-	 
-	 This method searches for messages with the \Seen flag not set and returns the count.
-	 This is the recommended way to get the actual unseen count, as the SELECT command
-	 only provides the sequence number of the first unseen message, not the count.
-	 
-	 - Returns: The number of unseen messages in the mailbox
-	 - Throws: 
-	   - `IMAPError.searchFailed` if the search operation fails
-	   - `IMAPError.connectionFailed` if not connected
-	 - Note: Logs the unseen count at debug level
-	 */
-	public func getUnseenCount() async throws -> Int {
-		let unreadMessagesSet: MessageIdentifierSet<SequenceNumber> = try await search(criteria: [.unseen])
-		logger.debug("Found \(unreadMessagesSet.count) unseen messages")
-		return unreadMessagesSet.count
-	}
+
 	
 	/**
 	 Get status information about a mailbox without selecting it
