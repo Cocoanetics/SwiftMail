@@ -451,26 +451,28 @@ public actor IMAPServer {
 	 - Use `SequenceNumber` for temporary message numbers that may change
 	 - Use `UID` for permanent message identifiers that remain stable
 	 
-	 - Parameters:
-	   - identifierSet: The set of message identifiers to fetch
-	   - limit: Optional maximum number of headers to return
-	 - Returns: An array of email headers
-	 - Throws: 
-	   - `IMAPError.fetchFailed` if the fetch operation fails
-	   - `IMAPError.emptyIdentifierSet` if the identifier set is empty
-	 - Note: Logs fetch operations at debug level with message counts
-	 */
-	public func fetchMessageInfo<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [MessageInfo] {
-		let command = FetchMessageInfoCommand(identifierSet: identifierSet, limit: limit)
-		var headers = try await executeCommand(command)
-		
-		// Apply limit if specified
-		if let limit = limit, headers.count > limit {
-			headers = Array(headers.prefix(limit))
-		}
-		
-		return headers
-	}
+        - Parameter identifierSet: The set of message identifiers to fetch
+        - Returns: An array of email headers
+        - Throws:
+          - `IMAPError.fetchFailed` if the fetch operation fails
+          - `IMAPError.emptyIdentifierSet` if the identifier set is empty
+        - Note: Headers are fetched one at a time to avoid large payloads
+        */
+        public func fetchMessageInfo<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) async throws -> [MessageInfo] {
+                guard !identifierSet.isEmpty else {
+                        throw IMAPError.emptyIdentifierSet
+                }
+
+                var headers: [MessageInfo] = []
+                for identifier in identifierSet.toArray() {
+                        let singleSet = MessageIdentifierSet<T>(identifier)
+                        let command = FetchMessageInfoCommand(identifierSet: singleSet)
+                        let result = try await executeCommand(command)
+                        headers.append(contentsOf: result)
+                }
+
+                return headers
+        }
 	
 	/** 
 	 Fetches the structure of a message.
@@ -582,36 +584,69 @@ public actor IMAPServer {
 		}
 	}
 	
-	/** 
-	 Fetch complete emails with all parts using a message identifier set
-	 
-	 The generic type T determines the identifier type:
-	 - Use `SequenceNumber` for temporary message numbers that may change
-	 - Use `UID` for permanent message identifiers that remain stable
-	 
-	 - Parameters:
-	   - identifierSet: The set of message identifiers to fetch
-	   - limit: Optional limit on the number of emails to fetch
-	 - Returns: An array of Email objects with all parts
-	 - Throws: An error if the fetch operation fails
-	 */
-	public func fetchMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) async throws -> [Message] {
-		guard !identifierSet.isEmpty else {
-			throw IMAPError.emptyIdentifierSet
-		}
-		
-		// First fetch the headers
-		let headers = try await fetchMessageInfo(using: identifierSet, limit: limit)
-		
-		// Then fetch the complete email for each header
-		var emails: [Message] = []
-		for header in headers {
-			let email = try await fetchMessage(from: header)
-			emails.append(email)
-		}
-		
-		return emails
-	}
+        /**
+         Fetch complete emails with all parts using a message identifier set
+
+         The generic type T determines the identifier type:
+         - Use `SequenceNumber` for temporary message numbers that may change
+         - Use `UID` for permanent message identifiers that remain stable
+
+         - Parameter identifierSet: The set of message identifiers to fetch
+         - Returns: An `AsyncThrowingStream` yielding `Message` objects with all parts
+         - Throws: An error if the fetch operation fails
+         */
+        /// Fetch complete emails with all parts using a message identifier set as a stream
+        ///
+        /// This method returns an `AsyncThrowingStream` that yields messages one at a time.
+        /// The sequence supports cancellation, allowing the caller to stop fetching early
+        /// without waiting for all messages to be downloaded.
+        ///
+        /// - Parameter identifierSet: The set of message identifiers to fetch
+        /// - Returns: An `AsyncThrowingStream` yielding `Message` instances
+        public func fetchMessagesStream<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) -> AsyncThrowingStream<Message, Error> {
+                AsyncThrowingStream { continuation in
+                        let task = Task {
+                                do {
+                                        guard !identifierSet.isEmpty else {
+                                                throw IMAPError.emptyIdentifierSet
+                                        }
+
+                                        for identifier in identifierSet.toArray() {
+                                                try Task.checkCancellation()
+                                                let headerSet = MessageIdentifierSet<T>(identifier)
+                                                if let header = try await fetchMessageInfo(using: headerSet).first {
+                                                        let email = try await fetchMessage(from: header)
+                                                        continuation.yield(email)
+                                                }
+                                        }
+
+                                        continuation.finish()
+                                } catch {
+                                        continuation.finish(throwing: error)
+                                }
+                        }
+
+                        continuation.onTermination = { @Sendable _ in
+                                task.cancel()
+                        }
+                }
+        }
+
+        /// Fetch complete emails with all parts using a message identifier set
+        ///
+        /// This method collects all messages from ``fetchMessagesStream(using:)``
+        /// into an array for convenience.
+        ///
+        /// - Parameter identifierSet: The set of message identifiers to fetch
+        /// - Returns: An array of `Message` objects with all parts
+        /// - Throws: An error if the fetch operation fails
+        public func fetchMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) async throws -> [Message] {
+                var emails: [Message] = []
+                for try await email in fetchMessagesStream(using: identifierSet) {
+                        emails.append(email)
+                }
+                return emails
+        }
 	
 	/** 
 	 Moves messages to another mailbox.
