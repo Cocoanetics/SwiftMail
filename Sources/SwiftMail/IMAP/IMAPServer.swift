@@ -592,6 +592,41 @@ public actor IMAPServer {
             }
         }
     }
+
+    /// Fetch complete messages with all parts using a message identifier set as a stream
+    ///
+    /// This method returns an `AsyncThrowingStream` that yields complete `Message` objects one at a time.
+    /// It uses `fetchMessageInfos` to get headers and then fetches all body parts for each message.
+    /// The sequence supports cancellation, allowing the caller to stop fetching early
+    /// without waiting for all messages to be downloaded.
+    ///
+    /// - Parameter identifierSet: The set of message identifiers to fetch
+    /// - Returns: An `AsyncThrowingStream` yielding `Message` instances with all parts
+    public nonisolated func fetchMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) -> AsyncThrowingStream<Message, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard !identifierSet.isEmpty else {
+                        throw IMAPError.emptyIdentifierSet
+                    }
+
+                    for try await header in fetchMessageInfos(using: identifierSet) {
+                        try Task.checkCancellation()
+                        let email = try await fetchMessage(from: header)
+                        continuation.yield(email)
+                    }
+
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
     
     
     
