@@ -716,6 +716,9 @@ public actor IMAPServer {
 	   - `IMAPError.commandFailed` if the status operation fails
 	   - `IMAPError.connectionFailed` if not connected
 	 - Note: Logs status retrieval at debug level
+	 - Important: Many servers emit a warning (e.g. `OK [CLIENTBUG] Status on selected mailbox`) when
+	   `STATUS` is issued for the currently selected mailbox. Call this method when no mailbox is selected
+	   (before `selectMailbox(_)`) or after `unselectMailbox()`/`closeMailbox()` to avoid the warning.
 	 */
 	public func mailboxStatus(_ mailboxName: String) async throws -> NIOIMAPCore.MailboxStatus {
 		// Always request standard attributes

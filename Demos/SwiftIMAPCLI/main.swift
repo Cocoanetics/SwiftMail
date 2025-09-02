@@ -66,13 +66,37 @@ do {
         exit(1)
     }
     
+    // Get unseen count without selecting the mailbox (STATUS)
+    do {
+        let status = try await server.mailboxStatus(inbox.name)
+        print("\(inbox.name) status:")
+        if let messageCount = status.messageCount {
+            print("  - messageCount: \(messageCount)")
+        }
+        if let unseen = status.unseenCount {
+            print("  - unseenCount: \(unseen)")
+        }
+        if let recent = status.recentCount {
+            print("  - recentCount: \(recent)")
+        }
+        if let size = status.size {
+            let formatter = ByteCountFormatter()
+            formatter.allowedUnits = [.useMB, .useGB]
+            formatter.countStyle = .file
+            formatter.includesUnit = true
+            formatter.isAdaptive = true
+            let niceSize = formatter.string(fromByteCount: Int64(size))
+            print("  - size: \(niceSize)")
+        }
+    } catch {
+        print("❌ Error fetching unseen count: \(error)")
+    }
+
     // Select the INBOX mailbox
     print("\nSelecting INBOX...")
     let mailboxStatus = try await server.selectMailbox(inbox.name)
     print("Selected mailbox: \(inbox.name) with \(mailboxStatus.messageCount) messages")
-
-
-
+    
     print("\nSearching for invoices with PDF ...")
     do {
         let messagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("invoice"), .text(".pdf")])

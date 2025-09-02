@@ -87,6 +87,8 @@ unreadMessagesSet = try await imapServer.search(criteria: [.unseen])
 print("Found \(unreadMessagesSet.count) unread messages (using search)")
 
 // Method 3: Using STATUS command to get multiple attributes
+// Important: Call mailboxStatus before selecting a mailbox or after unselect/close to
+// avoid server warnings like: OK [CLIENTBUG] Status on selected mailbox
 let mailboxStatus = try await imapServer.mailboxStatus("INBOX")
 print("Mailbox status: \(mailboxStatus)")
 print("   - Message count: \(mailboxStatus.messageCount ?? 0)")
@@ -120,7 +122,9 @@ Common search criteria include:
 
 ## Getting Mailbox Status
 
-You can get status information about mailboxes without selecting them using the STATUS command:
+You can get status information about mailboxes without selecting them using the STATUS command.
+Important: Call it when no mailbox is selected (before SELECT) or after UNSELECT/CLOSE to
+avoid warnings like `OK [CLIENTBUG] Status on selected mailbox` on some servers:
 
 ```swift
 // Get the unseen count and other status attributes for a specific mailbox
