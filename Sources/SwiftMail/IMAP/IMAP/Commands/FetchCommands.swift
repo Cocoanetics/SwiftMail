@@ -7,25 +7,19 @@ import NIOIMAP
 
 /// Command for fetching message headers
 struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPCommand {
-	typealias ResultType = [MessageInfo]
-	typealias HandlerType = FetchMessageInfoHandler
-    
+        typealias ResultType = [MessageInfo]
+        typealias HandlerType = FetchMessageInfoHandler
+
     /// The set of message identifiers to fetch
-	let identifierSet: MessageIdentifierSet<T>
-    
-    /// Optional limit on the number of headers to return
-	let limit: Int?
+        let identifierSet: MessageIdentifierSet<T>
     
     /// Custom timeout for this operation
 	let timeoutSeconds = 10
     
     /// Initialize a new fetch headers command
-    /// - Parameters:
-    ///   - identifierSet: The set of message identifiers to fetch
-    ///   - limit: Optional limit on the number of headers to return
-	init(identifierSet: MessageIdentifierSet<T>, limit: Int? = nil) {
+    /// - Parameter identifierSet: The set of message identifiers to fetch
+    init(identifierSet: MessageIdentifierSet<T>) {
         self.identifierSet = identifierSet
-        self.limit = limit
     }
     
     /// Validate the command before execution

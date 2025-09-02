@@ -56,15 +56,19 @@ let mailboxes = try await imapServer.listMailboxes(wildcard: "%")
 
 ## Fetching Messages
 
-Fetch messages from the selected mailbox:
+Fetch messages from the selected mailbox. By default these methods fetch only the first message to keep payloads small. For large mailboxes you can
+stream messages one by one and cancel early if needed:
 
 ```swift
 // Get the latest 10 messages
 if let latestMessagesSet = mailboxInfo.latest(10) {
-    let emails = try await imapServer.fetchMessages(using: latestMessagesSet)
-    print("Fetched \(emails.count) messages")
+    for try await email in imapServer.fetchMessagesStream(using: latestMessagesSet) {
+        print("Fetched message #\(email.sequenceNumber)")
+    }
 }
 ```
+If you prefer to receive all messages at once, you can still use
+``fetchMessages(using:)`` which collects the stream into an array.
 
 ## Searching Messages
 
