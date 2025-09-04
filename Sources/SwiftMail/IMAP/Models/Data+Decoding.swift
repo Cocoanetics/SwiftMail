@@ -30,8 +30,10 @@ extension Data {
             if let decodedContent = textContent.decodeQuotedPrintable(encoding: encoding) {
                 return decodedContent.data(using: .utf8) ?? self
             }
-            
-            return self
+
+            // Fall back to a lossy decoding approach to handle malformed input
+            let lossyContent = textContent.decodeQuotedPrintableLossy(encoding: encoding)
+            return lossyContent.data(using: .utf8) ?? self
             
         case "base64":
             // First try decoding the raw data

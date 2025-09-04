@@ -64,6 +64,48 @@ extension String {
         
         return result
     }
+
+    /// Decodes a quoted-printable encoded string but tolerates invalid
+    /// sequences by leaving them as-is in the output. This is useful for
+    /// handling real-world messages that might contain malformed
+    /// quoted-printable data.
+    /// - Returns: The decoded string with invalid sequences preserved.
+    public func decodeQuotedPrintableLossy() -> String {
+        // Remove soft line breaks (=<CR><LF>)
+        let withoutSoftBreaks = self.replacingOccurrences(of: "=\r\n", with: "")
+            .replacingOccurrences(of: "=\n", with: "")
+
+        var result = ""
+        var index = withoutSoftBreaks.startIndex
+
+        while index < withoutSoftBreaks.endIndex {
+            let char = withoutSoftBreaks[index]
+
+            if char == "=" {
+                let nextIndex = withoutSoftBreaks.index(after: index)
+                if nextIndex < withoutSoftBreaks.endIndex {
+                    let nextNextIndex = withoutSoftBreaks.index(after: nextIndex)
+                    if nextNextIndex < withoutSoftBreaks.endIndex {
+                        let hex = String(withoutSoftBreaks[nextIndex...nextNextIndex])
+                        if let byte = UInt8(hex, radix: 16) {
+                            result.append(Character(UnicodeScalar(byte)))
+                            index = withoutSoftBreaks.index(after: nextNextIndex)
+                            continue
+                        }
+                    }
+                }
+                // If we reach here, the sequence is invalid or incomplete.
+                // Treat the '=' as a literal character and continue.
+                result.append("=")
+                index = withoutSoftBreaks.index(after: index)
+            } else {
+                result.append(char)
+                index = withoutSoftBreaks.index(after: index)
+            }
+        }
+
+        return result
+    }
     
     /// Decodes a quoted-printable encoded string with a specific encoding
     /// - parameter enc: A string encoding. The default is UTF-8.
@@ -74,6 +116,19 @@ extension String {
             return nil
         }
         
+        // Then convert to the target encoding if needed
+        // For most cases, the decoded string should already be in the correct encoding
+        return decoded
+    }
+
+    /// Decodes a quoted-printable encoded string with a specific encoding,
+    /// tolerating invalid sequences by preserving them in the output.
+    /// - Parameter enc: A string encoding. The default is UTF-8.
+    /// - Returns: The decoded string with invalid sequences preserved.
+    public func decodeQuotedPrintableLossy(encoding enc: String.Encoding) -> String {
+        // First decode using the lossy variant
+        let decoded = self.decodeQuotedPrintableLossy()
+
         // Then convert to the target encoding if needed
         // For most cases, the decoded string should already be in the correct encoding
         return decoded
