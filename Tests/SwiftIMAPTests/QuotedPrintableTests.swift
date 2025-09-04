@@ -187,6 +187,24 @@ struct QuotedPrintableTests {
         let invalidResult = invalidHex.decodeQuotedPrintable()
         #expect(invalidResult == nil, "Should return nil for invalid hex")
     }
+
+    @Test("Lossy decoding handles invalid sequences", .tags(.decoding))
+    func lossyDecodingHandlesInvalidSequences() {
+        // This input contains both valid and invalid quoted-printable sequences
+        let mixed = "Line1=0D=0ALine2=ZZ"
+
+        // Strict decoding should fail due to the invalid sequence at the end
+        #expect(mixed.decodeQuotedPrintable() == nil)
+
+        // Lossy decoding should still decode the valid sequences
+        let lossy = mixed.decodeQuotedPrintableLossy()
+        #expect(lossy == "Line1\r\nLine2=ZZ")
+
+        // Another example with a trailing '=' which is incomplete
+        let trailingEquals = "Hello=0D=0A="
+        #expect(trailingEquals.decodeQuotedPrintable() == nil)
+        #expect(trailingEquals.decodeQuotedPrintableLossy() == "Hello\r\n=")
+    }
     
     @Test("Performance with large content", .tags(.performance, .decoding))
     func performanceWithLargeContent() {
