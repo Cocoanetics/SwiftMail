@@ -83,6 +83,10 @@ public actor IMAPServer {
      - host: The hostname of the IMAP server
      - port: The port number of the IMAP server (typically 993 for SSL)
      - numberOfThreads: The number of threads to use for the event loop group
+     
+     - Note: The connection is configured with a 1MB buffer limit to handle large SEARCH responses
+     that may contain thousands of message IDs. This prevents PayloadTooLargeError when
+     searching large mailboxes.
      */
     public init(host: String, port: Int, numberOfThreads: Int = 1) {
         self.host = host
@@ -133,10 +137,17 @@ public actor IMAPServer {
             .channelInitializer { channel in
                 let sslHandler = try! NIOSSLClientHandler(context: sslContext, serverHostname: host)
                 
-                // Create the IMAP client pipeline
+                // Create the IMAP client pipeline with increased buffer limits for large responses
+                let parserOptions = ResponseParser.Options(
+                    bufferLimit: 1024 * 1024, // 1MB buffer limit for large SEARCH responses
+                    messageAttributeLimit: .max,
+                    bodySizeLimit: .max,
+                    literalSizeLimit: IMAPDefaults.literalSizeLimit
+                )
+                
                 try! channel.pipeline.syncOperations.addHandlers([
                     sslHandler,
-                    IMAPClientHandler(),
+                    IMAPClientHandler(parserOptions: parserOptions),
                     self.duplexLogger
                 ])
                 
@@ -148,6 +159,8 @@ public actor IMAPServer {
         
         // Store the channel
         self.channel = channel
+        
+        logger.info("Connected to IMAP server with 1MB buffer limit for large responses")
         
         // Wait for the server greeting using our generic handler execution pattern
         // The greeting handler now returns capabilities if they were in the greeting
