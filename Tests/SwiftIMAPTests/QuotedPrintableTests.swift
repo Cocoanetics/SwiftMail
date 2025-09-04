@@ -102,6 +102,13 @@ struct QuotedPrintableTests {
         let isoEncoded = "=?ISO-8859-1?Q?J=F6rg=20M=FCller?="
         #expect(isoEncoded.decodeMIMEHeader() == "Jörg Müller")
     }
+
+    @Test("Real-world subject decoding", .tags(.decoding, .mime))
+    func realWorldSubjectDecoding() {
+        let raw = "=?UTF-8?Q?=5B_Last_Chance_-_10=25_OFF_=5D_=F0=9F=8E=93_Hot_Deal=3A_Top_On?= =?UTF-8?Q?line_Courses_Starting_at_just_=249_=E2=80=93_Don=E2=80=99t_Miss?= =?UTF-8?Q?_Out?="
+        let expected = "[ Last Chance - 10% OFF ] 🎓 Hot Deal: Top Online Courses Starting at just $9 – Don’t Miss Out"
+        #expect(raw.decodeMIMEHeader() == expected)
+    }
     
     // MARK: - HTML File Tests
     
