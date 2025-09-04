@@ -81,9 +81,17 @@ extension Array where Element == MessagePart {
                     }
                 }
             }
-            
+
+            // Decode any MIME-encoded filename
+            if let name = filename {
+                let decoded = name.decodeMIMEHeader()
+                if !decoded.isEmpty {
+                    filename = decoded
+                }
+            }
+
             // Set content ID if available
-            let contentId: String? = part.fields.id.map { 
+            let contentId: String? = part.fields.id.map {
                 let str = String($0)
                 return str.isEmpty ? nil : str
             } ?? nil
