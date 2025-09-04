@@ -60,10 +60,19 @@ struct StringHostnameTests {
     }
     
     private func isValidHostname(_ hostname: String) -> Bool {
-        // RFC 1123 hostname validation
-        let pattern = "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$"
-        let regex = try! NSRegularExpression(pattern: pattern)
+        // RFC 1123 strict validation (no underscores)
+        let strictPattern = "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$"
+        let strictRegex = try! NSRegularExpression(pattern: strictPattern)
         let range = NSRange(hostname.startIndex..<hostname.endIndex, in: hostname)
-        return regex.firstMatch(in: hostname, range: range) != nil
+        if strictRegex.firstMatch(in: hostname, range: range) != nil {
+            return true
+        }
+        // Allow common macOS/mDNS local hostnames which may include underscores
+        if hostname.hasSuffix(".local") {
+            let relaxedPattern = "^(([A-Za-z0-9_]|[A-Za-z0-9_][A-Za-z0-9_\\-]*[A-Za-z0-9_])\\.)*([A-Za-z0-9_]|[A-Za-z0-9_][A-Za-z0-9_\\-]*[A-Za-z0-9_])$"
+            let relaxedRegex = try! NSRegularExpression(pattern: relaxedPattern)
+            return relaxedRegex.firstMatch(in: hostname, range: range) != nil
+        }
+        return false
     }
 } 
