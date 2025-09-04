@@ -1,5 +1,8 @@
 import XCTest
 @testable import SwiftMail
+import NIOIMAP
+import NIOIMAPCore
+import OrderedCollections
 
 final class MessageBodyTests: XCTestCase {
     
@@ -115,10 +118,34 @@ final class MessageBodyTests: XCTestCase {
             contentId: nil,
             data: "<html><body>Test HTML content</body></html>".data(using: .utf8)
         )
-        
+
         // Test the new textContent property
         let content = htmlPart.textContent
         XCTAssertNotNil(content, "Should extract text content from part")
         XCTAssertTrue(content?.contains("Test HTML content") == true)
+    }
+
+    func testDecodesMIMEEncodedAttachmentFilename() throws {
+        let encodedName = "=?utf-8?Q?HC=5F1161254447.pdf?="
+        var params = OrderedDictionary<String, String>()
+        params["filename"] = encodedName
+        let fields = BodyStructure.Fields(
+            parameters: params,
+            id: nil,
+            contentDescription: nil,
+            encoding: .base64,
+            octetCount: 0
+        )
+        let single = BodyStructure.Singlepart(
+            kind: .basic(.init(topLevel: "application", sub: "pdf")),
+            fields: fields,
+            extension: nil
+        )
+        let structure = BodyStructure.singlepart(single)
+
+        let parts = Array<MessagePart>(structure)
+        XCTAssertEqual(parts.count, 1)
+        XCTAssertEqual(parts.first?.filename, "HC_1161254447.pdf")
+        XCTAssertEqual(parts.first?.suggestedFilename, "HC_1161254447.pdf")
     }
 }
