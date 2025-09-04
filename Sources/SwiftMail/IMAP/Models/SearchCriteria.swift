@@ -173,15 +173,12 @@ public indirect enum SearchCriteria: Sendable {
             return .flagged
         case .from(let value):
             return .from(stringToBuffer(value))
-        case .header(_, _):
-            // For header, we need to use a different approach
-            // Since we can't convert ByteBuffer to String directly
-            return .all // Placeholder - will implement properly when API is better understood
+        case .header(let field, let value):
+            return .header(field, stringToBuffer(value))
         case .keyword(let value):
             return .keyword(stringToKeyword(value))
-        case .larger(_):
-            // For larger, use a workaround
-            return .all // Placeholder - will implement properly when API is better understood
+        case .larger(let size):
+            return .messageSizeLarger(size)
         case .new:
             return .new
         case .not(let criteria):
@@ -204,18 +201,19 @@ public indirect enum SearchCriteria: Sendable {
             return .sentSince(dateToCalendarDay(date))
         case .since(let date):
             return .since(dateToCalendarDay(date))
-        case .smaller(_):
-            // For smaller, use a workaround
-            return .all // Placeholder - will implement properly when API is better understood
+        case .smaller(let size):
+            return .messageSizeSmaller(size)
         case .subject(let value):
             return .subject(stringToBuffer(value))
         case .text(let value):
             return .text(stringToBuffer(value))
         case .to(let value):
             return .to(stringToBuffer(value))
-        case .uid(_):
-            // For UID, use a workaround
-            return .all // Placeholder - will implement properly when API is better understood
+        case .uid(let value):
+            let uid = NIOIMAPCore.UID(rawValue: UInt32(value))
+            let range = NIOIMAPCore.MessageIdentifierRange<NIOIMAPCore.UID>(uid)
+            let set = NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOIMAPCore.UID>(range: range)
+            return .uid(.set(set))
         case .unanswered:
             return .unanswered
         case .undeleted:
