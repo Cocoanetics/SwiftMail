@@ -5,19 +5,30 @@ import Testing
 @Suite("Problematic Message Tests")
 struct ProblematicMessageTests {
     
-    @Test("Test problematic message 6068 - no undecoded quoted-printable characters")
-    func testProblematicMessage6068() throws {
-        let resourcesPath = "Tests/SwiftIMAPTests/Resources"
-        let filePath = "\(resourcesPath)/problematic_message_6068.json"
-        
-        // Check if the file exists
-        let fileManager = FileManager.default
-        guard fileManager.fileExists(atPath: filePath) else {
-            throw TestFailure("Problematic message file not found at \(filePath)")
+    // MARK: - Test Resources
+    
+    func getResourceURL(for name: String, withExtension ext: String) -> URL? {
+        return Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Resources")
+    }
+    
+    func loadResourceContent(name: String, withExtension ext: String) throws -> String {
+        guard let url = getResourceURL(for: name, withExtension: ext) else {
+            throw TestFailure("Failed to locate resource: \(name).\(ext)")
         }
         
-        // Load the problematic message
-        let jsonData = try Data(contentsOf: URL(fileURLWithPath: filePath))
+        do {
+            return try String(contentsOf: url)
+        } catch {
+            throw TestFailure("Failed to load resource content: \(error)")
+        }
+    }
+    
+    @Test("Test problematic message 6068 - no undecoded quoted-printable characters")
+    func testProblematicMessage6068() throws {
+        let jsonString = try loadResourceContent(name: "problematic_message_6068", withExtension: "json")
+        guard let jsonData = jsonString.data(using: .utf8) else {
+            throw TestFailure("Failed to convert JSON string to UTF-8 data")
+        }
         let message = try JSONDecoder().decode(Message.self, from: jsonData)
         
         // Test each part for undecoded quoted-printable characters
