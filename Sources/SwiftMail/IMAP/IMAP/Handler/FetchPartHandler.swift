@@ -11,11 +11,17 @@ import NIOConcurrencyHelpers
 final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected message part data
     private var partData: Data = Data()
-	
-	private var parts: [MessagePart]?
-    
+
+    private var parts: [MessagePart]?
+
     /// Expected byte count for the streaming data
     private var expectedByteCount: Int?
+
+    /// Sequence number we are currently collecting for
+    private var currentSequence: SequenceNumber?
+
+    /// Whether we've already finished collecting our requested part
+    private var didFinishPart = false
     
     	/// Handle a tagged OK response by succeeding the promise with the collected data
 	/// - Parameter response: The tagged response
@@ -53,20 +59,39 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
     /// - Parameter fetchResponse: The fetch response to process
     private func processFetchResponse(_ fetchResponse: FetchResponse) {
         switch fetchResponse {
+            case .start(let seq):
+                // Only record the first sequence number and reset the buffer
+                if !didFinishPart {
+                    currentSequence = SequenceNumber(seq.rawValue)
+                    lock.withLock { self.partData.removeAll(keepingCapacity: true) }
+                }
+
             case .simpleAttribute(let attribute):
-                // Process simple attributes
-                processMessageAttribute(attribute)
-                
+                // Process simple attributes only for the current sequence
+                if !didFinishPart {
+                    processMessageAttribute(attribute)
+                }
+
             case .streamingBegin(_, let byteCount):
                 // Store the expected byte count
-                expectedByteCount = byteCount
-                
+                if !didFinishPart {
+                    expectedByteCount = byteCount
+                }
+
             case .streamingBytes(let data):
                 // Collect the streaming body data
-                lock.withLock {
-                    self.partData.append(Data(data.readableBytesView))
+                if !didFinishPart {
+                    lock.withLock {
+                        self.partData.append(Data(data.readableBytesView))
+                    }
                 }
-                
+
+            case .finish:
+                // Mark that we've finished collecting the requested part
+                if !didFinishPart {
+                    didFinishPart = true
+                }
+
             default:
                 break
         }
