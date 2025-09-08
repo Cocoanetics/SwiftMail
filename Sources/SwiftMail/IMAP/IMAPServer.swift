@@ -1005,6 +1005,15 @@ public actor IMAPServer {
         
         // Create the handler for this command
         let handler = CommandType.HandlerType.init(commandTag: tag, promise: resultPromise)
+
+        // Configure handler with expected identifiers when possible
+        if let partHandler = handler as? FetchPartHandler {
+            if let fetchCommand = command as? FetchMessagePartCommand<UID> {
+                partHandler.expectedUID = fetchCommand.identifier
+            } else if let fetchCommand = command as? FetchMessagePartCommand<SequenceNumber> {
+                partHandler.expectedSequence = fetchCommand.identifier
+            }
+        }
         
         // Get timeout value for this command
         let timeoutSeconds = command.timeoutSeconds

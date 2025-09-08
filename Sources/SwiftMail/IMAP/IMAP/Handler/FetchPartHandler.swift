@@ -11,11 +11,27 @@ import NIOConcurrencyHelpers
 final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected message part data
     private var partData: Data = Data()
-	
-	private var parts: [MessagePart]?
-    
+
+    private var parts: [MessagePart]?
+
     /// Expected byte count for the streaming data
     private var expectedByteCount: Int?
+
+    /// Sequence number we are currently collecting for
+    private var currentSequence: SequenceNumber?
+
+    /// The message identifier we expect to receive
+    var expectedSequence: SequenceNumber?
+    var expectedUID: UID?
+
+    /// Whether we're currently collecting data for the expected message
+    private var isCollecting = false
+
+    /// Sequence number of the last `.start` response
+    private var pendingSequence: SequenceNumber?
+
+    /// Whether we've already finished collecting our requested part
+    private var didFinishPart = false
     
     	/// Handle a tagged OK response by succeeding the promise with the collected data
 	/// - Parameter response: The tagged response
@@ -53,22 +69,54 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
     /// - Parameter fetchResponse: The fetch response to process
     private func processFetchResponse(_ fetchResponse: FetchResponse) {
         switch fetchResponse {
-            case .simpleAttribute(let attribute):
-                // Process simple attributes
+        case .start(let seq):
+            pendingSequence = SequenceNumber(seq.rawValue)
+
+            // If we know the expected sequence number, start collecting immediately
+            if let expectedSequence, expectedSequence == pendingSequence {
+                currentSequence = expectedSequence
+                isCollecting = true
+                lock.withLock { self.partData.removeAll(keepingCapacity: true) }
+            } else {
+                isCollecting = false
+            }
+
+        case .simpleAttribute(let attribute):
+            guard !didFinishPart else { return }
+
+            // If we're expecting a specific UID, wait until we see it before collecting
+            if let expectedUID, !isCollecting {
+                if case .uid(let uid) = attribute, UID(nio: uid) == expectedUID {
+                    currentSequence = pendingSequence
+                    isCollecting = true
+                    lock.withLock { self.partData.removeAll(keepingCapacity: true) }
+                }
+            }
+
+            if isCollecting {
                 processMessageAttribute(attribute)
-                
-            case .streamingBegin(_, let byteCount):
-                // Store the expected byte count
+            }
+
+        case .streamingBegin(_, let byteCount):
+            if isCollecting && !didFinishPart {
                 expectedByteCount = byteCount
-                
-            case .streamingBytes(let data):
-                // Collect the streaming body data
+            }
+
+        case .streamingBytes(let data):
+            if isCollecting && !didFinishPart {
                 lock.withLock {
                     self.partData.append(Data(data.readableBytesView))
                 }
-                
-            default:
-                break
+            }
+
+        case .finish:
+            if isCollecting && !didFinishPart {
+                didFinishPart = true
+                isCollecting = false
+            }
+
+        default:
+            break
         }
     }
     
