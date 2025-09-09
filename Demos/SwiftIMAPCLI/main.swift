@@ -135,7 +135,7 @@ do {
     
     // Get the latest 5 messages
         print("\nFetching the latest 5 bodies of messages...")
-        if let latestMessagesSet = mailboxStatus.latest(100) { // Reduced to 5 messages
+        if let latestMessagesSet = mailboxStatus.latest(5) {
             do {
                 print("\n📧 Latest Emails 📧")
                 var idx = 0
@@ -156,8 +156,7 @@ do {
                     }
                 }
             } catch {
-                print("❌ Error fetching message headers: \(error)")
-                print("⚠️  This might be due to malformed email headers in the mailbox")
+                print("❌ Error fetching message messages: \(error)")
             }
         } else {
             print("No messages found in INBOX")
