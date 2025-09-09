@@ -134,26 +134,34 @@ do {
     }
     
     // Get the latest 5 messages
-    print("\nFetching the latest 5 messages...")
-    if let latestMessagesSet = mailboxStatus.latest(5) { // Reduced to 5 messages
-        do {
-            print("\n📧 Latest Emails 📧")
-            var idx = 0
-            for try await header in server.fetchMessageInfos(using: latestMessagesSet) {
-                idx += 1
-                print("\n[\(idx)]")
-                print("Subject: \(header.subject ?? "No subject")")
-                print("From: \(header.from ?? "Unknown")")
-                print("Date: \(header.date?.description ?? "No date")")
-                print("---")
+        print("\nFetching the latest 5 bodies of messages...")
+        if let latestMessagesSet = mailboxStatus.latest(100) { // Reduced to 5 messages
+            do {
+                print("\n📧 Latest Emails 📧")
+                var idx = 0
+                for try await message in server.fetchMessages(using: latestMessagesSet) {
+                    idx += 1
+                    print("\n[\(idx)]")
+                     print("Subject: \(message.subject ?? "No subject")")
+                    print("From: \(message.from ?? "Unknown")")
+                    print("Date: \(message.date?.description ?? "No date")")
+                    print("---")
+
+                    if let body = message.textBody {
+                        print("Text Body:\n\(body.prefix(500))...") // Print first 500 characters of the body
+                    } else if let body = message.htmlBody {
+                        print("HTML Body:\n\(body.prefix(500))...") // Print first 500 characters of the body
+                    } else {
+                        print("No text html or text. body available")
+                    }
+                }
+            } catch {
+                print("❌ Error fetching message headers: \(error)")
+                print("⚠️  This might be due to malformed email headers in the mailbox")
             }
-        } catch {
-            print("❌ Error fetching message headers: \(error)")
-            print("⚠️  This might be due to malformed email headers in the mailbox")
+        } else {
+            print("No messages found in INBOX")
         }
-    } else {
-        print("No messages found in INBOX")
-    }
 	
 	// search for unread message
 	print("\nSearching for unread messages...")
