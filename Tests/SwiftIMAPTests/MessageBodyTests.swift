@@ -151,3 +151,67 @@ func testDecodesMIMEEncodedAttachmentFilename() throws {
         #expect(parts.first?.filename == "HC_1161254447.pdf")
         #expect(parts.first?.suggestedFilename == "HC_1161254447.pdf")
 }
+
+@Test
+func testFetchMessagesSequentialOrder() async throws {
+        final class FakeServer {
+            var callOrder: [String] = []
+
+            func fetchMessageInfo<T: SwiftMail.MessageIdentifier>(for identifier: T) async throws -> MessageInfo? {
+                callOrder.append("info")
+                return MessageInfo(
+                    sequenceNumber: SwiftMail.SequenceNumber(1),
+                    uid: SwiftMail.UID(1),
+                    subject: nil,
+                    from: nil,
+                    to: [],
+                    cc: [],
+                    date: Date(),
+                    flags: []
+                )
+            }
+
+            func fetchMessage(from header: MessageInfo) async throws -> Message {
+                callOrder.append("message")
+                return Message(header: header, parts: [])
+            }
+
+            nonisolated func fetchMessages<T: SwiftMail.MessageIdentifier>(using identifierSet: SwiftMail.MessageIdentifierSet<T>) -> AsyncThrowingStream<Message, Error> {
+                AsyncThrowingStream { continuation in
+                    let task = Task {
+                        do {
+                            guard !identifierSet.isEmpty else {
+                                throw IMAPError.emptyIdentifierSet
+                            }
+
+                            for identifier in identifierSet.toArray() {
+                                try Task.checkCancellation()
+                                if let header = try await fetchMessageInfo(for: identifier) {
+                                    let email = try await fetchMessage(from: header)
+                                    continuation.yield(email)
+                                }
+                            }
+
+                            continuation.finish()
+                        } catch {
+                            continuation.finish(throwing: error)
+                        }
+                    }
+
+                    continuation.onTermination = { @Sendable _ in
+                        task.cancel()
+                    }
+                }
+            }
+        }
+
+        let server = FakeServer()
+        let set = SwiftMail.MessageIdentifierSet<SwiftMail.SequenceNumber>([SwiftMail.SequenceNumber(1), SwiftMail.SequenceNumber(2)])
+        var messages: [Message] = []
+        for try await message in server.fetchMessages(using: set) {
+            messages.append(message)
+        }
+
+        #expect(messages.count == 2)
+        #expect(server.callOrder == ["info", "message", "info", "message"])
+}

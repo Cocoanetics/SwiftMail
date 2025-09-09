@@ -609,9 +609,9 @@ public actor IMAPServer {
     /// Fetch complete messages with all parts using a message identifier set as a stream
     ///
     /// This method returns an `AsyncThrowingStream` that yields complete `Message` objects one at a time.
-    /// It uses `fetchMessageInfos` to get headers and then fetches all body parts for each message.
-    /// The sequence supports cancellation, allowing the caller to stop fetching early
-    /// without waiting for all messages to be downloaded.
+    /// It retrieves each message's headers and body sequentially, ensuring IMAP commands
+    /// are executed in strict order. The sequence supports cancellation, allowing the
+    /// caller to stop fetching early without waiting for all messages to be downloaded.
     ///
     /// - Parameter identifierSet: The set of message identifiers to fetch
     /// - Returns: An `AsyncThrowingStream` yielding `Message` instances with all parts
@@ -623,10 +623,12 @@ public actor IMAPServer {
                         throw IMAPError.emptyIdentifierSet
                     }
 
-                    for try await header in fetchMessageInfos(using: identifierSet) {
+                    for identifier in identifierSet.toArray() {
                         try Task.checkCancellation()
-                        let email = try await fetchMessage(from: header)
-                        continuation.yield(email)
+                        if let header = try await fetchMessageInfo(for: identifier) {
+                            let email = try await fetchMessage(from: header)
+                            continuation.yield(email)
+                        }
                     }
 
                     continuation.finish()
