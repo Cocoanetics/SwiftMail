@@ -13,13 +13,13 @@ struct StringUtilitiesTests {
         #expect("document.txt".sanitizedFileName() == "document.txt")
         #expect("image.jpg".sanitizedFileName() == "image.jpg")
         
-        // Test invalid characters are replaced
-        #expect("file:with/invalid\\chars?.txt".sanitizedFileName() == "file_with_invalid_chars_.txt")
-        #expect("doc*with|special<chars>.pdf".sanitizedFileName() == "doc_with_special_chars_.pdf")
-        
-        // Test spaces are replaced with underscores
-        #expect("my document.pdf".sanitizedFileName() == "my_document.pdf")
-        #expect("file with spaces.txt".sanitizedFileName() == "file_with_spaces.txt")
+        // Test invalid characters are removed
+        #expect("file:with/invalid\\chars?.txt".sanitizedFileName() == "filewithinvalidchars.txt")
+        #expect("doc*with|special<chars>.pdf".sanitizedFileName() == "docwithspecialchars.pdf")
+
+        // Test spaces are preserved exactly
+        #expect("my document.pdf".sanitizedFileName() == "my document.pdf")
+        #expect("file   with  spaces.txt".sanitizedFileName() == "file   with  spaces.txt")
         
         // Test empty string
         #expect("".sanitizedFileName() == "")
