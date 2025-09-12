@@ -9,8 +9,10 @@ import Logging
 
 import NIOConcurrencyHelpers
 
-#if os(Linux)
+#if canImport(Glibc)
 import Glibc
+#elseif canImport(Musl)
+import Musl
 #endif
 
 /**
