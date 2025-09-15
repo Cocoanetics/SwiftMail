@@ -110,6 +110,50 @@ func testFindBodiesExcludesAttachments() throws {
 }
 
 @Test
+func testPartsWithContentIDAreCategorized() throws {
+        let header = MessageInfo(
+            sequenceNumber: SequenceNumber(1),
+            uid: UID(1),
+            subject: "Test Email",
+            from: "test@example.com",
+            to: ["recipient@example.com"],
+            cc: [],
+            date: Date(),
+            flags: []
+        )
+
+        let cidPart = MessagePart(
+            section: Section([1]),
+            contentType: "image/jpeg",
+            disposition: nil,
+            encoding: "base64",
+            filename: "image001.jpg",
+            contentId: "image001.jpg@01DC23D1.C00BAD40",
+            data: Data()
+        )
+
+        let attachmentPart = MessagePart(
+            section: Section([2]),
+            contentType: "text/plain",
+            disposition: "attachment",
+            encoding: "base64",
+            filename: "file.txt",
+            contentId: nil,
+            data: Data()
+        )
+
+        let message = Message(header: header, parts: [cidPart, attachmentPart])
+
+        let attachments = message.attachments
+        #expect(attachments.count == 1)
+        #expect(attachments.first?.filename == "file.txt")
+
+        let cids = message.cids
+        #expect(cids.count == 1)
+        #expect(cids.first?.contentId == "image001.jpg@01DC23D1.C00BAD40")
+}
+
+@Test
 func testGetTextContentFromPart() throws {
         let htmlPart = MessagePart(
             section: Section([1]),
@@ -150,6 +194,30 @@ func testDecodesMIMEEncodedAttachmentFilename() throws {
         #expect(parts.count == 1)
         #expect(parts.first?.filename == "HC_1161254447.pdf")
         #expect(parts.first?.suggestedFilename == "HC_1161254447.pdf")
+}
+
+@Test
+func testUsesNameParameterForFilename() throws {
+        var params = OrderedDictionary<String, String>()
+        params["name"] = "image001.jpg"
+        let fields = BodyStructure.Fields(
+            parameters: params,
+            id: "image001.jpg@cid",
+            contentDescription: nil,
+            encoding: .base64,
+            octetCount: 0
+        )
+        let single = BodyStructure.Singlepart(
+            kind: .basic(.init(topLevel: "image", sub: "jpeg")),
+            fields: fields,
+            extension: nil
+        )
+        let structure = BodyStructure.singlepart(single)
+
+        let parts = Array<MessagePart>(structure)
+        #expect(parts.count == 1)
+        #expect(parts.first?.filename == "image001.jpg")
+        #expect(parts.first?.contentId == "image001.jpg@cid")
 }
 
 @Test
