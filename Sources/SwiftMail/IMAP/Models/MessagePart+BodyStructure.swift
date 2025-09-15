@@ -45,9 +45,10 @@ extension Array where Element == MessagePart {
             var filename: String? = nil
             let encoding: String? = part.fields.encoding?.debugDescription
             
-            // Check Content-Type parameters for filename first
+            // Check Content-Type parameters for filename or name first
             for (key, value) in part.fields.parameters {
-                if key.lowercased() == "filename" && !value.isEmpty {
+                let lowerKey = key.lowercased()
+                if (lowerKey == "filename" || lowerKey == "name"), !value.isEmpty {
                     filename = value
                     break
                 }
@@ -75,9 +76,8 @@ extension Array where Element == MessagePart {
                     // Remove angle brackets if present (common in Content-ID)
                     let cleanId = idString.trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
                     if !cleanId.isEmpty {
-                        // Generate a filename based on content ID and MIME type
-                        let fileExtension = String.fileExtension(for: contentType) ?? "dat"
-                        filename = "attachment-\(cleanId).\(fileExtension)"
+                        // Use the content ID directly as the filename
+                        filename = cleanId
                     }
                 }
             }
