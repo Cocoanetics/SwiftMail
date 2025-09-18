@@ -269,7 +269,7 @@ public actor IMAPServer {
         let tag = generateCommandTag()
 
         let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
-        var credentialBuffer = makeXOAUTH2InitialResponseBuffer(email: email, accessToken: accessToken)
+        let credentialBuffer = makeXOAUTH2InitialResponseBuffer(email: email, accessToken: accessToken)
         let handler = XOAUTH2AuthenticationHandler(
             commandTag: tag,
             promise: handlerPromise,
@@ -284,7 +284,6 @@ public actor IMAPServer {
         if expectsChallenge {
             initialResponse = nil
         } else {
-            credentialBuffer = makeXOAUTH2InitialResponseBuffer(email: email, accessToken: accessToken)
             initialResponse = InitialResponse(credentialBuffer)
         }
 
