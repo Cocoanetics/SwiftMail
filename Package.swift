@@ -68,7 +68,11 @@ let package = Package(
             name: "SwiftIMAPTests",
             dependencies: [
                 "SwiftMail",
-                .product(name: "Testing", package: "swift-testing")
+                .product(name: "Testing", package: "swift-testing"),
+                .product(name: "NIO", package: "swift-nio"),
+                .product(name: "NIOEmbedded", package: "swift-nio"),
+                .product(name: "NIOIMAP", package: "swift-nio-imap"),
+                .product(name: "Logging", package: "swift-log")
             ],
             resources: [
                 .copy("Resources")
