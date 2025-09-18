@@ -166,13 +166,7 @@ public actor IMAPServer {
         // The greeting handler now returns capabilities if they were in the greeting
         let greetingCapabilities: [Capability] = try await executeHandlerOnly(handlerType: IMAPGreetingHandler.self, timeoutSeconds: 5)
         
-        // If we got capabilities from the greeting, use them
-        if !greetingCapabilities.isEmpty {
-            self.capabilities = Set(greetingCapabilities)
-        } else {
-            // Otherwise, fetch capabilities explicitly
-            try await fetchCapabilities()
-        }
+        try await refreshCapabilities(using: greetingCapabilities)
     }
     
     /**
@@ -190,6 +184,14 @@ public actor IMAPServer {
         let serverCapabilities = try await executeCommand(command)
         self.capabilities = Set(serverCapabilities)
         return serverCapabilities
+    }
+
+    private func refreshCapabilities(using reportedCapabilities: [Capability]) async throws {
+        if !reportedCapabilities.isEmpty {
+            self.capabilities = Set(reportedCapabilities)
+        } else {
+            try await fetchCapabilities()
+        }
     }
     
     /**
@@ -230,14 +232,7 @@ public actor IMAPServer {
     public func login(username: String, password: String) async throws {
         let command = LoginCommand(username: username, password: password)
         let loginCapabilities = try await executeCommand(command)
-
-        // If we got capabilities from the login response, use them
-        if !loginCapabilities.isEmpty {
-            self.capabilities = Set(loginCapabilities)
-        } else {
-            // Otherwise, fetch capabilities explicitly
-            try await fetchCapabilities()
-        }
+        try await refreshCapabilities(using: loginCapabilities)
     }
 
     /// Performs XOAUTH2 authentication for the current IMAP connection.
@@ -280,35 +275,26 @@ public actor IMAPServer {
 
         try await channel.pipeline.addHandler(handler).get()
 
-        let initialResponse: InitialResponse?
-        if expectsChallenge {
-            initialResponse = nil
-        } else {
-            initialResponse = InitialResponse(credentialBuffer)
-        }
+        let initialResponse = expectsChallenge ? nil : InitialResponse(credentialBuffer)
 
         let command = TaggedCommand(tag: tag, command: .authenticate(mechanism: mechanism, initialResponse: initialResponse))
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
 
-        let timeoutSeconds = 10
-        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
-            self.logger.warning("XOAUTH2 authentication timed out after \(timeoutSeconds) seconds")
+        let authenticationTimeoutSeconds = 10
+        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(authenticationTimeoutSeconds))) {
+            self.logger.warning("XOAUTH2 authentication timed out after \(authenticationTimeoutSeconds) seconds")
             handlerPromise.fail(IMAPError.timeout)
         }
 
         do {
             try await channel.writeAndFlush(wrapped).get()
-            let capabilities = try await handlerPromise.futureResult.get()
+            let refreshedCapabilities = try await handlerPromise.futureResult.get()
 
             scheduledTask.cancel()
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
 
-            if !capabilities.isEmpty {
-                self.capabilities = Set(capabilities)
-            } else {
-                try await fetchCapabilities()
-            }
+            try await refreshCapabilities(using: refreshedCapabilities)
         } catch {
             scheduledTask.cancel()
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
