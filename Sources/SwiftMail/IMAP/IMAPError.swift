@@ -20,6 +20,8 @@ public enum IMAPError: Error {
     case expungeFailed(String)
     case moveFailed(String)
     case commandNotSupported(String)
+    case authFailed(String)
+    case unsupportedAuthMechanism(String)
 }
 
 // Add CustomStringConvertible conformance for better error messages
@@ -56,6 +58,10 @@ extension IMAPError: CustomStringConvertible {
             return "Move failed: \(reason)"
         case .commandNotSupported(let reason):
             return "Command not supported: \(reason)"
+        case .authFailed(let reason):
+            return "Authentication failed: \(reason)"
+        case .unsupportedAuthMechanism(let reason):
+            return "Unsupported authentication mechanism: \(reason)"
         }
     }
 }
@@ -98,9 +104,13 @@ extension IMAPError: LocalizedError {
             return "Failed to move messages: \(reason)"
         case .commandNotSupported(let reason):
             return "The requested command is not supported by the server: \(reason)"
+        case .authFailed(let reason):
+            return "The IMAP authentication failed: \(reason)"
+        case .unsupportedAuthMechanism(let reason):
+            return "The server does not support the requested authentication mechanism: \(reason)"
         }
     }
-    
+
     public var recoverySuggestion: String? {
         switch self {
         case .connectionFailed:
@@ -117,8 +127,12 @@ extension IMAPError: LocalizedError {
             return "Make sure to select a mailbox before performing this operation."
         case .commandNotSupported:
             return "This operation may not be supported by your email provider."
+        case .authFailed:
+            return "Verify your OAuth credentials or request a fresh access token."
+        case .unsupportedAuthMechanism:
+            return "Check that your email provider supports XOAUTH2 for IMAP connections."
         default:
             return "Check the error details and try again."
         }
     }
-} 
+}

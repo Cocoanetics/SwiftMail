@@ -230,13 +230,96 @@ public actor IMAPServer {
     public func login(username: String, password: String) async throws {
         let command = LoginCommand(username: username, password: password)
         let loginCapabilities = try await executeCommand(command)
-        
+
         // If we got capabilities from the login response, use them
         if !loginCapabilities.isEmpty {
             self.capabilities = Set(loginCapabilities)
         } else {
             // Otherwise, fetch capabilities explicitly
             try await fetchCapabilities()
+        }
+    }
+
+    /// Performs XOAUTH2 authentication for the current IMAP connection.
+    /// - Parameters:
+    ///   - email: The full mailbox address to authenticate as.
+    ///   - accessToken: The OAuth 2.0 access token.
+    /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise XOAUTH2 or ``IMAPError.authFailed`` when authentication fails.
+    public func authenticateXOAUTH2(email: String, accessToken: String) async throws {
+        let mechanism = AuthenticationMechanism("XOAUTH2")
+        let xoauthCapability = Capability.authenticate(mechanism)
+
+        guard capabilities.contains(xoauthCapability) else {
+            throw IMAPError.unsupportedAuthMechanism("XOAUTH2 not advertised by server")
+        }
+
+        // Ensure we have an active channel before proceeding
+        clearInvalidChannel()
+
+        if self.channel == nil {
+            logger.info("Channel is nil, re-establishing connection before authentication")
+            try await connect()
+        }
+
+        guard let channel = self.channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
+        }
+
+        let expectsChallenge = !capabilities.contains(.saslIR)
+        let tag = generateCommandTag()
+
+        let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
+        var credentialBuffer = makeXOAUTH2InitialResponseBuffer(email: email, accessToken: accessToken)
+        let handler = XOAUTH2AuthenticationHandler(
+            commandTag: tag,
+            promise: handlerPromise,
+            credentials: credentialBuffer,
+            expectsChallenge: expectsChallenge,
+            logger: logger
+        )
+
+        try await channel.pipeline.addHandler(handler).get()
+
+        let initialResponse: InitialResponse?
+        if expectsChallenge {
+            initialResponse = nil
+        } else {
+            credentialBuffer = makeXOAUTH2InitialResponseBuffer(email: email, accessToken: accessToken)
+            initialResponse = InitialResponse(credentialBuffer)
+        }
+
+        let command = TaggedCommand(tag: tag, command: .authenticate(mechanism: mechanism, initialResponse: initialResponse))
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
+
+        let timeoutSeconds = 10
+        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+            self.logger.warning("XOAUTH2 authentication timed out after \(timeoutSeconds) seconds")
+            handlerPromise.fail(IMAPError.timeout)
+        }
+
+        do {
+            try await channel.writeAndFlush(wrapped).get()
+            let capabilities = try await handlerPromise.futureResult.get()
+
+            scheduledTask.cancel()
+            await handleConnectionTerminationInResponses(handler.untaggedResponses)
+            duplexLogger.flushInboundBuffer()
+
+            if !capabilities.isEmpty {
+                self.capabilities = Set(capabilities)
+            } else {
+                try await fetchCapabilities()
+            }
+        } catch {
+            scheduledTask.cancel()
+            await handleConnectionTerminationInResponses(handler.untaggedResponses)
+            duplexLogger.flushInboundBuffer()
+
+            if !handler.isCompleted {
+                try? await channel.pipeline.removeHandler(handler)
+            }
+
+            throw error
         }
     }
     
@@ -974,6 +1057,18 @@ public actor IMAPServer {
                 break
             }
         }
+    }
+
+    private func makeXOAUTH2InitialResponseBuffer(email: String, accessToken: String) -> ByteBuffer {
+        var buffer = ByteBufferAllocator().buffer(capacity: email.utf8.count + accessToken.utf8.count + 32)
+        buffer.writeString("user=")
+        buffer.writeString(email)
+        buffer.writeInteger(UInt8(0x01))
+        buffer.writeString("auth=Bearer ")
+        buffer.writeString(accessToken)
+        buffer.writeInteger(UInt8(0x01))
+        buffer.writeInteger(UInt8(0x01))
+        return buffer
     }
     
     /**
