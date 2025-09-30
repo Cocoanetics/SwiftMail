@@ -129,6 +129,9 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
             // Handle cc addresses - capture all recipients
             header.cc = envelope.cc.map { formatAddress($0) }
+
+            // Handle bcc addresses - capture all recipients
+            header.bcc = envelope.bcc.map { formatAddress($0) }
             
             if let date = envelope.date {
                 let dateString = String(date)
