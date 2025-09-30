@@ -22,6 +22,9 @@ public struct MessageInfo: Codable, Sendable {
 
     /// The CC recipients of the message
     public var cc: [String] = []
+
+    /// The BCC recipients of the message
+    public var bcc: [String] = []
     
     /// The date of the message
     public var date: Date?
@@ -37,6 +40,21 @@ public struct MessageInfo: Codable, Sendable {
     
     /// Additional header fields
     public var additionalFields: [String: String]?
+
+    private enum CodingKeys: String, CodingKey {
+        case sequenceNumber
+        case uid
+        case subject
+        case from
+        case to
+        case cc
+        case bcc
+        case date
+        case messageId
+        case flags
+        case parts
+        case additionalFields
+    }
     
     /// Initialize a new email header
     /// - Parameters:
@@ -58,6 +76,7 @@ public struct MessageInfo: Codable, Sendable {
         from: String? = nil,
         to: [String] = [],
         cc: [String] = [],
+        bcc: [String] = [],
         date: Date? = nil,
         messageId: String? = nil,
         flags: [Flag] = [],
@@ -70,10 +89,45 @@ public struct MessageInfo: Codable, Sendable {
         self.from = from
         self.to = to
         self.cc = cc
+        self.bcc = bcc
         self.date = date
         self.messageId = messageId
         self.flags = flags
         self.parts = parts
         self.additionalFields = additionalFields
+    }
+}
+
+public extension MessageInfo {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        let sequenceNumber = try container.decode(SequenceNumber.self, forKey: .sequenceNumber)
+        let uid = try container.decodeIfPresent(UID.self, forKey: .uid)
+        let subject = try container.decodeIfPresent(String.self, forKey: .subject)
+        let from = try container.decodeIfPresent(String.self, forKey: .from)
+        let to = try container.decodeIfPresent([String].self, forKey: .to) ?? []
+        let cc = try container.decodeIfPresent([String].self, forKey: .cc) ?? []
+        let bcc = try container.decodeIfPresent([String].self, forKey: .bcc) ?? []
+        let date = try container.decodeIfPresent(Date.self, forKey: .date)
+        let messageId = try container.decodeIfPresent(String.self, forKey: .messageId)
+        let flags = try container.decodeIfPresent([Flag].self, forKey: .flags) ?? []
+        let parts = try container.decodeIfPresent([MessagePart].self, forKey: .parts) ?? []
+        let additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
+
+        self.init(
+            sequenceNumber: sequenceNumber,
+            uid: uid,
+            subject: subject,
+            from: from,
+            to: to,
+            cc: cc,
+            bcc: bcc,
+            date: date,
+            messageId: messageId,
+            flags: flags,
+            parts: parts,
+            additionalFields: additionalFields
+        )
     }
 }
