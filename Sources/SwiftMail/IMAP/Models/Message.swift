@@ -37,7 +37,12 @@ public struct Message: Codable, Sendable {
     public var cc: [String] {
         return header.cc
     }
-    
+
+    /// The BCC recipients of the message
+    public var bcc: [String] {
+        return header.bcc
+    }
+
     /// The date of the message
     public var date: Date? {
         return header.date

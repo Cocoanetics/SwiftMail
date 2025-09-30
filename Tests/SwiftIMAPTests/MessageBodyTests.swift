@@ -15,10 +15,11 @@ func testFindHtmlBodyWithCharset() throws {
             from: "test@example.com",
             to: ["recipient@example.com"],
             cc: [],
+            bcc: ["hidden@example.com"],
             date: Date(),
             flags: []
         )
-        
+
         let htmlPart = MessagePart(
             section: Section([1]),
             contentType: "text/html; charset=utf-8",
@@ -61,6 +62,9 @@ func testFindHtmlBodyWithCharset() throws {
         let textBody = message.textBody
         #expect(textBody != nil)
         #expect(textBody?.contains("Test plain text content") == true)
+
+        // Verify BCC recipients are exposed
+        #expect(message.bcc == ["hidden@example.com"])
 }
 
 @Test
