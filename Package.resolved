@@ -66,7 +66,7 @@
     {
       "identity" : "swift-nio-imap",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/OlofT/swift-nio-imap",
+      "location" : "https://github.com/apple/swift-nio-imap",
       "state" : {
         "branch" : "main",
         "revision" : "ad065b2f307d11c34717406decc893d9ed1c9d7c"
