@@ -15,6 +15,7 @@ public enum IMAPError: Error {
     case invalidArgument(String)
     case emptyIdentifierSet
     case commandFailed(String)
+    case createFailed(String)
     case copyFailed(String)
     case storeFailed(String)
     case expungeFailed(String)
@@ -48,6 +49,8 @@ extension IMAPError: CustomStringConvertible {
             return "Empty identifier set provided"
         case .commandFailed(let reason):
             return "Command failed: \(reason)"
+        case .createFailed(let reason):
+            return "Create mailbox failed: \(reason)"
         case .copyFailed(let reason):
             return "Copy failed: \(reason)"
         case .storeFailed(let reason):
@@ -94,6 +97,8 @@ extension IMAPError: LocalizedError {
             return "An empty set of message identifiers was provided"
         case .commandFailed(let reason):
             return "The IMAP command failed to execute: \(reason)"
+        case .createFailed(let reason):
+            return "Failed to create mailbox: \(reason)"
         case .copyFailed(let reason):
             return "Failed to copy messages: \(reason)"
         case .storeFailed(let reason):

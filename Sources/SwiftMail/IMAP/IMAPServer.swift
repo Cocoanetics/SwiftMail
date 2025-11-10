@@ -342,13 +342,30 @@ public actor IMAPServer {
     }
     
     // MARK: - Mailbox Commands
-    
+
+    /**
+     Create a new mailbox on the server
+
+     This method creates a new mailbox (folder) with the specified name.
+     Use forward slashes to create hierarchical mailboxes (e.g., "Work/Projects").
+
+     - Parameter mailboxName: The name of the mailbox to create
+     - Throws:
+     - `IMAPError.commandFailed` if the mailbox cannot be created
+     - `IMAPError.connectionFailed` if not connected
+     - Note: Logs mailbox creation at debug level
+     */
+    public func createMailbox(_ mailboxName: String) async throws {
+        let command = CreateMailboxCommand(mailboxName: mailboxName)
+        try await executeCommand(command)
+    }
+
     /**
      Select a mailbox
-     
+
      This method selects a mailbox and makes it the current mailbox for subsequent
      operations. Only one mailbox can be selected at a time.
-     
+
      - Parameter mailboxName: The name of the mailbox to select
      - Returns: Status information about the selected mailbox
      - Throws:
