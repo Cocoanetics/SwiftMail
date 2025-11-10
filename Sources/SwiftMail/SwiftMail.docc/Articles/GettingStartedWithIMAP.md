@@ -229,6 +229,34 @@ Remove messages marked for deletion:
 try await imapServer.expunge()
 ```
 
+### Creating Draft Messages
+
+Compose a new ``Email`` and store it directly in the Drafts mailbox without going through SMTP:
+
+```swift
+let draft = Email(
+    sender: EmailAddress(name: "Me", address: "me@example.com"),
+    recipients: [],
+    subject: "Follow up",
+    textBody: "Add more details here."
+)
+
+let appendResult = try await imapServer.createDraft(from: draft)
+if let uid = appendResult.firstUID {
+    print("Draft stored with UID \(uid.value)")
+}
+```
+
+Need to target a different mailbox or control the flags? Use the lower-level helper:
+
+```swift
+try await imapServer.append(
+    email: draft,
+    to: "Ideas/Drafts",
+    flags: [.seen]
+)
+```
+
 ## Mailbox Management
 
 ### Closing a Mailbox

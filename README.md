@@ -11,6 +11,7 @@ Handles IMAP server connections for retrieving and managing emails. Implements k
 - Mailbox operations (SELECT, LIST, COPY, MOVE)
 - Message operations (FETCH headers/parts/structure, STORE flags)
 - Special-use mailbox support
+- Creating new messages via APPEND (draft-friendly)
 - TLS encryption
 - UID-based operations via UIDPLUS
 
@@ -103,6 +104,34 @@ ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift run SwiftSMTPCLI
 The debug logging options:
 - `ENABLE_DEBUG_OUTPUT=1`: Enables trace level logging
 - `OS_ACTIVITY_DT_MODE=debug`: Formats debug output in a readable way
+
+## Creating Drafts via IMAP
+
+SwiftMail lets you build a draft with the shared `Email` model (also used by SMTP) and store it directly on the server:
+
+```swift
+let draft = Email(
+    sender: EmailAddress(name: "Me", address: "me@example.com"),
+    recipients: [],
+    subject: "Quarterly update",
+    textBody: "Jot down your notes here…"
+)
+
+let appendResult = try await imapServer.createDraft(from: draft)
+if let uid = appendResult.firstUID {
+    print("Draft stored with UID \(uid.value)")
+}
+```
+
+Need a custom target mailbox or additional flags? Use the lower-level helper:
+
+```swift
+try await imapServer.append(
+    email: draft,
+    to: "Archive/Drafts",
+    flags: [.seen]
+)
+```
 
 ## Requirements
 

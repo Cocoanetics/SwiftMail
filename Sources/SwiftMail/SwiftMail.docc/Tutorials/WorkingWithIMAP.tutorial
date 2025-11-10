@@ -60,6 +60,12 @@
                 
                 @Code(name: "IMAPExample.swift", file: "imap-8.swift")
             }
+
+            @Step {
+                Create a new draft by appending a fresh email via IMAP.
+                
+                @Code(name: "IMAPExample.swift", file: "imap-10.swift")
+            }
 			
 			@Step {
 				Logout and close the connection to maintain server resources and ensure a clean disconnection.

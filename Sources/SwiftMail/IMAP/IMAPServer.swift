@@ -1151,6 +1151,116 @@ public actor IMAPServer {
             throw error
         }
     }
+
+    private func append(rawMessage: String, to mailbox: String, flags: [Flag], internalDate: Date?) async throws -> AppendResult {
+        // Ensure we have an active channel
+        clearInvalidChannel()
+        if self.channel == nil {
+            try await connect()
+        }
+
+        guard let channel = self.channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
+        }
+
+        var messageBuffer = channel.allocator.buffer(capacity: rawMessage.utf8.count)
+        messageBuffer.writeString(rawMessage)
+
+        var mailboxBuffer = channel.allocator.buffer(capacity: mailbox.utf8.count)
+        mailboxBuffer.writeString(mailbox)
+        let mailboxName = MailboxName(mailboxBuffer)
+
+        let nioFlags = flags.map { $0.toNIO() }
+        let serverDate = internalDate.flatMap(makeInternalDate(from:))
+
+        return try await sendAppendCommand(
+            on: channel,
+            mailbox: mailboxName,
+            messageBuffer: messageBuffer,
+            flagList: nioFlags,
+            internalDate: serverDate
+        )
+    }
+
+    private func sendAppendCommand(
+        on channel: Channel,
+        mailbox: MailboxName,
+        messageBuffer: ByteBuffer,
+        flagList: [NIOIMAPCore.Flag],
+        internalDate: ServerMessageDate?,
+        timeoutSeconds: Int = 30
+    ) async throws -> AppendResult {
+        let promise = channel.eventLoop.makePromise(of: AppendResult.self)
+        let tag = generateCommandTag()
+        let handler = AppendHandler(commandTag: tag, promise: promise)
+
+        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+            self.logger.warning("APPEND command timed out after \(timeoutSeconds) seconds")
+            promise.fail(IMAPError.timeout)
+        }
+
+        do {
+            try await channel.pipeline.addHandler(handler).get()
+
+            let appendOptions = AppendOptions(flagList: flagList, internalDate: internalDate)
+            let metadata = AppendMessage(options: appendOptions, data: AppendData(byteCount: messageBuffer.readableBytes))
+
+            try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.start(tag: tag, appendingTo: mailbox)))).get()
+            try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.beginMessage(message: metadata)))).get()
+            try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.messageBytes(messageBuffer)))).get()
+            try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.endMessage))).get()
+            try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.append(.finish))).get()
+
+            let result = try await promise.futureResult.get()
+
+            scheduledTask.cancel()
+            await handleConnectionTerminationInResponses(handler.untaggedResponses)
+            duplexLogger.flushInboundBuffer()
+
+            return result
+        } catch {
+            scheduledTask.cancel()
+            await handleConnectionTerminationInResponses(handler.untaggedResponses)
+            duplexLogger.flushInboundBuffer()
+
+            promise.fail(error)
+            throw error
+        }
+    }
+
+    private func makeInternalDate(from date: Date) -> ServerMessageDate? {
+        var calendar = Calendar(identifier: .gregorian)
+        let timeZone = TimeZone.current
+        calendar.timeZone = timeZone
+
+        let components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
+        guard
+            let year = components.year,
+            let month = components.month,
+            let day = components.day,
+            let hour = components.hour,
+            let minute = components.minute
+        else {
+            return nil
+        }
+
+        let second = components.second ?? 0
+        let zoneMinutes = timeZone.secondsFromGMT(for: date) / 60
+
+        guard let serverComponents = ServerMessageDate.Components(
+            year: year,
+            month: month,
+            day: day,
+            hour: hour,
+            minute: minute,
+            second: second,
+            timeZoneMinutes: zoneMinutes
+        ) else {
+            return nil
+        }
+
+        return ServerMessageDate(serverComponents)
+    }
     
     /**
      Execute a handler without sending a command (for server-initiated responses like greeting)
@@ -1580,9 +1690,63 @@ extension IMAPServer {
      
      - Parameter identifierSet: The set of messages to save as drafts
      - Throws: An error if the operation fails or drafts folder is not found
-     */
+    */
     public func saveAsDraft<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
         try await store(flags: [.draft], on: identifierSet, operation: .add)
         try await move(messages: identifierSet, to: try draftsFolder.name)
+    }
+
+    /**
+     Append a fully composed email to a mailbox.
+     
+     This helper builds the MIME body using ``Email/constructContent(use8BitMIME:)``
+     and streams it to the server using the IMAP `APPEND` command.
+     
+     - Parameters:
+        - email: The email to append.
+        - mailbox: The destination mailbox path (e.g. "Drafts").
+        - flags: Optional message flags to set during append.
+        - internalDate: Optional internal date to store on the server. Defaults to the server-provided date.
+     - Returns: ``AppendResult`` describing server-assigned identifiers.
+     */
+    @discardableResult
+    public func append(email: Email, to mailbox: String, flags: [Flag] = [], internalDate: Date? = nil) async throws -> AppendResult {
+        guard !mailbox.isEmpty else {
+            throw IMAPError.invalidArgument("Mailbox name must not be empty")
+        }
+
+        var content = email.constructContent(use8BitMIME: true)
+        if !content.hasSuffix("\r\n") {
+            content.append("\r\n")
+        }
+
+        return try await append(rawMessage: content, to: mailbox, flags: flags, internalDate: internalDate)
+    }
+
+    /**
+     Create a brand-new draft message by appending the provided email to the drafts mailbox.
+     
+     The method automatically sets the `\\Draft` flag and relies on the server's drafts mailbox if no custom mailbox is supplied.
+     
+     - Parameters:
+        - email: The email content to store as a draft.
+        - mailbox: Optional custom mailbox path. Defaults to the detected drafts mailbox.
+        - date: Optional internal date to stamp on the message.
+        - additionalFlags: Extra flags to include alongside `\\Draft`.
+     - Returns: ``AppendResult`` describing server-assigned identifiers.
+     */
+    @discardableResult
+    public func createDraft(from email: Email, in mailbox: String? = nil, date: Date? = nil, additionalFlags: [Flag] = []) async throws -> AppendResult {
+        var flags: [Flag] = [.draft]
+        flags.append(contentsOf: additionalFlags)
+
+        let targetMailbox: String
+        if let mailbox {
+            targetMailbox = mailbox
+        } else {
+            targetMailbox = try draftsFolder.name
+        }
+
+        return try await append(email: email, to: targetMailbox, flags: flags, internalDate: date)
     }
 }
