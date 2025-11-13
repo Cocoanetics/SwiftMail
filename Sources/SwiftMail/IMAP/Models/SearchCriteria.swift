@@ -48,6 +48,9 @@ public indirect enum SearchCriteria: Sendable {
     /** Matches messages larger than the specified size in bytes. */
     case larger(Int)
     
+    /** Matches messages whose metadata changed after a given mod-sequence number.. */
+    case modSeq(SearchModificationSequence)
+    
     /** Matches messages that have the `\Recent` flag set but not the `\Seen` flag. */
     case new
     
@@ -179,6 +182,8 @@ public indirect enum SearchCriteria: Sendable {
             return .keyword(stringToKeyword(value))
         case .larger(let size):
             return .messageSizeLarger(size)
+        case .modSeq(let searchModificationSequence):
+            return .modificationSequence(searchModificationSequence)
         case .new:
             return .new
         case .not(let criteria):
