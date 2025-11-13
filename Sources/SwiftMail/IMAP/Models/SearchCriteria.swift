@@ -12,6 +12,9 @@ public indirect enum SearchCriteria: Sendable {
     /** Matches all messages in the mailbox. */
     case all
     
+    /** Matches messages that match all specified search criterias. */
+    case and([SearchCriteria])
+    
     /** Matches messages with the `\Answered` flag set. */
     case answered
     
@@ -155,6 +158,8 @@ public indirect enum SearchCriteria: Sendable {
         switch self {
         case .all:
             return .all
+        case .and(let criterias):
+            return .and(criterias.map { $0.toNIO() } )
         case .answered:
             return .answered
         case .bcc(let value):
