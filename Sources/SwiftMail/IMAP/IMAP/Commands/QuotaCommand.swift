@@ -4,7 +4,7 @@ import NIOIMAPCore
 import NIO
 
 /// Command that fetches quota information for a quota root.
-struct GetQuotaCommand: IMAPCommand {
+struct GetQuotaCommand: IMAPTaggedCommand {
     typealias ResultType = Quota
     typealias HandlerType = QuotaHandler
 
@@ -24,7 +24,7 @@ struct GetQuotaCommand: IMAPCommand {
 /// Command that fetches quota information using GETQUOTAROOT.
 /// Some servers (e.g. iCloud) don't support GETQUOTA directly but respond to
 /// GETQUOTAROOT followed by a QUOTA response.
-struct GetQuotaRootCommand: IMAPCommand {
+struct GetQuotaRootCommand: IMAPTaggedCommand {
     typealias ResultType = Quota
     typealias HandlerType = QuotaHandler
 

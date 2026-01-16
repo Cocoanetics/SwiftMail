@@ -2,7 +2,7 @@ import Foundation
 import NIOIMAPCore
 
 /** Command to close the currently selected mailbox */
-struct CloseCommand: IMAPCommand {
+struct CloseCommand: IMAPTaggedCommand {
 	typealias ResultType = Void
 	typealias HandlerType = CloseHandler
     

@@ -6,7 +6,7 @@ import NIO
 import NIOIMAP
 
 /// Command for logging into an IMAP server
-struct LoginCommand: IMAPCommand {
+struct LoginCommand: IMAPTaggedCommand {
     typealias ResultType = [Capability]
     typealias HandlerType = LoginHandler
     
@@ -37,7 +37,7 @@ struct LoginCommand: IMAPCommand {
 }
 
 /// Command for logging out of an IMAP server
-struct LogoutCommand: IMAPCommand {
+struct LogoutCommand: IMAPTaggedCommand {
     typealias ResultType = Void
     typealias HandlerType = LogoutHandler
     

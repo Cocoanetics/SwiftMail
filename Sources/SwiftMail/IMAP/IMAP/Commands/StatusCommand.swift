@@ -3,7 +3,7 @@ import NIO
 import NIOIMAP
 
 /// Command to get status information about a mailbox without selecting it
-struct StatusCommand: IMAPCommand {
+struct StatusCommand: IMAPTaggedCommand {
     typealias ResultType = NIOIMAPCore.MailboxStatus
     typealias HandlerType = StatusHandler
     

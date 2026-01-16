@@ -3,7 +3,7 @@ import NIOIMAPCore
 import NIO
 
 /** Command to create a new mailbox */
-struct CreateMailboxCommand: IMAPCommand {
+struct CreateMailboxCommand: IMAPTaggedCommand {
     typealias ResultType = Void
     typealias HandlerType = CreateMailboxHandler
 

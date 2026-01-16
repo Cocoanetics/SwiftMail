@@ -3,7 +3,7 @@ import NIO
 import NIOIMAP
 
 /// Command to select a mailbox
-struct SelectMailboxCommand: IMAPCommand {
+struct SelectMailboxCommand: IMAPTaggedCommand {
     typealias ResultType = Mailbox.Status
     typealias HandlerType = SelectHandler
     

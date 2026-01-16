@@ -6,8 +6,9 @@
             "args": [],
             "cwd": "${workspaceFolder:SwiftMail}",
             "name": "Debug SwiftIMAPCLI",
-            "program": "${workspaceFolder:SwiftMail}/.build/debug/SwiftIMAPCLI",
-            "preLaunchTask": "swift: Build Debug SwiftIMAPCLI"
+            "preLaunchTask": "swift: Build Debug SwiftIMAPCLI",
+            "target": "SwiftIMAPCLI",
+            "configuration": "debug"
         },
         {
             "type": "swift",
@@ -15,8 +16,9 @@
             "args": [],
             "cwd": "${workspaceFolder:SwiftMail}",
             "name": "Release SwiftIMAPCLI",
-            "program": "${workspaceFolder:SwiftMail}/.build/release/SwiftIMAPCLI",
-            "preLaunchTask": "swift: Build Release SwiftIMAPCLI"
+            "preLaunchTask": "swift: Build Release SwiftIMAPCLI",
+            "target": "SwiftIMAPCLI",
+            "configuration": "release"
         },
         {
             "type": "swift",
@@ -24,8 +26,9 @@
             "args": [],
             "cwd": "${workspaceFolder:SwiftMail}",
             "name": "Debug SwiftSMTPCLI",
-            "program": "${workspaceFolder:SwiftMail}/.build/debug/SwiftSMTPCLI",
-            "preLaunchTask": "swift: Build Debug SwiftSMTPCLI"
+            "preLaunchTask": "swift: Build Debug SwiftSMTPCLI",
+            "target": "SwiftSMTPCLI",
+            "configuration": "debug"
         },
         {
             "type": "swift",
@@ -33,8 +36,9 @@
             "args": [],
             "cwd": "${workspaceFolder:SwiftMail}",
             "name": "Release SwiftSMTPCLI",
-            "program": "${workspaceFolder:SwiftMail}/.build/release/SwiftSMTPCLI",
-            "preLaunchTask": "swift: Build Release SwiftSMTPCLI"
+            "preLaunchTask": "swift: Build Release SwiftSMTPCLI",
+            "target": "SwiftSMTPCLI",
+            "configuration": "release"
         }
     ]
 }

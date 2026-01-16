@@ -2,7 +2,7 @@ import Foundation
 import NIOIMAP
 
 /// Command to start an IMAP IDLE session.
-struct IdleCommand: IMAPCommand {
+struct IdleCommand: IMAPTaggedCommand {
     typealias ResultType = Void
     typealias HandlerType = IdleHandler
 

@@ -61,6 +61,9 @@ public actor IMAPServer {
     
     /// Flag to prevent concurrent IDLE termination operations
     private var idleTerminationInProgress: Bool = false
+
+    /// Serializes command execution so only one IMAP command runs at a time.
+    private let commandQueue = IMAPCommandQueue()
     
     /**
      Logger for IMAP operations
@@ -241,12 +244,20 @@ public actor IMAPServer {
     ///   - accessToken: The OAuth 2.0 access token.
     /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise XOAUTH2 or ``IMAPError.authFailed`` when authentication fails.
     public func authenticateXOAUTH2(email: String, accessToken: String) async throws {
+        try await commandQueue.run { [self] in
+            try await self.authenticateXOAUTH2Body(email: email, accessToken: accessToken)
+        }
+    }
+
+    private func authenticateXOAUTH2Body(email: String, accessToken: String) async throws {
         let mechanism = AuthenticationMechanism("XOAUTH2")
         let xoauthCapability = Capability.authenticate(mechanism)
 
         guard capabilities.contains(xoauthCapability) else {
             throw IMAPError.unsupportedAuthMechanism("XOAUTH2 not advertised by server")
         }
+
+        try await waitForIdleCompletionIfNeeded()
 
         // Ensure we have an active channel before proceeding
         clearInvalidChannel()
@@ -433,22 +444,6 @@ public actor IMAPServer {
     /// - Returns: An AsyncStream of server events during the IDLE session
     /// - Throws: IMAPError if IDLE is not supported or already active
     public func idle() async throws -> AsyncStream<IMAPServerEvent> {
-        // Ensure the server advertises IDLE support
-        if !capabilities.contains(.idle) {
-            throw IMAPError.commandNotSupported("IDLE command not supported by server")
-        }
-        
-        guard idleHandler == nil else {
-            throw IMAPError.commandFailed("IDLE session already active")
-        }
-        
-        // Ensure clean state for new IDLE session
-        idleTerminationInProgress = false
-        
-        guard let channel = self.channel else {
-            throw IMAPError.connectionFailed("Channel not initialized")
-        }
-        
         var continuationRef: AsyncStream<IMAPServerEvent>.Continuation!
         let stream = AsyncStream<IMAPServerEvent> { continuation in
             continuationRef = continuation
@@ -456,19 +451,45 @@ public actor IMAPServer {
             // Note: No automatic cleanup on termination to avoid actor isolation issues
             // Users should call done() in their cancellation handlers or rely on disconnect() cleanup
         }
-        
+
+        guard let continuation = continuationRef else {
+            throw IMAPError.commandFailed("Failed to start IDLE session")
+        }
+
+        try await commandQueue.run { [self] in
+            try await self.startIdleSession(continuation: continuation)
+        }
+
+        return stream
+    }
+
+    private func startIdleSession(continuation: AsyncStream<IMAPServerEvent>.Continuation) async throws {
+        // Ensure the server advertises IDLE support
+        if !capabilities.contains(.idle) {
+            throw IMAPError.commandNotSupported("IDLE command not supported by server")
+        }
+
+        guard idleHandler == nil else {
+            throw IMAPError.commandFailed("IDLE session already active")
+        }
+
+        // Ensure clean state for new IDLE session
+        idleTerminationInProgress = false
+
+        guard let channel = self.channel else {
+            throw IMAPError.connectionFailed("Channel not initialized")
+        }
+
         let promise = channel.eventLoop.makePromise(of: Void.self)
         let tag = generateCommandTag()
-        let handler = IdleHandler(commandTag: tag, promise: promise, continuation: continuationRef)
+        let handler = IdleHandler(commandTag: tag, promise: promise, continuation: continuation)
         idleHandler = handler
-        
+
         try await channel.pipeline.addHandler(handler).get()
         let command = IdleCommand()
         let tagged = command.toTaggedCommand(tag: tag)
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped).get()
-        
-        return stream
     }
     
     /// Terminate the current IDLE session
@@ -1061,6 +1082,11 @@ public actor IMAPServer {
         }
     }
 
+    private func waitForIdleCompletionIfNeeded() async throws {
+        guard let handler = idleHandler else { return }
+        try await handler.promise.futureResult.get()
+    }
+
     private func makeXOAUTH2InitialResponseBuffer(email: String, accessToken: String) -> ByteBuffer {
         var buffer = ByteBufferAllocator().buffer(capacity: email.utf8.count + accessToken.utf8.count + 32)
         buffer.writeString("user=")
@@ -1080,8 +1106,16 @@ public actor IMAPServer {
      - Throws: An error if the command execution fails
      */
     private func executeCommand<CommandType: IMAPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+        try await commandQueue.run { [self] in
+            try await self.executeCommandBody(command)
+        }
+    }
+
+    private func executeCommandBody<CommandType: IMAPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
         // Validate the command before execution
         try command.validate()
+
+        try await waitForIdleCompletionIfNeeded()
         
         // Check if channel is invalid and clear it
         clearInvalidChannel()
@@ -1118,10 +1152,8 @@ public actor IMAPServer {
             // Add the handler to the channel pipeline
             try await channel.pipeline.addHandler(handler).get()
             
-            // Write the command to the channel wrapped as CommandStreamPart
-            let taggedCommand = command.toTaggedCommand(tag: tag)
-            let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(taggedCommand))
-            try await channel.writeAndFlush(wrapped).get()
+            // Write the command to the channel
+            try await command.send(on: channel, tag: tag)
             
             // Wait for the result
             let result = try await resultPromise.futureResult.get()
@@ -1153,79 +1185,14 @@ public actor IMAPServer {
     }
 
     private func append(rawMessage: String, to mailbox: String, flags: [Flag], internalDate: Date?) async throws -> AppendResult {
-        // Ensure we have an active channel
-        clearInvalidChannel()
-        if self.channel == nil {
-            try await connect()
-        }
-
-        guard let channel = self.channel else {
-            throw IMAPError.connectionFailed("Channel not initialized")
-        }
-
-        var messageBuffer = channel.allocator.buffer(capacity: rawMessage.utf8.count)
-        messageBuffer.writeString(rawMessage)
-
-        var mailboxBuffer = channel.allocator.buffer(capacity: mailbox.utf8.count)
-        mailboxBuffer.writeString(mailbox)
-        let mailboxName = MailboxName(mailboxBuffer)
-
-        let nioFlags = flags.map { $0.toNIO() }
         let serverDate = internalDate.flatMap(makeInternalDate(from:))
-
-        return try await sendAppendCommand(
-            on: channel,
-            mailbox: mailboxName,
-            messageBuffer: messageBuffer,
-            flagList: nioFlags,
+        let command = AppendCommand(
+            mailboxName: mailbox,
+            message: rawMessage,
+            flags: flags,
             internalDate: serverDate
         )
-    }
-
-    private func sendAppendCommand(
-        on channel: Channel,
-        mailbox: MailboxName,
-        messageBuffer: ByteBuffer,
-        flagList: [NIOIMAPCore.Flag],
-        internalDate: ServerMessageDate?,
-        timeoutSeconds: Int = 30
-    ) async throws -> AppendResult {
-        let promise = channel.eventLoop.makePromise(of: AppendResult.self)
-        let tag = generateCommandTag()
-        let handler = AppendHandler(commandTag: tag, promise: promise)
-
-        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
-            self.logger.warning("APPEND command timed out after \(timeoutSeconds) seconds")
-            promise.fail(IMAPError.timeout)
-        }
-
-        do {
-            try await channel.pipeline.addHandler(handler).get()
-
-            let appendOptions = AppendOptions(flagList: flagList, internalDate: internalDate)
-            let metadata = AppendMessage(options: appendOptions, data: AppendData(byteCount: messageBuffer.readableBytes))
-
-            try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.start(tag: tag, appendingTo: mailbox)))).get()
-            try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.beginMessage(message: metadata)))).get()
-            try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.messageBytes(messageBuffer)))).get()
-            try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.endMessage))).get()
-            try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.append(.finish))).get()
-
-            let result = try await promise.futureResult.get()
-
-            scheduledTask.cancel()
-            await handleConnectionTerminationInResponses(handler.untaggedResponses)
-            duplexLogger.flushInboundBuffer()
-
-            return result
-        } catch {
-            scheduledTask.cancel()
-            await handleConnectionTerminationInResponses(handler.untaggedResponses)
-            duplexLogger.flushInboundBuffer()
-
-            promise.fail(error)
-            throw error
-        }
+        return try await executeCommand(command)
     }
 
     private func makeInternalDate(from date: Date) -> ServerMessageDate? {

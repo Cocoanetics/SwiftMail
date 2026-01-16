@@ -3,7 +3,7 @@ import NIOIMAP
 import OrderedCollections
 
 /// Command for IMAP ID.
-struct IDCommand: IMAPCommand {
+struct IDCommand: IMAPTaggedCommand {
     typealias ResultType = Identification
     typealias HandlerType = IDHandler
 

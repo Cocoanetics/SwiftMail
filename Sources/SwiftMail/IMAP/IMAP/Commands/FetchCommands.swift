@@ -6,7 +6,7 @@ import NIO
 import NIOIMAP
 
 /// Command for fetching message headers
-struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPCommand {
+struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         typealias ResultType = [MessageInfo]
         typealias HandlerType = FetchMessageInfoHandler
 
@@ -54,7 +54,7 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPCommand {
 }
 
 /// Command for fetching a specific message part
- struct FetchMessagePartCommand<T: MessageIdentifier>: IMAPCommand {
+ struct FetchMessagePartCommand<T: MessageIdentifier>: IMAPTaggedCommand {
 	typealias ResultType = Data
 	typealias HandlerType = FetchPartHandler
     
@@ -103,7 +103,7 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPCommand {
 }
 
 /// Command for fetching the structure of a message
- struct FetchStructureCommand<T: MessageIdentifier>: IMAPCommand {
+ struct FetchStructureCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     typealias ResultType = [MessagePart]
     typealias HandlerType = FetchStructureHandler
     

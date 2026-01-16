@@ -6,7 +6,7 @@ import NIO
 import NIOIMAP
 
 /// Command for retrieving server capabilities
-struct CapabilityCommand: IMAPCommand {
+struct CapabilityCommand: IMAPTaggedCommand {
 	typealias ResultType = [Capability]
 	typealias HandlerType = CapabilityHandler
     
@@ -19,7 +19,7 @@ struct CapabilityCommand: IMAPCommand {
 }
 
 /// Command for copying messages from one mailbox to another
-struct CopyCommand<T: MessageIdentifier>: IMAPCommand {
+struct CopyCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     typealias ResultType = Void
     typealias HandlerType = CopyHandler
     
@@ -60,7 +60,7 @@ struct CopyCommand<T: MessageIdentifier>: IMAPCommand {
 }
 
 /// Command for storing flags on messages
-struct StoreCommand<T: MessageIdentifier>: IMAPCommand {
+struct StoreCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     typealias ResultType = Void
     typealias HandlerType = StoreHandler
     
@@ -99,7 +99,7 @@ struct StoreCommand<T: MessageIdentifier>: IMAPCommand {
 }
 
 /// Command for expunging deleted messages
-struct ExpungeCommand: IMAPCommand {
+struct ExpungeCommand: IMAPTaggedCommand {
     typealias ResultType = Void
     typealias HandlerType = ExpungeHandler
     

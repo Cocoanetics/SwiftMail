@@ -3,7 +3,7 @@ import NIOIMAP
 import NIO
 
 /// Command to list all available mailboxes
-struct ListCommand: IMAPCommand {
+struct ListCommand: IMAPTaggedCommand {
     typealias ResultType = [Mailbox.Info]
     typealias HandlerType = ListCommandHandler
     

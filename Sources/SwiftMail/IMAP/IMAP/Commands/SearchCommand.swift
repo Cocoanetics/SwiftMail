@@ -10,7 +10,7 @@ import NIOIMAPCore
  sequence numbers or UIDs. The command returns a set of identifiers matching
  all supplied criteria.
  */
-struct SearchCommand<T: MessageIdentifier>: IMAPCommand, Sendable {
+struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
     /// The type returned by the command handler.
     typealias ResultType = MessageIdentifierSet<T>
     /// The handler used to process the command's responses.
