@@ -179,6 +179,63 @@ do {
 	} catch {
 		print("❌ Error searching for sample emails: \(error)")
 	}
+
+    // Start an IDLE session on a dedicated connection for INBOX.
+    print("\nStarting IDLE on INBOX for 30 seconds...")
+    do {
+        let idleSession = try await server.idle(on: inbox.name)
+        let idleTask = Task {
+            var lastExists = mailboxStatus.messageCount
+            for await event in idleSession.events {
+                print("IDLE event: \(event)")
+                if case .exists(let count) = event, count > lastExists {
+                    var currentCount = count
+                    do {
+                        let refreshEvents = try await server.noop()
+                        if let refreshed = refreshEvents.compactMap({ event in
+                            if case .exists(let refreshedCount) = event {
+                                return refreshedCount
+                            }
+                            return nil
+                        }).last {
+                            currentCount = refreshed
+                        }
+                    } catch {
+                        print("❌ Error refreshing mailbox state: \(error)")
+                    }
+
+                    guard currentCount > lastExists else {
+                        continue
+                    }
+
+                    let newRange = (lastExists + 1)...currentCount
+                    for sequence in newRange {
+                        do {
+                            let sequenceNumber = SequenceNumber(sequence)
+                            if let info = try await server.fetchMessageInfo(for: sequenceNumber) {
+                                print("New mail header:")
+                                print("  Subject: \(info.subject ?? "No subject")")
+                                print("  From: \(info.from ?? "Unknown")")
+                                print("  Date: \(info.date?.description ?? "No date")")
+                            } else {
+                                print("New mail header not available")
+                            }
+                        } catch {
+                            print("❌ Error fetching new mail header: \(error)")
+                        }
+                    }
+                    lastExists = currentCount
+                }
+            }
+        }
+
+        try await Task.sleep(nanoseconds: 30_000_000_000)
+        try await idleSession.done()
+        idleTask.cancel()
+        print("Finished IDLE on INBOX")
+    } catch {
+        print("❌ Error during IDLE: \(error)")
+    }
 	
     // Disconnect from the server
     try await server.disconnect()
