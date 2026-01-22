@@ -369,6 +369,10 @@ public actor IMAPServer {
     ///   connection, not just the IDLE session. You should stop processing the stream
     ///   immediately, as the connection will be closed by the server.
     ///
+    /// - Important: If you have multiple connections looking at the same mailbox, refresh
+    ///   their state (for example by issuing `noop()`) when an IDLE event indicates changes
+    ///   like new messages or expunges. This keeps counts and sequence numbers in sync.
+    ///
     /// - Returns: An AsyncStream of server events during the IDLE session
     /// - Throws: IMAPError if IDLE is not supported or already active
     public func idle() async throws -> AsyncStream<IMAPServerEvent> {
@@ -378,6 +382,10 @@ public actor IMAPServer {
     /// Begin an IDLE session for a specific mailbox on a dedicated connection.
     /// The returned session must be ended by calling `done()` on the session,
     /// or by calling `disconnect()` on the server.
+    ///
+    /// - Important: If other connections have the same mailbox selected, refresh them
+    ///   (for example by issuing `noop()`) when this session reports changes, to keep
+    ///   counts and sequence numbers accurate across connections.
     public func idle(on mailbox: String) async throws -> IMAPIdleSession {
         guard let authentication = authentication else {
             throw IMAPError.commandFailed("Authentication required before starting IDLE on a mailbox")
