@@ -1,247 +1,566 @@
-// The Swift Programming Language
-// https://docs.swift.org/swift-book
-
 import Foundation
+import ArgumentParser
 import Logging
 import SwiftDotenv
 import SwiftMail
 
-#if canImport(OSLog)
+// Setup Logger (silence unless debug)
+let logger = Logger(label: "com.cocoanetics.SwiftIMAPCLI")
 
-import OSLog
-
-// Set default log level to info - will only show important logs
-// Per the cursor rules: Use OS_LOG_DISABLE=1 to see log output as needed
-LoggingSystem.bootstrap { label in
-	// Create an OSLog-based logger
-	let category = label.split(separator: ".").last?.description ?? "default"
-	let osLogger = OSLog(subsystem: "com.cocoanetics.SwiftIMAPCLI", category: category)
-	
-	// Set log level to info by default (or trace if SWIFT_LOG_LEVEL is set to trace)
-	var handler = OSLogHandler(label: label, log: osLogger)
-
-	// Check if we need verbose logging
-	if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
-		handler.logLevel = .trace
-	} else {
-		handler.logLevel = .info
-	}
-	
-	return handler
+// Helper to run async code synchronously
+func runAsyncBlock(_ block: @escaping () async throws -> Void) {
+    let semaphore = DispatchSemaphore(value: 0)
+    Task {
+        do {
+            try await block()
+        } catch {
+            print("Error: \(error)")
+            exit(1)
+        }
+        semaphore.signal()
+    }
+    semaphore.wait()
 }
 
-#endif
+struct IMAPTool: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "SwiftIMAPCLI",
+        abstract: "A CLI for interacting with IMAP servers using SwiftMail.",
+        subcommands: [List.self, Fetch.self, Move.self, Idle.self, Search.self, Folders.self, DownloadAttachment.self]
+    )
+}
 
-// Create a logger for the main application using Swift Logging
-let logger = Logger(label: "com.cocoanetics.SwiftIMAPCLI.Main")
-
-print("📧 SwiftIMAPCLI - Simple Email Demo")
-
-do {
-    // Load environment variables
+// Helper to manage server lifecycle
+func withServer<T>(_ block: (IMAPServer) async throws -> T) async throws -> T {
     try Dotenv.configure()
     
-    // Get IMAP credentials
     guard case let .string(host) = Dotenv["IMAP_HOST"],
           case let .integer(port) = Dotenv["IMAP_PORT"],
           case let .string(username) = Dotenv["IMAP_USERNAME"],
           case let .string(password) = Dotenv["IMAP_PASSWORD"] else {
-        print("❌ Missing or invalid IMAP credentials in .env file")
-        exit(1)
+        throw ValidationError("Missing IMAP credentials in .env")
     }
     
-    print("Connecting to \(host):\(port) as \(username)...")
-    
-    // Create an IMAP server instance and connect
     let server = IMAPServer(host: host, port: port)
-    
+    print("Connecting to \(host):\(port)...")
     try await server.connect()
+    print("Connected. Logging in as \(username)...")
     try await server.login(username: username, password: password)
-    print("✅ Connected and logged in successfully")
+    print("Login OK.")
     
-    // List special folders and find inbox
-    let specialFolders = try await server.listSpecialUseMailboxes()
-    guard let inbox = specialFolders.inbox else {
-        print("❌ INBOX mailbox not found")
-        exit(1)
-    }
-    
-    // Get unseen count without selecting the mailbox (STATUS)
     do {
-        let status = try await server.mailboxStatus(inbox.name)
-        print("\(inbox.name) status:")
-        if let messageCount = status.messageCount {
-            print("  - messageCount: \(messageCount)")
-        }
-        if let unseen = status.unseenCount {
-            print("  - unseenCount: \(unseen)")
-        }
-        if let recent = status.recentCount {
-            print("  - recentCount: \(recent)")
-        }
-        if let size = status.size {
-            let formatter = ByteCountFormatter()
-            formatter.allowedUnits = [.useMB, .useGB]
-            formatter.countStyle = .file
-            formatter.includesUnit = true
-            formatter.isAdaptive = true
-            let niceSize = formatter.string(fromByteCount: Int64(size))
-            print("  - size: \(niceSize)")
-        }
+        let result = try await block(server)
+        print("Disconnecting...")
+        try await server.disconnect()
+        print("Disconnected.")
+        return result
     } catch {
-        print("❌ Error fetching unseen count: \(error)")
+        print("Error in command, disconnecting...")
+        try? await server.disconnect()
+        throw error
     }
-
-    // Select the INBOX mailbox
-    print("\nSelecting INBOX...")
-    let mailboxStatus = try await server.selectMailbox(inbox.name)
-    print("Selected mailbox: \(inbox.name) with \(mailboxStatus.messageCount) messages")
-    
-    print("\nSearching for invoices with PDF ...")
-    do {
-        let messagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("invoice"), .text(".pdf")])
-        print("Found \(messagesSet.count) messages")
-        
-        if !messagesSet.isEmpty {
-            // Fetch and display message headers
-            print("\n📧 Invoice Emails 📧")
-            var index = 0
-            for try await messageInfo in server.fetchMessageInfos(using: messagesSet) {
-                index += 1
-                print("\n[\(index)]")
-                print("Subject: \(messageInfo.subject ?? "No subject")")
-                print("From: \(messageInfo.from ?? "Unknown")")
-                print("---")
-                
-                // here we can get and decode specific parts
-                for part in messageInfo.parts {
-                    // find an part that's an attached PDF
-                    guard part.contentType == "application/pdf" else {
-                        continue
-                    }
-
-                    // get the body data for the part
-                    let data = try await server.fetchAndDecodeMessagePartData(messageInfo: messageInfo, part: part)
-                    
-                    let desktopURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first!
-                    let url = desktopURL.appendingPathComponent(part.suggestedFilename)
-                    try data.write(to: url)
-                }
-            }
-        }
-    } catch {
-        print("❌ Error during search: \(error)")
-    }
-    
-    // Get the latest 5 messages
-        print("\nFetching the latest 5 bodies of messages...")
-        if let latestMessagesSet = mailboxStatus.latest(5) {
-            do {
-                print("\n📧 Latest Emails 📧")
-                var idx = 0
-                for try await message in server.fetchMessages(using: latestMessagesSet) {
-                    idx += 1
-                    print("\n[\(idx)]")
-                     print("Subject: \(message.subject ?? "No subject")")
-                    print("From: \(message.from ?? "Unknown")")
-                    print("Date: \(message.date?.description ?? "No date")")
-                    print("---")
-
-                    if let body = message.textBody {
-                        print("Text Body:\n\(body.prefix(500))...") // Print first 500 characters of the body
-                    } else if let body = message.htmlBody {
-                        print("HTML Body:\n\(body.prefix(500))...") // Print first 500 characters of the body
-                    } else {
-                        print("No text html or text. body available")
-                    }
-                }
-            } catch {
-                print("❌ Error fetching message messages: \(error)")
-            }
-        } else {
-            print("No messages found in INBOX")
-        }
-	
-	// search for unread message
-	print("\nSearching for unread messages...")
-	do {
-		let unreadMessagesSet: MessageIdentifierSet<SequenceNumber> = try await server.search(criteria: [.unseen])
-		print("Found \(unreadMessagesSet.count) unread messages")
-	} catch {
-		print("❌ Error searching for unread messages: \(error)")
-	}
-    
-	// search for sample emails
-	print("\nSearching for sample emails...")
-	do {
-		let sampleMessagesSet: MessageIdentifierSet<UID> = try await server.search(criteria: [.subject("SwiftSMTPCLI")])
-		print("Found \(sampleMessagesSet.count) sample emails")
-	} catch {
-		print("❌ Error searching for sample emails: \(error)")
-	}
-
-    // Start an IDLE session on a dedicated connection for INBOX.
-    print("\nStarting IDLE on INBOX for 30 seconds...")
-    do {
-        let idleSession = try await server.idle(on: inbox.name)
-        let idleTask = Task {
-            var lastExists = mailboxStatus.messageCount
-            for await event in idleSession.events {
-                print("IDLE event: \(event)")
-                if case .exists(let count) = event, count > lastExists {
-                    var currentCount = count
-                    do {
-                        let refreshEvents = try await server.noop()
-                        if let refreshed = refreshEvents.compactMap({ event in
-                            if case .exists(let refreshedCount) = event {
-                                return refreshedCount
-                            }
-                            return nil
-                        }).last {
-                            currentCount = refreshed
-                        }
-                    } catch {
-                        print("❌ Error refreshing mailbox state: \(error)")
-                    }
-
-                    guard currentCount > lastExists else {
-                        continue
-                    }
-
-                    let newRange = (lastExists + 1)...currentCount
-                    for sequence in newRange {
-                        do {
-                            let sequenceNumber = SequenceNumber(sequence)
-                            if let info = try await server.fetchMessageInfo(for: sequenceNumber) {
-                                print("New mail header:")
-                                print("  Subject: \(info.subject ?? "No subject")")
-                                print("  From: \(info.from ?? "Unknown")")
-                                print("  Date: \(info.date?.description ?? "No date")")
-                            } else {
-                                print("New mail header not available")
-                            }
-                        } catch {
-                            print("❌ Error fetching new mail header: \(error)")
-                        }
-                    }
-                    lastExists = currentCount
-                }
-            }
-        }
-
-        try await Task.sleep(nanoseconds: 30_000_000_000)
-        try await idleSession.done()
-        idleTask.cancel()
-        print("Finished IDLE on INBOX")
-    } catch {
-        print("❌ Error during IDLE: \(error)")
-    }
-	
-    // Disconnect from the server
-    try await server.disconnect()
-    print("✅ Successfully disconnected from server")
-    
-} catch {
-    print("❌ Error: \(error.localizedDescription)")
-    exit(1)
 }
+
+struct Folders: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "List all mailboxes")
+
+    func run() throws {
+        runAsyncBlock {
+            try await withServer { server in
+                let special = try await server.listSpecialUseMailboxes()
+                print("📂 Special Folders:")
+                if let inbox = special.inbox { print("  - INBOX: \(inbox.name)") }
+                if let drafts = special.drafts { print("  - Drafts: \(drafts.name)") }
+                if let sent = special.sent { print("  - Sent: \(sent.name)") }
+                if let trash = special.trash { print("  - Trash: \(trash.name)") }
+                if let junk = special.junk { print("  - Junk: \(junk.name)") }
+                if let archive = special.archive { print("  - Archive: \(archive.name)") }
+            }
+        }
+    }
+}
+
+struct List: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "List emails in INBOX")
+    
+    @Option(name: .shortAndLong, help: "Number of messages to list")
+    var limit: Int = 10
+    
+    @Option(name: .shortAndLong, help: "Mailbox to list from")
+    var mailbox: String = "INBOX"
+
+    func run() throws {
+        runAsyncBlock {
+            try await withServer { server in
+                let status = try await server.selectMailbox(mailbox)
+                print("📂 Selected \(mailbox): \(status.messageCount) messages")
+                
+                guard let latest = status.latest(limit) else {
+                    print("No messages found.")
+                    return
+                }
+                
+                print("\nfetching \(limit) messages...")
+                for try await message in server.fetchMessages(using: latest) {
+                    print("[\(message.uid?.value ?? 0)] \(message.date?.description ?? "") - \(message.from ?? "Unknown")")
+                    print("   \(message.subject ?? "(No Subject)")")
+                }
+            }
+        }
+    }
+}
+
+struct Fetch: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Fetch a specific email by UID")
+    
+    @Argument(help: "UID(s) of the message (comma-separated; ranges like 1-3 allowed)")
+    var uid: String
+
+    @Option(name: .shortAndLong, help: "Mailbox")
+    var mailbox: String = "INBOX"
+
+    func run() throws {
+        runAsyncBlock {
+            try await withServer { server in
+                print("Selecting mailbox \(mailbox)...")
+                _ = try await server.selectMailbox(mailbox)
+                print("Mailbox selected.")
+                
+                guard let uids = MessageIdentifierSet<UID>(string: uid) else {
+                    throw ValidationError("Invalid UID list: \(uid)")
+                }
+                var found = false
+                
+                for try await message in server.fetchMessages(using: uids) {
+                    found = true
+                    print("--- Message \(uid) ---")
+                    print("From: \(message.from ?? "")")
+                    print("Subject: \(message.subject ?? "")")
+                    print("Date: \(message.date?.description ?? "")")
+                    print("\nBody:")
+                    if let text = message.textBody {
+                        print(text)
+                    } else if let html = message.htmlBody {
+                        print("(HTML Body)\n")
+                        print(html)
+                    }
+                    
+                    if !message.attachments.isEmpty {
+                        print("\nAttachments: \(message.attachments.count)")
+                        for part in message.attachments {
+                            print("- \(part.filename ?? "unnamed") (\(part.contentType))")
+                        }
+                    }
+                }
+                
+                if !found {
+                    print("Message UID \(uid) not found.")
+                }
+            }
+        }
+    }
+}
+
+struct Move: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Move an email to another folder")
+    
+    @Argument(help: "UID(s) of the message (comma-separated; ranges like 1-3 allowed)")
+    var uid: String
+    
+    @Argument(help: "Target mailbox")
+    var target: String
+
+    @Option(name: .shortAndLong, help: "Source Mailbox")
+    var mailbox: String = "INBOX"
+
+    func run() throws {
+        runAsyncBlock {
+            try await withServer { server in
+                _ = try await server.selectMailbox(mailbox)
+                
+                guard let uids = MessageIdentifierSet<UID>(string: uid) else {
+                    throw ValidationError("Invalid UID list: \(uid)")
+                }
+                try await server.move(messages: uids, to: target)
+                print("Moved UID \(uid) to \(target)")
+            }
+        }
+    }
+}
+
+struct Search: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Search emails",
+        discussion: """
+        Examples:
+          SwiftIMAPCLI search --from "Card Complete" --subject Mastercard
+          SwiftIMAPCLI search --from "Card Complete" --subject Mastercard --attachment pdf
+          SwiftIMAPCLI search --text invoice --since 2025-01-01 --any
+        """
+    )
+    
+    @Option(name: .shortAndLong, help: "Mailbox")
+    var mailbox: String = "INBOX"
+    
+    @Option(help: "Match From field (repeatable)")
+    var from: [String] = []
+    
+    @Option(help: "Match Subject field (repeatable)")
+    var subject: [String] = []
+    
+    @Option(help: "Match text in headers and body (repeatable)")
+    var text: [String] = []
+    
+    @Option(help: "Match body only (repeatable)")
+    var body: [String] = []
+    
+    @Option(help: "Match To field (repeatable)")
+    var to: [String] = []
+    
+    @Option(help: "Match Cc field (repeatable)")
+    var cc: [String] = []
+    
+    @Option(help: "Match Bcc field (repeatable)")
+    var bcc: [String] = []
+    
+    @Option(help: "Match header FIELD:VALUE (repeatable)")
+    var header: [String] = []
+    
+    @Option(help: "Internal date since (YYYY-MM-DD)")
+    var since: String?
+    
+    @Option(help: "Internal date before (YYYY-MM-DD)")
+    var before: String?
+    
+    @Option(help: "Internal date on (YYYY-MM-DD)")
+    var on: String?
+    
+    @Option(help: "Sent date since (YYYY-MM-DD)")
+    var sentSince: String?
+    
+    @Option(help: "Sent date before (YYYY-MM-DD)")
+    var sentBefore: String?
+    
+    @Option(help: "Sent date on (YYYY-MM-DD)")
+    var sentOn: String?
+    
+    @Option(help: "Messages larger than size in bytes")
+    var larger: Int?
+    
+    @Option(help: "Messages smaller than size in bytes")
+    var smaller: Int?
+    
+    @ArgumentParser.Flag(help: "Seen messages")
+    var seen: Bool = false
+    
+    @ArgumentParser.Flag(help: "Unseen messages")
+    var unseen: Bool = false
+    
+    @ArgumentParser.Flag(help: "Flagged messages")
+    var flagged: Bool = false
+    
+    @ArgumentParser.Flag(help: "Unflagged messages")
+    var unflagged: Bool = false
+    
+    @ArgumentParser.Flag(help: "Answered messages")
+    var answered: Bool = false
+    
+    @ArgumentParser.Flag(help: "Unanswered messages")
+    var unanswered: Bool = false
+    
+    @ArgumentParser.Flag(help: "Deleted messages")
+    var deleted: Bool = false
+    
+    @ArgumentParser.Flag(help: "Undeleted messages")
+    var undeleted: Bool = false
+    
+    @ArgumentParser.Flag(help: "Draft messages")
+    var draft: Bool = false
+    
+    @ArgumentParser.Flag(help: "Undraft messages")
+    var undraft: Bool = false
+    
+    @ArgumentParser.Flag(help: "Recent messages")
+    var recent: Bool = false
+    
+    @ArgumentParser.Flag(help: "New messages (Recent but not Seen)")
+    var new: Bool = false
+    
+    @ArgumentParser.Flag(help: "Old messages (not Recent)")
+    var old: Bool = false
+    
+    @ArgumentParser.Flag(help: "Use OR instead of AND across all criteria")
+    var any: Bool = false
+    
+    @Option(help: "Attachment file extension to match (repeatable, e.g. pdf, docx)")
+    var attachment: [String] = []
+    
+    private func parseDate(_ value: String, label: String) throws -> Date {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        guard let date = formatter.date(from: value) else {
+            throw ValidationError("Invalid \(label) date: \(value). Expected YYYY-MM-DD.")
+        }
+        return date
+    }
+    
+    private func buildCriteria() throws -> [SearchCriteria] {
+        var criterias: [SearchCriteria] = []
+        
+        func groupOr(_ items: [SearchCriteria]) -> SearchCriteria? {
+            guard let first = items.first else { return nil }
+            return items.dropFirst().reduce(first) { .or($0, $1) }
+        }
+        
+        if let grouped = groupOr(from.map { .from($0) }) { criterias.append(grouped) }
+        if let grouped = groupOr(subject.map { .subject($0) }) { criterias.append(grouped) }
+        if let grouped = groupOr(text.map { .text($0) }) { criterias.append(grouped) }
+        if let grouped = groupOr(body.map { .body($0) }) { criterias.append(grouped) }
+        if let grouped = groupOr(to.map { .to($0) }) { criterias.append(grouped) }
+        if let grouped = groupOr(cc.map { .cc($0) }) { criterias.append(grouped) }
+        if let grouped = groupOr(bcc.map { .bcc($0) }) { criterias.append(grouped) }
+        
+        var headerCriteria: [SearchCriteria] = []
+        for headerValue in header {
+            let parts = headerValue.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else {
+                throw ValidationError("Invalid header format: \(headerValue). Expected FIELD:VALUE.")
+            }
+            headerCriteria.append(.header(parts[0], parts[1]))
+        }
+        if let grouped = groupOr(headerCriteria) { criterias.append(grouped) }
+        
+        if let since {
+            criterias.append(.since(try parseDate(since, label: "--since")))
+        }
+        if let before {
+            criterias.append(.before(try parseDate(before, label: "--before")))
+        }
+        if let on {
+            criterias.append(.on(try parseDate(on, label: "--on")))
+        }
+        if let sentSince {
+            criterias.append(.sentSince(try parseDate(sentSince, label: "--sent-since")))
+        }
+        if let sentBefore {
+            criterias.append(.sentBefore(try parseDate(sentBefore, label: "--sent-before")))
+        }
+        if let sentOn {
+            criterias.append(.sentOn(try parseDate(sentOn, label: "--sent-on")))
+        }
+        
+        if let larger {
+            criterias.append(.larger(larger))
+        }
+        if let smaller {
+            criterias.append(.smaller(smaller))
+        }
+        
+        if seen { criterias.append(.seen) }
+        if unseen { criterias.append(.unseen) }
+        if flagged { criterias.append(.flagged) }
+        if unflagged { criterias.append(.unflagged) }
+        if answered { criterias.append(.answered) }
+        if unanswered { criterias.append(.unanswered) }
+        if deleted { criterias.append(.deleted) }
+        if undeleted { criterias.append(.undeleted) }
+        if draft { criterias.append(.draft) }
+        if undraft { criterias.append(.undraft) }
+        if recent { criterias.append(.recent) }
+        if new { criterias.append(.new) }
+        if old { criterias.append(.old) }
+        
+        if criterias.isEmpty {
+            throw ValidationError("No search criteria provided. Use --subject, --from, --text, etc.")
+        }
+        
+        if any && criterias.count > 1 {
+            return [criterias.reduce(criterias[0]) { .or($0, $1) }]
+        }
+        
+        return criterias
+    }
+    
+    private func attachmentExtensions() -> Set<String> {
+        Set(
+            attachment
+                .map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .map { $0.hasPrefix(".") ? String($0.dropFirst()) : $0 }
+        )
+    }
+
+    func run() throws {
+        runAsyncBlock {
+            try await withServer { server in
+                _ = try await server.selectMailbox(mailbox)
+                
+                print("Building search criteria...")
+                let criteria = try buildCriteria()
+                print("Running IMAP SEARCH...")
+                let uids: MessageIdentifierSet<UID> = try await server.search(criteria: criteria)
+                let attachmentExts = attachmentExtensions()
+                let criteriaDescription = any ? "OR" : "AND"
+                print("Found \(uids.count) messages matching \(criteriaDescription) criteria")
+                
+                if !uids.isEmpty {
+                     print("Fetching messages for results...")
+                     for try await message in server.fetchMessages(using: uids) {
+                        if !attachmentExts.isEmpty {
+                            let hasMatch = message.attachments.contains { part in
+                                guard let filename = part.filename?.lowercased() else { return false }
+                                return attachmentExts.contains(where: { filename.hasSuffix(".\($0)") })
+                            }
+                            if !hasMatch {
+                                continue
+                            }
+                        }
+                        
+                        let uidValue = message.uid?.value ?? 0
+                        print("--- UID \(uidValue) ---")
+                        print("From: \(message.from ?? "")")
+                        let toList = message.to.joined(separator: ", ")
+                        print("To: \(toList)")
+                        print("Subject: \(message.subject ?? "")")
+                        print("Date: \(message.date?.description ?? "")")
+                        
+                        if message.attachments.isEmpty {
+                            print("Attachments: 0")
+                        } else {
+                            print("Attachments: \(message.attachments.count)")
+                            for part in message.attachments {
+                                print("- \(part.filename ?? "unnamed") (\(part.contentType))")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct DownloadAttachment: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "attachment",
+        abstract: "Download attachments for a message UID"
+    )
+    
+    @Argument(help: "UID(s) of the message (comma-separated; ranges like 1-3 allowed)")
+    var uid: String
+    
+    @Option(name: .shortAndLong, help: "Mailbox")
+    var mailbox: String = "INBOX"
+    
+    @Option(help: "Attachment file extension to match (repeatable, e.g. pdf, docx)")
+    var attachment: [String] = []
+    
+    @Option(help: "Output directory")
+    var out: String = "."
+    
+    private func attachmentExtensions() -> Set<String> {
+        Set(
+            attachment
+                .map { $0.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .map { $0.hasPrefix(".") ? String($0.dropFirst()) : $0 }
+        )
+    }
+    
+    func run() throws {
+        runAsyncBlock {
+            try await withServer { server in
+                print("Selecting mailbox \(mailbox)...")
+                _ = try await server.selectMailbox(mailbox)
+                print("Mailbox selected.")
+                
+                guard let uids = MessageIdentifierSet<UID>(string: uid) else {
+                    throw ValidationError("Invalid UID list: \(uid)")
+                }
+                let outputURL = URL(fileURLWithPath: out, isDirectory: true)
+                try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true, attributes: nil)
+                print("Output directory: \(outputURL.path)")
+                
+                var found = false
+                let attachmentExts = attachmentExtensions()
+                print("Fetching message UID(s) \(uid)...")
+                
+                for try await message in server.fetchMessages(using: uids) {
+                    found = true
+                    var parts = message.attachments
+                    if !attachmentExts.isEmpty {
+                        parts = parts.filter { part in
+                            guard let filename = part.filename?.lowercased() else { return false }
+                            return attachmentExts.contains(where: { filename.hasSuffix(".\($0)") })
+                        }
+                    }
+                    
+                    if parts.isEmpty {
+                        print("No matching attachments found for UID \(message.uid?.value ?? 0).")
+                        return
+                    }
+                    
+                    for part in parts {
+                        let filename = part.suggestedFilename
+                        let destination = outputURL.appendingPathComponent(filename)
+                        print("Saving \(filename)...")
+                        guard let data = part.decodedData() ?? part.data else {
+                            throw ValidationError("Attachment data missing for \(filename)")
+                        }
+                        try data.write(to: destination)
+                        print("Saved \(filename) to \(destination.path)")
+                    }
+                }
+                
+                if !found {
+                    print("Message UID(s) \(uid) not found.")
+                }
+            }
+        }
+    }
+    
+}
+
+struct Idle: ParsableCommand {
+    static let configuration = CommandConfiguration(abstract: "Watch for new emails (IDLE)")
+    
+    @Option(name: .shortAndLong, help: "Mailbox")
+    var mailbox: String = "INBOX"
+
+    func run() throws {
+        runAsyncBlock {
+            // Idle is special
+            try Dotenv.configure()
+            
+            guard case let .string(host) = Dotenv["IMAP_HOST"],
+                  case let .integer(port) = Dotenv["IMAP_PORT"],
+                  case let .string(username) = Dotenv["IMAP_USERNAME"],
+                  case let .string(password) = Dotenv["IMAP_PASSWORD"] else {
+                throw ValidationError("Missing IMAP credentials in .env")
+            }
+            
+            let server = IMAPServer(host: host, port: port)
+            try await server.connect()
+            try await server.login(username: username, password: password)
+            // No defer disconnect as we run indefinitely
+            
+            let status = try await server.selectMailbox(mailbox)
+            print("Listening on \(mailbox)... (CTRL+C to stop)")
+            
+            let idleSession = try await server.idle(on: mailbox)
+            
+            var lastExists = status.messageCount
+            
+            for await event in idleSession.events {
+                if case .exists(let count) = event, count > lastExists {
+                     print("🔔 New message! (Count: \(count))")
+                     lastExists = count
+                }
+            }
+        }
+    }
+}
+
+// Entry point
+IMAPTool.main()

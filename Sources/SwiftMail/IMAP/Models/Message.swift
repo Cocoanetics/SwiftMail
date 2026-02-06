@@ -68,12 +68,14 @@ public struct Message: Codable, Sendable {
     
     /// All attachments in the email
     public var attachments: [MessagePart] {
-        // Look for parts with disposition "attachment" or filename
-        // and exclude any part with a content ID as those are inline resources
+        // Treat explicit attachments as attachments even if they have Content-ID.
+        // Exclude inline parts that only have a filename.
         return parts.filter { part in
-            ((part.disposition?.lowercased() == "attachment") ||
-            (part.filename != nil && !part.filename!.isEmpty)) &&
-            part.contentId == nil
+            let disposition = part.disposition?.lowercased()
+            let hasFilename = !(part.filename?.isEmpty ?? true)
+            let isAttachment = disposition == "attachment"
+            let isInline = disposition == "inline"
+            return isAttachment || (hasFilename && !isInline)
         }
     }
 

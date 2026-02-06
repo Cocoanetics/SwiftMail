@@ -22,7 +22,7 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
     let criteria: [SearchCriteria]
     
     /// Timeout in seconds for the search operation.
-    var timeoutSeconds: Int { return 10 }
+    var timeoutSeconds: Int { return 60 }
 
     /**
      Create a new search command.
