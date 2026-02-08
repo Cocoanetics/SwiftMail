@@ -70,12 +70,14 @@ public struct Message: Codable, Sendable {
     public var attachments: [MessagePart] {
         // Treat explicit attachments as attachments even if they have Content-ID.
         // Exclude inline parts that only have a filename.
+        // Exclude parts with Content-ID but no explicit "attachment" disposition (they are CID references).
         return parts.filter { part in
             let disposition = part.disposition?.lowercased()
             let hasFilename = !(part.filename?.isEmpty ?? true)
             let isAttachment = disposition == "attachment"
             let isInline = disposition == "inline"
-            return isAttachment || (hasFilename && !isInline)
+            let isCidOnly = part.contentId != nil && !isAttachment
+            return isAttachment || (hasFilename && !isInline && !isCidOnly)
         }
     }
 
