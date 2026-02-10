@@ -255,34 +255,58 @@ extension Array where Element == Mailbox.Info {
         return first(where: { $0.name.caseInsensitiveCompare("INBOX") == .orderedSame })
     }
     
-    /// Find the first mailbox with the sent attribute
+    /// Find the first mailbox with the sent attribute, falling back to common names
     public var sent: Element? {
-        return first(where: { $0.attributes.contains(.sent) })
+        if let match = first(where: { $0.attributes.contains(.sent) }) {
+            return match
+        }
+        let names = ["sent", "sent messages", "sent items", "[gmail]/sent mail"]
+        return first(where: { names.contains($0.name.lowercased()) })
     }
     
-    /// Find the first mailbox with the drafts attribute
+    /// Find the first mailbox with the drafts attribute, falling back to common names
     public var drafts: Element? {
-        return first(where: { $0.attributes.contains(.drafts) })
+        if let match = first(where: { $0.attributes.contains(.drafts) }) {
+            return match
+        }
+        let names = ["drafts", "[gmail]/drafts"]
+        return first(where: { names.contains($0.name.lowercased()) })
     }
     
-    /// Find the first mailbox with the trash attribute
+    /// Find the first mailbox with the trash attribute, falling back to common names
     public var trash: Element? {
-        return first(where: { $0.attributes.contains(.trash) })
+        if let match = first(where: { $0.attributes.contains(.trash) }) {
+            return match
+        }
+        let names = ["trash", "deleted messages", "deleted items", "[gmail]/trash"]
+        return first(where: { names.contains($0.name.lowercased()) })
     }
     
-    /// Find the first mailbox with the junk attribute
+    /// Find the first mailbox with the junk attribute, falling back to common names
     public var junk: Element? {
-        return first(where: { $0.attributes.contains(.junk) })
+        if let match = first(where: { $0.attributes.contains(.junk) }) {
+            return match
+        }
+        let names = ["junk", "spam", "junk e-mail", "[gmail]/spam"]
+        return first(where: { names.contains($0.name.lowercased()) })
     }
     
-    /// Find the first mailbox with the archive attribute
+    /// Find the first mailbox with the archive attribute, falling back to common names
     public var archive: Element? {
-        return first(where: { $0.attributes.contains(.archive) })
+        if let match = first(where: { $0.attributes.contains(.archive) }) {
+            return match
+        }
+        let names = ["archive", "archives", "all mail", "[gmail]/all mail"]
+        return first(where: { names.contains($0.name.lowercased()) })
     }
     
-    /// Find the first mailbox with the flagged attribute
+    /// Find the first mailbox with the flagged attribute, falling back to common names
     public var flagged: Element? {
-        return first(where: { $0.attributes.contains(.flagged) })
+        if let match = first(where: { $0.attributes.contains(.flagged) }) {
+            return match
+        }
+        let names = ["starred", "flagged", "[gmail]/starred"]
+        return first(where: { names.contains($0.name.lowercased()) })
     }
     
     /// Get only mailboxes with special-use attributes

@@ -567,11 +567,41 @@ public actor IMAPServer {
         let command = FetchMessageInfoCommand(identifierSet: singleSet)
         return try await executeCommand(command).first
     }
+
+    /// Fetch message infos for an identifier set in a **single IMAP FETCH**.
+    /// This is important for UID ranges like `123:*` which must not be expanded into individual UIDs.
+    public func fetchMessageInfosBulk<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) async throws -> [MessageInfo] {
+        let command = FetchMessageInfoCommand(identifierSet: identifierSet)
+        return try await executeCommand(command)
+    }
+
+    // MARK: - Convenience overloads for ranges
+
+    /// Fetch message infos for a UID range in a **single UID FETCH** (e.g. `11971:*`).
+    public func fetchMessageInfos(uidRange: PartialRangeFrom<UID>) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(using: UIDSet(uidRange))
+    }
+
+    /// Fetch message infos for a UID range in a **single UID FETCH**.
+    public func fetchMessageInfos(uidRange: ClosedRange<UID>) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(using: UIDSet(uidRange))
+    }
+
+    /// Fetch message infos for a sequence number range in a single FETCH.
+    public func fetchMessageInfos(sequenceRange: PartialRangeFrom<SequenceNumber>) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(using: SequenceNumberSet(sequenceRange))
+    }
+
+    /// Fetch message infos for a sequence number range in a single FETCH.
+    public func fetchMessageInfos(sequenceRange: ClosedRange<SequenceNumber>) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(using: SequenceNumberSet(sequenceRange))
+    }
     
     /// Stream message headers for a set of identifiers
     /// - Parameter identifierSet: The set of message identifiers to fetch
     /// - Returns: An AsyncThrowingStream yielding MessageInfo one at a time
     public nonisolated func fetchMessageInfos<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) -> AsyncThrowingStream<MessageInfo, Error> {
+
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -1054,6 +1084,7 @@ extension IMAPServer {
      - `IMAPError.commandFailed` if the list operation fails
      - Note: Logs special mailbox detection at info level
      */
+    @discardableResult
     public func listSpecialUseMailboxes() async throws -> [Mailbox.Info] {
         // Check if the server supports SPECIAL-USE capability
         let supportsSpecialUse = capabilities.contains(NIOIMAPCore.Capability("SPECIAL-USE"))
@@ -1213,83 +1244,114 @@ extension IMAPServer {
     /**
      Get the trash folder or throw if not found
      
+     Checks special-use mailboxes first, then falls back to the general mailbox list
+     (which includes name-based matching for common folder names like "Trash").
+     
      - Returns: The trash folder information
      - Throws: `UndefinedFolderError.trash` if the trash folder is not found
      */
     public var trashFolder: Mailbox.Info {
         get throws {
-            guard let trash = specialMailboxes.trash else {
-                throw UndefinedFolderError.trash
+            if let trash = specialMailboxes.trash ?? mailboxes.trash {
+                return trash
             }
-            return trash
+            throw UndefinedFolderError.trash
         }
     }
     
     /**
      Get the archive folder or throw if not found
      
+     Checks special-use mailboxes first, then falls back to the general mailbox list
+     (which includes name-based matching for common folder names like "Archive").
+     
      - Returns: The archive folder information
      - Throws: `UndefinedFolderError.archive` if the archive folder is not found
      */
     public var archiveFolder: Mailbox.Info {
         get throws {
-            guard let archive = specialMailboxes.archive else {
-                throw UndefinedFolderError.archive
+            if let archive = specialMailboxes.archive ?? mailboxes.archive {
+                return archive
             }
-            return archive
+            throw UndefinedFolderError.archive
         }
     }
     
     /**
      Get the sent folder or throw if not found
      
+     Checks special-use mailboxes first, then falls back to the general mailbox list
+     (which includes name-based matching for common folder names like "Sent").
+     
      - Returns: The sent folder information
      - Throws: `UndefinedFolderError.sent` if the sent folder is not found
      */
     public var sentFolder: Mailbox.Info {
         get throws {
-            guard let sent = specialMailboxes.sent else {
-                throw UndefinedFolderError.sent
+            if let sent = specialMailboxes.sent ?? mailboxes.sent {
+                return sent
             }
-            return sent
+            throw UndefinedFolderError.sent
         }
     }
     
     /**
      Get the drafts folder or throw if not found
      
+     Checks special-use mailboxes first, then falls back to the general mailbox list
+     (which includes name-based matching for common folder names like "Drafts").
+     
      - Returns: The drafts folder information
      - Throws: `UndefinedFolderError.drafts` if the drafts folder is not found
      */
     public var draftsFolder: Mailbox.Info {
         get throws {
-            guard let drafts = specialMailboxes.drafts else {
-                throw UndefinedFolderError.drafts
+            if let drafts = specialMailboxes.drafts ?? mailboxes.drafts {
+                return drafts
             }
-            return drafts
+            throw UndefinedFolderError.drafts
         }
     }
     
     /**
      Get the junk folder or throw if not found
      
+     Checks special-use mailboxes first, then falls back to the general mailbox list
+     (which includes name-based matching for common folder names like "Junk" or "Spam").
+     
      - Returns: The junk folder information
      - Throws: `UndefinedFolderError.junk` if the junk folder is not found
      */
     public var junkFolder: Mailbox.Info {
         get throws {
-            guard let junk = specialMailboxes.junk else {
-                throw UndefinedFolderError.junk
+            if let junk = specialMailboxes.junk ?? mailboxes.junk {
+                return junk
             }
-            return junk
+            throw UndefinedFolderError.junk
         }
     }
 }
 
 // Update the existing folder operations to use the throwing getters
 extension IMAPServer {
+    
+    /// Ensures special-use mailboxes and the general mailbox list have been fetched.
+    /// Called automatically by convenience folder operations so callers don't need
+    /// to manually call `listSpecialUseMailboxes()` first.
+    private func ensureMailboxesLoaded() async throws {
+        if mailboxes.isEmpty {
+            // listSpecialUseMailboxes also populates self.mailboxes internally
+            try await listSpecialUseMailboxes()
+        } else if specialMailboxes.isEmpty {
+            try await listSpecialUseMailboxes()
+        }
+    }
+    
     /**
      Move messages to the trash folder
+     
+     Automatically fetches special-use mailboxes if they haven't been loaded yet.
+     Falls back to a mailbox named "Trash" if the server doesn't advertise SPECIAL-USE.
      
      The generic type T determines the identifier type:
      - Use `SequenceNumber` for temporary message numbers that may change
@@ -1299,11 +1361,15 @@ extension IMAPServer {
      - Throws: An error if the move operation fails or trash folder is not found
      */
     public func moveToTrash<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+        try await ensureMailboxesLoaded()
         try await move(messages: identifierSet, to: try trashFolder.name)
     }
     
     /**
      Archive messages by marking them as seen and moving them to the archive folder
+     
+     Automatically fetches special-use mailboxes if they haven't been loaded yet.
+     Falls back to a mailbox named "Archive" if the server doesn't advertise SPECIAL-USE.
      
      The generic type T determines the identifier type:
      - Use `SequenceNumber` for temporary message numbers that may change
@@ -1313,12 +1379,16 @@ extension IMAPServer {
      - Throws: An error if the archive operation fails or archive folder is not found
      */
     public func archive<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+        try await ensureMailboxesLoaded()
         try await store(flags: [.seen], on: identifierSet, operation: .add)
         try await move(messages: identifierSet, to: try archiveFolder.name)
     }
     
     /**
      Mark messages as junk by moving them to the junk folder
+     
+     Automatically fetches special-use mailboxes if they haven't been loaded yet.
+     Falls back to a mailbox named "Junk" or "Spam" if the server doesn't advertise SPECIAL-USE.
      
      The generic type T determines the identifier type:
      - Use `SequenceNumber` for temporary message numbers that may change
@@ -1328,6 +1398,7 @@ extension IMAPServer {
      - Throws: An error if the operation fails or junk folder is not found
      */
     public func markAsJunk<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+        try await ensureMailboxesLoaded()
         try await move(messages: identifierSet, to: try junkFolder.name)
     }
     
