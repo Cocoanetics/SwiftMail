@@ -51,8 +51,8 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     override func processResponse(_ response: SMTPResponse) -> Bool {
         // Handle authentication based on the method and current state
         switch method {
-        case .plain:
-            // For PLAIN auth, we should get a success response immediately
+        case .plain, .xoauth2:
+            // For PLAIN and XOAUTH2 auth, we should get a success response immediately
             if response.code >= 200 && response.code < 300 {
                 promise.succeed(AuthResult(method: method, success: true))
                 return true
@@ -60,7 +60,7 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
                 promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
                 return true
             }
-            
+
         case .login:
             // For LOGIN auth, we need to handle multiple steps
             switch state {
@@ -128,6 +128,7 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
 enum AuthMethod: String {
     case plain = "PLAIN"
     case login = "LOGIN"
+    case xoauth2 = "XOAUTH2"
 }
 
 /// Result of authentication attempt

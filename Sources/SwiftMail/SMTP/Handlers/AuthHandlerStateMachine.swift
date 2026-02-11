@@ -42,14 +42,14 @@ final class AuthHandlerStateMachine {
 	func processResponse(_ response: SMTPResponse,
                                sendCredential: (String) -> Void) -> (isComplete: Bool, result: AuthResult?) {
         switch method {
-        case .plain:
-            // For PLAIN auth, we should get a success response immediately
+        case .plain, .xoauth2:
+            // For PLAIN and XOAUTH2 auth, we should get a success response immediately
             if response.code >= 200 && response.code < 300 {
                 return (true, AuthResult(method: method, success: true))
             } else if response.code >= 400 {
                 return (true, AuthResult(method: method, success: false, errorMessage: response.message))
             }
-            
+
         case .login:
             // For LOGIN auth, we need to handle multiple steps
             switch state {

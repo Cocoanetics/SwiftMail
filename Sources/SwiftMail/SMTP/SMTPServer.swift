@@ -277,7 +277,34 @@ public actor SMTPServer {
         throw SMTPError.authenticationFailed("Authentication failed with all available methods")
     }
     
-    /** 
+    /**
+     Authenticate with the SMTP server using XOAUTH2
+
+     This method authenticates using the XOAUTH2 mechanism, which is required
+     by Gmail and other providers when using OAuth2 access tokens for SMTP.
+
+     - Parameters:
+       - email: The email address of the account
+       - accessToken: A valid OAuth2 access token
+     - Throws:
+       - `SMTPError.authenticationFailed` if the server does not support XOAUTH2
+         or if the token is rejected
+       - `SMTPError.connectionFailed` if not connected
+     */
+    public func authenticateXOAUTH2(email: String, accessToken: String) async throws {
+        guard capabilities.contains("AUTH XOAUTH2") else {
+            throw SMTPError.authenticationFailed("Server does not support XOAUTH2 authentication")
+        }
+
+        let command = XOAuth2AuthCommand(email: email, accessToken: accessToken)
+        let result = try await executeCommand(command)
+
+        guard result.success else {
+            throw SMTPError.authenticationFailed(result.errorMessage ?? "XOAUTH2 authentication failed")
+        }
+    }
+
+    /**
      Disconnect from the SMTP server
      
      This method performs a clean disconnect from the server by:
