@@ -34,7 +34,9 @@ struct AppendCommand: IMAPCommand {
         let metadata = AppendMessage(options: appendOptions, data: AppendData(byteCount: messageBuffer.readableBytes))
 
         try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.start(tag: tag, appendingTo: mailbox)))).get()
-        try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.beginMessage(message: metadata)))).get()
+        // Flush APPEND metadata before waiting on message-bytes write completion.
+        // Otherwise the server never receives the literal header and cannot send continuation.
+        try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.append(.beginMessage(message: metadata)))).get()
         try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.messageBytes(messageBuffer)))).get()
         try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.endMessage))).get()
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.append(.finish))).get()
