@@ -1437,7 +1437,7 @@ extension IMAPServer {
             throw IMAPError.invalidArgument("Mailbox name must not be empty")
         }
 
-        var content = email.constructContent(use8BitMIME: true)
+        var content = canonicalizeCRLF(email.constructContent(use8BitMIME: true))
         if !content.hasSuffix("\r\n") {
             content.append("\r\n")
         }
@@ -1470,5 +1470,14 @@ extension IMAPServer {
         }
 
         return try await append(email: email, to: targetMailbox, flags: flags, internalDate: date)
+    }
+}
+
+private extension IMAPServer {
+    func canonicalizeCRLF(_ value: String) -> String {
+        let normalized = value
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+        return normalized.replacingOccurrences(of: "\n", with: "\r\n")
     }
 }
