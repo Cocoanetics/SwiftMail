@@ -33,9 +33,9 @@ private extension AppendHandler {
 
         switch code {
         case .uidAppend(let data):
-            let uidValidity = UInt32(data.uidValidity)
+            let validity = UIDValidity(nio: data.uidValidity)
             let assigned = data.uids.set.map { UID(nio: $0) }
-            return AppendResult(uidValidity: uidValidity, uids: assigned)
+            return AppendResult(uidValidity: validity, uids: assigned)
         default:
             return AppendResult(uidValidity: nil, uids: [])
         }

@@ -314,7 +314,7 @@ public actor IMAPServer {
      - Important: The returned status does not include an unseen count, as this is not provided by the IMAP SELECT command.
      To get the count of unseen messages, use `mailboxStatus("INBOX").unseenCount` instead.
      */
-    @discardableResult public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Status {
+    @discardableResult public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
         let command = SelectMailboxCommand(mailboxName: mailboxName)
         return try await executeCommand(command)
     }
@@ -777,7 +777,7 @@ public actor IMAPServer {
      `STATUS` is issued for the currently selected mailbox. Call this method when no mailbox is selected
      (before `selectMailbox(_)`) or after `unselectMailbox()`/`closeMailbox()` to avoid the warning.
      */
-    public func mailboxStatus(_ mailboxName: String) async throws -> NIOIMAPCore.MailboxStatus {
+    public func mailboxStatus(_ mailboxName: String) async throws -> Mailbox.Status {
         // Always request standard attributes
         var attributes: [NIOIMAPCore.MailboxAttribute] = [
             .messageCount,
@@ -804,7 +804,8 @@ public actor IMAPServer {
         }
         
         let command = StatusCommand(mailboxName: mailboxName, attributes: attributes)
-        return try await executeCommand(command)
+        let status: NIOIMAPCore.MailboxStatus = try await executeCommand(command)
+        return Mailbox.Status(nio: status)
     }
     
     /**
@@ -846,8 +847,8 @@ public actor IMAPServer {
      - `IMAPError.emptyIdentifierSet` if the identifier set is empty
      - Note: Logs flag updates at debug level with operation type and message count
      */
-    public func store<T: MessageIdentifier>(flags: [Flag], on identifierSet: MessageIdentifierSet<T>, operation: StoreOperation) async throws {
-        let storeData = StoreData.flags(flags, operation == .add ? .add : .remove)
+    public func store<T: MessageIdentifier>(flags: [Flag], on identifierSet: MessageIdentifierSet<T>, operation: StoreData.StoreType) async throws {
+        let storeData = StoreData.flags(flags, operation)
         let command = StoreCommand(identifierSet: identifierSet, data: storeData)
         try await executeCommand(command)
     }

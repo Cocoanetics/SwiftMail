@@ -8,20 +8,20 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP SELECT command
-final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCommandHandler, @unchecked Sendable {
+final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPCommandHandler, @unchecked Sendable {
     /// The type of result this handler produces
-    typealias ResultType = Mailbox.Status
+    typealias ResultType = Mailbox.Selection
     
-    /// The mailbox status being built
-    private var mailboxInfo = Mailbox.Status()
+    /// The mailbox selection being built
+    private var mailboxInfo = Mailbox.Selection()
     
     /// Initialize a new select handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the select completes
-    override init(commandTag: String, promise: EventLoopPromise<Mailbox.Status>) {
+    override init(commandTag: String, promise: EventLoopPromise<Mailbox.Selection>) {
         // Initialize with default values
-        mailboxInfo = Mailbox.Status()
+        mailboxInfo = Mailbox.Selection()
         super.init(commandTag: commandTag, promise: promise)
     }
     
@@ -61,9 +61,8 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Status>, IMAPCommandHa
                                     }
                                     
                                 case .uidValidity(let validity):
-                                    // Use the BinaryInteger extension to convert UIDValidity to UInt32
                                     lock.withLock {
-                                        mailboxInfo.uidValidity = UInt32(validity)
+                                        mailboxInfo.uidValidity = UIDValidity(nio: validity)
                                     }
                                     
                                 case .uidNext(let next):

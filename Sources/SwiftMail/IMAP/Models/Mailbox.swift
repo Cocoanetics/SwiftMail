@@ -4,9 +4,9 @@ import NIOIMAPCore
 /// Represents an IMAP mailbox namespace
 public enum Mailbox {
     /// Information about a mailbox from a LIST command
-    public struct Info: Sendable {
+    public struct Info: Codable, Sendable {
         /// Attributes of a mailbox from a LIST command
-        public struct Attributes: OptionSet, Sendable {
+        public struct Attributes: OptionSet, Codable, Sendable {
             public let rawValue: UInt16
             
             public init(rawValue: UInt16) {
@@ -99,18 +99,18 @@ public enum Mailbox {
         /// The attributes of the mailbox
         public let attributes: Attributes
         
-        /// The hierarchy delimiter used by the server
-        public let hierarchyDelimiter: Character?
+        /// The hierarchy delimiter used by the server (e.g. "/" or ".")
+        public let hierarchyDelimiter: String?
         
         /// Initialize from NIOIMAPCore.MailboxInfo
-        public init(from info: NIOIMAPCore.MailboxInfo) {
+        internal init(nio info: NIOIMAPCore.MailboxInfo) {
             self.name = String(decoding: info.path.name.bytes, as: UTF8.self)
             self.attributes = Attributes(from: Array(info.attributes))
-            self.hierarchyDelimiter = info.path.pathSeparator
+            self.hierarchyDelimiter = info.path.pathSeparator.map(String.init)
         }
         
         /// Initialize with raw values
-        public init(name: String, attributes: Attributes, hierarchyDelimiter: Character?) {
+        public init(name: String, attributes: Attributes, hierarchyDelimiter: String?) {
             self.name = name
             self.attributes = attributes
             self.hierarchyDelimiter = hierarchyDelimiter
@@ -142,8 +142,8 @@ public enum Mailbox {
         }
     }
     
-    /// Status information about a mailbox from a SELECT command
-    public struct Status: Sendable {
+    /// Result of selecting a mailbox via the IMAP `SELECT` command.
+    public struct Selection: Codable, Sendable {
         /// The total number of messages in the mailbox
         public var messageCount: Int = 0
         
@@ -154,7 +154,7 @@ public enum Mailbox {
         public var firstUnseen: Int = 0
         
         /// The UID validity value for the mailbox
-        public var uidValidity: UInt32 = 0
+        public var uidValidity: UIDValidity = UIDValidity(0)
         
         /// The next UID value for the mailbox
         public var uidNext: UID = UID(0)
@@ -223,9 +223,9 @@ extension Mailbox.Info.Attributes: CustomStringConvertible {
     }
 }
 
-extension Mailbox.Status: CustomStringConvertible {
+extension Mailbox.Selection: CustomStringConvertible {
     public var description: String {
-        var desc = "Status("
+        var desc = "Selection("
 
         desc += "messages=\(messageCount)"
         if firstUnseen > 0 {

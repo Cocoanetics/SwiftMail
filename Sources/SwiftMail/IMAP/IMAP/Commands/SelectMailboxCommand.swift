@@ -4,7 +4,7 @@ import NIOIMAP
 
 /// Command to select a mailbox
 struct SelectMailboxCommand: IMAPTaggedCommand {
-    typealias ResultType = Mailbox.Status
+    typealias ResultType = Mailbox.Selection
     typealias HandlerType = SelectHandler
     
     let mailboxName: String

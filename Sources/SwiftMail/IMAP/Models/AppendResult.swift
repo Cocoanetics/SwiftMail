@@ -1,9 +1,9 @@
 import Foundation
 
 /// Metadata returned by the server after a successful APPEND command.
-public struct AppendResult: Sendable {
+public struct AppendResult: Codable, Sendable {
     /// The UIDVALIDITY reported by the server, if available.
-    public let uidValidity: UInt32?
+    public let uidValidity: UIDValidity?
 
     /// The server-assigned UIDs for the appended messages (empty when the server does not support UIDPLUS).
     public let uids: [UID]
@@ -17,7 +17,7 @@ public struct AppendResult: Sendable {
     /// - Parameters:
     ///   - uidValidity: UIDVALIDITY reported by the server, if any.
     ///   - uids: The list of assigned UIDs (may be empty).
-    public init(uidValidity: UInt32?, uids: [UID]) {
+    public init(uidValidity: UIDValidity?, uids: [UID]) {
         self.uidValidity = uidValidity
         self.uids = uids
     }

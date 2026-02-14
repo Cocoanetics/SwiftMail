@@ -44,7 +44,7 @@ final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, IMAPComm
         switch response.state {
         case .ok:
             // Convert NIOIMAPCore.MailboxInfo to our Mailbox.Info
-            let convertedMailboxes = mailboxes.map { Mailbox.Info(from: $0) }
+            let convertedMailboxes = mailboxes.map { Mailbox.Info(nio: $0) }
             promise.succeed(convertedMailboxes)
         case .no, .bad:
             promise.fail(IMAPError.commandFailed("List command failed"))
