@@ -50,6 +50,17 @@ struct AuthCommand: SMTPCommand {
         case .login:
             // For LOGIN auth, the initial command doesn't include credentials
             return "AUTH LOGIN"
+        case .xoauth2:
+            // XOAUTH2 format: user=<email>\x01auth=Bearer <token>\x01\x01
+            var data = Data()
+            data.append(contentsOf: "user=".utf8)
+            data.append(contentsOf: username.utf8)
+            data.append(0x01)
+            data.append(contentsOf: "auth=Bearer ".utf8)
+            data.append(contentsOf: password.utf8)
+            data.append(0x01)
+            data.append(0x01)
+            return "AUTH XOAUTH2 \(data.base64EncodedString())"
         }
     }
     
