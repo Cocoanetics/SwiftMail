@@ -33,10 +33,15 @@ struct AppendCommand: IMAPCommand {
         let appendOptions = AppendOptions(flagList: nioFlags, internalDate: internalDate)
         let metadata = AppendMessage(options: appendOptions, data: AppendData(byteCount: messageBuffer.readableBytes))
 
-        try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.start(tag: tag, appendingTo: mailbox)))).get()
-        try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.beginMessage(message: metadata)))).get()
-        try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.messageBytes(messageBuffer)))).get()
-        try await channel.write(IMAPClientHandler.OutboundIn.part(.append(.endMessage))).get()
-        try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.append(.finish))).get()
+        channel.write(IMAPClientHandler.OutboundIn.part(.append(.start(tag: tag, appendingTo: mailbox))), promise: nil)
+        channel.write(IMAPClientHandler.OutboundIn.part(.append(.beginMessage(message: metadata))), promise: nil)
+        // Flush APPEND metadata first so servers can respond with literal continuation.
+        channel.flush()
+
+        // Do not await write promises here. These writes may be continuation-gated by the IMAP state machine,
+        // and awaiting them can deadlock this command send path until timeout.
+        channel.write(IMAPClientHandler.OutboundIn.part(.append(.messageBytes(messageBuffer))), promise: nil)
+        channel.write(IMAPClientHandler.OutboundIn.part(.append(.endMessage)), promise: nil)
+        channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.append(.finish)), promise: nil)
     }
 }
