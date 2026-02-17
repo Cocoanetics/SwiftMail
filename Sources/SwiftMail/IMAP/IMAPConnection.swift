@@ -293,8 +293,8 @@ final class IMAPConnection {
             logger: logger
         )
 
-        responseBuffer.hasActiveHandler = true
         try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
+        responseBuffer.hasActiveHandler = true
 
         let initialResponse = expectsChallenge ? nil : InitialResponse(credentialBuffer)
 
@@ -352,8 +352,8 @@ final class IMAPConnection {
         let handler = IdleHandler(commandTag: tag, promise: promise, continuation: continuation)
         idleHandler = handler
 
-        responseBuffer.hasActiveHandler = true
         try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
+        responseBuffer.hasActiveHandler = true
         let command = IdleCommand()
         let tagged = command.toTaggedCommand(tag: tag)
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
@@ -425,8 +425,8 @@ final class IMAPConnection {
         }
 
         do {
-            responseBuffer.hasActiveHandler = true
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
+            responseBuffer.hasActiveHandler = true
             try await command.send(on: channel, tag: tag)
             let result = try await resultPromise.futureResult.get()
 
@@ -473,8 +473,8 @@ final class IMAPConnection {
         }
 
         do {
-            responseBuffer.hasActiveHandler = true
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
+            responseBuffer.hasActiveHandler = true
             let result = try await resultPromise.futureResult.get()
 
             scheduledTask.cancel()
