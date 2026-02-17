@@ -16,6 +16,7 @@ final class IMAPConnection {
     private var idleHandler: IdleHandler?
     private var idleTerminationInProgress: Bool = false
     private let commandQueue = IMAPCommandQueue()
+    private let responseBuffer = UntaggedResponseBuffer()
 
     private let logger: Logging.Logger
     private let duplexLogger: IMAPLogger
@@ -75,6 +76,13 @@ final class IMAPConnection {
 
         let channel = try await bootstrap.connect(host: host, port: port).get()
         self.channel = channel
+
+        // Add the persistent untagged response buffer as the LAST handler in the pipeline.
+        // Transient command handlers are added BEFORE it (position: .before(responseBuffer)).
+        // channelRead flows first→last, so: command handler processes response → calls
+        // fireChannelRead → buffer sees it. When no command handler is active, responses
+        // flow directly to the buffer which captures them for later draining.
+        try await channel.pipeline.addHandler(responseBuffer).get()
 
         logger.info("Connected to IMAP server with 1MB buffer limit for large responses")
 
@@ -145,6 +153,7 @@ final class IMAPConnection {
         defer {
             idleTerminationInProgress = false
             idleHandler = nil
+            responseBuffer.hasActiveHandler = false
         }
 
         do {
@@ -159,6 +168,75 @@ final class IMAPConnection {
     func noop() async throws -> [IMAPServerEvent] {
         let command = NoopCommand()
         return try await executeCommand(command)
+    }
+
+    /// Drain any untagged responses that were buffered between command handlers.
+    ///
+    /// Returns them converted to `IMAPServerEvent`s. Responses that don't map
+    /// to a known event type are logged and skipped.
+    func drainBufferedEvents() -> [IMAPServerEvent] {
+        let raw = responseBuffer.drainBuffer()
+        guard !raw.isEmpty else { return [] }
+
+        logger.debug("Draining \(raw.count) buffered response(s)")
+        var events: [IMAPServerEvent] = []
+
+        for response in raw {
+            switch response {
+            case .untagged(let payload):
+                switch payload {
+                case .mailboxData(let data):
+                    switch data {
+                    case .exists(let count):
+                        events.append(.exists(Int(count)))
+                    case .recent(let count):
+                        events.append(.recent(Int(count)))
+                    case .flags(let flags):
+                        events.append(.flags(flags.map { Flag(nio: $0) }))
+                    default:
+                        logger.debug("Buffered unhandled mailboxData: \(data)")
+                    }
+                case .messageData(let data):
+                    switch data {
+                    case .expunge(let seq):
+                        events.append(.expunge(SequenceNumber(seq.rawValue)))
+                    default:
+                        logger.debug("Buffered unhandled messageData: \(data)")
+                    }
+                case .conditionalState(let status):
+                    switch status {
+                    case .ok(let text):
+                        if text.code == .alert {
+                            events.append(.alert(text.text))
+                        }
+                    case .bye(let text):
+                        events.append(.bye(text.text))
+                    default:
+                        break
+                    }
+                case .capabilityData(let caps):
+                    events.append(.capability(caps.map { String($0) }))
+                default:
+                    logger.debug("Buffered unhandled payload: \(payload)")
+                }
+            case .fetch(let fetch):
+                // Collect fetch attributes from buffered fetch sequence
+                switch fetch {
+                case .start, .startUID, .simpleAttribute, .finish:
+                    // Individual fetch parts can't be meaningfully reconstructed here
+                    // since we may not have the complete sequence. Log it.
+                    logger.debug("Buffered fetch response part: \(fetch)")
+                default:
+                    logger.debug("Buffered unhandled fetch: \(fetch)")
+                }
+            case .fatal(let text):
+                events.append(.bye(text.text))
+            default:
+                break
+            }
+        }
+
+        return events
     }
 
     func disconnect() async throws {
@@ -215,7 +293,8 @@ final class IMAPConnection {
             logger: logger
         )
 
-        try await channel.pipeline.addHandler(handler).get()
+        responseBuffer.hasActiveHandler = true
+        try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
 
         let initialResponse = expectsChallenge ? nil : InitialResponse(credentialBuffer)
 
@@ -234,12 +313,14 @@ final class IMAPConnection {
             let refreshedCapabilities = try await handlerPromise.futureResult.get()
 
             scheduledTask.cancel()
+            responseBuffer.hasActiveHandler = false
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
 
             try await refreshCapabilities(using: refreshedCapabilities)
         } catch {
             scheduledTask.cancel()
+            responseBuffer.hasActiveHandler = false
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
 
@@ -271,7 +352,8 @@ final class IMAPConnection {
         let handler = IdleHandler(commandTag: tag, promise: promise, continuation: continuation)
         idleHandler = handler
 
-        try await channel.pipeline.addHandler(handler).get()
+        responseBuffer.hasActiveHandler = true
+        try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
         let command = IdleCommand()
         let tagged = command.toTaggedCommand(tag: tag)
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
@@ -343,11 +425,13 @@ final class IMAPConnection {
         }
 
         do {
-            try await channel.pipeline.addHandler(handler).get()
+            responseBuffer.hasActiveHandler = true
+            try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             try await command.send(on: channel, tag: tag)
             let result = try await resultPromise.futureResult.get()
 
             scheduledTask.cancel()
+            responseBuffer.hasActiveHandler = false
 
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
@@ -355,6 +439,7 @@ final class IMAPConnection {
             return result
         } catch {
             scheduledTask.cancel()
+            responseBuffer.hasActiveHandler = false
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
 
@@ -388,10 +473,12 @@ final class IMAPConnection {
         }
 
         do {
-            try await channel.pipeline.addHandler(handler).get()
+            responseBuffer.hasActiveHandler = true
+            try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             let result = try await resultPromise.futureResult.get()
 
             scheduledTask.cancel()
+            responseBuffer.hasActiveHandler = false
 
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
@@ -399,6 +486,7 @@ final class IMAPConnection {
             return result
         } catch {
             scheduledTask.cancel()
+            responseBuffer.hasActiveHandler = false
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
 

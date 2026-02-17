@@ -477,20 +477,23 @@ public actor IMAPServer {
 
                         if Task.isCancelled || gotBye { break }
 
-                        // NOOP to collect any buffered untagged responses arriving during the
-                        // brief gap between IDLE cycles.
-                        //
-                        // Note: there is a small window between the NOOP handler being removed
-                        // from the NIO pipeline and the next IDLE handler being added. Any
-                        // untagged server response arriving in that window would not be captured.
-                        // In practice the window is a few microseconds of Swift async scheduling,
-                        // so the risk is low. A future improvement could use a persistent
-                        // buffering handler that stays in the pipeline between cycles.
+                        // NOOP to collect any untagged responses and refresh state.
                         cycleLogger.debug("Cycle \(cycleCount): sending NOOP")
                         let noopEvents = try await connection.noop()
                         cycleLogger.debug("Cycle \(cycleCount): NOOP returned \(noopEvents.count) events")
                         for event in noopEvents {
                             continuation.yield(event)
+                        }
+
+                        // Drain any responses that arrived in the gap between handlers.
+                        // The persistent UntaggedResponseBuffer captures responses when no
+                        // command handler is active in the NIO pipeline.
+                        let bufferedEvents = connection.drainBufferedEvents()
+                        if !bufferedEvents.isEmpty {
+                            cycleLogger.debug("Cycle \(cycleCount): drained \(bufferedEvents.count) buffered events")
+                            for event in bufferedEvents {
+                                continuation.yield(event)
+                            }
                         }
                     }
                 } catch {
