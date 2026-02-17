@@ -217,13 +217,15 @@ public actor SMTPServer {
             do {
                 try await startTLS()
             } catch {
-                if Self.shouldFailClosedOnSTARTTLSFailure(port: port, host: host) {
+                if Self.shouldFailClosedOnSTARTTLSFailure(port: port) {
                     logger.error("STARTTLS failed for \(host): \(error.localizedDescription). Cannot continue without encryption.")
                     throw SMTPError.tlsFailed("STARTTLS required on port 587 but failed: \(error.localizedDescription)")
                 }
 
                 logger.warning("STARTTLS failed: \(error.localizedDescription). Continuing without encryption.")
             }
+        } else if port == 587 && !useSSL && !capabilities.contains("STARTTLS") {
+            logger.warning("Port 587 connection to \(host) proceeding without encryption: server does not advertise STARTTLS. This may indicate a misconfigured server or a downgrade attack.")
         }
         
         logger.info("Connected to SMTP server \(self.host):\(self.port)")
@@ -303,13 +305,34 @@ public actor SMTPServer {
         }
     }
 
+    /// Determines whether STARTTLS upgrade should be attempted for the given connection parameters.
+    ///
+    /// Returns `true` when all of the following are met:
+    /// - The connection is not already using implicit TLS (`useSSL` is `false`)
+    /// - The port is 587 (the standard SMTP submission port)
+    /// - The server advertises the `STARTTLS` capability
+    ///
+    /// - Parameters:
+    ///   - port: The TCP port of the SMTP connection.
+    ///   - useSSL: Whether implicit TLS (e.g. port 465) is already active.
+    ///   - capabilities: The list of EHLO capability strings advertised by the server.
+    /// - Returns: `true` if a STARTTLS upgrade should be initiated.
     static func requiresSTARTTLSUpgrade(port: Int, useSSL: Bool, capabilities: [String]) -> Bool {
         !useSSL && port == 587 && capabilities.contains("STARTTLS")
     }
 
-    static func shouldFailClosedOnSTARTTLSFailure(port: Int, host: String) -> Bool {
-        _ = host
-        return port == 587
+    /// Determines whether a failed STARTTLS handshake should abort the connection (fail closed)
+    /// rather than falling back to cleartext.
+    ///
+    /// On port 587, the standard SMTP submission port, STARTTLS is expected. Continuing without
+    /// encryption after a failed upgrade could silently downgrade transport security, potentially
+    /// exposing credentials and message content. This method enforces a fail-closed policy for
+    /// such connections.
+    ///
+    /// - Parameter port: The TCP port of the SMTP connection.
+    /// - Returns: `true` if the connection must be terminated when STARTTLS fails.
+    static func shouldFailClosedOnSTARTTLSFailure(port: Int) -> Bool {
+        port == 587
     }
 
     /**

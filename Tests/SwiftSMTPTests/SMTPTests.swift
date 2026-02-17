@@ -83,11 +83,10 @@ struct SMTPTests {
     }
 
     @Test
-    func testSTARTTLSFailureIsFatalForPort587RegardlessOfHost() {
-        #expect(SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 587, host: "smtp.gmail.com"))
-        #expect(SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 587, host: "smtp.example.com"))
+    func testSTARTTLSFailureIsFatalForPort587() {
+        #expect(SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 587))
 
-        #expect(!SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 465, host: "smtp.gmail.com"))
-        #expect(!SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 25, host: "smtp.example.com"))
+        #expect(!SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 465))
+        #expect(!SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 25))
     }
 }
