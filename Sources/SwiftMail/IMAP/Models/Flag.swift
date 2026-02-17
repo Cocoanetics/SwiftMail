@@ -18,6 +18,19 @@ public enum Flag: Sendable {
     // Note: Recent flag is not allowed in STORE commands
     case custom(String)
     
+    /// Convert from a NIOIMAPCore Flag
+    internal init(nio: NIOIMAPCore.Flag) {
+        let s = String(nio)
+        switch s.uppercased() {
+        case "\\SEEN":      self = .seen
+        case "\\ANSWERED":  self = .answered
+        case "\\FLAGGED":   self = .flagged
+        case "\\DELETED":   self = .deleted
+        case "\\DRAFT":     self = .draft
+        default:            self = .custom(s)
+        }
+    }
+
     /// Convert to NIO Flag
     internal func toNIO() -> NIOIMAPCore.Flag {
         switch self {

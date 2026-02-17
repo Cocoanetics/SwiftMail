@@ -9,8 +9,16 @@ public enum IMAPServerEvent: Sendable {
     /// A message with the given sequence number was expunged.
     case expunge(SequenceNumber)
 
+    /// RFC 7162 CONDSTORE/QRESYNC: one or more messages identified by UID have been
+    /// permanently removed from the mailbox. Servers that advertise CONDSTORE or QRESYNC
+    /// send this instead of (or in addition to) individual `expunge` events.
+    case vanished(UIDSet)
+
     /// Number of messages with the \Recent flag.
     case recent(Int)
+
+    /// The set of flags defined for the mailbox has changed.
+    case flags([Flag])
 
     /// A message has updated attributes.
     case fetch(SequenceNumber, [MessageAttribute])

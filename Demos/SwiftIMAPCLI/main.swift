@@ -627,8 +627,14 @@ struct Idle: ParsableCommand {
                         return nil
                     }.first ?? ""
                     print("[\(ts)] 📋 FETCH seq=\(seq.value) flags=[\(flags)]")
+                case .vanished(let uids):
+                    let count = uids.count
+                    print("[\(ts)] 💨 VANISHED \(count) UID(s)")
+                case .flags(let flags):
+                    let flagList = flags.map(\.description).joined(separator: ", ")
+                    print("[\(ts)] 🏷️  FLAGS [\(flagList)]")
                 case .bye(let text):
-                    print("[\(ts)] 👋 BYE: \(text)")
+                    print("[\(ts)] 👋 BYE: \(text ?? "")")
                 case .alert(let text):
                     print("[\(ts)] ⚠️  ALERT: \(text)")
                 case .capability(let caps):

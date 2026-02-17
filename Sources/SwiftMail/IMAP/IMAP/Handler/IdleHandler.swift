@@ -2,6 +2,7 @@ import Foundation
 import NIOIMAPCore
 import NIOIMAP
 import NIO
+import Logging
 
 /// Handler managing the IMAP IDLE session
 final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
@@ -10,6 +11,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
     typealias InboundOut = Never
 
     private let continuation: AsyncStream<IMAPServerEvent>.Continuation
+    private let idleLogger = Logger(label: "com.cocoanetics.SwiftMail.IdleHandler")
 
     init(commandTag: String, promise: EventLoopPromise<Void>, continuation: AsyncStream<IMAPServerEvent>.Continuation) {
         self.continuation = continuation
@@ -34,6 +36,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
     }
 
     private var currentSeq: SequenceNumber?
+    private var currentUID: UID?
     private var currentAttributes: [MessageAttribute] = []
 
     override func handleUntaggedResponse(_ response: Response) -> Bool {
@@ -49,7 +52,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
             continuation.finish()
             return true  // Indicate this response was fully handled
         default:
-            break
+            idleLogger.debug("IdleHandler: unhandled Response case: \(response)")
         }
         return false
     }
@@ -62,15 +65,44 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
                 continuation.yield(.exists(Int(count)))
             case .recent(let count):
                 continuation.yield(.recent(Int(count)))
-            default:
-                break
+            case .flags(let nioFlags):
+                // Permanent flags of the selected mailbox have changed
+                let flags = nioFlags.map { Flag(nio: $0) }
+                continuation.yield(.flags(flags))
+            case .status(let mailboxName, _):
+                // Unsolicited STATUS — log and ignore (not a selected-mailbox event)
+                let name = String(bytes: mailboxName.bytes, encoding: .utf8) ?? "<unknown>"
+                idleLogger.debug("IdleHandler: ignoring unsolicited STATUS for mailbox '\(name)'")
+            case .search:
+                idleLogger.debug("IdleHandler: ignoring unsolicited SEARCH response during IDLE")
+            case .list:
+                idleLogger.debug("IdleHandler: ignoring unsolicited LIST response during IDLE")
+            case .lsub:
+                idleLogger.debug("IdleHandler: ignoring unsolicited LSUB response during IDLE")
+            case .extendedSearch:
+                idleLogger.debug("IdleHandler: ignoring unsolicited ESEARCH response during IDLE")
+            case .namespace:
+                idleLogger.debug("IdleHandler: ignoring unsolicited NAMESPACE response during IDLE")
+            case .searchSort:
+                idleLogger.debug("IdleHandler: ignoring unsolicited SEARCH SORT response during IDLE")
+            case .uidBatches:
+                idleLogger.debug("IdleHandler: ignoring unsolicited UIDBATCHES response during IDLE")
             }
         case .messageData(let messageData):
             switch messageData {
             case .expunge(let seq):
                 continuation.yield(.expunge(SequenceNumber(seq.rawValue)))
-            default:
-                break
+            case .vanished(let nioUIDSet):
+                // RFC 7162 CONDSTORE: server reports expunged UIDs directly
+                let uidSet = UIDSet(nio: nioUIDSet)
+                continuation.yield(.vanished(uidSet))
+            case .vanishedEarlier(let nioUIDSet):
+                // VANISHED (EARLIER) is a historic-sync response, not a real-time event
+                idleLogger.debug("IdleHandler: ignoring VANISHED (EARLIER) for \(nioUIDSet) UIDs")
+            case .generateAuthorizedURL:
+                idleLogger.debug("IdleHandler: ignoring unsolicited GENURLAUTH during IDLE")
+            case .urlFetch:
+                idleLogger.debug("IdleHandler: ignoring unsolicited URLFETCH during IDLE")
             }
         case .conditionalState(let status):
             switch status {
@@ -89,8 +121,18 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
             }
         case .capabilityData(let caps):
             continuation.yield(.capability(caps.map { String($0) }))
-        default:
-            break
+        case .enableData(let caps):
+            idleLogger.debug("IdleHandler: ignoring ENABLED response: \(caps.map { String($0) })")
+        case .id:
+            idleLogger.debug("IdleHandler: ignoring unsolicited ID response during IDLE")
+        case .quotaRoot:
+            idleLogger.debug("IdleHandler: ignoring unsolicited QUOTAROOT during IDLE")
+        case .quota:
+            idleLogger.debug("IdleHandler: ignoring unsolicited QUOTA during IDLE")
+        case .metadata:
+            idleLogger.debug("IdleHandler: ignoring unsolicited METADATA during IDLE")
+        case .jmapAccess:
+            idleLogger.debug("IdleHandler: ignoring unsolicited JMAPACCESS during IDLE")
         }
         return false  // Most responses are handled but don't terminate the command
     }
@@ -99,17 +141,34 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
         switch fetch {
         case .start(let seq):
             currentSeq = SequenceNumber(seq.rawValue)
+            currentUID = nil
+            currentAttributes = []
+        case .startUID(let uid):
+            // UID FETCH response — record the UID and begin collecting attributes
+            currentUID = UID(uid.rawValue)
+            currentSeq = nil
             currentAttributes = []
         case .simpleAttribute(let attribute):
             currentAttributes.append(attribute)
         case .finish:
             if let seq = currentSeq {
                 continuation.yield(.fetch(seq, currentAttributes))
+            } else if let uid = currentUID {
+                // Convert UID fetch to a sequence-0 fetch so callers can inspect attributes;
+                // the UID itself is typically included as a `.uid` attribute in the list.
+                idleLogger.debug("IdleHandler: UID FETCH finish for UID \(uid.value), attributes: \(currentAttributes.count)")
+                // Yield with a placeholder sequence number; the UID attribute is in currentAttributes
+                continuation.yield(.fetch(SequenceNumber(0), currentAttributes))
             }
             currentSeq = nil
+            currentUID = nil
             currentAttributes = []
-        default:
-            break
+        case .streamingBegin(let kind, let byteCount):
+            idleLogger.debug("IdleHandler: ignoring streaming FETCH begin (kind=\(kind), bytes=\(byteCount)) during IDLE")
+        case .streamingBytes:
+            break  // Silently skip streaming body bytes
+        case .streamingEnd:
+            idleLogger.debug("IdleHandler: streaming FETCH ended during IDLE")
         }
     }
 }

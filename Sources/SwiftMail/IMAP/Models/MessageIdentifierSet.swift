@@ -282,6 +282,16 @@ extension MessageIdentifierSet {
 }
 
 extension MessageIdentifierSet where Identifier == UID {
+    /// Creates a SwiftMail UIDSet from a NIOIMAPCore UIDSet.
+    internal init(nio: NIOIMAPCore.UIDSet) {
+        self.init()
+        for nioRange in nio.ranges {
+            let lower = UID(nioRange.range.lowerBound.rawValue)
+            let upper = UID(nioRange.range.upperBound.rawValue)
+            self.insert(range: lower...upper)
+        }
+    }
+
     /// Converts to NIO MessageIdentifierSetNonEmpty for UID
     internal func toNIOSet() -> NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOIMAPCore.UID>? {
         if self.isEmpty {
