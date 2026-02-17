@@ -627,6 +627,12 @@ struct Idle: ParsableCommand {
                         return nil
                     }.first ?? ""
                     print("[\(ts)] 📋 FETCH seq=\(seq.value) flags=[\(flags)]")
+                case .fetchUID(let uid, let attrs):
+                    let flags = attrs.compactMap { attr -> String? in
+                        if case .flags(let f) = attr { return f.map(String.init).joined(separator: ", ") }
+                        return nil
+                    }.first ?? ""
+                    print("[\(ts)] 📋 FETCH uid=\(uid.value) flags=[\(flags)]")
                 case .vanished(let uids):
                     let count = uids.count
                     print("[\(ts)] 💨 VANISHED \(count) UID(s)")

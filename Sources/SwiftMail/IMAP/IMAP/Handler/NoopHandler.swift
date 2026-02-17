@@ -146,7 +146,7 @@ final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandH
                 events.append(.fetch(seq, currentAttributes))
             } else if let uid = currentUID {
                 noopLogger.debug("NoopHandler: UID FETCH finish for UID \(uid.value), attributes: \(currentAttributes.count)")
-                events.append(.fetch(SequenceNumber(0), currentAttributes))
+                events.append(.fetchUID(uid, currentAttributes))
             }
             currentSeq = nil
             currentUID = nil

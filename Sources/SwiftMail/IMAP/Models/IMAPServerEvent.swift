@@ -20,8 +20,12 @@ public enum IMAPServerEvent: Sendable {
     /// The set of flags defined for the mailbox has changed.
     case flags([Flag])
 
-    /// A message has updated attributes.
+    /// A message has updated attributes (identified by sequence number).
     case fetch(SequenceNumber, [MessageAttribute])
+
+    /// A message has updated attributes (identified by UID).
+    /// Emitted for UID-based FETCH responses, e.g. during QRESYNC.
+    case fetchUID(UID, [MessageAttribute])
 
     /// An alert from the server.
     case alert(String)

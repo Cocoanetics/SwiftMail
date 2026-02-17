@@ -154,11 +154,8 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
             if let seq = currentSeq {
                 continuation.yield(.fetch(seq, currentAttributes))
             } else if let uid = currentUID {
-                // Convert UID fetch to a sequence-0 fetch so callers can inspect attributes;
-                // the UID itself is typically included as a `.uid` attribute in the list.
                 idleLogger.debug("IdleHandler: UID FETCH finish for UID \(uid.value), attributes: \(currentAttributes.count)")
-                // Yield with a placeholder sequence number; the UID attribute is in currentAttributes
-                continuation.yield(.fetch(SequenceNumber(0), currentAttributes))
+                continuation.yield(.fetchUID(uid, currentAttributes))
             }
             currentSeq = nil
             currentUID = nil
