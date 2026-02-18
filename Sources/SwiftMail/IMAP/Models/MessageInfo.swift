@@ -26,9 +26,12 @@ public struct MessageInfo: Codable, Sendable {
     /// The BCC recipients of the message
     public var bcc: [String] = []
     
-    /// The date of the message
+    /// The date of the message (from the ENVELOPE Date: header — set by the sender)
     public var date: Date?
-    
+
+    /// The server-side delivery date (IMAP INTERNALDATE — when the server received the message)
+    public var internalDate: Date?
+
     /// The message ID
     public var messageId: String?
     
@@ -50,6 +53,7 @@ public struct MessageInfo: Codable, Sendable {
         case cc
         case bcc
         case date
+        case internalDate
         case messageId
         case flags
         case parts
@@ -64,7 +68,8 @@ public struct MessageInfo: Codable, Sendable {
     ///   - from: The sender of the message
     ///   - to: The recipients of the message
     ///   - cc: The CC recipients of the message
-    ///   - date: The date of the message
+    ///   - date: The date of the message (envelope Date: header)
+    ///   - internalDate: The server-side delivery date (IMAP INTERNALDATE)
     ///   - messageId: The message ID
     ///   - flags: The flags of the message
     ///   - parts: The message parts
@@ -78,6 +83,7 @@ public struct MessageInfo: Codable, Sendable {
         cc: [String] = [],
         bcc: [String] = [],
         date: Date? = nil,
+        internalDate: Date? = nil,
         messageId: String? = nil,
         flags: [Flag] = [],
         parts: [MessagePart] = [],
@@ -91,6 +97,7 @@ public struct MessageInfo: Codable, Sendable {
         self.cc = cc
         self.bcc = bcc
         self.date = date
+        self.internalDate = internalDate
         self.messageId = messageId
         self.flags = flags
         self.parts = parts
@@ -110,6 +117,7 @@ public extension MessageInfo {
         let cc = try container.decodeIfPresent([String].self, forKey: .cc) ?? []
         let bcc = try container.decodeIfPresent([String].self, forKey: .bcc) ?? []
         let date = try container.decodeIfPresent(Date.self, forKey: .date)
+        let internalDate = try container.decodeIfPresent(Date.self, forKey: .internalDate)
         let messageId = try container.decodeIfPresent(String.self, forKey: .messageId)
         let flags = try container.decodeIfPresent([Flag].self, forKey: .flags) ?? []
         let parts = try container.decodeIfPresent([MessagePart].self, forKey: .parts) ?? []
@@ -124,6 +132,7 @@ public extension MessageInfo {
             cc: cc,
             bcc: bcc,
             date: date,
+            internalDate: internalDate,
             messageId: messageId,
             flags: flags,
             parts: parts,

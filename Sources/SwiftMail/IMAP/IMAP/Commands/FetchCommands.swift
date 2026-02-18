@@ -36,6 +36,7 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         let attributes: [FetchAttribute] = [
             .uid,
             .envelope,
+            .internalDate,
             .bodyStructure(extensions: true),
             .bodySection(peek: true, .header, nil),
             .flags
@@ -65,7 +66,7 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
 	let section: Section
     
     /// Custom timeout for this operation
-	var timeoutSeconds: Int { return 10 }
+	var timeoutSeconds: Int { return 60 }
     
     /// Initialize a new fetch message part command
     /// - Parameters:

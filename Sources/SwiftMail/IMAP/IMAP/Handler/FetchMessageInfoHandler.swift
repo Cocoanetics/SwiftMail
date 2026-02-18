@@ -172,7 +172,21 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             
         case .uid(let uid):
 				header.uid = UID(nio: uid)
-            
+
+        case .internalDate(let serverDate):
+            let c = serverDate.components
+            var dc = DateComponents()
+            dc.year = c.year
+            dc.month = c.month
+            dc.day = c.day
+            dc.hour = c.hour
+            dc.minute = c.minute
+            dc.second = c.second
+            dc.timeZone = Foundation.TimeZone(secondsFromGMT: c.zoneMinutes * 60)
+            if let date = Calendar(identifier: .gregorian).date(from: dc) {
+                header.internalDate = date
+            }
+
         case .flags(let flags):
             header.flags = flags.map(self.convertFlag)
             
