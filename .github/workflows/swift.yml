@@ -7,7 +7,7 @@ on:
     branches: ["main"]
 
 jobs:
-  build:
+  build-macos:
     runs-on: macos-latest
 
     steps:
@@ -21,8 +21,22 @@ jobs:
       - name: Verify Swift version
         run: swift --version
       
-      - name: Build & Test
+      - name: Build & Test (macOS)
         run: swift test
+
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26.0
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.0"
+
+      - name: Build (iOS)
+        run: xcodebuild -scheme SwiftMail -destination 'generic/platform=iOS' build
 
   build-linux:
     runs-on: ubuntu-latest
@@ -33,5 +47,5 @@ jobs:
       - name: Verify Swift version
         run: swift --version
       
-      - name: Build & Test
-        run: swift test 
+      - name: Build & Test (Linux)
+        run: swift test
