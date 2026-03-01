@@ -450,36 +450,38 @@ final class IMAPConnection {
             logger: logger
         )
 
-        try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
-        responseBuffer.hasActiveHandler = true
-
-        let initialResponse: InitialResponse?
-        if shouldUseInlineInitialResponse {
-            initialResponse = InitialResponse(credentialBuffer)
-        } else if supportsSASLIR {
-            // Use true continuation mode for oversized payloads.
-            // Sending an explicit empty SASL-IR ("=") can be interpreted as an empty credential attempt.
-            initialResponse = nil
-        } else {
-            initialResponse = nil
-        }
-
-        let command = TaggedCommand(tag: tag, command: .authenticate(mechanism: mechanism, initialResponse: initialResponse))
-        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
-
-        let authenticationTimeoutSeconds = 10
-        let logger = self.logger
-        // Schedule on the channel event loop to avoid cross-loop promise completion.
-        let scheduledTask = channel.eventLoop.scheduleTask(in: .seconds(Int64(authenticationTimeoutSeconds))) {
-            logger.warning("XOAUTH2 authentication timed out after \(authenticationTimeoutSeconds) seconds")
-            handlerPromise.fail(IMAPError.timeout)
-        }
+        var scheduledTask: Scheduled<Void>?
 
         do {
+            try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
+            responseBuffer.hasActiveHandler = true
+
+            let initialResponse: InitialResponse?
+            if shouldUseInlineInitialResponse {
+                initialResponse = InitialResponse(credentialBuffer)
+            } else if supportsSASLIR {
+                // Use true continuation mode for oversized payloads.
+                // Sending an explicit empty SASL-IR ("=") can be interpreted as an empty credential attempt.
+                initialResponse = nil
+            } else {
+                initialResponse = nil
+            }
+
+            let command = TaggedCommand(tag: tag, command: .authenticate(mechanism: mechanism, initialResponse: initialResponse))
+            let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
+
+            let authenticationTimeoutSeconds = 10
+            let logger = self.logger
+            // Schedule on the channel event loop to avoid cross-loop promise completion.
+            scheduledTask = channel.eventLoop.scheduleTask(in: .seconds(Int64(authenticationTimeoutSeconds))) {
+                logger.warning("XOAUTH2 authentication timed out after \(authenticationTimeoutSeconds) seconds")
+                handlerPromise.fail(IMAPError.timeout)
+            }
+
             try await channel.writeAndFlush(wrapped).get()
             let refreshedCapabilities = try await handlerPromise.futureResult.get()
 
-            scheduledTask.cancel()
+            scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
@@ -494,8 +496,11 @@ final class IMAPConnection {
                 logger.debug("XOAUTH2 completed without capability data; retaining existing capability snapshot")
             }
         } catch {
-            scheduledTask.cancel()
+            scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
+            // Ensure the command promise is always resolved on early auth failures
+            // (for example write failure on a closed channel before handler callbacks fire).
+            handlerPromise.fail(error)
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
 
