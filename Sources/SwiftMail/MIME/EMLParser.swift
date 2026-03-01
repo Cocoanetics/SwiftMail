@@ -316,7 +316,7 @@ public struct EMLParser {
                     contentType: cleanContentType(partContentType),
                     disposition: extractDispositionType(from: partDisposition),
                     encoding: partEncoding?.trimmingCharacters(in: .whitespaces),
-                    filename: filename,
+                    filename: (filename != nil ? decodeRFC2047(filename!) : nil),
                     contentId: partContentId,
                     data: partBody
                 )
