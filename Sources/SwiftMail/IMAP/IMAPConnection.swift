@@ -498,6 +498,12 @@ final class IMAPConnection {
         } catch {
             scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
+
+            let earlyFailure = !handler.isCompleted
+            if earlyFailure {
+                logger.debug("XOAUTH2_EARLY_SEND_FAILURE auth write failed before handler completion")
+            }
+
             // Ensure the command promise is always resolved on early auth failures
             // (for example write failure on a closed channel before handler callbacks fire).
             handlerPromise.fail(error)
@@ -506,7 +512,7 @@ final class IMAPConnection {
 
             logErrorDiagnostics(error: error, operation: "XOAUTH2 authenticate")
 
-            if !handler.isCompleted {
+            if earlyFailure {
                 try? await channel.pipeline.removeHandler(handler)
             }
 

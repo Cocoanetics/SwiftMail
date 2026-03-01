@@ -7,6 +7,22 @@ import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
+private struct TimeoutError: Error {}
+
+private final class FailContinuationWriteHandler: ChannelOutboundHandler, @unchecked Sendable {
+    typealias OutboundIn = IMAPClientHandler.OutboundIn
+
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        let outbound = unwrapOutboundIn(data)
+        if case .part(.continuationResponse) = outbound {
+            promise?.fail(ChannelError.ioOnClosedChannel)
+            return
+        }
+
+        context.write(data, promise: promise)
+    }
+}
+
 struct XOAUTH2AuthenticationHandlerTests {
     private let email = "user@example.com"
     private let token = "ya29.A0AfH6SExample"
@@ -241,9 +257,62 @@ struct XOAUTH2AuthenticationHandlerTests {
         }
     }
 
-    private func setUpChannel(tag: String, expectsChallenge: Bool) async throws -> (EmbeddedChannel, EventLoopPromise<[Capability]>, XOAUTH2AuthenticationHandler) {
+    @Test
+    func testInactiveChannelDuringContinuationSendFailsPromptly() async throws {
+        let (channel, promise, _) = try await setUpChannel(tag: "A006", expectsChallenge: true, failContinuationWrite: true)
+        defer { _ = try? channel.finish() }
+
+        let command = TaggedCommand(
+            tag: "A006",
+            command: .authenticate(
+                mechanism: AuthenticationMechanism("XOAUTH2"),
+                initialResponse: nil
+            )
+        )
+
+        try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(command)))
+        _ = try channel.readOutbound(as: ByteBuffer.self)
+
+        var challengeBuffer = channel.allocator.buffer(capacity: 0)
+        challengeBuffer.writeString("+ \r\n")
+        try channel.writeInbound(challengeBuffer)
+
+        do {
+            _ = try await withTimeout(seconds: 1.0) {
+                try await promise.futureResult.get()
+            }
+            Issue.record("Expected continuation send failure")
+        } catch is TimeoutError {
+            Issue.record("Authentication promise timed out (possible hang / leaked promise)")
+        } catch {
+            // expected immediate failure path
+        }
+    }
+
+    private func withTimeout<T>(seconds: TimeInterval, operation: @escaping @Sendable () async throws -> T) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
+            group.addTask {
+                try await operation()
+            }
+
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                throw TimeoutError()
+            }
+
+            let result = try await group.next()!
+            group.cancelAll()
+            return result
+        }
+    }
+
+    private func setUpChannel(tag: String, expectsChallenge: Bool, failContinuationWrite: Bool = false) async throws -> (EmbeddedChannel, EventLoopPromise<[Capability]>, XOAUTH2AuthenticationHandler) {
         let channel = EmbeddedChannel()
         try await channel.pipeline.addHandler(IMAPClientHandler())
+
+        if failContinuationWrite {
+            try await channel.pipeline.addHandler(FailContinuationWriteHandler())
+        }
 
         let promise = channel.eventLoop.makePromise(of: [Capability].self)
         let handler = XOAUTH2AuthenticationHandler(
