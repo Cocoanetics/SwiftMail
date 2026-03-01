@@ -22,7 +22,7 @@ SwiftMail's `IMAPServer`. The final column indicates whether `IMAPServer`
 implements support for each capability.
 
 | IMAP Capability | Description | Gmail | iCloud | Dovecot | IMAPServer |
-|-----------------|---------------------------------------------------------------|:-----:|:------:|:--------:|
+|-----------------|---------------------------------------------------------------|:-----:|:------:|:-------:|:----------:|
 | **IMAP4rev1** | Standard IMAP protocol (RFC 3501) | ✅ | ✅ | ✅ | ✅ |
 | **UNSELECT** | Unselect mailbox without selecting another (RFC 3691) | ✅ | ✅ | ✅ | ✅ |
 | **IDLE** | Push new message alerts (RFC 2177) | ✅ | ✅ | ✅ | ✅ |
