@@ -19,7 +19,7 @@ extension EmailAddress: LosslessStringConvertible {
         
         // Email address with a name
         // Format: "Name <email@example.com>" or "\"Name with, special chars\" <email@example.com>"
-        let namePattern = "(?:\"([^\"]+)\"|([^<]*))\\s*<([^>]+)>"
+        let namePattern = "(?:[\"']*([^\"']+)[\"']*|([^<]*))\\s*<([^>]+)>"
         let nameRegex = try? NSRegularExpression(pattern: namePattern, options: [])
         
         if let match = nameRegex?.firstMatch(in: description, options: [], range: NSRange(location: 0, length: description.count)) {
