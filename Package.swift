@@ -33,7 +33,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-testing", exact: "0.12.0"),
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
-        .package(url: "https://github.com/Cocoanetics/SwiftText.git", branch: "main"),
+        .package(url: "https://github.com/Cocoanetics/SwiftText.git", .upToNextMajor(from: "1.0.0")),
     ],
     targets: [
         .target(
