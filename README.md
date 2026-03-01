@@ -18,41 +18,41 @@ Handles IMAP server connections for retrieving and managing emails. Implements k
 ### 📊 IMAP Capability Support: Gmail vs iCloud vs Dovecot vs IMAPServer
 
 The table below compares common IMAP capabilities across Gmail, iCloud, Dovecot, and
-SwiftMail's `IMAPServer`. The final column indicates whether `IMAPServer`
+SwiftMail's `IMAPServer`. `NIOIMAP` indicates capability/command/parser support present in the underlying `swift-nio-imap` grammar layer. The final column indicates whether `IMAPServer`
 implements support for each capability.
 
-| IMAP Capability | Description | Gmail | iCloud | Dovecot | IMAPServer |
-|-----------------|---------------------------------------------------------------|:-----:|:------:|:-------:|:----------:|
-| **IMAP4rev1** | Standard IMAP protocol (RFC 3501) | ✅ | ✅ | ✅ | ✅ |
-| **UNSELECT** | Unselect mailbox without selecting another (RFC 3691) | ✅ | ✅ | ✅ | ✅ |
-| **IDLE** | Push new message alerts (RFC 2177) | ✅ | ✅ | ✅ | ✅ |
-| **NAMESPACE** | Query folder structure roots (RFC 2342) | ✅ | ✅ | ✅ | ❌ |
-| **QUOTA** | Storage quota reporting (RFC 2087) | ✅ | ✅ | ✅ | ✅ |
-| **ID** | Identify client/server (RFC 2971) | ✅ | ✅ | ✅ | ✅ |
-| **XLIST** | Gmail folder role mapping (legacy) | ✅ | ❌ | ❌ | ❌ |
-| **CHILDREN** | Show folder substructure (RFC 3348) | ✅ | ❌ | ✅ | ❌ |
-| **X-GM-EXT-1** | Gmail labels, threads, msg IDs | ✅ | ❌ | ❌ | ❌ |
-| **UIDPLUS** | Enhanced UID operations (RFC 4315) | ✅ | ✅ | ✅ | ✅ |
-| **COMPRESS=DEFLATE** | zlib compression (RFC 4978) | ✅ | ❌ | ❌ | ❌ |
-| **ENABLE** | Enable optional extensions (RFC 5161) | ✅ | ✅ | ✅ | ❌ |
-| **MOVE** | Native IMAP MOVE command (RFC 6851) | ✅ | ❌ | ✅ | ✅ |
-| **CONDSTORE** | Efficient state sync (RFC 7162) | ✅ | ✅ | ✅ | ❌ |
-| **ESEARCH** | Extended search (RFC 4731) | ✅ | ✅ | ✅ | ❌ |
-| **UTF8=ACCEPT** | UTF-8 folder & header support (RFC 6855) | ✅ | ❌ | ❌ | ❌ |
-| **LIST-EXTENDED** | Advanced mailbox listing (RFC 5258) | ✅ | ❌ | ✅ | ❌ |
-| **LIST-STATUS** | List + status in one (RFC 5819) | ✅ | ✅ | ✅ | ❌ |
-| **LITERAL-** | Literal string optimization (RFC 7888) | ✅ | ❌ | ❌ | ❌ |
-| **SPECIAL-USE** | Modern folder role marking (RFC 6154) | ✅ | ❌ | ✅ | ✅ |
-| **APPENDLIMIT=…** | Message size limit for uploads | ✅ | ❌ | ❌ | ❌ |
-| **QRESYNC** | Quick resync (RFC 5162) | ❌ | ✅ | ✅ | ❌ |
-| **SORT** | Server-side message sorting (RFC 5256) | ❌ | ✅ | ✅ | ❌ |
-| **ESORT** | Extended SORT results (RFC 5267) | ❌ | ✅ | ✅ | ❌ |
-| **CONTEXT=SORT** | Persistent sort context | ❌ | ✅ | ❌ | ❌ |
-| **WITHIN** | Search by relative time (RFC 5032) | ❌ | ✅ | ✅ | ❌ |
-| **SASL-IR** | Initial SASL response support (RFC 4959) | ❌ | ✅ | ✅ | ❌ |
-| **XAPPLEPUSHSERVICE** | Apple push integration for Mail app | ❌ | ✅ | ❌ | ❌ |
-| **XAPPLELITERAL** | Apple literal transmission optimization | ❌ | ✅ | ❌ | ❌ |
-| **X-APPLE-REMOTE-LINKS** | Apple-specific remote links extension | ❌ | ✅ | ❌ | ❌ |
+| IMAP Capability | Description | Gmail | iCloud | Dovecot | NIOIMAP | IMAPServer |
+|-----------------|---------------------------------------------------------------|:-----:|:------:|:-------:|:------:|:----------:|
+| **IMAP4rev1** | Standard IMAP protocol (RFC 3501) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **UNSELECT** | Unselect mailbox without selecting another (RFC 3691) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **IDLE** | Push new message alerts (RFC 2177) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **NAMESPACE** | Query folder structure roots (RFC 2342) | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **QUOTA** | Storage quota reporting (RFC 2087) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **ID** | Identify client/server (RFC 2971) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **XLIST** | Gmail folder role mapping (legacy) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **CHILDREN** | Show folder substructure (RFC 3348) | ✅ | ❌ | ✅ | ✅ | ❌ |
+| **X-GM-EXT-1** | Gmail labels, threads, msg IDs | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **UIDPLUS** | Enhanced UID operations (RFC 4315) | ✅ | ✅ | ✅ | ✅ | ✅ |
+| **COMPRESS=DEFLATE** | zlib compression (RFC 4978) | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **ENABLE** | Enable optional extensions (RFC 5161) | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **MOVE** | Native IMAP MOVE command (RFC 6851) | ✅ | ❌ | ✅ | ✅ | ✅ |
+| **CONDSTORE** | Efficient state sync (RFC 7162) | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **ESEARCH** | Extended search (RFC 4731) | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **UTF8=ACCEPT** | UTF-8 folder & header support (RFC 6855) | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **LIST-EXTENDED** | Advanced mailbox listing (RFC 5258) | ✅ | ❌ | ✅ | ✅ | ❌ |
+| **LIST-STATUS** | List + status in one (RFC 5819) | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **LITERAL-** | Literal string optimization (RFC 7888) | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **SPECIAL-USE** | Modern folder role marking (RFC 6154) | ✅ | ❌ | ✅ | ✅ | ✅ |
+| **APPENDLIMIT=…** | Message size limit for uploads | ✅ | ❌ | ❌ | ✅ | ❌ |
+| **QRESYNC** | Quick resync (RFC 5162) | ❌ | ✅ | ✅ | ✅ | ❌ |
+| **SORT** | Server-side message sorting (RFC 5256) | ❌ | ✅ | ✅ | ❌ | ❌ |
+| **ESORT** | Extended SORT results (RFC 5267) | ❌ | ✅ | ✅ | ❌ | ❌ |
+| **CONTEXT=SORT** | Persistent sort context | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **WITHIN** | Search by relative time (RFC 5032) | ❌ | ✅ | ✅ | ✅ | ❌ |
+| **SASL-IR** | Initial SASL response support (RFC 4959) | ❌ | ✅ | ✅ | ✅ | ❌ |
+| **XAPPLEPUSHSERVICE** | Apple push integration for Mail app | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **XAPPLELITERAL** | Apple literal transmission optimization | ❌ | ✅ | ❌ | ❌ | ❌ |
+| **X-APPLE-REMOTE-LINKS** | Apple-specific remote links extension | ❌ | ✅ | ❌ | ❌ | ❌ |
 
 ### SMTPServer
 Handles email sending via SMTP with support for:
