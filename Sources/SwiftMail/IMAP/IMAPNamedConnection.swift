@@ -12,6 +12,10 @@ public actor IMAPNamedConnection {
     private let connection: IMAPConnection
     private let authenticateOnConnection: @Sendable (IMAPConnection) async throws -> Void
 
+    /// The timestamp of the last successfully completed command on this connection.
+    /// Useful for implementing staleness checks in ephemeral connection patterns.
+    public private(set) var lastActivity: Date?
+
     init(
         name: String,
         connection: IMAPConnection,
@@ -249,9 +253,12 @@ public actor IMAPNamedConnection {
         }
     }
 
+    @discardableResult
     private func executeCommand<CommandType: IMAPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
         try await ensureAuthenticated()
-        return try await connection.executeCommand(command)
+        let result = try await connection.executeCommand(command)
+        lastActivity = Date()
+        return result
     }
 
     private func executeMove<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
