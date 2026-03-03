@@ -1467,7 +1467,11 @@ extension IMAPServer {
     /// - Returns: The namespace response describing personal, other user and shared namespaces.
     /// - Throws: `IMAPError.commandFailed` if the command fails.
     public func fetchNamespaces() async throws -> Namespace.Response {
-        let response = try await primaryConnection.fetchNamespaces()
+        // Route through executeCommand so auto-reauthentication fires if the
+        // primary session has dropped, matching the recovery behaviour of all
+        // other IMAPServer command methods.
+        let command = NamespaceCommand()
+        let response = try await executeCommand(command)
         self.namespaces = response
         return response
     }

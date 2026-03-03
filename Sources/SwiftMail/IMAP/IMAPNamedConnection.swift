@@ -52,6 +52,9 @@ public actor IMAPNamedConnection {
     /// Select a mailbox for subsequent commands.
     @discardableResult
     public func select(mailbox mailboxName: String) async throws -> Mailbox.Selection {
+        // Authenticate first so namespacesSnapshot is populated (or repopulated
+        // after a reconnect) before we resolve the mailbox path.
+        try await ensureAuthenticated()
         let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
         return try await executeCommand(command)
     }
