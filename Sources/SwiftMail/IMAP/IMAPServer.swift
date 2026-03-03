@@ -1162,7 +1162,7 @@ public actor IMAPServer {
        - calendar: The calendar used for date-to-day conversions.
      - Returns: An ``ExtendedSearchResult`` containing COUNT, MIN, MAX and ALL when available.
      - Throws:
-       - `IMAPError.searchFailed` if the search operation fails
+       - `IMAPError.commandFailed` if the search operation fails
        - `IMAPError.connectionFailed` if not connected
      */
     public func extendedSearch<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], calendar: Calendar = Calendar(identifier: .gregorian)) async throws -> ExtendedSearchResult<T> {
