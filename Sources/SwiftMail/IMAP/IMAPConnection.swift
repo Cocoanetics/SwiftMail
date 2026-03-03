@@ -16,6 +16,7 @@ final class IMAPConnection {
     private var channel: Channel?
     private var commandTagCounter: Int = 0
     private var capabilities: Set<NIOIMAPCore.Capability> = []
+    private var namespaces: Namespace.Response?
     private var isSessionAuthenticated: Bool = false
     private var idleHandler: IdleHandler?
     private var idleTerminationInProgress: Bool = false
@@ -76,6 +77,10 @@ final class IMAPConnection {
 
     var capabilitiesSnapshot: Set<NIOIMAPCore.Capability> {
         capabilities
+    }
+
+    var namespacesSnapshot: Namespace.Response? {
+        namespaces
     }
 
     var isAuthenticated: Bool {
@@ -153,6 +158,7 @@ final class IMAPConnection {
         let channel = try await bootstrap.connect(host: host, port: port).get()
         self.channel = channel
         self.isSessionAuthenticated = false
+        self.namespaces = nil
 
         // Add the persistent untagged response buffer as the LAST handler in the pipeline.
         // Transient command handlers are added BEFORE it (position: .before(responseBuffer)).
@@ -264,6 +270,7 @@ final class IMAPConnection {
         }
         self.channel = nil
         self.isSessionAuthenticated = false
+        self.namespaces = nil
         self.idleHandler = nil
         self.idleTerminationInProgress = false
         self.responseBuffer.reset()
@@ -281,6 +288,7 @@ final class IMAPConnection {
         let loginCapabilities = try await executeCommand(command)
         isSessionAuthenticated = true
         try await refreshCapabilities(using: loginCapabilities)
+        await fetchNamespacesIfSupported(useCommandBody: false)
     }
 
     func authenticateXOAUTH2(email: String, accessToken: String) async throws {
@@ -407,6 +415,31 @@ final class IMAPConnection {
         try await fetchCapabilities()
     }
 
+    
+    func fetchNamespaces() async throws -> Namespace.Response {
+        let response = try await executeCommand(NamespaceCommand())
+        namespaces = response
+        return response
+    }
+
+    private func fetchNamespacesIfSupported(useCommandBody: Bool) async {
+        let namespaceCapability = Capability("NAMESPACE")
+        guard capabilities.contains(namespaceCapability) else {
+            namespaces = nil
+            return
+        }
+
+        do {
+            if useCommandBody {
+                namespaces = try await executeCommandBody(NamespaceCommand())
+            } else {
+                namespaces = try await executeCommand(NamespaceCommand())
+            }
+        } catch {
+            logger.warning("\(connectionContext) Failed to fetch namespace metadata: \(error)")
+        }
+    }
+
     private func authenticateXOAUTH2Body(email: String, accessToken: String) async throws {
         let mechanism = AuthenticationMechanism("XOAUTH2")
         let xoauthCapability = Capability.authenticate(mechanism)
@@ -495,6 +528,8 @@ final class IMAPConnection {
                 // inside commandQueue.run, and a nested executeCommand would deadlock.
                 logger.debug("XOAUTH2 completed without capability data; retaining existing capability snapshot")
             }
+
+            await fetchNamespacesIfSupported(useCommandBody: true)
         } catch {
             scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
