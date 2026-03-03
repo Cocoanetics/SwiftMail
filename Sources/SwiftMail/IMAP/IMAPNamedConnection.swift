@@ -155,6 +155,19 @@ public actor IMAPNamedConnection {
         return try await executeCommand(command)
     }
 
+    /// Search within the selected mailbox, returning structured ESEARCH results (RFC 4731).
+    ///
+    /// Uses ESEARCH when the server supports it; falls back to a plain SEARCH otherwise.
+    public func extendedSearch<T: MessageIdentifier>(
+        identifierSet: MessageIdentifierSet<T>? = nil,
+        criteria: [SearchCriteria],
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) async throws -> ExtendedSearchResult<T> {
+        let useEsearch = capabilities.contains(.extendedSearch)
+        let command = ExtendedSearchCommand<T>(identifierSet: identifierSet, criteria: criteria, calendar: calendar, useEsearch: useEsearch)
+        return try await executeCommand(command)
+    }
+
     /// Copy messages to another mailbox.
     public func copy<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
         let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
