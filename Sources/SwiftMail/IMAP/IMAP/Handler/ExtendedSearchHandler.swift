@@ -23,6 +23,7 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
     private var esearchMin: T?
     private var esearchMax: T?
     private var esearchAll: MessageIdentifierSet<T>?
+    private var esearchPartial: ExtendedSearchResult<T>.PartialResult?
     private var receivedEsearch = false
 
     override func processResponse(_ response: Response) -> Bool {
@@ -61,6 +62,9 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
                     }
                 case .count(let c):
                     esearchCount = c
+                case .partial(let range, let nioSet):
+                    let ids = convertNIOSet(nioSet)
+                    esearchPartial = ExtendedSearchResult<T>.PartialResult(range: range, results: ids)
                 default:
                     break
                 }
@@ -88,7 +92,8 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
                 count: esearchCount,
                 min: esearchMin,
                 max: esearchMax,
-                all: esearchAll
+                all: esearchAll,
+                partial: esearchPartial
             )
         } else {
             // Fallback: synthesise from plain SEARCH results

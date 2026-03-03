@@ -21,6 +21,9 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
     let calendar: Calendar
     /// Whether the server supports ESEARCH (determines which command is sent).
     let useEsearch: Bool
+    /// Optional window for paged (PARTIAL) results. Only used when `useEsearch` is true.
+    /// When non-nil, `PARTIAL` is requested instead of `ALL`.
+    let partialRange: NIOIMAPCore.PartialRange?
 
     var timeoutSeconds: Int { return 60 }
 
@@ -28,12 +31,14 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         identifierSet: MessageIdentifierSet<T>? = nil,
         criteria: [SearchCriteria],
         calendar: Calendar = Calendar(identifier: .gregorian),
-        useEsearch: Bool
+        useEsearch: Bool,
+        partialRange: NIOIMAPCore.PartialRange? = nil
     ) {
         self.identifierSet = identifierSet
         self.criteria = criteria
         self.calendar = calendar
         self.useEsearch = useEsearch
+        self.partialRange = partialRange
     }
 
     func validate() throws {
@@ -56,9 +61,17 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
 
         let key = SearchKey.and(nioCriteria)
 
-        let returnOptions: [SearchReturnOption] = useEsearch
-            ? [.count, .min, .max, .all]
-            : []
+        let returnOptions: [SearchReturnOption]
+        if useEsearch {
+            if let range = partialRange {
+                // PARTIAL and ALL are mutually exclusive; use PARTIAL for paged results.
+                returnOptions = [.count, .min, .max, .partial(range)]
+            } else {
+                returnOptions = [.count, .min, .max, .all]
+            }
+        } else {
+            returnOptions = []
+        }
 
         if T.self == UID.self {
             return TaggedCommand(tag: tag, command: .uidSearch(key: key, returnOptions: returnOptions))

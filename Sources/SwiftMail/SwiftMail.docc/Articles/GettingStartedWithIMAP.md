@@ -164,12 +164,37 @@ print("Unread in recent batch: \(scopedResult.all?.count ?? 0)")
 - You need COUNT, MIN, or MAX without downloading all matching identifiers.
 - You want a single, typed result struct instead of a raw ``MessageIdentifierSet``.
 - You are searching a scoped subset of messages (pass `identifierSet:`).
+- You want paged results without fetching the entire match list (pass `partialRange:`).
 
 **When `search` is sufficient:**
 - You only need the set of matching identifiers and don't require aggregate fields.
 - The server is known to lack ESEARCH support and you want to avoid the capability check overhead.
 
-> Note: The `PARTIAL` return option (RFC 5267) is not yet implemented. If you need partial result sets, continue using `search(...)` with client-side slicing for now.
+### Paged results with PARTIAL
+
+Pass a ``PartialRange`` to retrieve a window of results instead of the full match list
+(requires server ESEARCH support; silently ignored on servers without it):
+
+```swift
+// Get the first 100 matching UIDs
+let first100 = try await imapServer.extendedSearch(
+    criteria: [.unseen],
+    partialRange: .first(1...100)
+)
+if let page = first100.partial {
+    print("Page \(page.range): \(page.results.count) UIDs")
+}
+
+// Get the last 50 matching UIDs
+let last50 = try await imapServer.extendedSearch(
+    criteria: [.unseen],
+    partialRange: .last(1...50)
+)
+```
+
+When `partialRange` is set, `PARTIAL` is requested instead of `ALL`, and the
+result appears in ``ExtendedSearchResult/partial`` rather than
+``ExtendedSearchResult/all``.
 
 ## Getting Mailbox Status
 

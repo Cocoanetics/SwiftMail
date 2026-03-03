@@ -15,9 +15,16 @@ struct ExtendedSearchHandlerTests {
     // MARK: - Helpers
 
     /// Sends a tagged search command outbound so the IMAPClientHandler registers the tag.
-    private func sendSearchCommand(on channel: EmbeddedChannel, tag: String, useUID: Bool, useEsearch: Bool) async throws {
+    private func sendSearchCommand(on channel: EmbeddedChannel, tag: String, useUID: Bool, useEsearch: Bool, partialRange: NIOIMAPCore.PartialRange? = nil) async throws {
         let key = NIOIMAPCore.SearchKey.all
-        let returnOptions: [NIOIMAPCore.SearchReturnOption] = useEsearch ? [.count, .min, .max, .all] : []
+        var returnOptions: [NIOIMAPCore.SearchReturnOption] = []
+        if useEsearch {
+            if let range = partialRange {
+                returnOptions = [.count, .min, .max, .partial(range)]
+            } else {
+                returnOptions = [.count, .min, .max, .all]
+            }
+        }
         let command: NIOIMAPCore.Command = useUID
             ? .uidSearch(key: key, returnOptions: returnOptions)
             : .search(key: key, returnOptions: returnOptions)
@@ -287,5 +294,80 @@ struct ExtendedSearchHandlerTests {
         #expect(wireString.contains("UID SEARCH"))
         #expect(wireString.contains("RETURN"))
         #expect(!wireString.contains("UID 1"))
+    }
+
+    // MARK: - PARTIAL response parsing
+
+    @Test
+    func testEsearchPartialResponse() async throws {
+        let channel = EmbeddedChannel()
+        defer { _ = try? channel.finish() }
+
+        try await channel.pipeline.addHandler(IMAPClientHandler())
+
+        let promise = channel.eventLoop.makePromise(of: ExtendedSearchResult<UID>.self)
+        let handler = ExtendedSearchHandler<UID>(commandTag: "A007", promise: promise)
+        try await channel.pipeline.addHandler(handler)
+
+        let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1...100))
+        try await sendSearchCommand(on: channel, tag: "A007", useUID: true, useEsearch: true, partialRange: partialRange)
+
+        // Feed: * ESEARCH (TAG "A007") UID COUNT 3 PARTIAL (1:100 4,7,10)
+        var esearchResponse = channel.allocator.buffer(capacity: 64)
+        esearchResponse.writeString("* ESEARCH (TAG \"A007\") UID COUNT 3 PARTIAL (1:100 4,7,10)\r\n")
+        try channel.writeInbound(esearchResponse)
+
+        var taggedOK = channel.allocator.buffer(capacity: 32)
+        taggedOK.writeString("A007 OK Extended search completed\r\n")
+        try channel.writeInbound(taggedOK)
+
+        let result = try await promise.futureResult.get()
+
+        #expect(result.count == 3)
+        #expect(result.all == nil)  // PARTIAL was requested; ALL should be absent
+
+        if let partial = result.partial {
+            let values = Set(partial.results.toArray().map { $0.value })
+            #expect(values == Set([UInt32(4), UInt32(7), UInt32(10)]))
+            if case .first(let range) = partial.range {
+                #expect(range.range.lowerBound == NIOIMAPCore.SequenceNumber(1))
+                #expect(range.range.upperBound == NIOIMAPCore.SequenceNumber(100))
+            } else {
+                Issue.record("Expected .first partial range")
+            }
+        } else {
+            Issue.record("Expected non-nil 'partial' in ESEARCH result")
+        }
+    }
+
+    // MARK: - PARTIAL wire format
+
+    @Test
+    func testCommandWireFormatWithPartial() async throws {
+        let channel = EmbeddedChannel()
+        defer { _ = try? channel.finish() }
+
+        try await channel.pipeline.addHandler(IMAPClientHandler())
+
+        let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1...100))
+        // Use .unseen (not .all) so the criterion doesn't also produce "ALL" in the wire,
+        // letting us verify cleanly that ALL is absent from the return options.
+        let command = ExtendedSearchCommand<UID>(criteria: [SearchCriteria.unseen], useEsearch: true, partialRange: partialRange)
+        let tagged = command.toTaggedCommand(tag: "C007")
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        try await channel.writeAndFlush(wrapped)
+
+        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
+        }
+        let wireString = outbound.readString(length: outbound.readableBytes) ?? ""
+
+        // PARTIAL replaces ALL in the return options; wire must contain PARTIAL range but not ALL
+        #expect(wireString.contains("UID SEARCH"))
+        #expect(wireString.contains("RETURN"))
+        #expect(wireString.contains("PARTIAL"))
+        #expect(wireString.contains("1:100"))
+        #expect(!wireString.contains("ALL"))
     }
 }
