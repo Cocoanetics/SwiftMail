@@ -253,7 +253,7 @@ public actor IMAPNamedConnection {
     }
 
     /// Fetch server namespace information.
-    public func fetchNamespaces() async throws -> Namespace.Response {
+    public func fetchNamespaces() async throws -> NamespaceResponse {
         try await ensureAuthenticated()
         return try await connection.fetchNamespaces()
     }

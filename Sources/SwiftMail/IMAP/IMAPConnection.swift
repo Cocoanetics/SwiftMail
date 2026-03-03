@@ -16,7 +16,7 @@ final class IMAPConnection {
     private var channel: Channel?
     private var commandTagCounter: Int = 0
     private var capabilities: Set<NIOIMAPCore.Capability> = []
-    private var namespaces: Namespace.Response?
+    private var namespaces: NamespaceResponse?
     private var isSessionAuthenticated: Bool = false
     private var idleHandler: IdleHandler?
     private var idleTerminationInProgress: Bool = false
@@ -79,7 +79,7 @@ final class IMAPConnection {
         capabilities
     }
 
-    var namespacesSnapshot: Namespace.Response? {
+    var namespacesSnapshot: NamespaceResponse? {
         namespaces
     }
 
@@ -416,7 +416,7 @@ final class IMAPConnection {
     }
 
     
-    func fetchNamespaces() async throws -> Namespace.Response {
+    func fetchNamespaces() async throws -> NamespaceResponse {
         let response = try await executeCommand(NamespaceCommand())
         namespaces = response
         return response

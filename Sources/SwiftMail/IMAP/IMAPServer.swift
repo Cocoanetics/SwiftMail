@@ -55,7 +55,7 @@ public actor IMAPServer {
     public private(set) var specialMailboxes: [Mailbox.Info] = []
     
     /// Namespaces discovered from the server
-    public private(set) var namespaces: Namespace.Response?
+    public private(set) var namespaces: NamespaceResponse?
     
     /// Capabilities reported by the primary connection.
     private var capabilities: Set<NIOIMAPCore.Capability> {
@@ -1466,7 +1466,7 @@ extension IMAPServer {
     /// Retrieve namespace information from the server.
     /// - Returns: The namespace response describing personal, other user and shared namespaces.
     /// - Throws: `IMAPError.commandFailed` if the command fails.
-    public func fetchNamespaces() async throws -> Namespace.Response {
+    public func fetchNamespaces() async throws -> NamespaceResponse {
         // Route through executeCommand so auto-reauthentication fires if the
         // primary session has dropped, matching the recovery behaviour of all
         // other IMAPServer command methods.

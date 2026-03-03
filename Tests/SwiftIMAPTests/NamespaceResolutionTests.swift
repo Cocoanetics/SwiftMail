@@ -4,8 +4,8 @@ import Testing
 struct NamespaceResolutionTests {
     @Test
     func defaultNamespaceUsesExistingPaths() {
-        let namespace = Namespace.Response(
-            personal: [Namespace.Description(prefix: "", delimiter: Character("/"))],
+        let namespace = NamespaceResponse(
+            personal: [Namespace(prefix: "", delimiter: Character("/"))],
             otherUsers: [],
             shared: []
         )
@@ -17,8 +17,8 @@ struct NamespaceResolutionTests {
 
     @Test
     func prefixedPersonalNamespaceResolvesRelativePaths() {
-        let namespace = Namespace.Response(
-            personal: [Namespace.Description(prefix: "INBOX.", delimiter: Character("."))],
+        let namespace = NamespaceResponse(
+            personal: [Namespace(prefix: "INBOX.", delimiter: Character("."))],
             otherUsers: [],
             shared: []
         )
@@ -34,10 +34,10 @@ struct NamespaceResolutionTests {
 
     @Test
     func sharedNamespacePatternsIncludeSharedRoot() {
-        let namespace = Namespace.Response(
-            personal: [Namespace.Description(prefix: "", delimiter: Character("/"))],
+        let namespace = NamespaceResponse(
+            personal: [Namespace(prefix: "", delimiter: Character("/"))],
             otherUsers: [],
-            shared: [Namespace.Description(prefix: "Shared/", delimiter: Character("/"))]
+            shared: [Namespace(prefix: "Shared/", delimiter: Character("/"))]
         )
 
         let patterns = namespace.listingPatterns(for: "*")
