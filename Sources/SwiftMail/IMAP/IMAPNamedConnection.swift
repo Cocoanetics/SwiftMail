@@ -50,7 +50,9 @@ public actor IMAPNamedConnection {
     /// Fetch server capabilities.
     @discardableResult
     public func fetchCapabilities() async throws -> [Capability] {
-        try await connection.fetchCapabilities()
+        let result = try await connection.fetchCapabilities()
+        lastActivity = Date()
+        return result
     }
 
     /// Select a mailbox for subsequent commands.
@@ -85,18 +87,23 @@ public actor IMAPNamedConnection {
     /// Start IDLE and receive server events.
     public func idle() async throws -> AsyncStream<IMAPServerEvent> {
         try await ensureAuthenticated()
-        return try await connection.idle()
+        let stream = try await connection.idle()
+        lastActivity = Date()
+        return stream
     }
 
     /// Terminate an active IDLE command with DONE.
     public func done() async throws {
         try await connection.done()
+        lastActivity = Date()
     }
 
     /// Send NOOP and collect unsolicited events.
     public func noop() async throws -> [IMAPServerEvent] {
         try await ensureAuthenticated()
-        return try await connection.noop()
+        let events = try await connection.noop()
+        lastActivity = Date()
+        return events
     }
 
     /// Fetch message structure for a single message identifier.
