@@ -240,4 +240,52 @@ struct ExtendedSearchHandlerTests {
         #expect(wireString.contains("SEARCH"))
         #expect(wireString.contains("RETURN"))
     }
+
+    @Test
+    func testIdentifierSetScopeIsIncludedInUIDSearch() async throws {
+        let channel = EmbeddedChannel()
+        defer { _ = try? channel.finish() }
+
+        try await channel.pipeline.addHandler(IMAPClientHandler())
+
+        let ids = MessageIdentifierSet<UID>([UID(1), UID(2), UID(3)])
+        let command = ExtendedSearchCommand<UID>(identifierSet: ids, criteria: [SearchCriteria.all], useEsearch: true)
+        let tagged = command.toTaggedCommand(tag: "C005")
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        try await channel.writeAndFlush(wrapped)
+
+        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
+        }
+        let wireString = outbound.readString(length: outbound.readableBytes) ?? ""
+
+        // UID scope key must appear in the command so the search is restricted to the set
+        #expect(wireString.contains("UID SEARCH"))
+        #expect(wireString.contains("UID 1:3") || wireString.contains("UID 1,2,3"))
+    }
+
+    @Test
+    func testNoIdentifierSetSearchesEntireMailbox() async throws {
+        let channel = EmbeddedChannel()
+        defer { _ = try? channel.finish() }
+
+        try await channel.pipeline.addHandler(IMAPClientHandler())
+
+        let command = ExtendedSearchCommand<UID>(identifierSet: nil, criteria: [SearchCriteria.all], useEsearch: true)
+        let tagged = command.toTaggedCommand(tag: "C006")
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        try await channel.writeAndFlush(wrapped)
+
+        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
+        }
+        let wireString = outbound.readString(length: outbound.readableBytes) ?? ""
+
+        // Without identifier set, no UID scope key — just the criteria
+        #expect(wireString.contains("UID SEARCH"))
+        #expect(wireString.contains("RETURN"))
+        #expect(!wireString.contains("UID 1"))
+    }
 }

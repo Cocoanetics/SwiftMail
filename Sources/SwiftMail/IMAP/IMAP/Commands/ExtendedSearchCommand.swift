@@ -43,7 +43,17 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
     }
 
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        let nioCriteria = criteria.map { $0.toNIO(calendar: calendar) }
+        var nioCriteria = criteria.map { $0.toNIO(calendar: calendar) }
+
+        // Prepend identifier set scope as a search key so the search is
+        // limited to the caller-provided message set (RFC 3501 §6.4.4).
+        if let identifierSet {
+            let scopeKey: SearchKey = T.self == UID.self
+                ? .uid(.set(identifierSet.toNIOSet()))
+                : .sequenceNumbers(.set(identifierSet.toNIOSet()))
+            nioCriteria.insert(scopeKey, at: 0)
+        }
+
         let key = SearchKey.and(nioCriteria)
 
         let returnOptions: [SearchReturnOption] = useEsearch
