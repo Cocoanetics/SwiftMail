@@ -135,6 +135,67 @@ Common search criteria include:
 - `.before(Date)`: Find messages before a date
 - `.since(Date)`: Find messages since a date
 
+## Extended Search (ESEARCH)
+
+When you need aggregate metadata — total count, lowest/highest UID, or the full matching set — use `extendedSearch(...)` instead of `search(...)`.
+
+`extendedSearch` automatically uses the server's ESEARCH extension (RFC 4731) when available and transparently falls back to a plain SEARCH otherwise, so callers always receive an ``ExtendedSearchResult`` regardless of server capability.
+
+```swift
+// Count unread messages without fetching their identifiers
+let result: ExtendedSearchResult<UID> = try await imapServer.extendedSearch(criteria: [.unseen])
+print("Unread count: \(result.count ?? 0)")
+
+// Find the oldest and newest unread UIDs in one round-trip
+if let oldest = result.min, let newest = result.max {
+    print("Unread UIDs span \(oldest.value) – \(newest.value)")
+}
+
+// Scope a search to a previously fetched set of messages
+let recentUIDs: UIDSet = // … your set …
+let scopedResult: ExtendedSearchResult<UID> = try await imapServer.extendedSearch(
+    identifierSet: recentUIDs,
+    criteria: [.unseen]
+)
+print("Unread in recent batch: \(scopedResult.all?.count ?? 0)")
+```
+
+**When to prefer `extendedSearch` over `search`:**
+- You need COUNT, MIN, or MAX without downloading all matching identifiers.
+- You want a single, typed result struct instead of a raw ``MessageIdentifierSet``.
+- You are searching a scoped subset of messages (pass `identifierSet:`).
+- You want paged results without fetching the entire match list (pass `partialRange:`).
+
+**When `search` is sufficient:**
+- You only need the set of matching identifiers and don't require aggregate fields.
+- The server is known to lack ESEARCH support and you want to avoid the capability check overhead.
+
+### Paged results with PARTIAL
+
+Pass a ``PartialRange`` to retrieve a window of results instead of the full match list
+(requires server ESEARCH support; silently ignored on servers without it):
+
+```swift
+// Get the first 100 matching UIDs
+let first100 = try await imapServer.extendedSearch(
+    criteria: [.unseen],
+    partialRange: .first(1...100)
+)
+if let page = first100.partial {
+    print("Page \(page.range): \(page.results.count) UIDs")
+}
+
+// Get the last 50 matching UIDs
+let last50 = try await imapServer.extendedSearch(
+    criteria: [.unseen],
+    partialRange: .last(1...50)
+)
+```
+
+When `partialRange` is set, `PARTIAL` is requested instead of `ALL`, and the
+result appears in ``ExtendedSearchResult/partial`` rather than
+``ExtendedSearchResult/all``.
+
 ## Getting Mailbox Status
 
 You can get status information about mailboxes without selecting them using the STATUS command.

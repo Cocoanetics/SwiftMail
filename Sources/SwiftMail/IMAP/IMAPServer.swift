@@ -1151,9 +1151,39 @@ public actor IMAPServer {
         let command = SearchCommand(identifierSet: identifierSet, criteria: criteria, calendar: calendar)
         return try await executeCommand(command)
     }
-    
-    
-    
+
+    /**
+     Search the selected mailbox and return structured ESEARCH results (RFC 4731).
+
+     Uses the ESEARCH extension when the server advertises it, and falls back
+     to a plain SEARCH response otherwise.  The returned ``ExtendedSearchResult``
+     always contains at minimum the `count` and `all` fields when matches exist.
+
+     The generic type T determines the identifier type:
+     - Use `SequenceNumber` for temporary message numbers that may change
+     - Use `UID` for permanent message identifiers that remain stable
+
+     - Parameters:
+       - identifierSet: Optional set of message identifiers to search within. If nil, searches all messages.
+       - criteria: The search criteria to apply. Multiple criteria are combined with AND logic.
+       - calendar: The calendar used for date-to-day conversions.
+       - partialRange: Optional window for paged results (PARTIAL, RFC 5267). When provided and ESEARCH
+         is available, `PARTIAL` is requested instead of `ALL`, and results appear in
+         ``ExtendedSearchResult/partial`` rather than ``ExtendedSearchResult/all``. Ignored when the
+         server does not advertise ESEARCH.
+     - Returns: An ``ExtendedSearchResult`` containing COUNT, MIN, MAX and either ALL or PARTIAL when available.
+     - Throws:
+       - `IMAPError.commandFailed` if the search operation fails
+       - `IMAPError.connectionFailed` if not connected
+     */
+    public func extendedSearch<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], calendar: Calendar = Calendar(identifier: .gregorian), partialRange: PartialRange? = nil) async throws -> ExtendedSearchResult<T> {
+        let useEsearch = capabilities.contains(.extendedSearch)
+        let command = ExtendedSearchCommand<T>(identifierSet: identifierSet, criteria: criteria, calendar: calendar, useEsearch: useEsearch, partialRange: partialRange)
+        return try await executeCommand(command)
+    }
+
+
+
     /**
      Get status information about a mailbox without selecting it
      
