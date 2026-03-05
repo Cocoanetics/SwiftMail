@@ -12,6 +12,10 @@ public actor IMAPNamedConnection {
     private let connection: IMAPConnection
     private let authenticateOnConnection: @Sendable (IMAPConnection) async throws -> Void
 
+    /// The timestamp of the last successfully completed command on this connection.
+    /// Useful for implementing staleness checks in ephemeral connection patterns.
+    public private(set) var lastActivity: Date?
+
     init(
         name: String,
         connection: IMAPConnection,
@@ -46,7 +50,9 @@ public actor IMAPNamedConnection {
     /// Fetch server capabilities.
     @discardableResult
     public func fetchCapabilities() async throws -> [Capability] {
-        try await connection.fetchCapabilities()
+        let result = try await connection.fetchCapabilities()
+        lastActivity = Date()
+        return result
     }
 
     /// Select a mailbox for subsequent commands.
@@ -81,18 +87,23 @@ public actor IMAPNamedConnection {
     /// Start IDLE and receive server events.
     public func idle() async throws -> AsyncStream<IMAPServerEvent> {
         try await ensureAuthenticated()
-        return try await connection.idle()
+        let stream = try await connection.idle()
+        lastActivity = Date()
+        return stream
     }
 
     /// Terminate an active IDLE command with DONE.
     public func done() async throws {
         try await connection.done()
+        lastActivity = Date()
     }
 
     /// Send NOOP and collect unsolicited events.
     public func noop() async throws -> [IMAPServerEvent] {
         try await ensureAuthenticated()
-        return try await connection.noop()
+        let events = try await connection.noop()
+        lastActivity = Date()
+        return events
     }
 
     /// Fetch message structure for a single message identifier.
@@ -249,9 +260,12 @@ public actor IMAPNamedConnection {
         }
     }
 
+    @discardableResult
     private func executeCommand<CommandType: IMAPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
         try await ensureAuthenticated()
-        return try await connection.executeCommand(command)
+        let result = try await connection.executeCommand(command)
+        lastActivity = Date()
+        return result
     }
 
     private func executeMove<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
