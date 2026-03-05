@@ -1394,6 +1394,12 @@ public actor IMAPServer {
     }
 
     private func append(rawMessage: String, to mailbox: String, flags: [Flag], internalDate: Date?) async throws -> AppendResult {
+        if let limit = capabilities.globalAppendLimit {
+            let payloadSize = rawMessage.utf8.count
+            if payloadSize > limit {
+                throw IMAPError.appendLimitExceeded(payloadSize, limit)
+            }
+        }
         let serverDate = internalDate.flatMap(makeInternalDate(from:))
         let command = AppendCommand(
             mailboxName: resolveMailboxPath(mailbox),

@@ -23,6 +23,10 @@ public enum IMAPError: Error {
     case commandNotSupported(String)
     case authFailed(String)
     case unsupportedAuthMechanism(String)
+    /// The APPEND payload exceeds the server-advertised APPENDLIMIT.
+    ///
+    /// Associated values: `(payloadSize, limit)` — both in bytes.
+    case appendLimitExceeded(Int, Int)
 }
 
 // Add CustomStringConvertible conformance for better error messages
@@ -65,6 +69,8 @@ extension IMAPError: CustomStringConvertible {
             return "Authentication failed: \(reason)"
         case .unsupportedAuthMechanism(let reason):
             return "Unsupported authentication mechanism: \(reason)"
+        case .appendLimitExceeded(let payloadSize, let limit):
+            return "Append payload (\(payloadSize) bytes) exceeds server APPENDLIMIT (\(limit) bytes)"
         }
     }
 }
@@ -113,6 +119,8 @@ extension IMAPError: LocalizedError {
             return "The IMAP authentication failed: \(reason)"
         case .unsupportedAuthMechanism(let reason):
             return "The server does not support the requested authentication mechanism: \(reason)"
+        case .appendLimitExceeded(let payloadSize, let limit):
+            return "The message (\(payloadSize) bytes) is too large for the server limit of \(limit) bytes"
         }
     }
 
