@@ -458,7 +458,7 @@ final class IMAPConnection {
             try await connectBody()
         }
 
-        guard let channel = self.channel else {
+        guard let channel = self.channel, channel.isActive else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
 
@@ -755,7 +755,7 @@ final class IMAPConnection {
             try await connectBody()
         }
 
-        guard let channel = self.channel else {
+        guard let channel = self.channel, channel.isActive else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
 
@@ -786,6 +786,11 @@ final class IMAPConnection {
         } catch {
             scheduledTask.cancel()
             responseBuffer.hasActiveHandler = false
+
+            // Ensure the promise is always resolved — prevents NIO "leaking promise" fatal error
+            // when the channel becomes inactive between the guard and pipeline operations.
+            resultPromise.fail(error)
+
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
             if !handler.isCompleted {
@@ -811,7 +816,7 @@ final class IMAPConnection {
             try await connectBody()
         }
 
-        guard let channel = self.channel else {
+        guard let channel = self.channel, channel.isActive else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
 
@@ -839,6 +844,11 @@ final class IMAPConnection {
         } catch {
             scheduledTask.cancel()
             responseBuffer.hasActiveHandler = false
+
+            // Ensure the promise is always resolved — prevents NIO "leaking promise" fatal error
+            // when the channel becomes inactive between the guard and pipeline operations.
+            resultPromise.fail(error)
+
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
             if !handler.isCompleted {
