@@ -58,7 +58,10 @@ public actor IMAPNamedConnection {
     /// Select a mailbox for subsequent commands.
     @discardableResult
     public func select(mailbox mailboxName: String) async throws -> Mailbox.Selection {
-        let command = SelectMailboxCommand(mailboxName: mailboxName)
+        // Authenticate first so namespacesSnapshot is populated (or repopulated
+        // after a reconnect) before we resolve the mailbox path.
+        try await ensureAuthenticated()
+        let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
         return try await executeCommand(command)
     }
 
@@ -168,7 +171,7 @@ public actor IMAPNamedConnection {
 
     /// Copy messages to another mailbox.
     public func copy<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+        let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: resolveMailboxPath(destinationMailbox))
         try await executeCommand(command)
     }
 
@@ -231,21 +234,39 @@ public actor IMAPNamedConnection {
             attributes.append(.appendLimit)
         }
 
-        let command = StatusCommand(mailboxName: mailboxName, attributes: attributes)
+        let command = StatusCommand(mailboxName: resolveMailboxPath(mailboxName), attributes: attributes)
         let status: NIOIMAPCore.MailboxStatus = try await executeCommand(command)
         return Mailbox.Status(nio: status)
     }
 
     /// List mailboxes.
     public func listMailboxes(wildcard: String = "*") async throws -> [Mailbox.Info] {
+        if let namespaces = connection.namespacesSnapshot {
+            let patterns = namespaces.listingPatterns(for: wildcard)
+            var allMailboxes: [Mailbox.Info] = []
+            var seenNames: Set<String> = []
+
+            for pattern in patterns {
+                let command = ListCommand(wildcard: pattern)
+                let listed = try await executeCommand(command)
+                for mailbox in listed where seenNames.insert(mailbox.name).inserted {
+                    allMailboxes.append(mailbox)
+                }
+            }
+
+            if !allMailboxes.isEmpty {
+                return allMailboxes
+            }
+        }
+
         let command = ListCommand(wildcard: wildcard)
         return try await executeCommand(command)
     }
 
     /// Fetch server namespace information.
-    public func fetchNamespaces() async throws -> Namespace.Response {
-        let command = NamespaceCommand()
-        return try await executeCommand(command)
+    public func fetchNamespaces() async throws -> NamespaceResponse {
+        try await ensureAuthenticated()
+        return try await connection.fetchNamespaces()
     }
 
     // MARK: - Private Helpers
@@ -269,7 +290,14 @@ public actor IMAPNamedConnection {
     }
 
     private func executeMove<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: resolveMailboxPath(destinationMailbox))
         try await executeCommand(command)
+    }
+
+    private func resolveMailboxPath(_ mailboxName: String) -> String {
+        guard let namespaces = connection.namespacesSnapshot else {
+            return mailboxName
+        }
+        return namespaces.resolveMailboxPath(mailboxName)
     }
 }
