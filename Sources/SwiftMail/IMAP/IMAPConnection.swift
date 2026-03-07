@@ -291,6 +291,17 @@ final class IMAPConnection {
         await fetchNamespacesIfSupported(useCommandBody: false)
     }
 
+    /// Authenticate using AUTHENTICATE PLAIN (RFC 4616) with optional SASL-IR (RFC 4959).
+    ///
+    /// When the server advertises `SASL-IR`, the credentials are sent inline with the
+    /// AUTHENTICATE command (saving a round trip). Otherwise falls back to the standard
+    /// continuation-based exchange.
+    func authenticatePlain(username: String, password: String) async throws {
+        try await commandQueue.run { [self] in
+            try await self.authenticatePlainBody(username: username, password: password)
+        }
+    }
+
     func authenticateXOAUTH2(email: String, accessToken: String) async throws {
         try await commandQueue.run { [self] in
             try await self.authenticateXOAUTH2Body(email: email, accessToken: accessToken)
@@ -440,6 +451,128 @@ final class IMAPConnection {
         }
     }
 
+    private func authenticatePlainBody(username: String, password: String) async throws {
+        let mechanism = AuthenticationMechanism("PLAIN")
+        let plainCapability = Capability.authenticate(mechanism)
+
+        guard capabilities.contains(plainCapability) else {
+            throw IMAPError.unsupportedAuthMechanism("PLAIN not advertised by server")
+        }
+
+        try await waitForIdleCompletionIfNeeded()
+        try await recycleConnectionIfBufferedTerminationIfNeeded(operation: "PLAIN authenticate")
+
+        clearInvalidChannel()
+
+        if self.channel == nil {
+            logger.info("\(connectionContext) Channel is nil, re-establishing connection before authentication")
+            try await connectBody()
+        }
+
+        guard let channel = self.channel, channel.isActive else {
+            throw IMAPError.connectionFailed("Channel not initialized")
+        }
+
+        let tag = generateCommandTag()
+
+        let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
+        let credentialBuffer = makePlainCredentialBuffer(username: username, password: password)
+        let (initialResponse, expectsChallenge) = resolveSASLIR(credentials: credentialBuffer)
+
+        let handler = PlainAuthenticationHandler(
+            commandTag: tag,
+            promise: handlerPromise,
+            credentials: credentialBuffer,
+            expectsChallenge: expectsChallenge
+        )
+
+        var scheduledTask: Scheduled<Void>?
+
+        do {
+            try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
+            responseBuffer.hasActiveHandler = true
+
+            let command = TaggedCommand(tag: tag, command: .authenticate(mechanism: mechanism, initialResponse: initialResponse))
+            let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
+
+            let authenticationTimeoutSeconds = 10
+            let logger = self.logger
+            scheduledTask = channel.eventLoop.scheduleTask(in: .seconds(Int64(authenticationTimeoutSeconds))) {
+                logger.warning("PLAIN authentication timed out after \(authenticationTimeoutSeconds) seconds")
+                handlerPromise.fail(IMAPError.timeout)
+            }
+
+            try await channel.writeAndFlush(wrapped)
+            let postAuthCapabilities = try await handlerPromise.futureResult.get()
+
+            scheduledTask?.cancel()
+            responseBuffer.hasActiveHandler = false
+            isSessionAuthenticated = true
+
+            duplexLogger.flushInboundBuffer()
+            try await refreshCapabilities(using: postAuthCapabilities)
+            await fetchNamespacesIfSupported(useCommandBody: true)
+        } catch {
+            scheduledTask?.cancel()
+            responseBuffer.hasActiveHandler = false
+
+            // Ensure the promise is resolved to prevent NIO "leaking promise" fatal error
+            handlerPromise.fail(error)
+
+            duplexLogger.flushInboundBuffer()
+            if !handler.isCompleted {
+                try? await channel.pipeline.removeHandler(handler)
+            }
+            logErrorDiagnostics(error: error, operation: "PLAIN authenticate [\(tag)]")
+            if shouldRecycleConnection(for: error) {
+                try? await disconnectBody()
+            }
+            throw error
+        }
+    }
+
+    // MARK: - SASL-IR Helpers
+
+    /// Resolve whether to use SASL-IR (RFC 4959) for the given credentials.
+    ///
+    /// Returns the `InitialResponse` to embed in the AUTHENTICATE command (nil = use continuation)
+    /// and whether the handler should expect a server challenge before sending credentials.
+    ///
+    /// - Parameters:
+    ///   - credentials: The pre-built credential buffer.
+    ///   - maxInlineBytes: Maximum payload size for inline SASL-IR. Payloads exceeding this
+    ///     fall back to continuation mode even when SASL-IR is supported (prevents issues with
+    ///     servers that impose line-length limits). Pass `nil` for no limit.
+    /// - Returns: A tuple of `(initialResponse, expectsChallenge)`.
+    private func resolveSASLIR(
+        credentials: ByteBuffer,
+        maxInlineBytes: Int? = nil
+    ) -> (initialResponse: InitialResponse?, expectsChallenge: Bool) {
+        let supportsSASLIR = capabilities.contains(.saslIR)
+
+        if supportsSASLIR {
+            if let limit = maxInlineBytes, credentials.readableBytes > limit {
+                logger.info("SASL-IR payload size \(credentials.readableBytes) exceeds inline limit \(limit); switching to continuation mode")
+                return (nil, true)
+            }
+            return (InitialResponse(credentials), false)
+        }
+
+        return (nil, true)
+    }
+
+    /// Build the RFC 4616 PLAIN credential buffer: \0username\0password
+    private func makePlainCredentialBuffer(username: String, password: String) -> ByteBuffer {
+        // PLAIN format: [authzid] NUL authcid NUL passwd
+        // authzid is empty (same as authcid)
+        var buffer = ByteBufferAllocator().buffer(capacity: username.utf8.count + password.utf8.count + 2)
+        buffer.writeInteger(UInt8(0x00))  // empty authzid
+        buffer.writeString(username)
+        buffer.writeInteger(UInt8(0x00))
+        buffer.writeString(password)
+        return buffer
+    }
+
     private func authenticateXOAUTH2Body(email: String, accessToken: String) async throws {
         let mechanism = AuthenticationMechanism("XOAUTH2")
         let xoauthCapability = Capability.authenticate(mechanism)
@@ -466,15 +599,8 @@ final class IMAPConnection {
 
         let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
         let credentialBuffer = makeXOAUTH2InitialResponseBuffer(email: email, accessToken: accessToken)
+        let (initialResponse, expectsChallenge) = resolveSASLIR(credentials: credentialBuffer, maxInlineBytes: 1024)
 
-        let supportsSASLIR = capabilities.contains(.saslIR)
-        let saslIRInlineLimitBytes = 1024
-        let shouldUseInlineInitialResponse = supportsSASLIR && credentialBuffer.readableBytes <= saslIRInlineLimitBytes
-        let expectsChallenge = !shouldUseInlineInitialResponse
-
-        if supportsSASLIR && !shouldUseInlineInitialResponse {
-            logger.info("XOAUTH2 payload size \(credentialBuffer.readableBytes) exceeds inline SASL-IR limit \(saslIRInlineLimitBytes); switching to continuation mode")
-        }
         let handler = XOAUTH2AuthenticationHandler(
             commandTag: tag,
             promise: handlerPromise,
@@ -488,17 +614,6 @@ final class IMAPConnection {
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
-
-            let initialResponse: InitialResponse?
-            if shouldUseInlineInitialResponse {
-                initialResponse = InitialResponse(credentialBuffer)
-            } else if supportsSASLIR {
-                // Use true continuation mode for oversized payloads.
-                // Sending an explicit empty SASL-IR ("=") can be interpreted as an empty credential attempt.
-                initialResponse = nil
-            } else {
-                initialResponse = nil
-            }
 
             let command = TaggedCommand(tag: tag, command: .authenticate(mechanism: mechanism, initialResponse: initialResponse))
             let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
