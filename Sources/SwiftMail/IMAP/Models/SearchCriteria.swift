@@ -120,6 +120,51 @@ public indirect enum SearchCriteria: Sendable {
     /** Matches messages that do not have the `\Seen` flag set. */
     case unseen
 
+    /** Matches messages older than the specified number of seconds (RFC 5032 WITHIN extension).
+     *  The interval must be a positive integer (≥ 1). Requires the server to advertise the `WITHIN` capability.
+     */
+    case older(seconds: Int)
+
+    /** Matches messages younger than the specified number of seconds (RFC 5032 WITHIN extension).
+     *  The interval must be a positive integer (≥ 1). Requires the server to advertise the `WITHIN` capability.
+     */
+    case younger(seconds: Int)
+
+    /** Validates this search criteria, throwing if any values are out of range. */
+    func validate() throws {
+        switch self {
+        case .older(let seconds), .younger(let seconds):
+            guard seconds > 0 else {
+                throw IMAPError.invalidArgument("WITHIN interval must be a positive integer (got \(seconds))")
+            }
+        case .and(let criterias):
+            for c in criterias { try c.validate() }
+        case .not(let criteria):
+            try criteria.validate()
+        case .or(let c1, let c2):
+            try c1.validate()
+            try c2.validate()
+        default:
+            break
+        }
+    }
+
+    /// Whether this criteria (or any nested child) requires the WITHIN extension.
+    var requiresWithin: Bool {
+        switch self {
+        case .older, .younger:
+            return true
+        case .and(let criterias):
+            return criterias.contains { $0.requiresWithin }
+        case .not(let criteria):
+            return criteria.requiresWithin
+        case .or(let c1, let c2):
+            return c1.requiresWithin || c2.requiresWithin
+        default:
+            return false
+        }
+    }
+
     /** Converts a Swift string to an NIO ByteBuffer.
      * - Parameter str: The string to convert.
      * - Returns: A ByteBuffer containing the string data.
@@ -242,6 +287,10 @@ public indirect enum SearchCriteria: Sendable {
             return .unkeyword(stringToKeyword(value))
         case .unseen:
             return .unseen
+        case .older(let seconds):
+            return .older(seconds)
+        case .younger(let seconds):
+            return .younger(seconds)
         }
     }
 }

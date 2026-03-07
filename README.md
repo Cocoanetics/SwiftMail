@@ -51,7 +51,7 @@ implements support for each capability.
 | **SORT** | Server-side message sorting (RFC 5256) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **ESORT** | Extended SORT results (RFC 5267) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **CONTEXT=SORT** | Persistent sort context | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **WITHIN** | Search by relative time (RFC 5032) | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| **WITHIN** | Search by relative time (RFC 5032) | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ |
 | **SASL-IR** | Initial SASL response support (RFC 4959) | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
 | **XAPPLEPUSHSERVICE** | Apple push integration for Mail app | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **XAPPLELITERAL** | Apple literal transmission optimization | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |

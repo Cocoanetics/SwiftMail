@@ -45,6 +45,7 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         guard !criteria.isEmpty else {
             throw IMAPError.invalidArgument("Search criteria cannot be empty")
         }
+        for criterion in criteria { try criterion.validate() }
     }
 
     func toTaggedCommand(tag: String) -> TaggedCommand {
