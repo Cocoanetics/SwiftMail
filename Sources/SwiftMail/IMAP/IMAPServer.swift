@@ -1158,6 +1158,9 @@ public actor IMAPServer {
      - Note: Logs search operations at debug level with criteria count and results count
      */
     public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], calendar: Calendar = Calendar(identifier: .gregorian)) async throws -> MessageIdentifierSet<T> {
+        if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
+            throw IMAPError.commandNotSupported("WITHIN extension not supported by server (required for OLDER/YOUNGER search)")
+        }
         let command = SearchCommand(identifierSet: identifierSet, criteria: criteria, calendar: calendar)
         return try await executeCommand(command)
     }
@@ -1187,6 +1190,9 @@ public actor IMAPServer {
        - `IMAPError.connectionFailed` if not connected
      */
     public func extendedSearch<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], calendar: Calendar = Calendar(identifier: .gregorian), partialRange: PartialRange? = nil) async throws -> ExtendedSearchResult<T> {
+        if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
+            throw IMAPError.commandNotSupported("WITHIN extension not supported by server (required for OLDER/YOUNGER search)")
+        }
         let useEsearch = capabilities.contains(.extendedSearch)
         let command = ExtendedSearchCommand<T>(identifierSet: identifierSet, criteria: criteria, calendar: calendar, useEsearch: useEsearch, partialRange: partialRange)
         return try await executeCommand(command)

@@ -149,6 +149,22 @@ public indirect enum SearchCriteria: Sendable {
         }
     }
 
+    /// Whether this criteria (or any nested child) requires the WITHIN extension.
+    var requiresWithin: Bool {
+        switch self {
+        case .older, .younger:
+            return true
+        case .and(let criterias):
+            return criterias.contains { $0.requiresWithin }
+        case .not(let criteria):
+            return criteria.requiresWithin
+        case .or(let c1, let c2):
+            return c1.requiresWithin || c2.requiresWithin
+        default:
+            return false
+        }
+    }
+
     /** Converts a Swift string to an NIO ByteBuffer.
      * - Parameter str: The string to convert.
      * - Returns: A ByteBuffer containing the string data.
