@@ -96,4 +96,24 @@ struct WithinSearchTests {
         #expect(wireString.contains("YOUNGER 3600"))
         #expect(wireString.contains("UNSEEN"))
     }
+
+    @Test
+    func testZeroIntervalThrows() async throws {
+        #expect(throws: (any Error).self) {
+            try SearchCriteria.younger(0).validate()
+        }
+        #expect(throws: (any Error).self) {
+            try SearchCriteria.older(0).validate()
+        }
+    }
+
+    @Test
+    func testNegativeIntervalThrows() async throws {
+        #expect(throws: (any Error).self) {
+            try SearchCriteria.younger(-100).validate()
+        }
+        #expect(throws: (any Error).self) {
+            try SearchCriteria.older(-1).validate()
+        }
+    }
 }

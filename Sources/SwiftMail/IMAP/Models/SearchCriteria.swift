@@ -121,14 +121,33 @@ public indirect enum SearchCriteria: Sendable {
     case unseen
 
     /** Matches messages older than the specified number of seconds (RFC 5032 WITHIN extension).
-     *  Requires the server to advertise the `WITHIN` capability.
+     *  The interval must be a positive integer (≥ 1). Requires the server to advertise the `WITHIN` capability.
      */
     case older(Int)
 
     /** Matches messages younger than the specified number of seconds (RFC 5032 WITHIN extension).
-     *  Requires the server to advertise the `WITHIN` capability.
+     *  The interval must be a positive integer (≥ 1). Requires the server to advertise the `WITHIN` capability.
      */
     case younger(Int)
+
+    /** Validates this search criteria, throwing if any values are out of range. */
+    func validate() throws {
+        switch self {
+        case .older(let seconds), .younger(let seconds):
+            guard seconds > 0 else {
+                throw IMAPError.invalidArgument("WITHIN interval must be a positive integer (got \(seconds))")
+            }
+        case .and(let criterias):
+            for c in criterias { try c.validate() }
+        case .not(let criteria):
+            try criteria.validate()
+        case .or(let c1, let c2):
+            try c1.validate()
+            try c2.validate()
+        default:
+            break
+        }
+    }
 
     /** Converts a Swift string to an NIO ByteBuffer.
      * - Parameter str: The string to convert.
