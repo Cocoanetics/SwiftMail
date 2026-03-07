@@ -123,12 +123,12 @@ public indirect enum SearchCriteria: Sendable {
     /** Matches messages older than the specified number of seconds (RFC 5032 WITHIN extension).
      *  The interval must be a positive integer (≥ 1). Requires the server to advertise the `WITHIN` capability.
      */
-    case older(Int)
+    case older(seconds: Int)
 
     /** Matches messages younger than the specified number of seconds (RFC 5032 WITHIN extension).
      *  The interval must be a positive integer (≥ 1). Requires the server to advertise the `WITHIN` capability.
      */
-    case younger(Int)
+    case younger(seconds: Int)
 
     /** Validates this search criteria, throwing if any values are out of range. */
     func validate() throws {

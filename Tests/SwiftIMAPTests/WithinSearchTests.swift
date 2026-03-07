@@ -14,7 +14,7 @@ struct WithinSearchTests {
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
-        let command = SearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.younger(3600)])
+        let command = SearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.younger(seconds: 3600)])
         let tagged = command.toTaggedCommand(tag: "W001")
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
@@ -36,7 +36,7 @@ struct WithinSearchTests {
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
-        let command = SearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.older(86400)])
+        let command = SearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.older(seconds: 86400)])
         let tagged = command.toTaggedCommand(tag: "W002")
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
@@ -58,7 +58,7 @@ struct WithinSearchTests {
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
-        let command = ExtendedSearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.younger(600)], useEsearch: true)
+        let command = ExtendedSearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.younger(seconds: 600)], useEsearch: true)
         let tagged = command.toTaggedCommand(tag: "W003")
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
@@ -81,7 +81,7 @@ struct WithinSearchTests {
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
-        let command = SearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.younger(3600), SearchCriteria.unseen])
+        let command = SearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.younger(seconds: 3600), SearchCriteria.unseen])
         let tagged = command.toTaggedCommand(tag: "W004")
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
@@ -100,20 +100,20 @@ struct WithinSearchTests {
     @Test
     func testZeroIntervalThrows() async throws {
         #expect(throws: (any Error).self) {
-            try SearchCriteria.younger(0).validate()
+            try SearchCriteria.younger(seconds: 0).validate()
         }
         #expect(throws: (any Error).self) {
-            try SearchCriteria.older(0).validate()
+            try SearchCriteria.older(seconds: 0).validate()
         }
     }
 
     @Test
     func testNegativeIntervalThrows() async throws {
         #expect(throws: (any Error).self) {
-            try SearchCriteria.younger(-100).validate()
+            try SearchCriteria.younger(seconds: -100).validate()
         }
         #expect(throws: (any Error).self) {
-            try SearchCriteria.older(-1).validate()
+            try SearchCriteria.older(seconds: -1).validate()
         }
     }
 }
