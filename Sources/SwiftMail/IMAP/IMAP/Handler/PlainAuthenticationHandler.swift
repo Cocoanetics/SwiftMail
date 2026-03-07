@@ -12,7 +12,9 @@ import NIOIMAPCore
 final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler, @unchecked Sendable {
     private var collectedCapabilities: [Capability] = []
     private var credentials: ByteBuffer
-    private let shouldSendOnChallenge: Bool
+    private var shouldSendOnChallenge: Bool
+    private let sentInlineInitialResponse: Bool
+    private var fallbackContinuationSent = false
 
     init(
         commandTag: String,
@@ -22,6 +24,7 @@ final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IM
     ) {
         self.credentials = credentials
         self.shouldSendOnChallenge = expectsChallenge
+        self.sentInlineInitialResponse = !expectsChallenge
         super.init(commandTag: commandTag, promise: promise)
     }
 
@@ -32,12 +35,33 @@ final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IM
     override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
 
-        if case .authenticationChallenge = response, shouldSendOnChallenge {
-            let credentialBuffer = credentials
-            credentials = context.channel.allocator.buffer(capacity: 0)
-            context.channel
-                .writeAndFlush(IMAPClientHandler.OutboundIn.part(.continuationResponse(credentialBuffer)))
-                .cascadeFailure(to: promise)
+        if case .authenticationChallenge(var challenge) = response {
+            let challengeIsEmpty = challenge.readableBytes == 0 ||
+                (challenge.getString(at: challenge.readerIndex, length: challenge.readableBytes) ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+            let sendCredentials = lock.withLock { () -> Bool in
+                if shouldSendOnChallenge {
+                    shouldSendOnChallenge = false
+                    return true
+                }
+
+                // Compatibility fallback: some servers advertise SASL-IR but still emit an
+                // empty continuation before consuming credentials. Allow one retry.
+                if sentInlineInitialResponse && !fallbackContinuationSent && challengeIsEmpty {
+                    fallbackContinuationSent = true
+                    return true
+                }
+                return false
+            }
+
+            if sendCredentials {
+                let credentialBuffer = credentials
+                credentials = context.channel.allocator.buffer(capacity: 0)
+                context.channel
+                    .writeAndFlush(IMAPClientHandler.OutboundIn.part(.continuationResponse(credentialBuffer)))
+                    .cascadeFailure(to: promise)
+            }
         }
 
         super.channelRead(context: context, data: data)
