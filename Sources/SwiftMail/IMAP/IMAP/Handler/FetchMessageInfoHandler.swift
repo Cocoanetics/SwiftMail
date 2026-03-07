@@ -93,17 +93,13 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     }
 
     private func applyCollectedThreadingHeaders() {
-        let parsedFields = Self.extractThreadingHeaders(from: currentHeaderLiteral)
-        guard !parsedFields.isEmpty else { return }
+        let references = Self.extractReferencesHeader(from: currentHeaderLiteral)
+        guard let references else { return }
 
         lock.withLock {
             guard let index = currentMessageIndex() else { return }
             var header = self.messageInfos[index]
-            var additionalFields = header.additionalFields ?? [:]
-            for (key, value) in parsedFields {
-                additionalFields[key] = value
-            }
-            header.additionalFields = additionalFields.isEmpty ? nil : additionalFields
+            header.references = references
             self.messageInfos[index] = header
         }
     }
@@ -295,24 +291,17 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         kind.sectionSpecifier.kind == .header
     }
 
-    static func extractThreadingHeaders(from data: Data) -> [String: String] {
+    static func extractReferencesHeader(from data: Data) -> String? {
         guard let headerBlock = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) else {
-            return [:]
+            return nil
         }
 
         let parsedHeaders = EMLParser.parseHeaders(headerBlock)
-        var threadingHeaders: [String: String] = [:]
-
-        if let inReplyTo = parsedHeaders["in-reply-to"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !inReplyTo.isEmpty {
-            threadingHeaders["in-reply-to"] = inReplyTo
-        }
-
         if let references = parsedHeaders["references"]?.trimmingCharacters(in: .whitespacesAndNewlines),
            !references.isEmpty {
-            threadingHeaders["references"] = references
+            return references
         }
 
-        return threadingHeaders
+        return nil
     }
 }
