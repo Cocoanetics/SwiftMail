@@ -83,12 +83,15 @@ public actor IMAPServer {
 
     private enum Authentication {
         case login(username: String, password: String)
+        case plain(username: String, password: String)
         case xoauth2(email: String, accessTokenProvider: @Sendable () async throws -> String)
 
         func authenticate(on connection: IMAPConnection) async throws {
             switch self {
             case .login(let username, let password):
                 try await connection.login(username: username, password: password)
+            case .plain(let username, let password):
+                try await connection.authenticatePlain(username: username, password: password)
             case .xoauth2(let email, let accessTokenProvider):
                 let accessToken = try await accessTokenProvider()
                 try await connection.authenticateXOAUTH2(email: email, accessToken: accessToken)
@@ -207,6 +210,23 @@ public actor IMAPServer {
     public func login(username: String, password: String) async throws {
         try await primaryConnection.login(username: username, password: password)
         authentication = .login(username: username, password: password)
+        namespaces = primaryConnection.namespacesSnapshot
+    }
+
+    /// Authenticate using AUTHENTICATE PLAIN (RFC 4616) with optional SASL-IR (RFC 4959).
+    ///
+    /// When the server advertises `SASL-IR`, credentials are sent inline with the
+    /// AUTHENTICATE command (saving a round trip). Otherwise falls back to the standard
+    /// continuation-based exchange.
+    ///
+    /// - Parameters:
+    ///   - username: The username (authcid) for authentication.
+    ///   - password: The password for authentication.
+    /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise AUTH=PLAIN,
+    ///   or ``IMAPError.authFailed`` when authentication fails.
+    public func authenticatePlain(username: String, password: String) async throws {
+        try await primaryConnection.authenticatePlain(username: username, password: password)
+        authentication = .plain(username: username, password: password)
         namespaces = primaryConnection.namespacesSnapshot
     }
 

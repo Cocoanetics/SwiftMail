@@ -52,7 +52,7 @@ implements support for each capability.
 | **ESORT** | Extended SORT results (RFC 5267) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **CONTEXT=SORT** | Persistent sort context | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **WITHIN** | Search by relative time (RFC 5032) | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ |
-| **SASL-IR** | Initial SASL response support (RFC 4959) | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **SASL-IR** | Initial SASL response support (RFC 4959) | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **XAPPLEPUSHSERVICE** | Apple push integration for Mail app | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **XAPPLELITERAL** | Apple literal transmission optimization | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **X-APPLE-REMOTE-LINKS** | Apple-specific remote links extension | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -63,7 +63,7 @@ Exchange source (captured 2026-03-05 from `outlook.office365.com:993` via IMAPS 
 
 ### SMTPServer
 Handles email sending via SMTP with support for:
-- Multiple authentication methods (PLAIN, LOGIN)
+- Multiple authentication methods (PLAIN, LOGIN, XOAUTH2)
 - TLS encryption
 - 8BITMIME support
 - Full MIME email composition
