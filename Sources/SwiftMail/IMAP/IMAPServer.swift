@@ -83,13 +83,14 @@ public actor IMAPServer {
 
     private enum Authentication {
         case login(username: String, password: String)
-        case xoauth2(email: String, accessToken: String)
+        case xoauth2(email: String, accessTokenProvider: @Sendable () async throws -> String)
 
         func authenticate(on connection: IMAPConnection) async throws {
             switch self {
             case .login(let username, let password):
                 try await connection.login(username: username, password: password)
-            case .xoauth2(let email, let accessToken):
+            case .xoauth2(let email, let accessTokenProvider):
+                let accessToken = try await accessTokenProvider()
                 try await connection.authenticateXOAUTH2(email: email, accessToken: accessToken)
             }
         }
@@ -216,8 +217,17 @@ public actor IMAPServer {
     /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise XOAUTH2 or ``IMAPError.authFailed`` when authentication fails.
     public func authenticateXOAUTH2(email: String, accessToken: String) async throws {
         try await primaryConnection.authenticateXOAUTH2(email: email, accessToken: accessToken)
-        authentication = .xoauth2(email: email, accessToken: accessToken)
+        authentication = .xoauth2(email: email, accessTokenProvider: { accessToken })
         namespaces = primaryConnection.namespacesSnapshot
+    }
+
+    /// Configures XOAUTH2 re-authentication to resolve the access token dynamically.
+    /// Use this after a successful OAuth-backed login so automatic reconnects do not reuse a stale token.
+    public func setXOAUTH2AccessTokenProvider(
+        email: String,
+        accessTokenProvider: @escaping @Sendable () async throws -> String
+    ) {
+        authentication = .xoauth2(email: email, accessTokenProvider: accessTokenProvider)
     }
     
     /// Identify the client to the server using the `ID` command.
