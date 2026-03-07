@@ -120,6 +120,16 @@ public indirect enum SearchCriteria: Sendable {
     /** Matches messages that do not have the `\Seen` flag set. */
     case unseen
 
+    /** Matches messages older than the specified number of seconds (RFC 5032 WITHIN extension).
+     *  Requires the server to advertise the `WITHIN` capability.
+     */
+    case older(Int)
+
+    /** Matches messages younger than the specified number of seconds (RFC 5032 WITHIN extension).
+     *  Requires the server to advertise the `WITHIN` capability.
+     */
+    case younger(Int)
+
     /** Converts a Swift string to an NIO ByteBuffer.
      * - Parameter str: The string to convert.
      * - Returns: A ByteBuffer containing the string data.
@@ -242,6 +252,10 @@ public indirect enum SearchCriteria: Sendable {
             return .unkeyword(stringToKeyword(value))
         case .unseen:
             return .unseen
+        case .older(let seconds):
+            return .older(seconds)
+        case .younger(let seconds):
+            return .younger(seconds)
         }
     }
 }
