@@ -11,6 +11,9 @@ import NIOConcurrencyHelpers
 final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected email headers
     private var messageInfos: [MessageInfo] = []
+    private var currentSequenceNumber: SequenceNumber?
+    private var currentHeaderLiteral = Data()
+    private var collectingThreadingHeaders = false
     
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
@@ -55,24 +58,59 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 
             case .start(let sequenceNumber):
                 // Create a new header for this sequence number
+                currentSequenceNumber = SequenceNumber(sequenceNumber.rawValue)
+                currentHeaderLiteral.removeAll(keepingCapacity: true)
+                collectingThreadingHeaders = false
                 let messageInfo = MessageInfo(sequenceNumber: SequenceNumber(sequenceNumber.rawValue))
                 lock.withLock {
                     self.messageInfos.append(messageInfo)
                 }
                 
-            case .streamingBegin(_, _):
-                // We don't create headers for streamingBegin
-                // This avoids misinterpreting the byte count as a sequence number
-                break
+            case .streamingBegin(let kind, _):
+                collectingThreadingHeaders = Self.shouldCollectThreadingHeaders(for: kind)
+                if collectingThreadingHeaders {
+                    currentHeaderLiteral.removeAll(keepingCapacity: true)
+                }
                 
-            case .streamingBytes(_):
-                // Process streaming bytes if needed
-                // For headers, we typically don't need to process the raw header data
-                break
+            case .streamingBytes(let data):
+                guard collectingThreadingHeaders else { break }
+                currentHeaderLiteral.append(contentsOf: data.readableBytesView)
+
+            case .streamingEnd:
+                guard collectingThreadingHeaders else { break }
+                applyCollectedThreadingHeaders()
+                collectingThreadingHeaders = false
+                currentHeaderLiteral.removeAll(keepingCapacity: true)
+
+            case .finish:
+                currentSequenceNumber = nil
+                collectingThreadingHeaders = false
+                currentHeaderLiteral.removeAll(keepingCapacity: true)
                 
             default:
                 break
         }
+    }
+
+    private func applyCollectedThreadingHeaders() {
+        let references = Self.extractReferencesHeader(from: currentHeaderLiteral)
+        guard let references else { return }
+
+        lock.withLock {
+            guard let index = currentMessageIndex() else { return }
+            var header = self.messageInfos[index]
+            header.references = references
+            self.messageInfos[index] = header
+        }
+    }
+
+    private func currentMessageIndex() -> Int? {
+        if let currentSequenceNumber,
+           let index = messageInfos.firstIndex(where: { $0.sequenceNumber == currentSequenceNumber }) {
+            return index
+        }
+
+        return messageInfos.indices.last
     }
     
     /// Process a message attribute and update the corresponding email header
@@ -248,4 +286,22 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 return "\(groupName): \(members)"
         }
     }
-} 
+
+    static func shouldCollectThreadingHeaders(for kind: StreamingKind) -> Bool {
+        kind.sectionSpecifier.kind == .header
+    }
+
+    static func extractReferencesHeader(from data: Data) -> String? {
+        guard let headerBlock = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) else {
+            return nil
+        }
+
+        let parsedHeaders = EMLParser.parseHeaders(headerBlock)
+        if let references = parsedHeaders["references"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !references.isEmpty {
+            return references
+        }
+
+        return nil
+    }
+}
