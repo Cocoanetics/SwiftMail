@@ -69,12 +69,21 @@ public actor SMTPServer {
     /** Server capabilities reported by EHLO command */
     private var capabilities: [String] = []
 
+    /// Whether the server advertised the `8BITMIME` extension in the most recent EHLO response.
     public var supports8BitMIME: Bool {
         capabilities.contains("8BITMIME")
     }
 
+    /// The server-advertised RFC 1870 `SIZE` limit from the most recent EHLO response, if present.
     public var maximumMessageSizeOctets: Int? {
         Self.maximumMessageSizeOctets(from: capabilities)
+    }
+
+    struct PreparedEmailForSend {
+        let use8BitMIME: Bool
+        let content: String
+        let emailSizeOctets: Int
+        let mailFromMessageSizeOctets: Int?
     }
     
     /** 
@@ -393,11 +402,9 @@ public actor SMTPServer {
             logger.debug("Email contains \(email.regularAttachments.count) regular attachments and \(email.inlineAttachments.count) inline attachments")
         }
         
-        // Check if the server supports 8BITMIME
-        let supports8BitMIME = self.supports8BitMIME
-        let announcedMessageSizeOctets = email.messageSizeOctets(use8BitMIME: supports8BitMIME)
+        let preparedEmail = try Self.prepareEmailForSend(email, capabilities: capabilities)
         
-        if supports8BitMIME {
+        if preparedEmail.use8BitMIME {
             self.logger.debug("Server supports 8BITMIME, using it for this email")
         }
         
@@ -405,8 +412,8 @@ public actor SMTPServer {
             // Create Mail From command using 8BITMIME if supported
             let mailFrom = try MailFromCommand(
                 senderAddress: email.sender.address,
-                use8BitMIME: supports8BitMIME,
-                messageSizeOctets: announcedMessageSizeOctets
+                use8BitMIME: preparedEmail.use8BitMIME,
+                messageSizeOctets: preparedEmail.mailFromMessageSizeOctets
             )
             _ = try await executeCommand(mailFrom)
             
@@ -421,7 +428,7 @@ public actor SMTPServer {
             _ = try await executeCommand(data)
             
             // Send content
-            let sendContent = SendContentCommand(email: email, use8BitMIME: supports8BitMIME)
+            let sendContent = SendContentCommand(content: preparedEmail.content)
             try await executeCommand(sendContent)
             
             self.logger.debug("Email sent successfully")
@@ -700,6 +707,27 @@ public actor SMTPServer {
             return octets
         }
         return nil
+    }
+
+    static func prepareEmailForSend(_ email: Email, capabilities: [String]) throws -> PreparedEmailForSend {
+        let use8BitMIME = capabilities.contains("8BITMIME")
+        let preparedContent = email.preparedContent(use8BitMIME: use8BitMIME)
+        let maximumMessageSizeOctets = maximumMessageSizeOctets(from: capabilities)
+
+        if let maximumMessageSizeOctets,
+           preparedContent.messageSizeOctets > maximumMessageSizeOctets {
+            throw SMTPError.messageTooLarge(
+                messageSizeOctets: preparedContent.messageSizeOctets,
+                maximumMessageSizeOctets: maximumMessageSizeOctets
+            )
+        }
+
+        return PreparedEmailForSend(
+            use8BitMIME: use8BitMIME,
+            content: preparedContent.content,
+            emailSizeOctets: preparedContent.messageSizeOctets,
+            mailFromMessageSizeOctets: maximumMessageSizeOctets == nil ? nil : preparedContent.messageSizeOctets
+        )
     }
     
     /**

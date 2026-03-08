@@ -155,4 +155,58 @@ struct SMTPTests {
         #expect(quotedPrintableSize == email.constructContent(use8BitMIME: false).utf8.count)
         #expect(eightBitSize == email.constructContent(use8BitMIME: true).utf8.count)
     }
+
+    @Test
+    func testPrepareEmailForSendOmitsMailFromSizeWhenServerDoesNotAdvertiseSIZE() throws {
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Hello",
+            textBody: "Body"
+        )
+
+        let prepared = try SMTPServer.prepareEmailForSend(
+            email,
+            capabilities: ["PIPELINING", "8BITMIME"]
+        )
+
+        #expect(prepared.use8BitMIME)
+        #expect(prepared.emailSizeOctets > 0)
+        #expect(prepared.mailFromMessageSizeOctets == nil)
+    }
+
+    @Test
+    func testPrepareEmailForSendUsesMailFromSizeWhenServerAdvertisesSIZE() throws {
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Hello",
+            textBody: "Body"
+        )
+
+        let prepared = try SMTPServer.prepareEmailForSend(
+            email,
+            capabilities: ["PIPELINING", "SIZE 999999"]
+        )
+
+        #expect(prepared.emailSizeOctets > 0)
+        #expect(prepared.mailFromMessageSizeOctets == prepared.emailSizeOctets)
+    }
+
+    @Test
+    func testPrepareEmailForSendRejectsMessagesExceedingAdvertisedSIZE() {
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Hello",
+            textBody: String(repeating: "A", count: 4096)
+        )
+
+        #expect(throws: SMTPError.self) {
+            try SMTPServer.prepareEmailForSend(
+                email,
+                capabilities: ["PIPELINING", "SIZE 128"]
+            )
+        }
+    }
 }
