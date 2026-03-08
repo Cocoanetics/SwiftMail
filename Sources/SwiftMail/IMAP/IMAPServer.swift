@@ -55,7 +55,7 @@ public actor IMAPServer {
     public private(set) var specialMailboxes: [Mailbox.Info] = []
     
     /// Namespaces discovered from the server
-    public private(set) var namespaces: Namespace.Response?
+    public private(set) var namespaces: NamespaceResponse?
     
     /// Capabilities reported by the primary connection.
     private var capabilities: Set<NIOIMAPCore.Capability> {
@@ -83,13 +83,17 @@ public actor IMAPServer {
 
     private enum Authentication {
         case login(username: String, password: String)
-        case xoauth2(email: String, accessToken: String)
+        case plain(username: String, password: String)
+        case xoauth2(email: String, accessTokenProvider: @Sendable () async throws -> String)
 
         func authenticate(on connection: IMAPConnection) async throws {
             switch self {
             case .login(let username, let password):
                 try await connection.login(username: username, password: password)
-            case .xoauth2(let email, let accessToken):
+            case .plain(let username, let password):
+                try await connection.authenticatePlain(username: username, password: password)
+            case .xoauth2(let email, let accessTokenProvider):
+                let accessToken = try await accessTokenProvider()
                 try await connection.authenticateXOAUTH2(email: email, accessToken: accessToken)
             }
         }
@@ -206,6 +210,24 @@ public actor IMAPServer {
     public func login(username: String, password: String) async throws {
         try await primaryConnection.login(username: username, password: password)
         authentication = .login(username: username, password: password)
+        namespaces = primaryConnection.namespacesSnapshot
+    }
+
+    /// Authenticate using AUTHENTICATE PLAIN (RFC 4616) with optional SASL-IR (RFC 4959).
+    ///
+    /// When the server advertises `SASL-IR`, credentials are sent inline with the
+    /// AUTHENTICATE command (saving a round trip). Otherwise falls back to the standard
+    /// continuation-based exchange.
+    ///
+    /// - Parameters:
+    ///   - username: The username (authcid) for authentication.
+    ///   - password: The password for authentication.
+    /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise AUTH=PLAIN,
+    ///   or ``IMAPError.authFailed`` when authentication fails.
+    public func authenticatePlain(username: String, password: String) async throws {
+        try await primaryConnection.authenticatePlain(username: username, password: password)
+        authentication = .plain(username: username, password: password)
+        namespaces = primaryConnection.namespacesSnapshot
     }
 
     /// Performs XOAUTH2 authentication for the current IMAP connection.
@@ -215,7 +237,17 @@ public actor IMAPServer {
     /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise XOAUTH2 or ``IMAPError.authFailed`` when authentication fails.
     public func authenticateXOAUTH2(email: String, accessToken: String) async throws {
         try await primaryConnection.authenticateXOAUTH2(email: email, accessToken: accessToken)
-        authentication = .xoauth2(email: email, accessToken: accessToken)
+        authentication = .xoauth2(email: email, accessTokenProvider: { accessToken })
+        namespaces = primaryConnection.namespacesSnapshot
+    }
+
+    /// Configures XOAUTH2 re-authentication to resolve the access token dynamically.
+    /// Use this after a successful OAuth-backed login so automatic reconnects do not reuse a stale token.
+    public func setXOAUTH2AccessTokenProvider(
+        email: String,
+        accessTokenProvider: @escaping @Sendable () async throws -> String
+    ) {
+        authentication = .xoauth2(email: email, accessTokenProvider: accessTokenProvider)
     }
     
     /// Identify the client to the server using the `ID` command.
@@ -378,6 +410,10 @@ public actor IMAPServer {
 
         try? await primaryConnection.done()
         try await primaryConnection.disconnect()
+
+        namespaces = nil
+        mailboxes = []
+        specialMailboxes = []
     }
     
     // MARK: - Mailbox Commands
@@ -395,7 +431,7 @@ public actor IMAPServer {
      - Note: Logs mailbox creation at debug level
      */
     public func createMailbox(_ mailboxName: String) async throws {
-        let command = CreateMailboxCommand(mailboxName: mailboxName)
+        let command = CreateMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
         try await executeCommand(command)
     }
 
@@ -415,7 +451,7 @@ public actor IMAPServer {
      To get the count of unseen messages, use `mailboxStatus("INBOX").unseenCount` instead.
      */
     @discardableResult public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
-        let command = SelectMailboxCommand(mailboxName: mailboxName)
+        let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
         return try await executeCommand(command)
     }
     
@@ -502,13 +538,14 @@ public actor IMAPServer {
         }
 
         let sessionID = UUID()
-        let connection = makeIdleConnection(sessionID: sessionID, mailbox: mailbox)
-        idleConnections[sessionID] = IdleConnection(mailbox: mailbox, connection: connection)
+        let resolvedMailbox = resolveMailboxPath(mailbox)
+        let connection = makeIdleConnection(sessionID: sessionID, mailbox: resolvedMailbox)
+        idleConnections[sessionID] = IdleConnection(mailbox: resolvedMailbox, connection: connection)
 
         do {
             try await connection.connect()
             try await authentication.authenticate(on: connection)
-            _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: mailbox))
+            _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: resolvedMailbox))
 
             var continuationRef: AsyncStream<IMAPServerEvent>.Continuation!
             let wrappedEvents = AsyncStream<IMAPServerEvent> { continuation in
@@ -534,7 +571,7 @@ public actor IMAPServer {
                 var cycleLogger = Logger(label: cycleLoggerLabel)
                 cycleLogger[metadataKey: "imap.host"] = .string(serverHost)
                 cycleLogger[metadataKey: "imap.port"] = .stringConvertible(serverPort)
-                cycleLogger[metadataKey: "imap.mailbox"] = .string(mailbox)
+                cycleLogger[metadataKey: "imap.mailbox"] = .string(resolvedMailbox)
                 cycleLogger[metadataKey: "imap.connection_id"] = .string(connection.identifier)
                 cycleLogger[metadataKey: "imap.connection_role"] = .string(connection.role)
 
@@ -612,7 +649,7 @@ public actor IMAPServer {
 
                                     try await connection.connect()
                                     try await authentication.authenticate(on: connection)
-                                    _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: mailbox))
+                                    _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: resolvedMailbox))
 
                                     let reconnectedAt = Date()
                                     nextNoopAt = idleConfiguration.postIdleNoopEnabled
@@ -685,7 +722,7 @@ public actor IMAPServer {
 
                                     try await connection.connect()
                                     try await authentication.authenticate(on: connection)
-                                    _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: mailbox))
+                                    _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: resolvedMailbox))
 
                                     let reconnectedAt = Date()
                                     nextNoopAt = idleConfiguration.postIdleNoopEnabled
@@ -742,7 +779,7 @@ public actor IMAPServer {
 
                             try await connection.connect()
                             try await authentication.authenticate(on: connection)
-                            _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: mailbox))
+                            _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: resolvedMailbox))
 
                             let reconnectedAt = Date()
                             nextNoopAt = idleConfiguration.postIdleNoopEnabled
@@ -1141,12 +1178,48 @@ public actor IMAPServer {
      - Note: Logs search operations at debug level with criteria count and results count
      */
     public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], calendar: Calendar = Calendar(identifier: .gregorian)) async throws -> MessageIdentifierSet<T> {
+        if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
+            throw IMAPError.commandNotSupported("WITHIN extension not supported by server (required for OLDER/YOUNGER search)")
+        }
         let command = SearchCommand(identifierSet: identifierSet, criteria: criteria, calendar: calendar)
         return try await executeCommand(command)
     }
-    
-    
-    
+
+    /**
+     Search the selected mailbox and return structured ESEARCH results (RFC 4731).
+
+     Uses the ESEARCH extension when the server advertises it, and falls back
+     to a plain SEARCH response otherwise.  The returned ``ExtendedSearchResult``
+     always contains at minimum the `count` and `all` fields when matches exist.
+
+     The generic type T determines the identifier type:
+     - Use `SequenceNumber` for temporary message numbers that may change
+     - Use `UID` for permanent message identifiers that remain stable
+
+     - Parameters:
+       - identifierSet: Optional set of message identifiers to search within. If nil, searches all messages.
+       - criteria: The search criteria to apply. Multiple criteria are combined with AND logic.
+       - calendar: The calendar used for date-to-day conversions.
+       - partialRange: Optional window for paged results (PARTIAL, RFC 5267). When provided and ESEARCH
+         is available, `PARTIAL` is requested instead of `ALL`, and results appear in
+         ``ExtendedSearchResult/partial`` rather than ``ExtendedSearchResult/all``. Ignored when the
+         server does not advertise ESEARCH.
+     - Returns: An ``ExtendedSearchResult`` containing COUNT, MIN, MAX and either ALL or PARTIAL when available.
+     - Throws:
+       - `IMAPError.commandFailed` if the search operation fails
+       - `IMAPError.connectionFailed` if not connected
+     */
+    public func extendedSearch<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], calendar: Calendar = Calendar(identifier: .gregorian), partialRange: PartialRange? = nil) async throws -> ExtendedSearchResult<T> {
+        if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
+            throw IMAPError.commandNotSupported("WITHIN extension not supported by server (required for OLDER/YOUNGER search)")
+        }
+        let useEsearch = capabilities.contains(.extendedSearch)
+        let command = ExtendedSearchCommand<T>(identifierSet: identifierSet, criteria: criteria, calendar: calendar, useEsearch: useEsearch, partialRange: partialRange)
+        return try await executeCommand(command)
+    }
+
+
+
     /**
      Get status information about a mailbox without selecting it
      
@@ -1190,7 +1263,7 @@ public actor IMAPServer {
             attributes.append(.appendLimit)
         }
         
-        let command = StatusCommand(mailboxName: mailboxName, attributes: attributes)
+        let command = StatusCommand(mailboxName: resolveMailboxPath(mailboxName), attributes: attributes)
         let status: NIOIMAPCore.MailboxStatus = try await executeCommand(command)
         return Mailbox.Status(nio: status)
     }
@@ -1207,7 +1280,7 @@ public actor IMAPServer {
      - Note: Logs copy operations at info level with message count and destination
      */
     public func copy<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+        let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: resolveMailboxPath(destinationMailbox))
         try await executeCommand(command)
     }
     
@@ -1281,7 +1354,7 @@ public actor IMAPServer {
             throw IMAPError.commandNotSupported("QUOTA command not supported by server")
         }
         
-        let command = GetQuotaRootCommand(mailboxName: mailboxName)
+        let command = GetQuotaRootCommand(mailboxName: mailboxName.map(resolveMailboxPath))
         return try await executeCommand(command)
     }
     
@@ -1380,15 +1453,22 @@ public actor IMAPServer {
         if let authentication, !primaryConnection.isAuthenticated {
             logger.info("Primary connection not authenticated; re-authenticating before command")
             try await authentication.authenticate(on: primaryConnection)
+            namespaces = primaryConnection.namespacesSnapshot
         }
 
         return try await primaryConnection.executeCommand(command)
     }
 
     private func append(rawMessage: String, to mailbox: String, flags: [Flag], internalDate: Date?) async throws -> AppendResult {
+        if let limit = capabilities.globalAppendLimit {
+            let payloadSize = rawMessage.utf8.count
+            if payloadSize > limit {
+                throw IMAPError.appendLimitExceeded(payloadSize, limit)
+            }
+        }
         let serverDate = internalDate.flatMap(makeInternalDate(from:))
         let command = AppendCommand(
-            mailboxName: mailbox,
+            mailboxName: resolveMailboxPath(mailbox),
             message: rawMessage,
             flags: flags,
             internalDate: serverDate
@@ -1448,7 +1528,7 @@ public actor IMAPServer {
      - Note: Logs move operations at debug level
      */
     private func executeMove<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: resolveMailboxPath(destinationMailbox))
         try await executeCommand(command)
     }
 }
@@ -1458,7 +1538,10 @@ extension IMAPServer {
     /// Retrieve namespace information from the server.
     /// - Returns: The namespace response describing personal, other user and shared namespaces.
     /// - Throws: `IMAPError.commandFailed` if the command fails.
-    public func fetchNamespaces() async throws -> Namespace.Response {
+    public func fetchNamespaces() async throws -> NamespaceResponse {
+        // Route through executeCommand so auto-reauthentication fires if the
+        // primary session has dropped, matching the recovery behaviour of all
+        // other IMAPServer command methods.
         let command = NamespaceCommand()
         let response = try await executeCommand(command)
         self.namespaces = response
@@ -1518,7 +1601,7 @@ extension IMAPServer {
                 var hasSpecialUse = false
                 
                 // Check name patterns for common special folders
-                let nameLower = mailbox.name.lowercased()
+                let nameLower = normalizedMailboxName(mailbox.name).lowercased()
                 
                 if mailbox.attributes.contains(.inbox) {
                     foundExplicitInbox = true
@@ -1544,22 +1627,22 @@ extension IMAPServer {
                 }
                 
                 // Special case for Gmail's folders
-                if mailbox.name == "[Gmail]/Trash" {
+                if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/Trash") == .orderedSame || normalizedMailboxName(mailbox.name).caseInsensitiveCompare("Trash") == .orderedSame {
                     attributes.insert(.trash)
                     hasSpecialUse = true
-                } else if mailbox.name == "[Gmail]/Sent Mail" {
+                } else if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/Sent Mail") == .orderedSame || normalizedMailboxName(mailbox.name).caseInsensitiveCompare("Sent Mail") == .orderedSame {
                     attributes.insert(.sent)
                     hasSpecialUse = true
-                } else if mailbox.name == "[Gmail]/Drafts" {
+                } else if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/Drafts") == .orderedSame || normalizedMailboxName(mailbox.name).caseInsensitiveCompare("Drafts") == .orderedSame {
                     attributes.insert(.drafts)
                     hasSpecialUse = true
-                } else if mailbox.name == "[Gmail]/Spam" {
+                } else if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/Spam") == .orderedSame || normalizedMailboxName(mailbox.name).caseInsensitiveCompare("Spam") == .orderedSame {
                     attributes.insert(.junk)
                     hasSpecialUse = true
-                } else if mailbox.name == "[Gmail]/All Mail" {
+                } else if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/All Mail") == .orderedSame || normalizedMailboxName(mailbox.name).caseInsensitiveCompare("All Mail") == .orderedSame {
                     attributes.insert(.archive)
                     hasSpecialUse = true
-                } else if mailbox.name == "[Gmail]/Starred" {
+                } else if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/Starred") == .orderedSame || normalizedMailboxName(mailbox.name).caseInsensitiveCompare("Starred") == .orderedSame {
                     attributes.insert(.flagged)
                     hasSpecialUse = true
                 }
@@ -1615,8 +1698,29 @@ extension IMAPServer {
      - Note: Logs mailbox listing at info level with count
      */
     public func listMailboxes(wildcard: String = "*") async throws -> [Mailbox.Info] {
+        if let namespaces {
+            let patterns = namespaces.listingPatterns(for: wildcard)
+            var allMailboxes: [Mailbox.Info] = []
+            var seenNames: Set<String> = []
+
+            for pattern in patterns {
+                let command = ListCommand(wildcard: pattern)
+                let listed = try await executeCommand(command)
+                for mailbox in listed where seenNames.insert(mailbox.name).inserted {
+                    allMailboxes.append(mailbox)
+                }
+            }
+
+            if !allMailboxes.isEmpty {
+                self.mailboxes = allMailboxes
+                return allMailboxes
+            }
+        }
+
         let command = ListCommand(wildcard: wildcard)
-        return try await executeCommand(command)
+        let listed = try await executeCommand(command)
+        self.mailboxes = listed
+        return listed
     }
     
     /**
@@ -1875,6 +1979,20 @@ extension IMAPServer {
 }
 
 private extension IMAPServer {
+    func resolveMailboxPath(_ mailbox: String) -> String {
+        guard let namespaces else {
+            return mailbox
+        }
+        return namespaces.resolveMailboxPath(mailbox)
+    }
+
+    func normalizedMailboxName(_ mailbox: String) -> String {
+        guard let namespaces else {
+            return mailbox
+        }
+        return namespaces.relativeMailboxName(from: mailbox)
+    }
+
     func canonicalizeCRLF(_ value: String) -> String {
         let normalized = value
             .replacingOccurrences(of: "\r\n", with: "\n")

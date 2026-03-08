@@ -44,6 +44,7 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
         guard !criteria.isEmpty else {
             throw IMAPError.invalidArgument("Search criteria cannot be empty")
         }
+        for criterion in criteria { try criterion.validate() }
     }
 
     /**
@@ -52,13 +53,20 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
      - Returns: A ``TaggedCommand`` ready for sending.
      */
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        let nioCriteria = criteria.map { $0.toNIO(calendar: calendar) }
+        var nioCriteria = criteria.map { $0.toNIO(calendar: calendar) }
+
+        // Prepend identifier set scope as a search key so the search is
+        // limited to the caller-provided message set (RFC 3501 §6.4.4).
+        if let identifierSet {
+            let scopeKey: SearchKey = T.self == UID.self
+                ? .uid(.set(identifierSet.toNIOSet()))
+                : .sequenceNumbers(.set(identifierSet.toNIOSet()))
+            nioCriteria.insert(scopeKey, at: 0)
+        }
 
         if T.self == UID.self {
-            // For UID search, we need to use the key parameter
             return TaggedCommand(tag: tag, command: .uidSearch(key: .and(nioCriteria)))
         } else {
-            // For regular search, we need to use the key parameter
             return TaggedCommand(tag: tag, command: .search(key: .and(nioCriteria)))
         }
     }

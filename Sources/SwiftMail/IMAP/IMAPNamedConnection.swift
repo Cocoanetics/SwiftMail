@@ -12,6 +12,10 @@ public actor IMAPNamedConnection {
     private let connection: IMAPConnection
     private let authenticateOnConnection: @Sendable (IMAPConnection) async throws -> Void
 
+    /// The timestamp of the last successfully completed command on this connection.
+    /// Useful for implementing staleness checks in ephemeral connection patterns.
+    public private(set) var lastActivity: Date?
+
     init(
         name: String,
         connection: IMAPConnection,
@@ -46,13 +50,18 @@ public actor IMAPNamedConnection {
     /// Fetch server capabilities.
     @discardableResult
     public func fetchCapabilities() async throws -> [Capability] {
-        try await connection.fetchCapabilities()
+        let result = try await connection.fetchCapabilities()
+        lastActivity = Date()
+        return result
     }
 
     /// Select a mailbox for subsequent commands.
     @discardableResult
     public func select(mailbox mailboxName: String) async throws -> Mailbox.Selection {
-        let command = SelectMailboxCommand(mailboxName: mailboxName)
+        // Authenticate first so namespacesSnapshot is populated (or repopulated
+        // after a reconnect) before we resolve the mailbox path.
+        try await ensureAuthenticated()
+        let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
         return try await executeCommand(command)
     }
 
@@ -81,18 +90,23 @@ public actor IMAPNamedConnection {
     /// Start IDLE and receive server events.
     public func idle() async throws -> AsyncStream<IMAPServerEvent> {
         try await ensureAuthenticated()
-        return try await connection.idle()
+        let stream = try await connection.idle()
+        lastActivity = Date()
+        return stream
     }
 
     /// Terminate an active IDLE command with DONE.
     public func done() async throws {
         try await connection.done()
+        lastActivity = Date()
     }
 
     /// Send NOOP and collect unsolicited events.
     public func noop() async throws -> [IMAPServerEvent] {
         try await ensureAuthenticated()
-        return try await connection.noop()
+        let events = try await connection.noop()
+        lastActivity = Date()
+        return events
     }
 
     /// Fetch message structure for a single message identifier.
@@ -155,9 +169,26 @@ public actor IMAPNamedConnection {
         return try await executeCommand(command)
     }
 
+    /// Search within the selected mailbox, returning structured ESEARCH results (RFC 4731).
+    ///
+    /// Uses ESEARCH when the server supports it; falls back to a plain SEARCH otherwise.
+    /// Pass `partialRange` to request paged results (PARTIAL, RFC 5267) — when set and ESEARCH is
+    /// available, `PARTIAL` is used instead of `ALL` and results appear in
+    /// ``ExtendedSearchResult/partial``.
+    public func extendedSearch<T: MessageIdentifier>(
+        identifierSet: MessageIdentifierSet<T>? = nil,
+        criteria: [SearchCriteria],
+        calendar: Calendar = Calendar(identifier: .gregorian),
+        partialRange: PartialRange? = nil
+    ) async throws -> ExtendedSearchResult<T> {
+        let useEsearch = capabilities.contains(.extendedSearch)
+        let command = ExtendedSearchCommand<T>(identifierSet: identifierSet, criteria: criteria, calendar: calendar, useEsearch: useEsearch, partialRange: partialRange)
+        return try await executeCommand(command)
+    }
+
     /// Copy messages to another mailbox.
     public func copy<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+        let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: resolveMailboxPath(destinationMailbox))
         try await executeCommand(command)
     }
 
@@ -220,21 +251,39 @@ public actor IMAPNamedConnection {
             attributes.append(.appendLimit)
         }
 
-        let command = StatusCommand(mailboxName: mailboxName, attributes: attributes)
+        let command = StatusCommand(mailboxName: resolveMailboxPath(mailboxName), attributes: attributes)
         let status: NIOIMAPCore.MailboxStatus = try await executeCommand(command)
         return Mailbox.Status(nio: status)
     }
 
     /// List mailboxes.
     public func listMailboxes(wildcard: String = "*") async throws -> [Mailbox.Info] {
+        if let namespaces = connection.namespacesSnapshot {
+            let patterns = namespaces.listingPatterns(for: wildcard)
+            var allMailboxes: [Mailbox.Info] = []
+            var seenNames: Set<String> = []
+
+            for pattern in patterns {
+                let command = ListCommand(wildcard: pattern)
+                let listed = try await executeCommand(command)
+                for mailbox in listed where seenNames.insert(mailbox.name).inserted {
+                    allMailboxes.append(mailbox)
+                }
+            }
+
+            if !allMailboxes.isEmpty {
+                return allMailboxes
+            }
+        }
+
         let command = ListCommand(wildcard: wildcard)
         return try await executeCommand(command)
     }
 
     /// Fetch server namespace information.
-    public func fetchNamespaces() async throws -> Namespace.Response {
-        let command = NamespaceCommand()
-        return try await executeCommand(command)
+    public func fetchNamespaces() async throws -> NamespaceResponse {
+        try await ensureAuthenticated()
+        return try await connection.fetchNamespaces()
     }
 
     // MARK: - Private Helpers
@@ -249,13 +298,23 @@ public actor IMAPNamedConnection {
         }
     }
 
+    @discardableResult
     private func executeCommand<CommandType: IMAPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
         try await ensureAuthenticated()
-        return try await connection.executeCommand(command)
+        let result = try await connection.executeCommand(command)
+        lastActivity = Date()
+        return result
     }
 
     private func executeMove<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: destinationMailbox)
+        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: resolveMailboxPath(destinationMailbox))
         try await executeCommand(command)
+    }
+
+    private func resolveMailboxPath(_ mailboxName: String) -> String {
+        guard let namespaces = connection.namespacesSnapshot else {
+            return mailboxName
+        }
+        return namespaces.resolveMailboxPath(mailboxName)
     }
 }

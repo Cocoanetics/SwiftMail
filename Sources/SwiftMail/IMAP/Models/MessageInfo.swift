@@ -37,6 +37,9 @@ public struct MessageInfo: Codable, Sendable {
 
     /// The message ID this message replied to (from ENVELOPE In-Reply-To)
     public var inReplyTo: String?
+
+    /// The message IDs referenced by this message (from the References header)
+    public var references: String?
     
     /// The flags of the message
     public var flags: [Flag]
@@ -59,6 +62,7 @@ public struct MessageInfo: Codable, Sendable {
         case internalDate
         case messageId
         case inReplyTo
+        case references
         case flags
         case parts
         case additionalFields
@@ -90,6 +94,7 @@ public struct MessageInfo: Codable, Sendable {
         internalDate: Date? = nil,
         messageId: String? = nil,
         inReplyTo: String? = nil,
+        references: String? = nil,
         flags: [Flag] = [],
         parts: [MessagePart] = [],
         additionalFields: [String: String]? = nil
@@ -105,6 +110,7 @@ public struct MessageInfo: Codable, Sendable {
         self.internalDate = internalDate
         self.messageId = messageId
         self.inReplyTo = inReplyTo
+        self.references = references
         self.flags = flags
         self.parts = parts
         self.additionalFields = additionalFields
@@ -126,6 +132,7 @@ public extension MessageInfo {
         let internalDate = try container.decodeIfPresent(Date.self, forKey: .internalDate)
         let messageId = try container.decodeIfPresent(String.self, forKey: .messageId)
         let inReplyTo = try container.decodeIfPresent(String.self, forKey: .inReplyTo)
+        let references = try container.decodeIfPresent(String.self, forKey: .references)
         let flags = try container.decodeIfPresent([Flag].self, forKey: .flags) ?? []
         let parts = try container.decodeIfPresent([MessagePart].self, forKey: .parts) ?? []
         let additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
@@ -142,6 +149,7 @@ public extension MessageInfo {
             internalDate: internalDate,
             messageId: messageId,
             inReplyTo: inReplyTo,
+            references: references,
             flags: flags,
             parts: parts,
             additionalFields: additionalFields

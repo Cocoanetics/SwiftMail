@@ -5,8 +5,8 @@ import NIO
 import NIOConcurrencyHelpers
 
 /// Handler for IMAP NAMESPACE command
-final class NamespaceHandler: BaseIMAPCommandHandler<Namespace.Response>, IMAPCommandHandler, @unchecked Sendable {
-    private var namespace: Namespace.Response?
+final class NamespaceHandler: BaseIMAPCommandHandler<NamespaceResponse>, IMAPCommandHandler, @unchecked Sendable {
+    private var namespace: NamespaceResponse?
 
     	override func handleTaggedOKResponse(_ response: TaggedResponse) {
 		// Call super to handle CLIENTBUG warnings
@@ -26,7 +26,7 @@ final class NamespaceHandler: BaseIMAPCommandHandler<Namespace.Response>, IMAPCo
     override func handleUntaggedResponse(_ response: Response) -> Bool {
         if case .untagged(let payload) = response {
             if case .mailboxData(.namespace(let ns)) = payload {
-                lock.withLock { self.namespace = Namespace.Response(from: ns) }
+                lock.withLock { self.namespace = NamespaceResponse(from: ns) }
             }
         }
         return false

@@ -246,72 +246,109 @@ extension Mailbox.Selection: CustomStringConvertible {
 extension Array where Element == Mailbox.Info {
     /// Find the first mailbox with the inbox attribute, defaulting to the standard "INBOX" if none found
     public var inbox: Element? {
-        // First look for a mailbox with the inbox attribute
         if let inboxMailbox = first(where: { $0.attributes.contains(.inbox) }) {
             return inboxMailbox
         }
-        
-        // As a fallback, look for the standard INBOX mailbox
+
         return first(where: { $0.name.caseInsensitiveCompare("INBOX") == .orderedSame })
     }
-    
+
     /// Find the first mailbox with the sent attribute, falling back to common names
     public var sent: Element? {
         if let match = first(where: { $0.attributes.contains(.sent) }) {
             return match
         }
         let names = ["sent", "sent messages", "sent items", "[gmail]/sent mail"]
-        return first(where: { names.contains($0.name.lowercased()) })
+        return first(where: { mailbox in
+            matchesMailboxName(mailbox.name, in: names)
+        })
     }
-    
+
     /// Find the first mailbox with the drafts attribute, falling back to common names
     public var drafts: Element? {
         if let match = first(where: { $0.attributes.contains(.drafts) }) {
             return match
         }
         let names = ["drafts", "[gmail]/drafts"]
-        return first(where: { names.contains($0.name.lowercased()) })
+        return first(where: { mailbox in
+            matchesMailboxName(mailbox.name, in: names)
+        })
     }
-    
+
     /// Find the first mailbox with the trash attribute, falling back to common names
     public var trash: Element? {
         if let match = first(where: { $0.attributes.contains(.trash) }) {
             return match
         }
         let names = ["trash", "deleted messages", "deleted items", "[gmail]/trash"]
-        return first(where: { names.contains($0.name.lowercased()) })
+        return first(where: { mailbox in
+            matchesMailboxName(mailbox.name, in: names)
+        })
     }
-    
+
     /// Find the first mailbox with the junk attribute, falling back to common names
     public var junk: Element? {
         if let match = first(where: { $0.attributes.contains(.junk) }) {
             return match
         }
         let names = ["junk", "spam", "junk e-mail", "[gmail]/spam"]
-        return first(where: { names.contains($0.name.lowercased()) })
+        return first(where: { mailbox in
+            matchesMailboxName(mailbox.name, in: names)
+        })
     }
-    
+
     /// Find the first mailbox with the archive attribute, falling back to common names
     public var archive: Element? {
         if let match = first(where: { $0.attributes.contains(.archive) }) {
             return match
         }
         let names = ["archive", "archives", "all mail", "[gmail]/all mail"]
-        return first(where: { names.contains($0.name.lowercased()) })
+        return first(where: { mailbox in
+            matchesMailboxName(mailbox.name, in: names)
+        })
     }
-    
+
     /// Find the first mailbox with the flagged attribute, falling back to common names
     public var flagged: Element? {
         if let match = first(where: { $0.attributes.contains(.flagged) }) {
             return match
         }
         let names = ["starred", "flagged", "[gmail]/starred"]
-        return first(where: { names.contains($0.name.lowercased()) })
+        return first(where: { mailbox in
+            matchesMailboxName(mailbox.name, in: names)
+        })
     }
-    
+
+    private func matchesMailboxName(_ mailboxName: String, in expectedNames: [String]) -> Bool {
+        let name = mailboxName.lowercased()
+        if expectedNames.contains(name) {
+            return true
+        }
+
+        // Namespace/prefix-aware fallback: compare terminal path components across common separators.
+        let separators = CharacterSet(charactersIn: "/.")
+        let components = name.components(separatedBy: separators).filter { !$0.isEmpty }
+        guard let lastComponent = components.last else {
+            return false
+        }
+
+        if expectedNames.contains(lastComponent) {
+            return true
+        }
+
+        if components.count >= 2 {
+            let tailTwo = components.suffix(2).joined(separator: " ")
+            if expectedNames.contains(tailTwo) {
+                return true
+            }
+        }
+
+        return false
+    }
+
     /// Get only mailboxes with special-use attributes
     public var specialFolders: [Element] {
-        return filter { mailbox in
+        filter { mailbox in
             mailbox.attributes.contains(.inbox) ||
             mailbox.attributes.contains(.sent) ||
             mailbox.attributes.contains(.drafts) ||
@@ -321,4 +358,4 @@ extension Array where Element == Mailbox.Info {
             mailbox.attributes.contains(.flagged)
         }
     }
-} 
+}

@@ -4,7 +4,7 @@ import NIO
 
 /// Command to fetch namespace information
 struct NamespaceCommand: IMAPTaggedCommand {
-    typealias ResultType = Namespace.Response
+    typealias ResultType = NamespaceResponse
     typealias HandlerType = NamespaceHandler
 
     func toTaggedCommand(tag: String) -> TaggedCommand {
