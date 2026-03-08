@@ -147,13 +147,13 @@ struct SMTPTests {
             attachments: [inlineAttachment, regularAttachment]
         )
 
-        let quotedPrintableSize = email.messageSizeOctets(use8BitMIME: false)
-        let eightBitSize = email.messageSizeOctets(use8BitMIME: true)
+        let quotedPrintable = email.preparedContent(use8BitMIME: false)
+        let eightBit = email.preparedContent(use8BitMIME: true)
 
-        #expect(quotedPrintableSize > 0)
-        #expect(eightBitSize > 0)
-        #expect(quotedPrintableSize == email.constructContent(use8BitMIME: false).utf8.count)
-        #expect(eightBitSize == email.constructContent(use8BitMIME: true).utf8.count)
+        #expect(quotedPrintable.messageSizeOctets > 0)
+        #expect(eightBit.messageSizeOctets > 0)
+        #expect(quotedPrintable.messageSizeOctets == quotedPrintable.content.utf8.count)
+        #expect(eightBit.messageSizeOctets == eightBit.content.utf8.count)
     }
 
     @Test
