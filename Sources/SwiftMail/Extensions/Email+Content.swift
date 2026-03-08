@@ -1,6 +1,20 @@
 import Foundation
 
 extension Email {
+    struct PreparedContent {
+        let content: String
+        let messageSizeOctets: Int
+    }
+
+    func preparedContent(use8BitMIME: Bool = false) -> PreparedContent {
+        let content = constructContent(use8BitMIME: use8BitMIME)
+        return PreparedContent(content: content, messageSizeOctets: content.utf8.count)
+    }
+
+    public func messageSizeOctets(use8BitMIME: Bool = false) -> Int {
+        preparedContent(use8BitMIME: use8BitMIME).messageSizeOctets
+    }
+
     /**
      Build the MIME encoded email body.
 

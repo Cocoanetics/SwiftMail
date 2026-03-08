@@ -17,6 +17,9 @@ struct MailFromCommand: SMTPCommand {
     
     /// Indicates if 8BITMIME is supported and should be used
     private let use8BitMIME: Bool
+
+    /// Optional RFC 1870 SIZE parameter value in octets
+    private let messageSizeOctets: Int?
     
     /// Default timeout in seconds
 	let timeoutSeconds: Int = 30
@@ -26,8 +29,13 @@ struct MailFromCommand: SMTPCommand {
      - Parameters:
        - senderAddress: The email address of the sender
        - use8BitMIME: Whether to use 8BITMIME extension if available
+       - messageSizeOctets: Optional SIZE extension value in octets
      */
-	init(senderAddress: String, use8BitMIME: Bool = false) throws {
+	init(
+        senderAddress: String,
+        use8BitMIME: Bool = false,
+        messageSizeOctets: Int? = nil
+    ) throws {
         // Validate email format
         guard senderAddress.isValidEmail() else {
             throw SMTPError.invalidEmailAddress("Invalid sender address: \(senderAddress)")
@@ -35,19 +43,21 @@ struct MailFromCommand: SMTPCommand {
         
         self.senderAddress = senderAddress
         self.use8BitMIME = use8BitMIME
+        self.messageSizeOctets = messageSizeOctets
     }
     
     /**
      Convert the command to a string that can be sent to the server
      */
 	func toCommandString() -> String {
+        var command = "MAIL FROM:<\(senderAddress)>"
         if use8BitMIME {
-            // Add the BODY=8BITMIME parameter when 8BITMIME is supported
-            return "MAIL FROM:<\(senderAddress)> BODY=8BITMIME"
-        } else {
-            // Standard MAIL FROM command
-            return "MAIL FROM:<\(senderAddress)>"
+            command += " BODY=8BITMIME"
         }
+        if let messageSizeOctets {
+            command += " SIZE=\(messageSizeOctets)"
+        }
+        return command
     }
     
     /**
@@ -56,6 +66,9 @@ struct MailFromCommand: SMTPCommand {
 	func validate() throws {
         guard !senderAddress.isEmpty else {
             throw SMTPError.sendFailed("Sender address cannot be empty")
+        }
+        if let messageSizeOctets, messageSizeOctets < 0 {
+            throw SMTPError.sendFailed("Message size cannot be negative")
         }
         
         // Use our cross-platform email validation method

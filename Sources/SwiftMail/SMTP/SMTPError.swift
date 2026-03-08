@@ -29,6 +29,9 @@ public enum SMTPError: Error {
     
     /// TLS negotiation failed
     case tlsFailed(String)
+
+    /// The message exceeds the server-advertised maximum size
+    case messageTooLarge(messageSizeOctets: Int, maximumMessageSizeOctets: Int)
     
     /// Unexpected response from server
     case unexpectedResponse(SMTPResponse)
@@ -52,6 +55,8 @@ extension SMTPError: CustomStringConvertible {
             return "SMTP invalid email address: \(reason)"
         case .tlsFailed(let reason):
             return "SMTP TLS failed: \(reason)"
+        case .messageTooLarge(let messageSizeOctets, let maximumMessageSizeOctets):
+            return "SMTP message too large: \(messageSizeOctets) bytes exceeds \(maximumMessageSizeOctets) byte limit"
         case .unexpectedResponse(let response):
             return "SMTP unexpected response: \(response.code) \(response.message)"
         }
