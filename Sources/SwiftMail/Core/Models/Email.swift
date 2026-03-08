@@ -31,8 +31,20 @@ public struct Email: Sendable {
     /** Optional attachments for the email */
     public var attachments: [Attachment]?
     
-    /** Optional additional headers (e.g. Message-Id, X-Custom-Header) */
+    /** Optional additional headers (e.g. X-Custom-Header) */
     public var additionalHeaders: [String: String]?
+
+    /**
+     Optional Message-ID for this email.
+
+     When set, `constructContent()` uses this value instead of auto-generating one.
+     This allows callers to use the same Message-ID across both SMTP send and
+     IMAP APPEND (e.g. saving to the Sent folder), which is required for
+     deduplication on retry after connection drops or app crashes.
+
+     When `nil`, a Message-ID is auto-generated during content construction.
+     */
+    public var messageID: MessageID?
     
     /**
      Initialize a new email with EmailAddress objects
