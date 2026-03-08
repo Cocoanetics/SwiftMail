@@ -1,6 +1,10 @@
 import Foundation
 
 extension Email {
+    public func messageSizeOctets(use8BitMIME: Bool = false) -> Int {
+        constructContent(use8BitMIME: use8BitMIME).utf8.count
+    }
+
     /**
      Build the MIME encoded email body.
 

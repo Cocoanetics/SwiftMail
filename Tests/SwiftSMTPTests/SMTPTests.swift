@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import SwiftMail
 
@@ -89,5 +90,69 @@ struct SMTPTests {
 
         #expect(!SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 465, host: "smtp.gmail.com"))
         #expect(!SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 25, host: "smtp.example.com"))
+    }
+
+    @Test
+    func testMaximumMessageSizeOctetsParsesSIZECapability() {
+        #expect(
+            SMTPServer.maximumMessageSizeOctets(
+                from: ["PIPELINING", "SIZE 12345678", "AUTH PLAIN"]
+            ) == 12_345_678
+        )
+    }
+
+    @Test
+    func testMaximumMessageSizeOctetsIgnoresMalformedSIZECapability() {
+        #expect(SMTPServer.maximumMessageSizeOctets(from: ["SIZE nope"]) == nil)
+        #expect(SMTPServer.maximumMessageSizeOctets(from: ["SIZE 0"]) == nil)
+        #expect(SMTPServer.maximumMessageSizeOctets(from: ["AUTH PLAIN"]) == nil)
+    }
+
+    @Test
+    func testMailFromCommandFormatsSizeAnd8BitMIMEParameters() throws {
+        let plain = try MailFromCommand(senderAddress: "sender@example.com", messageSizeOctets: 4096)
+        #expect(plain.toCommandString() == "MAIL FROM:<sender@example.com> SIZE=4096")
+
+        let eightBit = try MailFromCommand(senderAddress: "sender@example.com", use8BitMIME: true)
+        #expect(eightBit.toCommandString() == "MAIL FROM:<sender@example.com> BODY=8BITMIME")
+
+        let combined = try MailFromCommand(
+            senderAddress: "sender@example.com",
+            use8BitMIME: true,
+            messageSizeOctets: 4096
+        )
+        #expect(combined.toCommandString() == "MAIL FROM:<sender@example.com> BODY=8BITMIME SIZE=4096")
+    }
+
+    @Test
+    func testMessageSizeOctetsTracksGeneratedContentForAttachments() {
+        let inlineAttachment = Attachment(
+            filename: "inline.png",
+            mimeType: "image/png",
+            data: Data(repeating: 0x42, count: 1024),
+            contentID: "inline-image",
+            isInline: true
+        )
+        let regularAttachment = Attachment(
+            filename: "report.pdf",
+            mimeType: "application/pdf",
+            data: Data(repeating: 0x5A, count: 2048)
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Large",
+            textBody: "Hello",
+            htmlBody: "<p>Hello<img src=\"cid:inline-image\"></p>",
+            attachments: [inlineAttachment, regularAttachment]
+        )
+
+        let quotedPrintableSize = email.messageSizeOctets(use8BitMIME: false)
+        let eightBitSize = email.messageSizeOctets(use8BitMIME: true)
+
+        #expect(quotedPrintableSize > 0)
+        #expect(eightBitSize > 0)
+        #expect(quotedPrintableSize == email.constructContent(use8BitMIME: false).utf8.count)
+        #expect(eightBitSize == email.constructContent(use8BitMIME: true).utf8.count)
     }
 }
