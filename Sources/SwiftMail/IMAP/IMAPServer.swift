@@ -24,9 +24,12 @@ import OrderedCollections
  2. Search for "process:com.cocoanetics.SwiftMail"
  3. Adjust the "Action" menu to show Debug and Info messages
  */
+/// Maximum number of identifiers per IMAP FETCH command when chunking large sets.
+private let defaultFetchChunkSize = 50
+
 public actor IMAPServer {
     // MARK: - Properties
-    
+
     /** The hostname of the IMAP server */
     private let host: String
     
@@ -1022,6 +1025,11 @@ public actor IMAPServer {
     }
     
     /// Stream message headers for a set of identifiers
+    ///
+    /// Large identifier sets are automatically split into chunks of
+    /// `defaultFetchChunkSize` so that no single IMAP FETCH command is
+    /// too large. Results are yielded one at a time as they arrive.
+    ///
     /// - Parameter identifierSet: The set of message identifiers to fetch
     /// - Returns: An AsyncThrowingStream yielding MessageInfo one at a time
     public nonisolated func fetchMessageInfos<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) -> AsyncThrowingStream<MessageInfo, Error> {
@@ -1032,23 +1040,24 @@ public actor IMAPServer {
                     guard !identifierSet.isEmpty else {
                         throw IMAPError.emptyIdentifierSet
                     }
-                    
-                    for identifier in identifierSet.toArray() {
+
+                    let chunks = identifierSet.chunked(size: defaultFetchChunkSize)
+
+                    for chunk in chunks {
                         try Task.checkCancellation()
-                        let singleSet = MessageIdentifierSet<T>(identifier)
-                        let command = FetchMessageInfoCommand(identifierSet: singleSet)
+                        let command = FetchMessageInfoCommand(identifierSet: chunk)
                         let result = try await executeCommand(command)
                         for header in result {
                             continuation.yield(header)
                         }
                     }
-                    
+
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }
             }
-            
+
             continuation.onTermination = { @Sendable _ in
                 task.cancel()
             }
@@ -1058,9 +1067,10 @@ public actor IMAPServer {
     /// Fetch complete messages with all parts using a message identifier set as a stream
     ///
     /// This method returns an `AsyncThrowingStream` that yields complete `Message` objects one at a time.
-    /// It retrieves each message's headers and body sequentially, ensuring IMAP commands
-    /// are executed in strict order. The sequence supports cancellation, allowing the
-    /// caller to stop fetching early without waiting for all messages to be downloaded.
+    /// Large identifier sets are automatically split into chunks of `defaultFetchChunkSize`
+    /// for the header fetch phase. Message bodies are then fetched individually.
+    /// The sequence supports cancellation, allowing the caller to stop fetching early
+    /// without waiting for all messages to be downloaded.
     ///
     /// - Parameter identifierSet: The set of message identifiers to fetch
     /// - Returns: An `AsyncThrowingStream` yielding `Message` instances with all parts
@@ -1072,9 +1082,15 @@ public actor IMAPServer {
                         throw IMAPError.emptyIdentifierSet
                     }
 
-                    for identifier in identifierSet.toArray() {
+                    let chunks = identifierSet.chunked(size: defaultFetchChunkSize)
+
+                    for chunk in chunks {
                         try Task.checkCancellation()
-                        if let header = try await fetchMessageInfo(for: identifier) {
+                        let command = FetchMessageInfoCommand(identifierSet: chunk)
+                        let headers = try await executeCommand(command)
+
+                        for header in headers {
+                            try Task.checkCancellation()
                             let email = try await fetchMessage(from: header)
                             continuation.yield(email)
                         }
