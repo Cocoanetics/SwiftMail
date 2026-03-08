@@ -9,7 +9,7 @@ SwiftMail is a powerful email package that enables you to work with email protoc
 ### IMAPServer
 Handles IMAP server connections for retrieving and managing emails. Implements key IMAP capabilities including:
 - Mailbox operations (SELECT, LIST, COPY, MOVE)
-- Message operations (FETCH headers/parts/structure, STORE flags)
+- Message operations (FETCH headers/parts/structure, STORE flags) with automatic chunking for large sets
 - Special-use mailbox support
 - Creating new messages via APPEND (draft-friendly)
 - Namespace-aware mailbox resolution (NAMESPACE)

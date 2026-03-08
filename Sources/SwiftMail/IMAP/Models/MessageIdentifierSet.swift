@@ -240,6 +240,34 @@ public struct MessageIdentifierSet<Identifier: MessageIdentifier>: Sendable {
     }
 }
 
+// MARK: - Chunking
+
+extension MessageIdentifierSet {
+    /// Splits this set into an array of smaller sets of the given maximum size.
+    ///
+    /// - Parameter size: The maximum number of identifiers per chunk.
+    ///   If zero or negative, returns a single chunk containing all elements.
+    /// - Returns: An array of `MessageIdentifierSet` chunks.
+    internal func chunked(size: Int) -> [MessageIdentifierSet<Identifier>] {
+        guard !isEmpty else { return [] }
+        guard size > 0 else { return [self] }
+        guard count > size else { return [self] }
+
+        let allIdentifiers = toArray()
+        var chunks: [MessageIdentifierSet<Identifier>] = []
+        var offset = 0
+
+        while offset < allIdentifiers.count {
+            let end = Swift.min(offset + size, allIdentifiers.count)
+            let slice = Array(allIdentifiers[offset..<end])
+            chunks.append(MessageIdentifierSet<Identifier>(slice))
+            offset = end
+        }
+
+        return chunks
+    }
+}
+
 // MARK: - Type Aliases
 
 /// A type-safe set of UIDs
