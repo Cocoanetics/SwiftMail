@@ -157,7 +157,7 @@ public extension MessageInfo {
         } else if let refStrings = try? container.decodeIfPresent([String].self, forKey: .references) {
             references = refStrings.compactMap { MessageID($0) }
         } else if let refString = try container.decodeIfPresent(String.self, forKey: .references) {
-            let parsed = refString.split(separator: " ").compactMap { MessageID(String($0)) }
+            let parsed = FetchMessageInfoHandler.parseMessageIDs(from: refString)
             references = parsed.isEmpty ? nil : parsed
         } else {
             references = nil

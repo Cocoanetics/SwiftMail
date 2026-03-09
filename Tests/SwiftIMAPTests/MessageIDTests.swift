@@ -153,4 +153,50 @@ struct MessageIDTests {
         #expect(id != nil)
         #expect(String(describing: id!) == "<lossless@example.com>")
     }
+
+    // MARK: - References Parsing
+
+    @Test("parseMessageIDs handles space-separated IDs")
+    func testParseReferencesSpaces() {
+        let refs = FetchMessageInfoHandler.parseMessageIDs(from: "<a@x.com> <b@y.com> <c@z.com>")
+        #expect(refs.count == 3)
+        #expect(refs[0] == MessageID(localPart: "a", domain: "x.com"))
+        #expect(refs[1] == MessageID(localPart: "b", domain: "y.com"))
+        #expect(refs[2] == MessageID(localPart: "c", domain: "z.com"))
+    }
+
+    @Test("parseMessageIDs handles tab-separated IDs")
+    func testParseReferencesTabs() {
+        let refs = FetchMessageInfoHandler.parseMessageIDs(from: "<a@x.com>\t<b@y.com>")
+        #expect(refs.count == 2)
+        #expect(refs[0] == MessageID(localPart: "a", domain: "x.com"))
+        #expect(refs[1] == MessageID(localPart: "b", domain: "y.com"))
+    }
+
+    @Test("parseMessageIDs handles folded whitespace (CRLF + space/tab)")
+    func testParseReferencesFolded() {
+        let refs = FetchMessageInfoHandler.parseMessageIDs(from: "<a@x.com>\r\n <b@y.com>\r\n\t<c@z.com>")
+        #expect(refs.count == 3)
+    }
+
+    @Test("parseMessageIDs handles single ID")
+    func testParseReferencesSingle() {
+        let refs = FetchMessageInfoHandler.parseMessageIDs(from: "<only@one.com>")
+        #expect(refs.count == 1)
+        #expect(refs[0] == MessageID(localPart: "only", domain: "one.com"))
+    }
+
+    @Test("parseMessageIDs handles empty string")
+    func testParseReferencesEmpty() {
+        let refs = FetchMessageInfoHandler.parseMessageIDs(from: "")
+        #expect(refs.isEmpty)
+    }
+
+    @Test("parseMessageIDs skips malformed IDs")
+    func testParseReferencesSkipsMalformed() {
+        let refs = FetchMessageInfoHandler.parseMessageIDs(from: "<good@ok.com> <nope> <also-good@fine.com>")
+        #expect(refs.count == 2)
+        #expect(refs[0].domain == "ok.com")
+        #expect(refs[1].domain == "fine.com")
+    }
 }

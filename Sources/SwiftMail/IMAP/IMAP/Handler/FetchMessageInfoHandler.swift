@@ -99,7 +99,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         lock.withLock {
             guard let index = currentMessageIndex() else { return }
             var header = self.messageInfos[index]
-            let parsed = references.split(separator: " ").compactMap { MessageID(String($0)) }
+            let parsed = Self.parseMessageIDs(from: references)
             header.references = parsed.isEmpty ? nil : parsed
             self.messageInfos[index] = header
         }
@@ -290,6 +290,24 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
     static func shouldCollectThreadingHeaders(for kind: StreamingKind) -> Bool {
         kind.sectionSpecifier.kind == .header
+    }
+
+    /// Parse a space/whitespace-separated list of Message-IDs from a References or similar header.
+    /// Extracts `<...>` bracketed IDs directly, which handles tabs, folded whitespace, and other
+    /// RFC 2822 folding whitespace between IDs.
+    static func parseMessageIDs(from value: String) -> [MessageID] {
+        // Extract all angle-bracketed tokens — this handles any whitespace between IDs
+        var results: [MessageID] = []
+        var searchRange = value.startIndex..<value.endIndex
+        while let openRange = value.range(of: "<", range: searchRange),
+              let closeRange = value.range(of: ">", range: openRange.upperBound..<value.endIndex) {
+            let token = String(value[openRange.lowerBound...closeRange.lowerBound])
+            if let id = MessageID(token) {
+                results.append(id)
+            }
+            searchRange = closeRange.upperBound..<value.endIndex
+        }
+        return results
     }
 
     static func extractReferencesHeader(from data: Data) -> String? {
