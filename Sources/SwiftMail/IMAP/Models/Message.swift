@@ -68,16 +68,17 @@ public struct Message: Codable, Sendable {
     
     /// All attachments in the email
     public var attachments: [MessagePart] {
-        // Treat explicit attachments as attachments even if they have Content-ID.
-        // Exclude inline parts that only have a filename.
-        // Exclude parts with Content-ID but no explicit "attachment" disposition (they are CID references).
         return parts.filter { part in
+            let ct = part.contentType.lowercased()
             let disposition = part.disposition?.lowercased()
             let hasFilename = !(part.filename?.isEmpty ?? true)
-            let isAttachment = disposition == "attachment"
-            let isInline = disposition == "inline"
-            let isCidOnly = part.contentId != nil && !isAttachment
-            return isAttachment || (hasFilename && !isInline && !isCidOnly)
+            let isExplicitAttachment = disposition == "attachment"
+            let hasFileNotInline = hasFilename && disposition != "inline"
+            let isCidOnly = part.contentId != nil && !isExplicitAttachment
+            // text/calendar (ICS invites) are attachments even without explicit
+            // disposition or filename.
+            let isCalendar = ct.hasPrefix("text/calendar")
+            return isExplicitAttachment || (hasFileNotInline && !isCidOnly) || isCalendar
         }
     }
 
@@ -89,9 +90,11 @@ public struct Message: Codable, Sendable {
     /// All body parts in the email (text and HTML)
     public var bodies: [MessagePart] {
         return parts.filter { part in
-            // Look for text parts that are not attachments
-            part.contentType.lowercased().hasPrefix("text/") &&
-            part.disposition?.lowercased() != "attachment"
+            // Only text/plain and text/html are displayable body content.
+            // Other text/* types (text/calendar, text/csv, etc.) are attachments.
+            let ct = part.contentType.lowercased()
+            return (ct.hasPrefix("text/plain") || ct.hasPrefix("text/html"))
+                && part.disposition?.lowercased() != "attachment"
         }
     }
     
@@ -133,17 +136,23 @@ public struct Message: Codable, Sendable {
 
 // MARK: - Helper Methods
 private extension Message {
-    
-    /// Find body content of a specific type
+
+    /// Find body content of a specific type, concatenating all matching parts.
+    /// For emails with nested message/rfc822 parts (e.g., DSN bounce emails),
+    /// all nested text parts are included in order.
     /// - Parameter type: The content type to search for (e.g., "text/plain", "text/html")
-    /// - Returns: The body content, or `nil` if not found
+    /// - Returns: The concatenated body content, or `nil` if not found
     func bodyContent(for type: String) -> String? {
-        // Find the first part with the exact content type in the bodies
-        guard let part = bodies.first(where: { $0.contentType.lowercased().hasPrefix(type) }) else {
-            return nil
+        let matching = bodies.filter { $0.contentType.lowercased().hasPrefix(type) }
+        guard !matching.isEmpty else { return nil }
+
+        var result = ""
+        for bodyPart in matching {
+            if let content = bodyPart.textContent {
+                result += content
+            }
         }
-        
-        return part.textContent
+        return result.isEmpty ? nil : result
     }
 }
 

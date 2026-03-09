@@ -4,29 +4,51 @@
 import Foundation
 import SwiftTextHTML
 
+/// Headers extracted from the envelope of an embedded message/rfc822 part.
+/// Provides the metadata needed to render forwarded-message-style header blocks.
+public struct EmbeddedMessageHeaders: Codable, Sendable {
+	public let subject: String?
+	public let from: String?
+	public let to: String?
+	public let cc: String?
+	public let date: String?
+
+	public init(subject: String?, from: String?, to: String?, cc: String?, date: String?) {
+		self.subject = subject
+		self.from = from
+		self.to = to
+		self.cc = cc
+		self.date = date
+	}
+}
+
 /// A part of an email message
 public struct MessagePart: Sendable {
 	/// The section number (e.g., [1, 2, 3] represents "1.2.3")
 	public let section: Section
-	
+
 	/// The content type of the part (e.g., "text/html", "image/jpeg")
 	public let contentType: String
-	
+
 	/// The content disposition (e.g., "inline", "attachment")
 	public let disposition: String?
-	
+
 	/// The content transfer encoding (e.g., "base64", "quoted-printable")
 	public let encoding: String?
-	
+
 	/// The filename of the part (if any)
 	public let filename: String?
-	
+
 	/// The content ID of the part (if any)
 	public let contentId: String?
-	
+
 	/// The content data (if any)
 	public var data: Data?
-	
+
+	/// For message/rfc822 parts: envelope headers of the embedded message.
+	/// Used to render forwarded-message-style header blocks in the body.
+	public let embeddedHeaders: EmbeddedMessageHeaders?
+
 	/// Creates a new message part
 	/// - Parameters:
 	///   - section: The section number (e.g., [1, 2, 3] represents "1.2.3")
@@ -36,7 +58,8 @@ public struct MessagePart: Sendable {
 	///   - filename: The filename (if any)
 	///   - contentId: The content ID
 	///   - data: The content data (optional)
-	public init(section: Section, contentType: String, disposition: String? = nil, encoding: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data? = nil) {
+	///   - embeddedHeaders: Envelope headers for message/rfc822 parts (optional)
+	public init(section: Section, contentType: String, disposition: String? = nil, encoding: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data? = nil, embeddedHeaders: EmbeddedMessageHeaders? = nil) {
 		self.section = section
 		self.contentType = contentType
 		self.disposition = disposition
@@ -44,6 +67,7 @@ public struct MessagePart: Sendable {
 		self.filename = filename
 		self.contentId = contentId
 		self.data = data
+		self.embeddedHeaders = embeddedHeaders
 	}
 	
 	/// Initialize a new message part with a dot-separated string section number
@@ -54,7 +78,7 @@ public struct MessagePart: Sendable {
 	///   - filename: The filename
 	///   - contentId: The content ID
 	///   - data: The content data (optional)
-	public init(sectionString: String, contentType: String, disposition: String? = nil, encoding: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data? = nil) {
+	public init(sectionString: String, contentType: String, disposition: String? = nil, encoding: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data? = nil, embeddedHeaders: EmbeddedMessageHeaders? = nil) {
 		self.section = Section(sectionString)
 		self.contentType = contentType
 		self.disposition = disposition
@@ -62,6 +86,7 @@ public struct MessagePart: Sendable {
 		self.filename = filename
 		self.contentId = contentId
 		self.data = data
+		self.embeddedHeaders = embeddedHeaders
 	}
 	
 	/// Get a suggested filename for the part
@@ -71,9 +96,11 @@ public struct MessagePart: Sendable {
 			// Use the original filename if available
 			return filename.sanitizedFileName()
 		} else {
-			// Create a filename based on section number and content type
-			let fileExtension = String.fileExtension(for: contentType) ?? "dat"
-			
+			// Create a filename based on section number and content type.
+			// Strip parameters (e.g., "; charset=utf-8") before MIME lookup.
+			let baseType = contentType.components(separatedBy: ";").first?.trimmingCharacters(in: .whitespaces) ?? contentType
+			let fileExtension = String.fileExtension(for: baseType) ?? "dat"
+
 			return "part_\(section.description.replacingOccurrences(of: ".", with: "_")).\(fileExtension)"
 		}
 	}
@@ -167,12 +194,12 @@ public struct MessagePart: Sendable {
 // MARK: - Codable Implementation
 extension MessagePart: Codable {
 	private enum CodingKeys: String, CodingKey {
-		case section, contentType, disposition, encoding, filename, contentId, data
+		case section, contentType, disposition, encoding, filename, contentId, data, embeddedHeaders
 	}
-	
+
 	public func encode(to encoder: Encoder) throws {
 		var container = encoder.container(keyedBy: CodingKeys.self)
-		
+
 		try container.encode(section, forKey: .section)
 		try container.encode(contentType, forKey: .contentType)
 		try container.encodeIfPresent(disposition, forKey: .disposition)
@@ -180,11 +207,12 @@ extension MessagePart: Codable {
 		try container.encodeIfPresent(filename, forKey: .filename)
 		try container.encodeIfPresent(contentId, forKey: .contentId)
 		try container.encodeIfPresent(data, forKey: .data)
+		try container.encodeIfPresent(embeddedHeaders, forKey: .embeddedHeaders)
 	}
-	
+
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
-		
+
 		section = try container.decode(Section.self, forKey: .section)
 		contentType = try container.decode(String.self, forKey: .contentType)
 		disposition = try container.decodeIfPresent(String.self, forKey: .disposition)
@@ -192,5 +220,6 @@ extension MessagePart: Codable {
 		filename = try container.decodeIfPresent(String.self, forKey: .filename)
 		contentId = try container.decodeIfPresent(String.self, forKey: .contentId)
 		data = try container.decodeIfPresent(Data.self, forKey: .data)
+		embeddedHeaders = try container.decodeIfPresent(EmbeddedMessageHeaders.self, forKey: .embeddedHeaders)
 	}
 }
