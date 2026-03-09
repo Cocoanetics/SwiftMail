@@ -26,7 +26,12 @@ public struct MessagePart: Sendable {
 	
 	/// The content data (if any)
 	public var data: Data?
-	
+
+	/// For message/rfc822 parts: metadata from the embedded message's envelope.
+	/// Populated with subject, from, to, cc, date from the IMAP BODYSTRUCTURE envelope.
+	/// Other MessageInfo fields (uid, flags, parts, etc.) are defaults.
+	public let embeddedMessageInfo: MessageInfo?
+
 	/// Creates a new message part
 	/// - Parameters:
 	///   - section: The section number (e.g., [1, 2, 3] represents "1.2.3")
@@ -36,7 +41,8 @@ public struct MessagePart: Sendable {
 	///   - filename: The filename (if any)
 	///   - contentId: The content ID
 	///   - data: The content data (optional)
-	public init(section: Section, contentType: String, disposition: String? = nil, encoding: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data? = nil) {
+	///   - embeddedMessageInfo: Envelope headers for message/rfc822 parts (optional)
+	public init(section: Section, contentType: String, disposition: String? = nil, encoding: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data? = nil, embeddedMessageInfo: MessageInfo? = nil) {
 		self.section = section
 		self.contentType = contentType
 		self.disposition = disposition
@@ -44,8 +50,9 @@ public struct MessagePart: Sendable {
 		self.filename = filename
 		self.contentId = contentId
 		self.data = data
+		self.embeddedMessageInfo = embeddedMessageInfo
 	}
-	
+
 	/// Initialize a new message part with a dot-separated string section number
 	/// - Parameters:
 	///   - sectionString: The section number as a dot-separated string (e.g., "1.2.3")
@@ -54,7 +61,7 @@ public struct MessagePart: Sendable {
 	///   - filename: The filename
 	///   - contentId: The content ID
 	///   - data: The content data (optional)
-	public init(sectionString: String, contentType: String, disposition: String? = nil, encoding: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data? = nil) {
+	public init(sectionString: String, contentType: String, disposition: String? = nil, encoding: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data? = nil, embeddedMessageInfo: MessageInfo? = nil) {
 		self.section = Section(sectionString)
 		self.contentType = contentType
 		self.disposition = disposition
@@ -62,6 +69,7 @@ public struct MessagePart: Sendable {
 		self.filename = filename
 		self.contentId = contentId
 		self.data = data
+		self.embeddedMessageInfo = embeddedMessageInfo
 	}
 	
 	/// Get a suggested filename for the part
@@ -169,12 +177,12 @@ public struct MessagePart: Sendable {
 // MARK: - Codable Implementation
 extension MessagePart: Codable {
 	private enum CodingKeys: String, CodingKey {
-		case section, contentType, disposition, encoding, filename, contentId, data
+		case section, contentType, disposition, encoding, filename, contentId, data, embeddedMessageInfo
 	}
-	
+
 	public func encode(to encoder: Encoder) throws {
 		var container = encoder.container(keyedBy: CodingKeys.self)
-		
+
 		try container.encode(section, forKey: .section)
 		try container.encode(contentType, forKey: .contentType)
 		try container.encodeIfPresent(disposition, forKey: .disposition)
@@ -182,11 +190,12 @@ extension MessagePart: Codable {
 		try container.encodeIfPresent(filename, forKey: .filename)
 		try container.encodeIfPresent(contentId, forKey: .contentId)
 		try container.encodeIfPresent(data, forKey: .data)
+		try container.encodeIfPresent(embeddedMessageInfo, forKey: .embeddedMessageInfo)
 	}
-	
+
 	public init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
-		
+
 		section = try container.decode(Section.self, forKey: .section)
 		contentType = try container.decode(String.self, forKey: .contentType)
 		disposition = try container.decodeIfPresent(String.self, forKey: .disposition)
@@ -194,5 +203,6 @@ extension MessagePart: Codable {
 		filename = try container.decodeIfPresent(String.self, forKey: .filename)
 		contentId = try container.decodeIfPresent(String.self, forKey: .contentId)
 		data = try container.decodeIfPresent(Data.self, forKey: .data)
+		embeddedMessageInfo = try container.decodeIfPresent(MessageInfo.self, forKey: .embeddedMessageInfo)
 	}
 }

@@ -36,7 +36,7 @@ extension NIOIMAPCore.BodyStructure: @retroactive CustomStringConvertible {
         
         lines.append("\(indent)\(connector)\(contentType)\(wholePart)")
         
-        // Process children for multipart
+        // Process children for multipart and message/rfc822
         switch self {
         case .multipart(let multipart):
             for (index, part) in multipart.parts.enumerated() {
@@ -50,9 +50,31 @@ extension NIOIMAPCore.BodyStructure: @retroactive CustomStringConvertible {
                     includePartNumbers: includePartNumbers
                 )
             }
-        default:
-            // Singleparts don't have children to process
-            break
+        case .singlepart(let part):
+            // For message/rfc822, recurse into the nested body structure
+            // Section numbering per RFC 3501: parts within message/rfc822 at section N
+            // are N.1, N.2, etc. Singlepart content is at N.1 (not N itself).
+            if case .message(let message) = part.kind {
+                let childPartPath = partPath.isEmpty ? [1] : partPath
+                switch message.body {
+                case .multipart:
+                    message.body.buildTreeRepresentation(
+                        into: &lines,
+                        indent: childIndent,
+                        isLast: true,
+                        partPath: childPartPath,
+                        includePartNumbers: includePartNumbers
+                    )
+                case .singlepart:
+                    message.body.buildTreeRepresentation(
+                        into: &lines,
+                        indent: childIndent,
+                        isLast: true,
+                        partPath: childPartPath + [1],
+                        includePartNumbers: includePartNumbers
+                    )
+                }
+            }
         }
     }
     
