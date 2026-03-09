@@ -68,16 +68,17 @@ public struct Message: Codable, Sendable {
     
     /// All attachments in the email
     public var attachments: [MessagePart] {
-        // Treat explicit attachments as attachments even if they have Content-ID.
-        // Exclude inline parts that only have a filename.
-        // Exclude parts with Content-ID but no explicit "attachment" disposition (they are CID references).
         return parts.filter { part in
+            let ct = part.contentType.lowercased()
             let disposition = part.disposition?.lowercased()
             let hasFilename = !(part.filename?.isEmpty ?? true)
-            let isAttachment = disposition == "attachment"
-            let isInline = disposition == "inline"
-            let isCidOnly = part.contentId != nil && !isAttachment
-            return isAttachment || (hasFilename && !isInline && !isCidOnly)
+            let isExplicitAttachment = disposition == "attachment"
+            let hasFileNotInline = hasFilename && disposition != "inline"
+            let isCidOnly = part.contentId != nil && !isExplicitAttachment
+            // text/calendar (ICS invites) are attachments even without explicit
+            // disposition or filename.
+            let isCalendar = ct.hasPrefix("text/calendar")
+            return isExplicitAttachment || (hasFileNotInline && !isCidOnly) || isCalendar
         }
     }
 
@@ -89,9 +90,11 @@ public struct Message: Codable, Sendable {
     /// All body parts in the email (text and HTML)
     public var bodies: [MessagePart] {
         return parts.filter { part in
-            // Look for text parts that are not attachments
-            part.contentType.lowercased().hasPrefix("text/") &&
-            part.disposition?.lowercased() != "attachment"
+            // Only text/plain and text/html are displayable body content.
+            // Other text/* types (text/calendar, text/csv, etc.) are attachments.
+            let ct = part.contentType.lowercased()
+            return (ct.hasPrefix("text/plain") || ct.hasPrefix("text/html"))
+                && part.disposition?.lowercased() != "attachment"
         }
     }
     

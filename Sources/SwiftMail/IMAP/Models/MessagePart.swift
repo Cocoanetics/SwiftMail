@@ -71,9 +71,11 @@ public struct MessagePart: Sendable {
 			// Use the original filename if available
 			return filename.sanitizedFileName()
 		} else {
-			// Create a filename based on section number and content type
-			let fileExtension = String.fileExtension(for: contentType) ?? "dat"
-			
+			// Create a filename based on section number and content type.
+			// Strip parameters (e.g., "; charset=utf-8") before MIME lookup.
+			let baseType = contentType.components(separatedBy: ";").first?.trimmingCharacters(in: .whitespaces) ?? contentType
+			let fileExtension = String.fileExtension(for: baseType) ?? "dat"
+
 			return "part_\(section.description.replacingOccurrences(of: ".", with: "_")).\(fileExtension)"
 		}
 	}
