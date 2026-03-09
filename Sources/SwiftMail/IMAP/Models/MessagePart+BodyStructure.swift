@@ -69,6 +69,11 @@ extension Array where Element == MessagePart {
                 }
             }
             
+            // Default filename for text/calendar parts (Outlook often omits filename)
+            if filename == nil, contentType.lowercased().hasPrefix("text/calendar") {
+                filename = "invite.ics"
+            }
+
             // Fallback: If still no filename and we have a content ID, use it
             if filename == nil, let contentId = part.fields.id {
                 let idString = String(contentId)

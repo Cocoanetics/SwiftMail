@@ -46,7 +46,6 @@ final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageI
 			// Convert the IDs to the appropriate MessageIdentifier type
 			let results = ids.map { T.init(UInt32($0)) }
 			searchResults.append(contentsOf: results)
-			print("Extracted \(results.count) message identifiers from search response")
 		}
         
         return handled
@@ -58,8 +57,6 @@ final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageI
 		
 		// When we receive an OK response, the search is complete
 		// Return the collected search results as a MessageIdentifierSet
-		print("Search complete, returning \(searchResults.count) results")
-		
 		// Create a MessageIdentifierSet from the array of results
 		var resultSet = MessageIdentifierSet<T>()
 		for identifier in searchResults {
