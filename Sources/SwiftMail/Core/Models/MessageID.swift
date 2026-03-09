@@ -11,7 +11,7 @@ import Foundation
  print(id) // "<abc-123@example.com>"
  ```
  */
-public struct MessageID: Sendable, Hashable, CustomStringConvertible {
+public struct MessageID: Sendable, Hashable, LosslessStringConvertible, Codable {
     /// The local part before the @
     public let localPart: String
     /// The domain part after the @
@@ -47,5 +47,23 @@ extension MessageID {
         guard !local.isEmpty, !domain.isEmpty else { return nil }
         self.localPart = local
         self.domain = domain
+    }
+}
+
+// MARK: - Codable (single string value)
+
+extension MessageID {
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        let string = try container.decode(String.self)
+        guard let parsed = MessageID(string) else {
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid Message-ID format: \(string)")
+        }
+        self = parsed
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(description)
     }
 }

@@ -33,13 +33,13 @@ public struct MessageInfo: Codable, Sendable {
     public var internalDate: Date?
 
     /// The message ID
-    public var messageId: String?
+    public var messageId: MessageID?
 
     /// The message ID this message replied to (from ENVELOPE In-Reply-To)
-    public var inReplyTo: String?
+    public var inReplyTo: MessageID?
 
     /// The message IDs referenced by this message (from the References header)
-    public var references: String?
+    public var references: [MessageID]?
     
     /// The flags of the message
     public var flags: [Flag]
@@ -92,9 +92,9 @@ public struct MessageInfo: Codable, Sendable {
         bcc: [String] = [],
         date: Date? = nil,
         internalDate: Date? = nil,
-        messageId: String? = nil,
-        inReplyTo: String? = nil,
-        references: String? = nil,
+        messageId: MessageID? = nil,
+        inReplyTo: MessageID? = nil,
+        references: [MessageID]? = nil,
         flags: [Flag] = [],
         parts: [MessagePart] = [],
         additionalFields: [String: String]? = nil
@@ -130,9 +130,38 @@ public extension MessageInfo {
         let bcc = try container.decodeIfPresent([String].self, forKey: .bcc) ?? []
         let date = try container.decodeIfPresent(Date.self, forKey: .date)
         let internalDate = try container.decodeIfPresent(Date.self, forKey: .internalDate)
-        let messageId = try container.decodeIfPresent(String.self, forKey: .messageId)
-        let inReplyTo = try container.decodeIfPresent(String.self, forKey: .inReplyTo)
-        let references = try container.decodeIfPresent(String.self, forKey: .references)
+        // Decode messageId: try MessageID first, fall back to legacy String
+        let messageId: MessageID?
+        if let mid = try? container.decodeIfPresent(MessageID.self, forKey: .messageId) {
+            messageId = mid
+        } else if let midString = try container.decodeIfPresent(String.self, forKey: .messageId) {
+            messageId = MessageID(midString)
+        } else {
+            messageId = nil
+        }
+
+        // Decode inReplyTo: try MessageID first, fall back to legacy String
+        let inReplyTo: MessageID?
+        if let irt = try? container.decodeIfPresent(MessageID.self, forKey: .inReplyTo) {
+            inReplyTo = irt
+        } else if let irtString = try container.decodeIfPresent(String.self, forKey: .inReplyTo) {
+            inReplyTo = MessageID(irtString)
+        } else {
+            inReplyTo = nil
+        }
+
+        // Decode references: try [MessageID] first, then [String], then legacy space-separated String
+        let references: [MessageID]?
+        if let refs = try? container.decodeIfPresent([MessageID].self, forKey: .references) {
+            references = refs
+        } else if let refStrings = try? container.decodeIfPresent([String].self, forKey: .references) {
+            references = refStrings.compactMap { MessageID($0) }
+        } else if let refString = try container.decodeIfPresent(String.self, forKey: .references) {
+            let parsed = refString.split(separator: " ").compactMap { MessageID(String($0)) }
+            references = parsed.isEmpty ? nil : parsed
+        } else {
+            references = nil
+        }
         let flags = try container.decodeIfPresent([Flag].self, forKey: .flags) ?? []
         let parts = try container.decodeIfPresent([MessagePart].self, forKey: .parts) ?? []
         let additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)

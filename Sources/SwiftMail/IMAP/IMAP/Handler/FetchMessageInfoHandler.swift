@@ -99,7 +99,8 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         lock.withLock {
             guard let index = currentMessageIndex() else { return }
             var header = self.messageInfos[index]
-            header.references = references
+            let parsed = references.split(separator: " ").compactMap { MessageID(String($0)) }
+            header.references = parsed.isEmpty ? nil : parsed
             self.messageInfos[index] = header
         }
     }
@@ -206,11 +207,11 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             }
             
             if let messageID = envelope.messageID {
-                header.messageId = String(messageID)
+                header.messageId = MessageID(String(messageID))
             }
 
             if let inReplyTo = envelope.inReplyTo {
-                header.inReplyTo = String(inReplyTo)
+                header.inReplyTo = MessageID(String(inReplyTo))
             }
 
         case .uid(let uid):
