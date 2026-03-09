@@ -30,7 +30,7 @@ struct EMLParserTests {
         #expect(message.from == "sender@example.com")
         #expect(message.to == ["recipient@example.com"])
         #expect(message.subject == "Hello World")
-        #expect(message.header.messageId == "<test123@example.com>")
+        #expect(message.header.messageId == MessageID("test123@example.com"))
         #expect(message.date != nil)
         #expect(message.parts.count == 1)
         #expect(message.parts[0].contentType == "text/plain; charset=UTF-8")

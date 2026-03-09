@@ -155,7 +155,7 @@ public struct EMLParser {
     private static func buildMessageInfo(from headers: [String: String]) -> MessageInfo {
         let from = headers["from"].flatMap { decodeRFC2047($0) } ?? headers["from"]
         let subject = headers["subject"].flatMap { decodeRFC2047($0) } ?? headers["subject"]
-        let messageId = headers["message-id"]
+        let messageId = headers["message-id"].flatMap { MessageID($0) }
 
         let to = parseAddressList(headers["to"])
         let cc = parseAddressList(headers["cc"])

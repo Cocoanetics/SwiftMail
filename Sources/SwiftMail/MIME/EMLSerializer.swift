@@ -61,7 +61,7 @@ public struct EMLSerializer {
         }
 
         if let messageId = header.messageId {
-            output += "Message-ID: \(messageId)\r\n"
+            output += "Message-ID: \(messageId.description)\r\n"
         }
 
         output += "MIME-Version: 1.0\r\n"

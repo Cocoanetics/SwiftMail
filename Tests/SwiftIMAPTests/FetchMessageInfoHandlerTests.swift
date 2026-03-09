@@ -30,8 +30,8 @@ struct FetchMessageInfoHandlerTests {
         )
 
         #expect(infos.count == 1)
-        #expect(infos[0].inReplyTo == "<root@example.com>")
-        #expect(infos[0].references == "<root@example.com> <child@example.com>")
+        #expect(infos[0].inReplyTo == MessageID("root@example.com"))
+        #expect(infos[0].references == [MessageID("<root@example.com>")!, MessageID("<child@example.com>")!])
     }
 
     @Test
@@ -66,10 +66,10 @@ struct FetchMessageInfoHandlerTests {
         )
 
         #expect(infos.count == 2)
-        #expect(infos[0].inReplyTo == "<root-a@example.com>")
-        #expect(infos[0].references == "<root-a@example.com>")
+        #expect(infos[0].inReplyTo == MessageID("root-a@example.com"))
+        #expect(infos[0].references == [MessageID("<root-a@example.com>")!])
         #expect(infos[1].inReplyTo == nil)
-        #expect(infos[1].references == "<root-b@example.com> <child-b@example.com>")
+        #expect(infos[1].references == [MessageID("<root-b@example.com>")!, MessageID("<child-b@example.com>")!])
     }
 
     @Test
