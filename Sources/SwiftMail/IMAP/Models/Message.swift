@@ -133,16 +133,17 @@ public struct Message: Codable, Sendable {
 
 // MARK: - Helper Methods
 private extension Message {
-    
-    /// Find body content of a specific type
+
+    /// Find body content of a specific type.
+    /// Returns the first matching body part's text content.
+    /// For emails with nested message/rfc822 parts, callers should iterate
+    /// over `bodies` directly to handle each part with proper context.
     /// - Parameter type: The content type to search for (e.g., "text/plain", "text/html")
     /// - Returns: The body content, or `nil` if not found
     func bodyContent(for type: String) -> String? {
-        // Find the first part with the exact content type in the bodies
         guard let part = bodies.first(where: { $0.contentType.lowercased().hasPrefix(type) }) else {
             return nil
         }
-        
         return part.textContent
     }
 }
