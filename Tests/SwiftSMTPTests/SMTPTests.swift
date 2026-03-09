@@ -209,4 +209,110 @@ struct SMTPTests {
             )
         }
     }
+
+    @Test
+    func testConstructContentAutoGeneratesMessageId() {
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Test",
+            textBody: "Hello"
+        )
+
+        let content = email.constructContent()
+        #expect(content.contains("Message-Id: <"))
+        #expect(content.contains("@example.com>"))
+    }
+
+    @Test
+    func testConstructContentUsesPresetMessageId() {
+        let preset = MessageID(localPart: "my-custom-id", domain: "example.com")
+        var email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Test",
+            textBody: "Hello"
+        )
+        email.messageID = preset
+
+        let content = email.constructContent()
+        #expect(content.contains("Message-Id: <my-custom-id@example.com>\r\n"))
+
+        // Should NOT contain a second auto-generated Message-Id
+        let occurrences = content.components(separatedBy: "Message-Id:").count - 1
+        #expect(occurrences == 1)
+    }
+
+    @Test
+    func testConstructContentStableMessageIdAcrossCalls() {
+        let preset = MessageID(localPart: "stable-id", domain: "example.com")
+        var email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Test",
+            textBody: "Hello"
+        )
+        email.messageID = preset
+
+        let content1 = email.constructContent()
+        let content2 = email.constructContent()
+
+        // With a preset ID, both calls produce the same Message-Id
+        #expect(content1.contains("Message-Id: <stable-id@example.com>"))
+        #expect(content2.contains("Message-Id: <stable-id@example.com>"))
+    }
+
+    @Test
+    func testMessageIdPropertyDoesNotAffectAdditionalHeaders() {
+        var email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Test",
+            textBody: "Hello"
+        )
+        email.messageID = MessageID(localPart: "preset", domain: "example.com")
+        email.additionalHeaders = ["X-Custom": "value"]
+
+        let content = email.constructContent()
+        #expect(content.contains("Message-Id: <preset@example.com>"))
+        #expect(content.contains("X-Custom: value"))
+
+        // Only one Message-Id header
+        let occurrences = content.components(separatedBy: "Message-Id:").count - 1
+        #expect(occurrences == 1)
+    }
+
+    @Test
+    func testMessageIDGenerate() {
+        let id = MessageID.generate(domain: "example.com")
+        #expect(id.domain == "example.com")
+        #expect(!id.localPart.isEmpty)
+        #expect(id.description.hasPrefix("<"))
+        #expect(id.description.hasSuffix("@example.com>"))
+    }
+
+    @Test
+    func testMessageIDParseValid() {
+        let id = MessageID("<abc-123@example.com>")
+        #expect(id != nil)
+        #expect(id?.localPart == "abc-123")
+        #expect(id?.domain == "example.com")
+        #expect(id?.description == "<abc-123@example.com>")
+    }
+
+    @Test
+    func testMessageIDParseWithoutBrackets() {
+        let id = MessageID("abc-123@example.com")
+        #expect(id != nil)
+        #expect(id?.localPart == "abc-123")
+        #expect(id?.domain == "example.com")
+    }
+
+    @Test
+    func testMessageIDParseInvalid() {
+        #expect(MessageID("no-at-sign") == nil)
+        #expect(MessageID("@domain.com") == nil)
+        #expect(MessageID("local@") == nil)
+        #expect(MessageID("") == nil)
+    }
 }

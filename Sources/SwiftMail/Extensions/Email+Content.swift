@@ -43,7 +43,8 @@ extension Email {
 
         content += "Subject: \(self.subject)\r\n"
         content += "Date: \(Self.rfc2822Date())\r\n"
-        content += "Message-Id: <\(UUID().uuidString)@\(Self.senderDomain(from: self.sender))>\r\n"
+        let msgID = self.messageID ?? .generate(domain: Self.senderDomain(from: self.sender))
+        content += "Message-Id: \(msgID)\r\n"
         content += "MIME-Version: 1.0\r\n"
 
         if let additionalHeaders {
