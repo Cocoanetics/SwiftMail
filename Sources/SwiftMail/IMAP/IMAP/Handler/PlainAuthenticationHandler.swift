@@ -35,7 +35,7 @@ final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IM
     override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
 
-        if case .authenticationChallenge(var challenge) = response {
+        if case .authenticationChallenge(let challenge) = response {
             let challengeIsEmpty = challenge.readableBytes == 0 ||
                 (challenge.getString(at: challenge.readerIndex, length: challenge.readableBytes) ?? "")
                     .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
