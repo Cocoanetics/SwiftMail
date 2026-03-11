@@ -43,12 +43,22 @@ extension Email {
 
         content += "Subject: \(self.subject)\r\n"
         content += "Date: \(Self.rfc2822Date())\r\n"
-        let msgID = self.messageID ?? .generate(domain: Self.senderDomain(from: self.sender))
-        content += "Message-Id: \(msgID)\r\n"
+        let resolvedAdditionalHeaderMessageID = resolvedMessageIDHeader()
+        let shouldSuppressAdditionalHeaderMessageID = self.messageID != nil || resolvedAdditionalHeaderMessageID != nil
+
+        if let msgID = self.messageID ?? resolvedAdditionalHeaderMessageID {
+            content += "Message-Id: \(msgID)\r\n"
+        } else if !hasMessageIDHeaderInAdditionalHeaders() {
+            let generatedMessageID = MessageID.generate(domain: Self.senderDomain(from: self.sender))
+            content += "Message-Id: \(generatedMessageID)\r\n"
+        }
         content += "MIME-Version: 1.0\r\n"
 
         if let additionalHeaders {
             for (key, value) in additionalHeaders.sorted(by: { $0.key < $1.key }) {
+                if shouldSuppressAdditionalHeaderMessageID && Self.isMessageIDHeaderName(key) {
+                    continue
+                }
                 content += "\(key): \(value)\r\n"
             }
         }
@@ -261,4 +271,29 @@ extension Email {
         }
         return "localhost"
     }
-} 
+
+    private func resolvedMessageIDHeader() -> MessageID? {
+        guard let additionalHeaders else { return nil }
+
+        for (key, value) in additionalHeaders where Self.isMessageIDHeaderName(key) {
+            let trimmedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let messageID = MessageID(trimmedValue) {
+                return messageID
+            }
+        }
+
+        return nil
+    }
+
+    private func hasMessageIDHeaderInAdditionalHeaders() -> Bool {
+        guard let additionalHeaders else { return false }
+        return additionalHeaders.keys.contains(where: Self.isMessageIDHeaderName)
+    }
+
+    private static func isMessageIDHeaderName(_ key: String) -> Bool {
+        key.trimmingCharacters(in: .whitespacesAndNewlines).compare(
+            "message-id",
+            options: [.caseInsensitive]
+        ) == .orderedSame
+    }
+}
