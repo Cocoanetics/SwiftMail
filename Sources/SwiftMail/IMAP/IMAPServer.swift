@@ -1349,7 +1349,7 @@ public actor IMAPServer {
     }
 
     /// Permanently removes specific deleted messages by UID when UIDPLUS is available.
-    public func uidExpunge(messages identifierSet: UIDSet) async throws {
+    public func expunge(messages identifierSet: UIDSet) async throws {
         guard supportsUIDPlus else {
             throw IMAPError.commandNotSupported("UID EXPUNGE command not supported by server")
         }
@@ -1361,7 +1361,7 @@ public actor IMAPServer {
     private func expungeMoveFallback<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
         if T.self == UID.self && capabilities.contains(.uidPlus) {
             let uidSet = UIDSet(identifierSet.toArray().map { UID($0.value) })
-            try await uidExpunge(messages: uidSet)
+            try await expunge(messages: uidSet)
         } else {
             try await expunge()
         }
