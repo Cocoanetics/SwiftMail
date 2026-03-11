@@ -226,7 +226,7 @@ public actor IMAPNamedConnection {
         } else {
             try await copy(messages: identifierSet, to: destinationMailbox)
             try await store(flags: [.deleted], on: identifierSet, operation: .add)
-            try await expunge()
+            try await expungeMoveFallback(messages: identifierSet)
         }
     }
 
@@ -324,6 +324,15 @@ public actor IMAPNamedConnection {
     private func executeMove<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
         let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: resolveMailboxPath(destinationMailbox))
         try await executeCommand(command)
+    }
+
+    private func expungeMoveFallback<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+        if T.self == UID.self && capabilities.contains(.uidPlus) {
+            let uidSet = UIDSet(identifierSet.toArray().map { UID($0.value) })
+            try await uidExpunge(messages: uidSet)
+        } else {
+            try await expunge()
+        }
     }
 
     private func resolveMailboxPath(_ mailboxName: String) -> String {
