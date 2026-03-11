@@ -357,4 +357,43 @@ struct SMTPTests {
         #expect(messageIDHeaders.count == 1)
         #expect(messageIDHeaders.first == "Message-Id: <lowercase@example.com>")
     }
+
+    @Test
+    func testConstructContentMessageIDPropertyWinsOverAdditionalHeaderMessageID() {
+        var email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Hello",
+            textBody: "Body"
+        )
+        email.messageID = MessageID(localPart: "typed", domain: "example.com")
+        email.additionalHeaders = ["Message-ID": "<raw@example.com>"]
+
+        let content = email.constructContent()
+        let messageIDHeaders = content
+            .components(separatedBy: "\r\n")
+            .filter { $0.lowercased().hasPrefix("message-id:") }
+
+        #expect(messageIDHeaders.count == 1)
+        #expect(messageIDHeaders.first == "Message-Id: <typed@example.com>")
+    }
+
+    @Test
+    func testConstructContentPreservesRawAdditionalHeaderMessageIDWhenUnparseable() {
+        var email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Hello",
+            textBody: "Body"
+        )
+        email.additionalHeaders = ["Message-ID": "not a valid message id"]
+
+        let content = email.constructContent()
+        let messageIDHeaders = content
+            .components(separatedBy: "\r\n")
+            .filter { $0.lowercased().hasPrefix("message-id:") }
+
+        #expect(messageIDHeaders.count == 1)
+        #expect(messageIDHeaders.first == "Message-ID: not a valid message id")
+    }
 }

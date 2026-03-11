@@ -43,13 +43,22 @@ extension Email {
 
         content += "Subject: \(self.subject)\r\n"
         content += "Date: \(Self.rfc2822Date())\r\n"
-        let msgID = self.messageID ?? resolvedMessageIDHeader() ?? .generate(domain: Self.senderDomain(from: self.sender))
-        content += "Message-Id: \(msgID)\r\n"
+        let resolvedAdditionalHeaderMessageID = resolvedMessageIDHeader()
+        let shouldSuppressAdditionalHeaderMessageID = self.messageID != nil || resolvedAdditionalHeaderMessageID != nil
+
+        if let msgID = self.messageID ?? resolvedAdditionalHeaderMessageID {
+            content += "Message-Id: \(msgID)\r\n"
+        } else if !hasMessageIDHeaderInAdditionalHeaders() {
+            let generatedMessageID = MessageID.generate(domain: Self.senderDomain(from: self.sender))
+            content += "Message-Id: \(generatedMessageID)\r\n"
+        }
         content += "MIME-Version: 1.0\r\n"
 
         if let additionalHeaders {
             for (key, value) in additionalHeaders.sorted(by: { $0.key < $1.key }) {
-                guard !Self.isMessageIDHeaderName(key) else { continue }
+                if shouldSuppressAdditionalHeaderMessageID && Self.isMessageIDHeaderName(key) {
+                    continue
+                }
                 content += "\(key): \(value)\r\n"
             }
         }
@@ -274,6 +283,11 @@ extension Email {
         }
 
         return nil
+    }
+
+    private func hasMessageIDHeaderInAdditionalHeaders() -> Bool {
+        guard let additionalHeaders else { return false }
+        return additionalHeaders.keys.contains(where: Self.isMessageIDHeaderName)
     }
 
     private static func isMessageIDHeaderName(_ key: String) -> Bool {
