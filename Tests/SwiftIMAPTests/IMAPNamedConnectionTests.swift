@@ -68,7 +68,7 @@ struct IMAPNamedConnectionTests {
         let named = IMAPNamedConnection(name: "test", connection: connection, authenticateOnConnection: { _ in })
 
         do {
-            try await named.uidExpunge(messages: UIDSet(UID(7)))
+            try await named.expunge(messages: UIDSet(UID(7)))
             Issue.record("Expected UID EXPUNGE to require UIDPLUS")
         } catch let error as IMAPError {
             guard case .commandNotSupported(let message) = error else {
