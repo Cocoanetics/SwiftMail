@@ -64,6 +64,11 @@ public actor IMAPServer {
     private var capabilities: Set<NIOIMAPCore.Capability> {
         primaryConnection.capabilitiesSnapshot
     }
+
+    /// Whether the primary connection advertised UIDPLUS.
+    public var supportsUIDPlus: Bool {
+        capabilities.contains(.uidPlus)
+    }
     
     /**
      Logger for IMAP operations
@@ -1340,6 +1345,16 @@ public actor IMAPServer {
      */
     public func expunge() async throws {
         let command = ExpungeCommand()
+        try await executeCommand(command)
+    }
+
+    /// Permanently removes specific deleted messages by UID when UIDPLUS is available.
+    public func uidExpunge(messages identifierSet: UIDSet) async throws {
+        guard supportsUIDPlus else {
+            throw IMAPError.commandNotSupported("UID EXPUNGE command not supported by server")
+        }
+
+        let command = UIDExpungeCommand(identifierSet: identifierSet)
         try await executeCommand(command)
     }
     

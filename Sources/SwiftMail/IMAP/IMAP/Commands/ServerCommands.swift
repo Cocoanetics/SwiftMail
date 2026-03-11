@@ -109,4 +109,26 @@ struct ExpungeCommand: IMAPTaggedCommand {
     func toTaggedCommand(tag: String) -> TaggedCommand {
         return TaggedCommand(tag: tag, command: .expunge)
     }
-} 
+}
+
+/// Command for expunging specific deleted messages by UID.
+struct UIDExpungeCommand: IMAPTaggedCommand {
+    typealias ResultType = Void
+    typealias HandlerType = ExpungeHandler
+
+    let identifierSet: UIDSet
+
+    init(identifierSet: UIDSet) {
+        self.identifierSet = identifierSet
+    }
+
+    func validate() throws {
+        guard !identifierSet.isEmpty else {
+            throw IMAPError.emptyIdentifierSet
+        }
+    }
+
+    func toTaggedCommand(tag: String) -> TaggedCommand {
+        TaggedCommand(tag: tag, command: .uidExpunge(.set(identifierSet.toNIOSet())))
+    }
+}

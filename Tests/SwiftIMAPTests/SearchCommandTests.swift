@@ -82,4 +82,25 @@ struct SearchCommandTests {
         #expect(wire.contains("SEARCH"))
         #expect(wire.contains("1:2") || wire.contains("1,2"))
     }
+
+    @Test
+    func testUIDExpungeUsesUIDCommandWireFormat() async throws {
+        let channel = EmbeddedChannel()
+        defer { _ = try? channel.finish() }
+        try await channel.pipeline.addHandler(IMAPClientHandler())
+
+        let command = UIDExpungeCommand(identifierSet: UIDSet([UID(10), UID(20), UID(30)]))
+        let tagged = command.toTaggedCommand(tag: "S004")
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        try await channel.writeAndFlush(wrapped)
+
+        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
+        }
+        let wire = outbound.readString(length: outbound.readableBytes) ?? ""
+
+        #expect(wire.contains("UID EXPUNGE"))
+        #expect(wire.contains("10:30") || wire.contains("10,20,30"))
+    }
 }
