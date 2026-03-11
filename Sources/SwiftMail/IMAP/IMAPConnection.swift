@@ -99,6 +99,10 @@ final class IMAPConnection {
         capabilities.contains(where: check)
     }
 
+    func replaceCapabilitiesForTesting(_ capabilities: Set<NIOIMAPCore.Capability>) {
+        self.capabilities = capabilities
+    }
+
     func connect() async throws {
         try await commandQueue.run { [self] in
             try await self.connectBody()

@@ -209,6 +209,16 @@ public actor IMAPNamedConnection {
         try await executeCommand(command)
     }
 
+    /// Expunge specific messages marked with `\Deleted` using UIDPLUS.
+    public func uidExpunge(messages identifierSet: UIDSet) async throws {
+        guard supportsUIDPlus else {
+            throw IMAPError.commandNotSupported("UID EXPUNGE command not supported by server")
+        }
+
+        let command = UIDExpungeCommand(identifierSet: identifierSet)
+        try await executeCommand(command)
+    }
+
     /// Move messages to another mailbox (uses MOVE if supported, otherwise COPY+STORE+EXPUNGE).
     public func move<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
         if capabilities.contains(.move) && (T.self != UID.self || capabilities.contains(.uidPlus)) {
@@ -290,6 +300,11 @@ public actor IMAPNamedConnection {
 
     private var capabilities: Set<NIOIMAPCore.Capability> {
         connection.capabilitiesSnapshot
+    }
+
+    /// Whether the server advertised UIDPLUS for this connection.
+    public var supportsUIDPlus: Bool {
+        capabilities.contains(.uidPlus)
     }
 
     private func ensureAuthenticated() async throws {
