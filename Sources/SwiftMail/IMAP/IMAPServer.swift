@@ -1137,10 +1137,10 @@ public actor IMAPServer {
         if capabilities.contains(.move) && (T.self != UID.self || capabilities.contains(.uidPlus)) {
             try await executeMove(messages: identifierSet, to: destinationMailbox)
         } else {
-            // Fall back to COPY + DELETE + EXPUNGE
+            // Fall back to COPY + DELETE + targeted expunge when UIDPLUS is available.
             try await copy(messages: identifierSet, to: destinationMailbox)
             try await store(flags: [.deleted], on: identifierSet, operation: .add)
-            try await expunge()
+            try await expungeMoveFallback(messages: identifierSet)
         }
     }
     
@@ -1356,6 +1356,15 @@ public actor IMAPServer {
 
         let command = UIDExpungeCommand(identifierSet: identifierSet)
         try await executeCommand(command)
+    }
+
+    private func expungeMoveFallback<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+        if T.self == UID.self && capabilities.contains(.uidPlus) {
+            let uidSet = UIDSet(identifierSet.toArray().map { UID($0.value) })
+            try await uidExpunge(messages: uidSet)
+        } else {
+            try await expunge()
+        }
     }
     
     /**
