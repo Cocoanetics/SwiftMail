@@ -98,7 +98,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         let allHeaders = EMLParser.parseHeaders(headerBlock)
 
         // Headers already exposed via ENVELOPE or stored in dedicated fields
-        let envelopeKeys: Set<String> = ["from", "to", "cc", "bcc", "subject", "date", "message-id", "in-reply-to", "references"]
+        let envelopeKeys: Set<String> = ["from", "to", "cc", "bcc", "subject", "date", "message-id", "in-reply-to", "references", "reply-to"]
 
         let referencesValue = allHeaders["references"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         let additionalHeaders = allHeaders.filter { !envelopeKeys.contains($0.key) }
