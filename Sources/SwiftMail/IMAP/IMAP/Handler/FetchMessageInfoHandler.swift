@@ -93,14 +93,26 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     }
 
     private func applyCollectedThreadingHeaders() {
-        let references = Self.extractReferencesHeader(from: currentHeaderLiteral)
-        guard let references else { return }
+        guard let headerBlock = String(data: currentHeaderLiteral, encoding: .utf8) ?? String(data: currentHeaderLiteral, encoding: .ascii) else { return }
+
+        let allHeaders = EMLParser.parseHeaders(headerBlock)
+
+        // Headers already exposed via ENVELOPE or stored in dedicated fields
+        let envelopeKeys: Set<String> = ["from", "to", "cc", "bcc", "subject", "date", "message-id", "in-reply-to", "references"]
+
+        let referencesValue = allHeaders["references"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let additionalHeaders = allHeaders.filter { !envelopeKeys.contains($0.key) }
 
         lock.withLock {
             guard let index = currentMessageIndex() else { return }
             var header = self.messageInfos[index]
-            let parsed = Self.parseMessageIDs(from: references)
-            header.references = parsed.isEmpty ? nil : parsed
+
+            if let references = referencesValue, !references.isEmpty {
+                let parsed = Self.parseMessageIDs(from: references)
+                header.references = parsed.isEmpty ? nil : parsed
+            }
+
+            header.additionalFields = additionalHeaders.isEmpty ? nil : additionalHeaders
             self.messageInfos[index] = header
         }
     }
@@ -310,17 +322,4 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         return results
     }
 
-    static func extractReferencesHeader(from data: Data) -> String? {
-        guard let headerBlock = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) else {
-            return nil
-        }
-
-        let parsedHeaders = EMLParser.parseHeaders(headerBlock)
-        if let references = parsedHeaders["references"]?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !references.isEmpty {
-            return references
-        }
-
-        return nil
-    }
 }

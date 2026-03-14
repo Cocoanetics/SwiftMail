@@ -94,6 +94,47 @@ struct FetchMessageInfoHandlerTests {
         #expect(infos.count == 1)
         #expect(infos[0].inReplyTo == nil)
         #expect(infos[0].references == nil)
+        // Subject is an envelope key and must be excluded; X-Test is not
+        #expect(infos[0].additionalFields?["subject"] == nil)
+        #expect(infos[0].additionalFields?["x-test"] == "value")
+    }
+
+    @Test
+    func testAdditionalFieldsArePopulated() async throws {
+        let headerBlock = """
+        List-ID: <announcements.example.com>\r
+        List-Unsubscribe: <https://example.com/unsubscribe>\r
+        X-Newsletter-ID: 12345\r
+        In-Reply-To: <root@example.com>\r
+        References: <root@example.com>\r
+        \r
+        """
+
+        let infos = try await executeFetch(
+            [
+                fetchResponse(
+                    sequenceNumber: 1,
+                    envelope: envelopeAttribute(
+                        messageId: "<msg@example.com>",
+                        inReplyTo: "<root@example.com>"
+                    ),
+                    headerBlock: headerBlock
+                ),
+                "A001 OK FETCH completed\r\n",
+            ]
+        )
+
+        #expect(infos.count == 1)
+        // Threading fields are still populated as before
+        #expect(infos[0].inReplyTo == MessageID("root@example.com"))
+        #expect(infos[0].references == [MessageID("<root@example.com>")!])
+        // Additional (non-envelope) headers are now exposed
+        #expect(infos[0].additionalFields?["list-id"] == "<announcements.example.com>")
+        #expect(infos[0].additionalFields?["list-unsubscribe"] == "<https://example.com/unsubscribe>")
+        #expect(infos[0].additionalFields?["x-newsletter-id"] == "12345")
+        // Envelope / threading headers must NOT be duplicated in additionalFields
+        #expect(infos[0].additionalFields?["in-reply-to"] == nil)
+        #expect(infos[0].additionalFields?["references"] == nil)
     }
 
     private func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
