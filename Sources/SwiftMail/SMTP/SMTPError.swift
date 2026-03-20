@@ -37,6 +37,11 @@ public enum SMTPError: Error {
     case unexpectedResponse(SMTPResponse)
 }
 
+// LocalizedError so .localizedDescription returns the real message (not just "error N")
+extension SMTPError: LocalizedError {
+    public var errorDescription: String? { description }
+}
+
 // Add CustomStringConvertible conformance for better error messages
 extension SMTPError: CustomStringConvertible {
     public var description: String {
