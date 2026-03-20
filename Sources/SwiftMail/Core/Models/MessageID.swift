@@ -37,7 +37,8 @@ extension MessageID {
     /// Parse a Message-ID string in `<localPart@domain>` format.
     /// Returns `nil` if the string doesn't match the expected format.
     public init?(_ string: String) {
-        var s = string
+        // Trim whitespace first — IMAP ENVELOPE can return " <id@domain>" with leading space
+        var s = string.trimmingCharacters(in: .whitespaces)
         // Strip optional angle brackets
         if s.hasPrefix("<") { s.removeFirst() }
         if s.hasSuffix(">") { s.removeLast() }
