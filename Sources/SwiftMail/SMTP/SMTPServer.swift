@@ -347,17 +347,20 @@ public actor SMTPServer {
             logger.warning("Attempted to disconnect when channel was already nil")
             return
         }
-        
-		// Use QuitCommand instead of directly sending a string
-		let quitCommand = QuitCommand()
-		
-		// Execute the QUIT command - it has its own timeout set to 10 seconds
-		try await executeCommand(quitCommand)
-        
+
+		// Send QUIT as a courtesy — ignore failures since the email is already sent.
+		// The channel close below will clean up regardless.
+		do {
+			let quitCommand = QuitCommand()
+			try await executeCommand(quitCommand)
+		} catch {
+			logger.warning("QUIT command failed (non-fatal): \(error)")
+		}
+
         // Close the channel regardless of QUIT command result
-        channel.close(promise: nil)
+        try? await channel.close().get()
         self.channel = nil
-        
+
         logger.info("Disconnected from SMTP server")
     }
     
