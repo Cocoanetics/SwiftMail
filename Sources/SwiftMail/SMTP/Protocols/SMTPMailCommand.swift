@@ -7,6 +7,10 @@ import NIO
 
 /// SMTP specific command extensions
 protocol SMTPMailCommand: MailCommand {
+    /// Convert this command to raw bytes that can be sent to the SMTP server.
+    /// Default implementation encodes `toCommandString()` as UTF-8.
+    func toCommandData() -> Data
+    
     /// Convert this command to a string that can be sent to the SMTP server
     func toCommandString() -> String
     
@@ -18,6 +22,11 @@ protocol SMTPMailCommand: MailCommand {
 
 /// Default implementations for SMTP commands
 extension SMTPMailCommand {
+    /// Default implementation encodes the command string as UTF-8 data
+    func toCommandData() -> Data {
+        return Data(toCommandString().utf8)
+    }
+    
     /// Default implementation that defers to toString
     func toCommandString() -> String {
         fatalError("Must be implemented by subclass - either toCommandString() or toString(localHostname:)")
