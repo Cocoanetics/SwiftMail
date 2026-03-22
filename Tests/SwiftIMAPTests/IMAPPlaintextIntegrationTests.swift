@@ -2,7 +2,6 @@ import Foundation
 import Testing
 @testable import SwiftMail
 
-#if false
 struct IMAPPlaintextIntegrationTests {
     @Test
     func connectsToPlaintextIMAPServer() async throws {
@@ -85,4 +84,3 @@ struct IMAPPlaintextIntegrationTests {
         return String(data: buffer, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
-#endif
