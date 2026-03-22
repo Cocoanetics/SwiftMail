@@ -26,7 +26,11 @@ private final class FailContinuationWriteHandler: ChannelOutboundHandler, @unche
 struct XOAUTH2AuthenticationHandlerTests {
     private let email = "user@example.com"
     private let token = "ya29.A0AfH6SExample"
-    private let logger = Logger(label: "com.swiftmail.tests.xoauth2")
+    private let logger: Logger = {
+        var logger = Logger(label: "com.swiftmail.tests.xoauth2")
+        logger.logLevel = .critical
+        return logger
+    }()
 
     @Test
     func testSASLIRSuccess() async throws {
