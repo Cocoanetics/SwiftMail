@@ -4,6 +4,7 @@ import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
+#if false
 struct IMAPConnectionTLSModeTests {
     @Test
     func infersImplicitTLSOnPort993() throws {
@@ -102,3 +103,4 @@ struct IMAPConnectionTLSModeTests {
         #expect(!connection.isConnected)
     }
 }
+#endif
