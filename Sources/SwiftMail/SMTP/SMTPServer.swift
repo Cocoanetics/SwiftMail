@@ -455,6 +455,18 @@ public actor SMTPServer {
     ///   - `SMTPError.sendFailed` if the server rejects the message or if the message is not valid UTF-8.
     /// - Note: Legacy 8-bit non-UTF-8 messages are not supported. Modern email clients
     ///   use UTF-8 or Base64/Quoted-Printable encoding for non-ASCII content.
+    /// Send a pre-built RFC 822 message (e.g., a draft fetched from IMAP).
+    ///
+    /// Unlike ``sendEmail(_:)`` which constructs the MIME body from an ``Email``
+    /// struct, this method transmits an already-formatted message verbatim as raw bytes.
+    ///
+    /// - Parameters:
+    ///   - rawMessage: The complete RFC 822 message as `Data`.
+    ///   - sender: Sender address used for the SMTP `MAIL FROM` command.
+    ///   - recipients: Recipient addresses used for `RCPT TO` commands.
+    /// - Throws:
+    ///   - `SMTPError.connectionFailed` if not connected.
+    ///   - `SMTPError.sendFailed` if the server rejects the message.
     public func sendRawMessage(_ rawMessage: Data, from sender: EmailAddress, to recipients: [EmailAddress]) async throws {
         guard channel != nil else {
             throw SMTPError.connectionFailed("Not connected to SMTP server. Call connect() first.")
@@ -462,10 +474,6 @@ public actor SMTPServer {
 
         guard !recipients.isEmpty else {
             throw SMTPError.sendFailed("At least one recipient is required")
-        }
-
-        guard let content = String(data: rawMessage, encoding: .utf8) else {
-            throw SMTPError.sendFailed("Raw message data is not valid UTF-8")
         }
 
         let use8BitMIME = supports8BitMIME
@@ -485,7 +493,8 @@ public actor SMTPServer {
             let data = DataCommand()
             _ = try await executeCommand(data)
 
-            let sendContent = SendContentCommand(content: content)
+            // Send raw bytes directly without UTF-8 conversion
+            let sendContent = SendContentCommand(data: rawMessage)
             try await executeCommand(sendContent)
 
             logger.debug("Raw message sent successfully")
@@ -529,8 +538,8 @@ public actor SMTPServer {
 		// Generate a command tag for traceability
 		let commandTag = UUID().uuidString
 		
-		// Create the command string
-		let commandString = command.toCommandString()
+		// Get the command as raw bytes
+		let commandData = command.toCommandData()
 		
 		// Create the handler using standard initialization
 		let handler: any SMTPCommandHandler
@@ -555,8 +564,10 @@ public actor SMTPServer {
 			// Add the command handler to the pipeline
 			try await channel.pipeline.addHandler(handler).get()
 			
-			// Send the command to the server
-			let buffer = channel.allocator.buffer(string: commandString + "\r\n")
+			// Send the command to the server as raw bytes + CRLF
+			var buffer = channel.allocator.buffer(capacity: commandData.count + 2)
+			buffer.writeBytes(commandData)
+			buffer.writeBytes([0x0D, 0x0A]) // CRLF
 			try await channel.writeAndFlush(buffer).get()
 			
 			// Wait for the result

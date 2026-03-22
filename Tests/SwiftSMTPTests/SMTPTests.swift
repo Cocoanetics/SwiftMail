@@ -423,17 +423,18 @@ struct SMTPTests {
     }
 
     @Test
-    func testSendRawMessageRejectsInvalidUTF8() async {
+    func testSendRawMessageAcceptsArbitraryBytes() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
-        // Create invalid UTF-8 data
-        let invalidData = Data([0xFF, 0xFE, 0x00])
+        // Create data with bytes that are not valid UTF-8
+        // This should be accepted since sendRawMessage uses Data directly
+        let nonUTF8Data = Data([0xFF, 0xFE, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F]) // Invalid UTF-8 prefix + "Hello"
         let sender = EmailAddress(address: "sender@example.com")
         let recipient = EmailAddress(address: "recipient@example.com")
 
-        // Should fail because it's not connected, but the not-connected check
-        // happens before UTF-8 validation. We just verify no crash occurs.
+        // Should fail because it's not connected, but the important thing is
+        // that it doesn't fail due to UTF-8 validation (which we removed).
         await #expect(throws: SMTPError.self) {
-            try await server.sendRawMessage(invalidData, from: sender, to: [recipient])
+            try await server.sendRawMessage(nonUTF8Data, from: sender, to: [recipient])
         }
     }
 
