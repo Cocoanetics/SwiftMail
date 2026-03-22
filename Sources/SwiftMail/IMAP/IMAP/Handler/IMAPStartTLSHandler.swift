@@ -3,7 +3,7 @@ import Foundation
 import NIO
 
 /// Handler for IMAP STARTTLS command responses.
-final class STARTTLSHandler: BaseIMAPCommandHandler<Bool>, IMAPCommandHandler, @unchecked Sendable {
+final class IMAPStartTLSHandler: BaseIMAPCommandHandler<Bool>, IMAPCommandHandler, @unchecked Sendable {
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
         super.handleTaggedOKResponse(response)
         succeedWithResult(true)

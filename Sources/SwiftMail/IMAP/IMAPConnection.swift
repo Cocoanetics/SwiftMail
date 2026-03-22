@@ -181,6 +181,7 @@ final class IMAPConnection {
 
         let tlsTransportMode = try Self.resolveTLSTransportMode(port: port, useTLS: useTLS)
         let initialTLSMode = tlsTransportMode
+        let host = self.host
         let duplexLogger = self.duplexLogger
         let bootstrap = ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
@@ -194,7 +195,7 @@ final class IMAPConnection {
                 )
 
                 if case .implicitTLS = initialTLSMode {
-                    let sslHandler = try! Self.makeTLSHandler(for: channel, host: self.host)
+                    let sslHandler = try! Self.makeTLSHandler(for: channel, host: host)
                     try! channel.pipeline.syncOperations.addHandler(sslHandler)
                 }
 
@@ -490,7 +491,7 @@ final class IMAPConnection {
     }
 
     private func startTLS() async throws {
-        let command = STARTTLSCommand()
+        let command = IMAPStartTLSCommand()
         let accepted = try await executeCommandBody(command)
 
         guard accepted else {
@@ -501,8 +502,9 @@ final class IMAPConnection {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
 
+        let host = self.host
         try await channel.eventLoop.submit {
-            let sslHandler = try Self.makeTLSHandler(for: channel, host: self.host)
+            let sslHandler = try Self.makeTLSHandler(for: channel, host: host)
             try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
         }.get()
 
