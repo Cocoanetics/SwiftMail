@@ -10,6 +10,7 @@ struct IMAPNamedConnectionTests {
         let connection = IMAPConnection(
             host: "localhost",
             port: 1,
+            useTLS: false,
             group: group,
             loggerLabel: "test.imap",
             outboundLabel: "test.imap.out",
@@ -57,6 +58,7 @@ struct IMAPNamedConnectionTests {
         let connection = IMAPConnection(
             host: "localhost",
             port: 1,
+            useTLS: false,
             group: group,
             loggerLabel: "test.imap",
             outboundLabel: "test.imap.out",
