@@ -187,6 +187,14 @@ final class IMAPConnection {
         let initialTLSMode = tlsTransportMode
         let host = self.host
         let duplexLogger = self.duplexLogger
+        let responseBuffer = self.responseBuffer
+        
+        // Create greeting handler and promise before connecting so they can be installed
+        // in the channelInitializer. This prevents a race condition where the server
+        // greeting arrives before the handler is installed (especially in plaintext mode).
+        let greetingPromise = group.next().makePromise(of: [Capability].self)
+        let greetingHandler = IMAPGreetingHandler(commandTag: "", promise: greetingPromise)
+        
         let bootstrap = ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
@@ -206,7 +214,9 @@ final class IMAPConnection {
 
                     try channel.pipeline.syncOperations.addHandlers([
                         IMAPClientHandler(parserOptions: parserOptions),
-                        duplexLogger
+                        duplexLogger,
+                        greetingHandler,
+                        responseBuffer
                     ])
 
                     return channel.eventLoop.makeSucceededFuture(())
@@ -220,16 +230,24 @@ final class IMAPConnection {
         self.isSessionAuthenticated = false
         self.namespaces = nil
 
-        // Add the persistent untagged response buffer as the LAST handler in the pipeline.
-        // Transient command handlers are added BEFORE it (position: .before(responseBuffer)).
-        // channelRead flows first→last, so: command handler processes response → calls
-        // fireChannelRead → buffer sees it. When no command handler is active, responses
-        // flow directly to the buffer which captures them for later draining.
-        try await channel.pipeline.addHandler(responseBuffer).get()
-
         logger.info("\(connectionContext) Connected to IMAP server with 1MB buffer limit for large responses")
 
-        let greetingCapabilities: [Capability] = try await executeHandlerOnly(handlerType: IMAPGreetingHandler.self, timeoutSeconds: 5)
+        // Wait for the greeting with timeout
+        let timeoutTask = group.next().scheduleTask(in: .seconds(5)) {
+            greetingPromise.fail(IMAPError.timeout)
+        }
+        
+        let greetingCapabilities: [Capability]
+        do {
+            greetingCapabilities = try await greetingPromise.futureResult.get()
+            timeoutTask.cancel()
+            // Remove the greeting handler now that it's done
+            try? await channel.pipeline.removeHandler(greetingHandler).get()
+        } catch {
+            timeoutTask.cancel()
+            try? await channel.pipeline.removeHandler(greetingHandler).get()
+            throw error
+        }
         try await refreshCapabilities(using: greetingCapabilities)
 
         try await applyPostGreetingTLSPolicy(tlsTransportMode: tlsTransportMode, capabilities: Array(capabilities))
