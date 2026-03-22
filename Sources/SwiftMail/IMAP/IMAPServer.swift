@@ -3,6 +3,7 @@ import Logging
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
 import NIO
+import NIOSSL
 import OrderedCollections
 
 /**
@@ -32,10 +33,13 @@ public actor IMAPServer {
 
     /** The hostname of the IMAP server */
     private let host: String
-    
+
     /** The port number of the IMAP server */
     private let port: Int
-    
+
+    /** Whether to verify TLS certificates */
+    private let verifyCertificates: Bool
+
     /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
 
@@ -121,11 +125,12 @@ public actor IMAPServer {
      that may contain thousands of message IDs. This prevents PayloadTooLargeError when
      searching large mailboxes.
      */
-    public init(host: String, port: Int, numberOfThreads: Int = 1) {
+    public init(host: String, port: Int, verifyCertificates: Bool = true, numberOfThreads: Int = 1) {
         self.host = host
         self.port = port
+        self.verifyCertificates = verifyCertificates
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
-        
+
         // Initialize loggers
         self.logger = Logging.Logger(label: "com.cocoanetics.SwiftMail.IMAPServer")
 
@@ -135,6 +140,7 @@ public actor IMAPServer {
         self.primaryConnection = IMAPConnection(
             host: host,
             port: port,
+            certificateVerification: verifyCertificates ? .fullVerification : .none,
             group: group,
             loggerLabel: primaryLoggerLabel,
             outboundLabel: outboundLabel,
@@ -346,6 +352,7 @@ public actor IMAPServer {
         return IMAPConnection(
             host: host,
             port: port,
+            certificateVerification: verifyCertificates ? .fullVerification : .none,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,
@@ -367,6 +374,7 @@ public actor IMAPServer {
         return IMAPConnection(
             host: host,
             port: port,
+            certificateVerification: verifyCertificates ? .fullVerification : .none,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,

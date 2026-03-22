@@ -9,6 +9,7 @@ import NIOSSL
 final class IMAPConnection {
     private let host: String
     private let port: Int
+    private let certificateVerification: CertificateVerification
     private let group: EventLoopGroup
     private let connectionID: String
     private let connectionRole: String
@@ -29,6 +30,7 @@ final class IMAPConnection {
     init(
         host: String,
         port: Int,
+        certificateVerification: CertificateVerification = .fullVerification,
         group: EventLoopGroup,
         loggerLabel: String,
         outboundLabel: String,
@@ -38,6 +40,7 @@ final class IMAPConnection {
     ) {
         self.host = host
         self.port = port
+        self.certificateVerification = certificateVerification
         self.group = group
         self.connectionID = connectionID
         self.connectionRole = connectionRole
@@ -133,7 +136,9 @@ final class IMAPConnection {
         idleHandler = nil
         idleTerminationInProgress = false
 
-        let sslContext = try NIOSSLContext(configuration: TLSConfiguration.makeClientConfiguration())
+        var tlsConfig = TLSConfiguration.makeClientConfiguration()
+        tlsConfig.certificateVerification = self.certificateVerification
+        let sslContext = try NIOSSLContext(configuration: tlsConfig)
         let host = self.host
 
         let duplexLogger = self.duplexLogger
