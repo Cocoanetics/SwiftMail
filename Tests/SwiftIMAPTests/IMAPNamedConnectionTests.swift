@@ -30,14 +30,15 @@ struct IMAPNamedConnectionTests {
 
     @Test
     func lastActivityRemainsNilAfterFailedCommand() async {
-        // Authentication closure throws, so executeCommand never reaches the
-        // connection.executeCommand(_:) call, and lastActivity must stay nil.
+        // Authentication closure throws before executeCommand reaches the
+        // underlying connection, so lastActivity must stay nil and no transport
+        // should be opened.
         let named = makeConnection(authenticate: { _ in
             throw IMAPError.authFailed("auth error")
         })
 
         do {
-            try await named.fetchCapabilities()
+            _ = try await named.noop()
         } catch {
             // expected – authentication throws before any command reaches the server
         }
