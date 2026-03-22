@@ -1499,7 +1499,16 @@ public actor IMAPServer {
         return try await primaryConnection.executeCommand(command)
     }
 
-    private func append(rawMessage: String, to mailbox: String, flags: [Flag], internalDate: Date?) async throws -> AppendResult {
+    /// Append a raw RFC 822 message to a mailbox.
+    ///
+    /// - Parameters:
+    ///   - rawMessage: The complete RFC 822 message as a string.
+    ///   - mailbox: The destination mailbox path (e.g. "Sent").
+    ///   - flags: Flags to set on the appended message.
+    ///   - internalDate: Optional internal date to store on the server.
+    /// - Returns: ``AppendResult`` describing server-assigned identifiers.
+    @discardableResult
+    public func append(rawMessage: String, to mailbox: String, flags: [Flag], internalDate: Date?) async throws -> AppendResult {
         if let limit = capabilities.globalAppendLimit {
             let payloadSize = rawMessage.utf8.count
             if payloadSize > limit {
@@ -2015,6 +2024,106 @@ extension IMAPServer {
         draft.additionalHeaders = headers
 
         return try await append(email: draft, to: targetMailbox, flags: flags, internalDate: date)
+    }
+
+    /// Send a draft message via SMTP and move it to the Sent folder.
+    ///
+    /// This method orchestrates the full send-draft workflow:
+    /// 1. Selects the draft mailbox and fetches the raw message + envelope info.
+    /// 2. Sends the raw message via the provided ``SMTPServer``.
+    /// 3. Appends the message to the Sent folder with the `\Seen` flag and current date.
+    /// 4. Marks the draft as `\Deleted` and expunges it (UID EXPUNGE when available).
+    ///
+    /// - Parameters:
+    ///   - draftUID: UID of the draft message.
+    ///   - smtp: A connected and authenticated ``SMTPServer``.
+    ///   - draftMailbox: Source mailbox (default: `"Drafts"`).
+    ///   - sentMailbox: Destination mailbox (default: `"Sent"`).
+    /// - Returns: The UID of the message in the Sent folder, if the server supports UIDPLUS.
+    @discardableResult
+    public func sendDraft(
+        uid draftUID: UID,
+        via smtp: SMTPServer,
+        from draftMailbox: String = "Drafts",
+        to sentMailbox: String = "Sent"
+    ) async throws -> UID? {
+        // 1. Select the drafts mailbox
+        try await selectMailbox(draftMailbox)
+
+        // 2. Fetch raw message and envelope info
+        let rawMessageData = try await fetchRawMessage(identifier: draftUID)
+
+        guard let messageInfo = try await fetchMessageInfo(for: draftUID) else {
+            throw IMAPError.fetchFailed("Could not fetch message info for draft UID \(draftUID.value)")
+        }
+
+        // 3. Extract sender and recipients from the envelope
+        guard let senderString = messageInfo.from else {
+            throw IMAPError.invalidArgument("Draft has no sender address")
+        }
+        let sender = Self.parseEmailAddress(from: senderString)
+
+        var recipientStrings: [String] = []
+        recipientStrings.append(contentsOf: messageInfo.to)
+        recipientStrings.append(contentsOf: messageInfo.cc)
+        recipientStrings.append(contentsOf: messageInfo.bcc)
+
+        guard !recipientStrings.isEmpty else {
+            throw IMAPError.invalidArgument("Draft has no recipients")
+        }
+
+        let recipients = recipientStrings.map { Self.parseEmailAddress(from: $0) }
+
+        // 4. Send via SMTP
+        try await smtp.sendRawMessage(rawMessageData, from: sender, to: recipients)
+
+        // 5. Append to Sent folder with \Seen flag
+        var rawMessageString = String(decoding: rawMessageData, as: UTF8.self)
+        rawMessageString = canonicalizeCRLF(rawMessageString)
+        if !rawMessageString.hasSuffix("\r\n") {
+            rawMessageString.append("\r\n")
+        }
+
+        let appendResult = try await append(
+            rawMessage: rawMessageString,
+            to: sentMailbox,
+            flags: [.seen],
+            internalDate: Date()
+        )
+
+        // 6. Delete the draft and expunge
+        let draftUIDSet = UIDSet(draftUID)
+        try await store(flags: [.deleted], on: draftUIDSet, operation: .add)
+
+        if supportsUIDPlus {
+            try await expunge(messages: draftUIDSet)
+        } else {
+            try await expunge()
+        }
+
+        return appendResult.firstUID
+    }
+
+    /// Parse an address string like `"Name <email@example.com>"` or `"email@example.com"` into an ``EmailAddress``.
+    static func parseEmailAddress(from addressString: String) -> EmailAddress {
+        let trimmed = addressString.trimmingCharacters(in: .whitespaces)
+
+        // Try to extract "Name <address>" format
+        if let angleBracketStart = trimmed.lastIndex(of: "<"),
+           let angleBracketEnd = trimmed.lastIndex(of: ">"),
+           angleBracketStart < angleBracketEnd {
+            let address = String(trimmed[trimmed.index(after: angleBracketStart)..<angleBracketEnd])
+                .trimmingCharacters(in: .whitespaces)
+            let namePart = String(trimmed[trimmed.startIndex..<angleBracketStart])
+                .trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+
+            let name = namePart.isEmpty ? nil : namePart
+            return EmailAddress(name: name, address: address)
+        }
+
+        // Plain address
+        return EmailAddress(address: trimmed)
     }
 }
 

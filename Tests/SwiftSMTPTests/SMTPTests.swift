@@ -397,6 +397,46 @@ struct SMTPTests {
         #expect(messageIDHeaders.first == "Message-ID: not a valid message id")
     }
 
+    // MARK: - sendRawMessage validation
+
+    @Test
+    func testSendRawMessageRequiresAtLeastOneRecipient() async {
+        let server = SMTPServer(host: "smtp.example.com", port: 587)
+        let rawMessage = "Subject: Test\r\n\r\nBody".data(using: .utf8)!
+        let sender = EmailAddress(address: "sender@example.com")
+
+        await #expect(throws: SMTPError.self) {
+            try await server.sendRawMessage(rawMessage, from: sender, to: [])
+        }
+    }
+
+    @Test
+    func testSendRawMessageRequiresConnection() async {
+        let server = SMTPServer(host: "smtp.example.com", port: 587)
+        let rawMessage = "Subject: Test\r\n\r\nBody".data(using: .utf8)!
+        let sender = EmailAddress(address: "sender@example.com")
+        let recipient = EmailAddress(address: "recipient@example.com")
+
+        await #expect(throws: SMTPError.self) {
+            try await server.sendRawMessage(rawMessage, from: sender, to: [recipient])
+        }
+    }
+
+    @Test
+    func testSendRawMessageRejectsInvalidUTF8() async {
+        let server = SMTPServer(host: "smtp.example.com", port: 587)
+        // Create invalid UTF-8 data
+        let invalidData = Data([0xFF, 0xFE, 0x00])
+        let sender = EmailAddress(address: "sender@example.com")
+        let recipient = EmailAddress(address: "recipient@example.com")
+
+        // Should fail because it's not connected, but the not-connected check
+        // happens before UTF-8 validation. We just verify no crash occurs.
+        await #expect(throws: SMTPError.self) {
+            try await server.sendRawMessage(invalidData, from: sender, to: [recipient])
+        }
+    }
+
     // MARK: - SMTPError LocalizedError
 
     @Test

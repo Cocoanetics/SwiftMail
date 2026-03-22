@@ -441,6 +441,58 @@ public actor SMTPServer {
         }
     }
     
+    /// Send a pre-built RFC 822 message (e.g., a draft fetched from IMAP).
+    ///
+    /// Unlike ``sendEmail(_:)`` which constructs the MIME body from an ``Email``
+    /// struct, this method transmits an already-formatted message verbatim.
+    ///
+    /// - Parameters:
+    ///   - rawMessage: The complete RFC 822 message as `Data`.
+    ///   - sender: Sender address used for the SMTP `MAIL FROM` command.
+    ///   - recipients: Recipient addresses used for `RCPT TO` commands.
+    /// - Throws:
+    ///   - `SMTPError.connectionFailed` if not connected.
+    ///   - `SMTPError.sendFailed` if the server rejects the message.
+    public func sendRawMessage(_ rawMessage: Data, from sender: EmailAddress, to recipients: [EmailAddress]) async throws {
+        guard channel != nil else {
+            throw SMTPError.connectionFailed("Not connected to SMTP server. Call connect() first.")
+        }
+
+        guard !recipients.isEmpty else {
+            throw SMTPError.sendFailed("At least one recipient is required")
+        }
+
+        guard let content = String(data: rawMessage, encoding: .utf8) else {
+            throw SMTPError.sendFailed("Raw message data is not valid UTF-8")
+        }
+
+        let use8BitMIME = supports8BitMIME
+
+        do {
+            let mailFrom = try MailFromCommand(
+                senderAddress: sender.address,
+                use8BitMIME: use8BitMIME
+            )
+            _ = try await executeCommand(mailFrom)
+
+            for recipient in recipients {
+                let rcptTo = try RcptToCommand(recipientAddress: recipient.address)
+                _ = try await executeCommand(rcptTo)
+            }
+
+            let data = DataCommand()
+            _ = try await executeCommand(data)
+
+            let sendContent = SendContentCommand(content: content)
+            try await executeCommand(sendContent)
+
+            logger.debug("Raw message sent successfully")
+        } catch {
+            logger.error("Failed to send raw message: \(error)")
+            throw error
+        }
+    }
+
     // MARK: - Helper Methods
     
 	/**
