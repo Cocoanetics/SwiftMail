@@ -81,7 +81,7 @@ public actor SMTPServer {
 
     struct PreparedEmailForSend {
         let use8BitMIME: Bool
-        let content: String
+        let contentData: Data
         let emailSizeOctets: Int
         let mailFromMessageSizeOctets: Int?
     }
@@ -431,7 +431,7 @@ public actor SMTPServer {
             _ = try await executeCommand(data)
             
             // Send content
-            let sendContent = SendContentCommand(content: preparedEmail.content)
+            let sendContent = SendContentCommand(data: preparedEmail.contentData)
             try await executeCommand(sendContent)
             
             self.logger.debug("Email sent successfully")
@@ -792,7 +792,7 @@ public actor SMTPServer {
 
         return PreparedEmailForSend(
             use8BitMIME: use8BitMIME,
-            content: preparedContent.content,
+            contentData: preparedContent.contentData,
             emailSizeOctets: preparedContent.messageSizeOctets,
             mailFromMessageSizeOctets: maximumMessageSizeOctets == nil ? nil : preparedContent.messageSizeOctets
         )

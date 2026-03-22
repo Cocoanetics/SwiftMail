@@ -19,15 +19,6 @@ struct SendContentCommand: SMTPCommand {
 	let timeoutSeconds: Int = 10
     
     /**
-     Initialize a new SendContent command with string content
-     - Parameters:
-        - content: The fully constructed MIME message content as a string
-     */
-	init(content: String) {
-        self.contentData = Data(content.utf8)
-    }
-    
-    /**
      Initialize a new SendContent command with raw data
      - Parameters:
         - data: The fully constructed MIME message content as raw bytes
@@ -49,7 +40,7 @@ struct SendContentCommand: SMTPCommand {
     
     /**
      Convert the command to a string that can be sent to the server
-     - Note: For backwards compatibility. Prefer `toCommandData()` for raw byte handling.
+     - Note: Prefer `toCommandData()` for raw byte handling.
      */
 	func toCommandString() -> String {
         // Decode as UTF-8 (lossy for non-UTF-8 content)
