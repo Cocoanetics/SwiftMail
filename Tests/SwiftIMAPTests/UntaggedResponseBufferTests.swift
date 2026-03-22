@@ -8,8 +8,7 @@ import Testing
 struct UntaggedResponseBufferTests {
     @Test
     func testTracksBufferedByeAsTerminationSignal() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -18,7 +17,7 @@ struct UntaggedResponseBufferTests {
 
         var byeLine = channel.allocator.buffer(capacity: 0)
         byeLine.writeString("* BYE connection timeout\r\n")
-        try channel.writeInbound(byeLine)
+        try await channel.writeInbound(byeLine)
 
         #expect(buffer.hasBufferedConnectionTermination)
 

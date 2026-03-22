@@ -35,7 +35,6 @@ struct XOAUTH2AuthenticationHandlerTests {
     @Test
     func testSASLIRSuccess() async throws {
         let (channel, promise, _) = try await setUpChannel(tag: "A001", expectsChallenge: false)
-        defer { _ = try? channel.finish() }
 
         let command = TaggedCommand(
             tag: "A001",
@@ -47,7 +46,7 @@ struct XOAUTH2AuthenticationHandlerTests {
 
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(command)))
 
-        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected AUTHENTICATE command")
             return
         }
@@ -57,7 +56,7 @@ struct XOAUTH2AuthenticationHandlerTests {
 
         var okBuffer = channel.allocator.buffer(capacity: 0)
         okBuffer.writeString("A001 OK AUTHENTICATE completed\r\n")
-        try channel.writeInbound(okBuffer)
+        try await channel.writeInbound(okBuffer)
 
         let capabilities = try await promise.futureResult.get()
         #expect(capabilities.isEmpty)
@@ -66,7 +65,6 @@ struct XOAUTH2AuthenticationHandlerTests {
     @Test
     func testFallbackWithoutSASLIR() async throws {
         let (channel, promise, _) = try await setUpChannel(tag: "A002", expectsChallenge: true)
-        defer { _ = try? channel.finish() }
 
         let command = TaggedCommand(
             tag: "A002",
@@ -78,7 +76,7 @@ struct XOAUTH2AuthenticationHandlerTests {
 
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(command)))
 
-        guard var firstOutbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var firstOutbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected AUTHENTICATE command")
             return
         }
@@ -87,9 +85,9 @@ struct XOAUTH2AuthenticationHandlerTests {
 
         var challengeBuffer = channel.allocator.buffer(capacity: 0)
         challengeBuffer.writeString("+ \r\n")
-        try channel.writeInbound(challengeBuffer)
+        try await channel.writeInbound(challengeBuffer)
 
-        guard var continuation = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var continuation = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected XOAUTH2 continuation data")
             return
         }
@@ -99,7 +97,7 @@ struct XOAUTH2AuthenticationHandlerTests {
 
         var okBuffer = channel.allocator.buffer(capacity: 0)
         okBuffer.writeString("A002 OK AUTHENTICATE completed\r\n")
-        try channel.writeInbound(okBuffer)
+        try await channel.writeInbound(okBuffer)
 
         let capabilities = try await promise.futureResult.get()
         #expect(capabilities.isEmpty)
@@ -109,7 +107,6 @@ struct XOAUTH2AuthenticationHandlerTests {
     @Test
     func testSASLIRServerSendsEmptyChallengeRetriesCredentials() async throws {
         let (channel, promise, _) = try await setUpChannel(tag: "A002A", expectsChallenge: false)
-        defer { _ = try? channel.finish() }
 
         let command = TaggedCommand(
             tag: "A002A",
@@ -121,7 +118,7 @@ struct XOAUTH2AuthenticationHandlerTests {
 
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(command)))
 
-        guard var firstOutbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var firstOutbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected AUTHENTICATE command")
             return
         }
@@ -131,9 +128,9 @@ struct XOAUTH2AuthenticationHandlerTests {
 
         var challengeBuffer = channel.allocator.buffer(capacity: 0)
         challengeBuffer.writeString("+ \r\n")
-        try channel.writeInbound(challengeBuffer)
+        try await channel.writeInbound(challengeBuffer)
 
-        guard var continuation = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var continuation = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected XOAUTH2 continuation retry data")
             return
         }
@@ -142,7 +139,7 @@ struct XOAUTH2AuthenticationHandlerTests {
 
         var okBuffer = channel.allocator.buffer(capacity: 0)
         okBuffer.writeString("A002A OK AUTHENTICATE completed\r\n")
-        try channel.writeInbound(okBuffer)
+        try await channel.writeInbound(okBuffer)
 
         let capabilities = try await promise.futureResult.get()
         #expect(capabilities.isEmpty)
@@ -151,7 +148,6 @@ struct XOAUTH2AuthenticationHandlerTests {
     @Test
     func testServerErrorBlobTriggersAuthFailure() async throws {
         let (channel, promise, _) = try await setUpChannel(tag: "A003", expectsChallenge: false)
-        defer { _ = try? channel.finish() }
 
         let command = TaggedCommand(
             tag: "A003",
@@ -163,13 +159,13 @@ struct XOAUTH2AuthenticationHandlerTests {
 
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(command)))
 
-        _ = try channel.readOutbound(as: ByteBuffer.self) // discard AUTH line
+        _ = try await channel.readOutbound(as: ByteBuffer.self) // discard AUTH line
 
         var challengeBuffer = channel.allocator.buffer(capacity: 0)
         challengeBuffer.writeString("+ eyJzdGF0dXMiOiI0MDEiLCJtZXNzYWdlIjoiSW52YWxpZCB0b2tlbiJ9\r\n")
-        try channel.writeInbound(challengeBuffer)
+        try await channel.writeInbound(challengeBuffer)
 
-        guard var responseBuffer = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var responseBuffer = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected empty continuation response")
             return
         }
@@ -178,7 +174,7 @@ struct XOAUTH2AuthenticationHandlerTests {
 
         var noBuffer = channel.allocator.buffer(capacity: 0)
         noBuffer.writeString("A003 NO AUTHENTICATE failed\r\n")
-        try channel.writeInbound(noBuffer)
+        try await channel.writeInbound(noBuffer)
 
         do {
             _ = try await promise.futureResult.get()
@@ -198,7 +194,6 @@ struct XOAUTH2AuthenticationHandlerTests {
     @Test
     func testDirectNOFailsAuthentication() async throws {
         let (channel, promise, _) = try await setUpChannel(tag: "A004", expectsChallenge: false)
-        defer { _ = try? channel.finish() }
 
         let command = TaggedCommand(
             tag: "A004",
@@ -209,11 +204,11 @@ struct XOAUTH2AuthenticationHandlerTests {
         )
 
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(command)))
-        _ = try channel.readOutbound(as: ByteBuffer.self)
+        _ = try await channel.readOutbound(as: ByteBuffer.self)
 
         var noBuffer = channel.allocator.buffer(capacity: 0)
         noBuffer.writeString("A004 NO AUTHENTICATE failed\r\n")
-        try channel.writeInbound(noBuffer)
+        try await channel.writeInbound(noBuffer)
 
         do {
             _ = try await promise.futureResult.get()
@@ -243,7 +238,7 @@ struct XOAUTH2AuthenticationHandlerTests {
         )
 
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(command)))
-        _ = try channel.readOutbound(as: ByteBuffer.self)
+        _ = try await channel.readOutbound(as: ByteBuffer.self)
 
         try await channel.close().get()
 
@@ -264,7 +259,6 @@ struct XOAUTH2AuthenticationHandlerTests {
     @Test
     func testInactiveChannelDuringContinuationSendFailsPromptly() async throws {
         let (channel, promise, _) = try await setUpChannel(tag: "A006", expectsChallenge: true, failContinuationWrite: true)
-        defer { _ = try? channel.finish() }
 
         let command = TaggedCommand(
             tag: "A006",
@@ -275,11 +269,11 @@ struct XOAUTH2AuthenticationHandlerTests {
         )
 
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(command)))
-        _ = try channel.readOutbound(as: ByteBuffer.self)
+        _ = try await channel.readOutbound(as: ByteBuffer.self)
 
         var challengeBuffer = channel.allocator.buffer(capacity: 0)
         challengeBuffer.writeString("+ \r\n")
-        try channel.writeInbound(challengeBuffer)
+        try await channel.writeInbound(challengeBuffer)
 
         do {
             _ = try await withTimeout(seconds: 1.0) {
@@ -310,8 +304,8 @@ struct XOAUTH2AuthenticationHandlerTests {
         }
     }
 
-    private func setUpChannel(tag: String, expectsChallenge: Bool, failContinuationWrite: Bool = false) async throws -> (EmbeddedChannel, EventLoopPromise<[Capability]>, XOAUTH2AuthenticationHandler) {
-        let channel = EmbeddedChannel()
+    private func setUpChannel(tag: String, expectsChallenge: Bool, failContinuationWrite: Bool = false) async throws -> (NIOAsyncTestingChannel, EventLoopPromise<[Capability]>, XOAUTH2AuthenticationHandler) {
+        let channel = NIOAsyncTestingChannel()
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
         if failContinuationWrite {

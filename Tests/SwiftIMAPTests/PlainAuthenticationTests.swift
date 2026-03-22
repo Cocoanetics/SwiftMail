@@ -14,8 +14,7 @@ struct PlainAuthenticationTests {
     func testPlainCredentialBufferFormat() async throws {
         // RFC 4616: message = [authzid] UTF8NUL authcid UTF8NUL passwd
         // We use empty authzid, so: \0 username \0 password
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         var buffer = channel.allocator.buffer(capacity: 32)
         buffer.writeInteger(UInt8(0x00))
@@ -39,8 +38,7 @@ struct PlainAuthenticationTests {
 
     @Test
     func testHandlerSucceedsOnTaggedOK() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -56,24 +54,21 @@ struct PlainAuthenticationTests {
         )
         try await channel.pipeline.addHandler(handler)
 
-        // Send AUTHENTICATE command to keep pipeline happy
         let command = TaggedCommand(tag: "A001", command: .noop)
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(command)))
-        _ = try channel.readOutbound(as: ByteBuffer.self)
+        _ = try await channel.readOutbound(as: ByteBuffer.self)
 
-        // Server responds OK
         var okBuffer = channel.allocator.buffer(capacity: 64)
         okBuffer.writeString("A001 OK AUTHENTICATE completed\r\n")
-        try channel.writeInbound(okBuffer)
+        try await channel.writeInbound(okBuffer)
 
         let caps = try await promise.futureResult.get()
-        #expect(caps.isEmpty) // No capabilities in response
+        #expect(caps.isEmpty)
     }
 
     @Test
     func testHandlerFailsOnTaggedNO() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -91,12 +86,11 @@ struct PlainAuthenticationTests {
 
         let command = TaggedCommand(tag: "A002", command: .noop)
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(command)))
-        _ = try channel.readOutbound(as: ByteBuffer.self)
+        _ = try await channel.readOutbound(as: ByteBuffer.self)
 
-        // Server responds NO
         var noBuffer = channel.allocator.buffer(capacity: 64)
         noBuffer.writeString("A002 NO [AUTHENTICATIONFAILED] Invalid credentials\r\n")
-        try channel.writeInbound(noBuffer)
+        try await channel.writeInbound(noBuffer)
 
         do {
             _ = try await promise.futureResult.get()

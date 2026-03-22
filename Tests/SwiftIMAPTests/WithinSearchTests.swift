@@ -9,8 +9,7 @@ import Testing
 struct WithinSearchTests {
     @Test
     func testYoungerSearchKeyWireFormat() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -19,7 +18,7 @@ struct WithinSearchTests {
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
 
-        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound bytes")
             return
         }
@@ -31,8 +30,7 @@ struct WithinSearchTests {
 
     @Test
     func testOlderSearchKeyWireFormat() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -41,7 +39,7 @@ struct WithinSearchTests {
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
 
-        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound bytes")
             return
         }
@@ -53,8 +51,7 @@ struct WithinSearchTests {
 
     @Test
     func testWithinCriteriaWithExtendedSearch() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -63,7 +60,7 @@ struct WithinSearchTests {
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
 
-        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound bytes")
             return
         }
@@ -76,8 +73,7 @@ struct WithinSearchTests {
 
     @Test
     func testCombinedWithinAndOtherCriteria() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -86,7 +82,7 @@ struct WithinSearchTests {
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
 
-        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound bytes")
             return
         }

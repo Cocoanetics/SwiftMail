@@ -9,8 +9,7 @@ import Testing
 struct IdleHandlerTests {
     @Test
     func testIdleStartedKeepsHandlerActiveUntilTaggedOK() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -31,7 +30,7 @@ struct IdleHandlerTests {
         let idleStart = TaggedCommand(tag: "A001", command: .idleStart)
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(idleStart)))
 
-        guard var idleCommandLine = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var idleCommandLine = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound IDLE command")
             return
         }
@@ -39,14 +38,14 @@ struct IdleHandlerTests {
 
         var idleConfirmation = channel.allocator.buffer(capacity: 0)
         idleConfirmation.writeString("+ idling\r\n")
-        try channel.writeInbound(idleConfirmation)
+        try await channel.writeInbound(idleConfirmation)
 
         #expect(!handler.isCompleted)
         #expect(handler.hasEnteredIdleState)
 
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.idleDone))
 
-        guard var doneLine = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var doneLine = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound DONE command")
             return
         }
@@ -54,7 +53,7 @@ struct IdleHandlerTests {
 
         var taggedOK = channel.allocator.buffer(capacity: 0)
         taggedOK.writeString("A001 OK Idle terminated\r\n")
-        try channel.writeInbound(taggedOK)
+        try await channel.writeInbound(taggedOK)
 
         try await promise.futureResult.get()
         #expect(handler.isCompleted)
@@ -62,8 +61,7 @@ struct IdleHandlerTests {
 
     @Test
     func testByeDuringIdleCompletesWithoutDoneOrTaggedOK() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -86,7 +84,7 @@ struct IdleHandlerTests {
         let idleStart = TaggedCommand(tag: "A001", command: .idleStart)
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(idleStart)))
 
-        guard var idleCommandLine = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var idleCommandLine = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound IDLE command")
             return
         }
@@ -94,11 +92,11 @@ struct IdleHandlerTests {
 
         var idleConfirmation = channel.allocator.buffer(capacity: 0)
         idleConfirmation.writeString("+ idling\r\n")
-        try channel.writeInbound(idleConfirmation)
+        try await channel.writeInbound(idleConfirmation)
 
         var byeLine = channel.allocator.buffer(capacity: 0)
         byeLine.writeString("* BYE Disconnected for inactivity.\r\n")
-        try channel.writeInbound(byeLine)
+        try await channel.writeInbound(byeLine)
 
         try await promise.futureResult.get()
         #expect(handler.isCompleted)
@@ -112,7 +110,7 @@ struct IdleHandlerTests {
 
         let secondEvent = await iterator.next()
         #expect(secondEvent == nil)
-        let outboundAfterBye = try channel.readOutbound(as: ByteBuffer.self)
+        let outboundAfterBye = try await channel.readOutbound(as: ByteBuffer.self)
         if case .some = outboundAfterBye {
             Issue.record("Did not expect outbound data after BYE")
         }

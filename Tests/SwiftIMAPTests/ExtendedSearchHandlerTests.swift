@@ -6,7 +6,6 @@ import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
-// Disambiguate SwiftMail types from NIOIMAPCore types with the same name.
 private typealias UID = SwiftMail.UID
 private typealias SequenceNumber = SwiftMail.SequenceNumber
 
@@ -14,8 +13,7 @@ struct ExtendedSearchHandlerTests {
 
     // MARK: - Helpers
 
-    /// Sends a tagged search command outbound so the IMAPClientHandler registers the tag.
-    private func sendSearchCommand(on channel: EmbeddedChannel, tag: String, useUID: Bool, useEsearch: Bool, partialRange: NIOIMAPCore.PartialRange? = nil) async throws {
+    private func sendSearchCommand(on channel: NIOAsyncTestingChannel, tag: String, useUID: Bool, useEsearch: Bool, partialRange: NIOIMAPCore.PartialRange? = nil) async throws {
         let key = NIOIMAPCore.SearchKey.all
         var returnOptions: [NIOIMAPCore.SearchReturnOption] = []
         if useEsearch {
@@ -31,16 +29,14 @@ struct ExtendedSearchHandlerTests {
         let tagged = NIOIMAPCore.TaggedCommand(tag: tag, command: command)
         let wrapped = IMAPClientHandler.OutboundIn.part(NIOIMAPCore.CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
-        // Discard the outbound wire bytes.
-        _ = try channel.readOutbound(as: ByteBuffer.self)
+        _ = try await channel.readOutbound(as: ByteBuffer.self)
     }
 
     // MARK: - ESEARCH response (UID search)
 
     @Test
     func testEsearchResponseUID() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -48,17 +44,15 @@ struct ExtendedSearchHandlerTests {
         let handler = ExtendedSearchHandler<UID>(commandTag: "A001", promise: promise)
         try await channel.pipeline.addHandler(handler)
 
-        // Register the tag with IMAPClientHandler by sending the command outbound.
         try await sendSearchCommand(on: channel, tag: "A001", useUID: true, useEsearch: true)
 
-        // Feed: * ESEARCH (TAG "A001") UID COUNT 3 MIN 4 MAX 10 ALL 4,7,10
         var esearchResponse = channel.allocator.buffer(capacity: 64)
         esearchResponse.writeString("* ESEARCH (TAG \"A001\") UID COUNT 3 MIN 4 MAX 10 ALL 4,7,10\r\n")
-        try channel.writeInbound(esearchResponse)
+        try await channel.writeInbound(esearchResponse)
 
         var taggedOK = channel.allocator.buffer(capacity: 64)
         taggedOK.writeString("A001 OK Extended search completed\r\n")
-        try channel.writeInbound(taggedOK)
+        try await channel.writeInbound(taggedOK)
 
         let result = try await promise.futureResult.get()
 
@@ -78,8 +72,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testEsearchResponseSequenceNumber() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -89,14 +82,13 @@ struct ExtendedSearchHandlerTests {
 
         try await sendSearchCommand(on: channel, tag: "A002", useUID: false, useEsearch: true)
 
-        // Feed: * ESEARCH COUNT 2 MIN 1 MAX 5 ALL 1,5
         var esearchResponse = channel.allocator.buffer(capacity: 64)
         esearchResponse.writeString("* ESEARCH COUNT 2 MIN 1 MAX 5 ALL 1,5\r\n")
-        try channel.writeInbound(esearchResponse)
+        try await channel.writeInbound(esearchResponse)
 
         var taggedOK = channel.allocator.buffer(capacity: 64)
         taggedOK.writeString("A002 OK Search complete\r\n")
-        try channel.writeInbound(taggedOK)
+        try await channel.writeInbound(taggedOK)
 
         let result = try await promise.futureResult.get()
 
@@ -110,8 +102,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testFallbackPlainSearch() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -119,21 +110,18 @@ struct ExtendedSearchHandlerTests {
         let handler = ExtendedSearchHandler<UID>(commandTag: "A003", promise: promise)
         try await channel.pipeline.addHandler(handler)
 
-        // Send plain UID SEARCH (no RETURN options) — simulates fallback.
         try await sendSearchCommand(on: channel, tag: "A003", useUID: true, useEsearch: false)
 
-        // Feed: * SEARCH 4 7 10  (plain SEARCH fallback, no ESEARCH)
         var searchResponse = channel.allocator.buffer(capacity: 32)
         searchResponse.writeString("* SEARCH 4 7 10\r\n")
-        try channel.writeInbound(searchResponse)
+        try await channel.writeInbound(searchResponse)
 
         var taggedOK = channel.allocator.buffer(capacity: 32)
         taggedOK.writeString("A003 OK Search complete\r\n")
-        try channel.writeInbound(taggedOK)
+        try await channel.writeInbound(taggedOK)
 
         let result = try await promise.futureResult.get()
 
-        // Synthesised from plain SEARCH: count, min, max, all should be populated
         #expect(result.count == 3)
         #expect(result.min?.value == 4)
         #expect(result.max?.value == 10)
@@ -144,8 +132,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testEsearchEmptyResult() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -155,14 +142,13 @@ struct ExtendedSearchHandlerTests {
 
         try await sendSearchCommand(on: channel, tag: "A004", useUID: true, useEsearch: true)
 
-        // Feed: * ESEARCH (TAG "A004") UID COUNT 0  (no matches)
         var esearchResponse = channel.allocator.buffer(capacity: 64)
         esearchResponse.writeString("* ESEARCH (TAG \"A004\") UID COUNT 0\r\n")
-        try channel.writeInbound(esearchResponse)
+        try await channel.writeInbound(esearchResponse)
 
         var taggedOK = channel.allocator.buffer(capacity: 32)
         taggedOK.writeString("A004 OK Search complete\r\n")
-        try channel.writeInbound(taggedOK)
+        try await channel.writeInbound(taggedOK)
 
         let result = try await promise.futureResult.get()
 
@@ -176,8 +162,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testCommandWireFormatWithEsearch() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -186,13 +171,12 @@ struct ExtendedSearchHandlerTests {
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
 
-        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound bytes")
             return
         }
         let wireString = outbound.readString(length: outbound.readableBytes) ?? ""
 
-        // UID SEARCH with RETURN options for ESEARCH
         #expect(wireString.contains("UID SEARCH"))
         #expect(wireString.contains("RETURN"))
         #expect(wireString.contains("COUNT"))
@@ -203,8 +187,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testCommandWireFormatWithoutEsearch() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -213,21 +196,19 @@ struct ExtendedSearchHandlerTests {
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
 
-        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound bytes")
             return
         }
         let wireString = outbound.readString(length: outbound.readableBytes) ?? ""
 
-        // Plain UID SEARCH without RETURN options when ESEARCH is unavailable
         #expect(wireString.contains("UID SEARCH"))
         #expect(!wireString.contains("RETURN"))
     }
 
     @Test
     func testCommandWireFormatSequenceNumberWithEsearch() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -236,13 +217,12 @@ struct ExtendedSearchHandlerTests {
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
 
-        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound bytes")
             return
         }
         let wireString = outbound.readString(length: outbound.readableBytes) ?? ""
 
-        // Sequence number SEARCH (not UID SEARCH) with RETURN options
         #expect(!wireString.contains("UID SEARCH"))
         #expect(wireString.contains("SEARCH"))
         #expect(wireString.contains("RETURN"))
@@ -250,8 +230,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testIdentifierSetScopeIsIncludedInUIDSearch() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -261,21 +240,19 @@ struct ExtendedSearchHandlerTests {
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
 
-        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound bytes")
             return
         }
         let wireString = outbound.readString(length: outbound.readableBytes) ?? ""
 
-        // UID scope key must appear in the command so the search is restricted to the set
         #expect(wireString.contains("UID SEARCH"))
         #expect(wireString.contains("UID 1:3") || wireString.contains("UID 1,2,3"))
     }
 
     @Test
     func testNoIdentifierSetSearchesEntireMailbox() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -284,13 +261,12 @@ struct ExtendedSearchHandlerTests {
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
 
-        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound bytes")
             return
         }
         let wireString = outbound.readString(length: outbound.readableBytes) ?? ""
 
-        // Without identifier set, no UID scope key — just the criteria
         #expect(wireString.contains("UID SEARCH"))
         #expect(wireString.contains("RETURN"))
         #expect(!wireString.contains("UID 1"))
@@ -300,8 +276,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testEsearchPartialResponse() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -312,19 +287,18 @@ struct ExtendedSearchHandlerTests {
         let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1...100))
         try await sendSearchCommand(on: channel, tag: "A007", useUID: true, useEsearch: true, partialRange: partialRange)
 
-        // Feed: * ESEARCH (TAG "A007") UID COUNT 3 PARTIAL (1:100 4,7,10)
         var esearchResponse = channel.allocator.buffer(capacity: 64)
         esearchResponse.writeString("* ESEARCH (TAG \"A007\") UID COUNT 3 PARTIAL (1:100 4,7,10)\r\n")
-        try channel.writeInbound(esearchResponse)
+        try await channel.writeInbound(esearchResponse)
 
         var taggedOK = channel.allocator.buffer(capacity: 32)
         taggedOK.writeString("A007 OK Extended search completed\r\n")
-        try channel.writeInbound(taggedOK)
+        try await channel.writeInbound(taggedOK)
 
         let result = try await promise.futureResult.get()
 
         #expect(result.count == 3)
-        #expect(result.all == nil)  // PARTIAL was requested; ALL should be absent
+        #expect(result.all == nil)
 
         if let partial = result.partial {
             let values = Set(partial.results.toArray().map { $0.value })
@@ -344,26 +318,22 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testCommandWireFormatWithPartial() async throws {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
         let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1...100))
-        // Use .unseen (not .all) so the criterion doesn't also produce "ALL" in the wire,
-        // letting us verify cleanly that ALL is absent from the return options.
         let command = ExtendedSearchCommand<UID>(criteria: [SearchCriteria.unseen], useEsearch: true, partialRange: partialRange)
         let tagged = command.toTaggedCommand(tag: "C007")
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
 
-        guard var outbound = try channel.readOutbound(as: ByteBuffer.self) else {
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound bytes")
             return
         }
         let wireString = outbound.readString(length: outbound.readableBytes) ?? ""
 
-        // PARTIAL replaces ALL in the return options; wire must contain PARTIAL range but not ALL
         #expect(wireString.contains("UID SEARCH"))
         #expect(wireString.contains("RETURN"))
         #expect(wireString.contains("PARTIAL"))
