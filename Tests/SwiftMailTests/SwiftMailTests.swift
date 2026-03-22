@@ -2,7 +2,6 @@ import Testing
 @testable import SwiftMail
 import SwiftMail
 
-#if false
 struct SwiftMailTests {
     @Test
     func testIMAPReExport() {
@@ -35,4 +34,3 @@ struct SwiftMailTests {
         #expect(address.formatted == "Test User <test@example.com>", "EmailAddress should format correctly")
     }
 }
-#endif
