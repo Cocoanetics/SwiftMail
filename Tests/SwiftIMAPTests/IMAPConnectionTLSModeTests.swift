@@ -1,4 +1,6 @@
+import NIO
 import NIOIMAPCore
+import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
@@ -57,5 +59,46 @@ struct IMAPConnectionTLSModeTests {
                 capabilities: [.idle]
             )
         )
+    }
+
+    @Test
+    func requiredTLSDisconnectsPlaintextChannelWhenStartTLSIsUnavailable() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer {
+            Task {
+                try? await group.shutdownGracefully()
+            }
+        }
+
+        let connection = IMAPConnection(
+            host: "localhost",
+            port: 143,
+            useTLS: true,
+            group: group,
+            loggerLabel: "test.imap",
+            outboundLabel: "test.imap.out",
+            inboundLabel: "test.imap.in",
+            connectionID: "test-starttls-required",
+            connectionRole: "test"
+        )
+        let channel = EmbeddedChannel()
+        connection.replaceChannelForTesting(channel)
+
+        do {
+            try await connection.applyPostGreetingTLSPolicy(
+                tlsTransportMode: IMAPConnection.TLSTransportMode.startTLSIfAvailable(requireTLS: true),
+                capabilities: []
+            )
+            Issue.record("Expected required TLS policy to reject a plaintext channel without STARTTLS")
+        } catch let error as IMAPError {
+            guard case .connectionFailed(let message) = error else {
+                Issue.record("Expected connectionFailed, got \(error)")
+                return
+            }
+
+            #expect(message == "Server did not advertise STARTTLS on port 143")
+        }
+
+        #expect(!connection.isConnected)
     }
 }

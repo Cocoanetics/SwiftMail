@@ -149,6 +149,10 @@ final class IMAPConnection {
         self.capabilities = capabilities
     }
 
+    func replaceChannelForTesting(_ channel: Channel?) {
+        self.channel = channel
+    }
+
     func connect() async throws {
         try await commandQueue.run { [self] in
             try await self.connectBody()
@@ -187,24 +191,28 @@ final class IMAPConnection {
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
             .channelInitializer { channel in
-                let parserOptions = ResponseParser.Options(
-                    bufferLimit: 1024 * 1024,
-                    messageAttributeLimit: .max,
-                    bodySizeLimit: .max,
-                    literalSizeLimit: IMAPDefaults.literalSizeLimit
-                )
+                do {
+                    let parserOptions = ResponseParser.Options(
+                        bufferLimit: 1024 * 1024,
+                        messageAttributeLimit: .max,
+                        bodySizeLimit: .max,
+                        literalSizeLimit: IMAPDefaults.literalSizeLimit
+                    )
 
-                if case .implicitTLS = initialTLSMode {
-                    let sslHandler = try! Self.makeTLSHandler(for: channel, host: host)
-                    try! channel.pipeline.syncOperations.addHandler(sslHandler)
+                    if case .implicitTLS = initialTLSMode {
+                        let sslHandler = try Self.makeTLSHandler(for: channel, host: host)
+                        try channel.pipeline.syncOperations.addHandler(sslHandler)
+                    }
+
+                    try channel.pipeline.syncOperations.addHandlers([
+                        IMAPClientHandler(parserOptions: parserOptions),
+                        duplexLogger
+                    ])
+
+                    return channel.eventLoop.makeSucceededFuture(())
+                } catch {
+                    return channel.eventLoop.makeFailedFuture(error)
                 }
-
-                try! channel.pipeline.syncOperations.addHandlers([
-                    IMAPClientHandler(parserOptions: parserOptions),
-                    duplexLogger
-                ])
-
-                return channel.eventLoop.makeSucceededFuture(())
             }
 
         let channel = try await bootstrap.connect(host: host, port: port).get()
@@ -224,11 +232,7 @@ final class IMAPConnection {
         let greetingCapabilities: [Capability] = try await executeHandlerOnly(handlerType: IMAPGreetingHandler.self, timeoutSeconds: 5)
         try await refreshCapabilities(using: greetingCapabilities)
 
-        if Self.requiresSTARTTLSUpgrade(port: port, tlsTransportMode: tlsTransportMode, capabilities: Array(capabilities)) {
-            try await startTLS()
-        } else if case .startTLSIfAvailable(let requireTLS) = tlsTransportMode, requireTLS {
-            throw IMAPError.connectionFailed("Server did not advertise STARTTLS on port \(port)")
-        }
+        try await applyPostGreetingTLSPolicy(tlsTransportMode: tlsTransportMode, capabilities: Array(capabilities))
     }
 
     private func doneBody(timeoutSeconds: TimeInterval = 15) async throws {
@@ -488,6 +492,21 @@ final class IMAPConnection {
         let configuration = TLSConfiguration.makeClientConfiguration()
         let context = try NIOSSLContext(configuration: configuration)
         return try NIOSSLClientHandler(context: context, serverHostname: host)
+    }
+
+    func applyPostGreetingTLSPolicy(
+        tlsTransportMode: TLSTransportMode,
+        capabilities: [Capability]
+    ) async throws {
+        if Self.requiresSTARTTLSUpgrade(port: port, tlsTransportMode: tlsTransportMode, capabilities: capabilities) {
+            try await startTLS()
+            return
+        }
+
+        if case .startTLSIfAvailable(let requireTLS) = tlsTransportMode, requireTLS {
+            try? await disconnectBody()
+            throw IMAPError.connectionFailed("Server did not advertise STARTTLS on port \(port)")
+        }
     }
 
     private func startTLS() async throws {
