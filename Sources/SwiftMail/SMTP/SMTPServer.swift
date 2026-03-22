@@ -447,12 +447,14 @@ public actor SMTPServer {
     /// struct, this method transmits an already-formatted message verbatim.
     ///
     /// - Parameters:
-    ///   - rawMessage: The complete RFC 822 message as `Data`.
+    ///   - rawMessage: The complete RFC 822 message as `Data`. Must be valid UTF-8.
     ///   - sender: Sender address used for the SMTP `MAIL FROM` command.
     ///   - recipients: Recipient addresses used for `RCPT TO` commands.
     /// - Throws:
     ///   - `SMTPError.connectionFailed` if not connected.
-    ///   - `SMTPError.sendFailed` if the server rejects the message.
+    ///   - `SMTPError.sendFailed` if the server rejects the message or if the message is not valid UTF-8.
+    /// - Note: Legacy 8-bit non-UTF-8 messages are not supported. Modern email clients
+    ///   use UTF-8 or Base64/Quoted-Printable encoding for non-ASCII content.
     public func sendRawMessage(_ rawMessage: Data, from sender: EmailAddress, to recipients: [EmailAddress]) async throws {
         guard channel != nil else {
             throw SMTPError.connectionFailed("Not connected to SMTP server. Call connect() first.")
