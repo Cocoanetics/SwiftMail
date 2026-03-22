@@ -423,18 +423,50 @@ struct SMTPTests {
     }
 
     @Test
-    func testSendRawMessageAcceptsArbitraryBytes() async {
+    func testSendRawMessageRequiresConnectionBeforeValidation() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
-        // Create data with bytes that are not valid UTF-8
-        // This should be accepted since sendRawMessage uses Data directly
-        let nonUTF8Data = Data([0xFF, 0xFE, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F]) // Invalid UTF-8 prefix + "Hello"
+        // Data with 8-bit content
+        let data8Bit = Data([0xFF, 0xFE, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F])
         let sender = EmailAddress(address: "sender@example.com")
         let recipient = EmailAddress(address: "recipient@example.com")
 
-        // Should fail because it's not connected, but the important thing is
-        // that it doesn't fail due to UTF-8 validation (which we removed).
-        await #expect(throws: SMTPError.self) {
-            try await server.sendRawMessage(nonUTF8Data, from: sender, to: [recipient])
+        // Should fail with connectionFailed (checked before 8BITMIME validation)
+        do {
+            try await server.sendRawMessage(data8Bit, from: sender, to: [recipient])
+            Issue.record("Expected SMTPError to be thrown")
+        } catch let error as SMTPError {
+            // Verify it's a connection error, not an 8BITMIME error
+            if case .connectionFailed = error {
+                // Expected
+            } else {
+                Issue.record("Expected connectionFailed, got: \(error)")
+            }
+        } catch {
+            Issue.record("Expected SMTPError, got: \(error)")
+        }
+    }
+    
+    @Test
+    func testSendRawMessage7BitContentDoesNotRequire8BitMIME() async {
+        let server = SMTPServer(host: "smtp.example.com", port: 587)
+        // Pure 7-bit ASCII content (all bytes <= 127)
+        let data7Bit = Data([0x48, 0x65, 0x6C, 0x6C, 0x6F]) // "Hello"
+        let sender = EmailAddress(address: "sender@example.com")
+        let recipient = EmailAddress(address: "recipient@example.com")
+
+        // Should fail with connectionFailed, NOT an 8BITMIME error
+        // (because 7-bit content doesn't require 8BITMIME support)
+        do {
+            try await server.sendRawMessage(data7Bit, from: sender, to: [recipient])
+            Issue.record("Expected SMTPError to be thrown")
+        } catch let error as SMTPError {
+            if case .connectionFailed = error {
+                // Expected - would fail at connection, not 8BITMIME check
+            } else {
+                Issue.record("Expected connectionFailed for 7-bit content, got: \(error)")
+            }
+        } catch {
+            Issue.record("Expected SMTPError, got: \(error)")
         }
     }
 

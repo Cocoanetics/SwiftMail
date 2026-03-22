@@ -477,6 +477,11 @@ public actor SMTPServer {
         }
 
         let use8BitMIME = supports8BitMIME
+        
+        // Check for 8-bit content if server doesn't support 8BITMIME
+        if !use8BitMIME && rawMessage.contains(where: { $0 > 127 }) {
+            throw SMTPError.sendFailed("Message contains 8-bit content but server does not support 8BITMIME")
+        }
 
         do {
             let mailFrom = try MailFromCommand(
