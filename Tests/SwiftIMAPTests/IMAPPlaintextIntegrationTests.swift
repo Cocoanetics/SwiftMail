@@ -4,7 +4,7 @@ import Testing
 
 #if os(macOS)
 struct IMAPPlaintextIntegrationTests {
-    @Test
+    @Test(.disabled("Requires local Python IMAP server — run manually"))
     func connectsToPlaintextIMAPServer() async throws {
         let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let maildir = tempRoot.appendingPathComponent("Maildir")
