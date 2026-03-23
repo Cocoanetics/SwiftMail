@@ -13,7 +13,7 @@ extension Tag {
     @Tag static var security: Self
 }
 
-@Suite("Quoted-Printable Encoding Tests", .tags(.imap, .encoding, .decoding))
+@Suite("Quoted-Printable Encoding Tests", .tags(.imap, .encoding, .decoding), .timeLimit(.minutes(1)))
 struct QuotedPrintableTests {
     
     // MARK: - Test Resources

@@ -5,6 +5,7 @@ import NIOIMAPCore
 import NIO
 
 /// Tests for ICS/text/calendar detection, body filtering, and suggestedFilename.
+@Suite(.timeLimit(.minutes(1)))
 struct ICSCalendarDetectionTests {
 
     // MARK: - Helpers

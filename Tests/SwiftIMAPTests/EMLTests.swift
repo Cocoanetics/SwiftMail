@@ -5,7 +5,7 @@ import Testing
 import Foundation
 @testable import SwiftMail
 
-@Suite("EML Parser Tests", .tags(.mime))
+@Suite("EML Parser Tests", .tags(.mime), .timeLimit(.minutes(1)))
 struct EMLParserTests {
 
     // MARK: - Simple Plain Text
@@ -174,7 +174,7 @@ struct EMLParserTests {
     }
 }
 
-@Suite("EML Serializer Tests", .tags(.mime))
+@Suite("EML Serializer Tests", .tags(.mime), .timeLimit(.minutes(1)))
 struct EMLSerializerTests {
 
     @Test("Serialize and re-parse round trip")

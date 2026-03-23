@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import SwiftMail
 
-@Suite("Problematic Message Tests")
+@Suite("Problematic Message Tests", .timeLimit(.minutes(1)))
 struct ProblematicMessageTests {
     
     // MARK: - Test Resources

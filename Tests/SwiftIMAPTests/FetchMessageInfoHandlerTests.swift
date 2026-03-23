@@ -6,6 +6,7 @@ import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
+@Suite(.timeLimit(.minutes(1)))
 struct FetchMessageInfoHandlerTests {
     @Test
     func testSingleFetchPopulatesThreadingProperties() async throws {

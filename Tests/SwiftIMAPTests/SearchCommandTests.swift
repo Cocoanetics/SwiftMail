@@ -9,6 +9,7 @@ import Testing
 private typealias UID = SwiftMail.UID
 private typealias SequenceNumber = SwiftMail.SequenceNumber
 
+@Suite(.timeLimit(.minutes(1)))
 struct SearchCommandTests {
 
     // MARK: - Wire format: identifierSet scope key

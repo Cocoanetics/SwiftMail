@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import SwiftMail
 
+@Suite(.timeLimit(.minutes(1)))
 struct SMTPTests {
     @Test
     func testPlaceholder() {

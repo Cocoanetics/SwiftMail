@@ -4,7 +4,7 @@
 import Testing
 import SwiftMail
 
-@Suite("String Extensions Tests")
+@Suite("String Extensions Tests", .timeLimit(.minutes(1)))
 struct StringExtensionsTests {
     @Test("Credential redaction - LOGIN command")
     func testLoginCredentialRedaction() throws {

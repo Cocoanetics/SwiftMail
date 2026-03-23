@@ -12,7 +12,7 @@ extension Tag {
     @Tag static var crossPlatform: Self
 }
 
-@Suite("String MIME Extensions Tests", .tags(.core, .mime, .fileHandling))
+@Suite("String MIME Extensions Tests", .tags(.core, .mime, .fileHandling), .timeLimit(.minutes(1)))
 struct StringMIMETests {
     
     @Test("File extension for MIME type resolution", .tags(.crossPlatform))

@@ -23,6 +23,7 @@ private final class FailContinuationWriteHandler: ChannelOutboundHandler, @unche
     }
 }
 
+@Suite(.timeLimit(.minutes(1)))
 struct XOAUTH2AuthenticationHandlerTests {
     private let email = "user@example.com"
     private let token = "ya29.A0AfH6SExample"
