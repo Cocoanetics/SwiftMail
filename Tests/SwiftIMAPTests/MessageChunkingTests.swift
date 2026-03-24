@@ -1,7 +1,7 @@
 import Testing
 @testable import SwiftMail
 
-@Suite("MessageIdentifierSet Chunking")
+@Suite("MessageIdentifierSet Chunking", .serialized, .timeLimit(.minutes(1)))
 struct MessageChunkingTests {
 
     // MARK: - Empty Set

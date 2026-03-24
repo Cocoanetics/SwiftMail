@@ -6,6 +6,7 @@ import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct FetchMessageInfoHandlerTests {
     @Test
     func testSingleFetchPopulatesThreadingProperties() async throws {
@@ -94,7 +95,6 @@ struct FetchMessageInfoHandlerTests {
         #expect(infos.count == 1)
         #expect(infos[0].inReplyTo == nil)
         #expect(infos[0].references == nil)
-        // Subject is an envelope key and must be excluded; X-Test is not
         #expect(infos[0].additionalFields?["subject"] == nil)
         #expect(infos[0].additionalFields?["x-test"] == "value")
     }
@@ -125,21 +125,17 @@ struct FetchMessageInfoHandlerTests {
         )
 
         #expect(infos.count == 1)
-        // Threading fields are still populated as before
         #expect(infos[0].inReplyTo == MessageID("root@example.com"))
         #expect(infos[0].references == [MessageID("<root@example.com>")!])
-        // Additional (non-envelope) headers are now exposed
         #expect(infos[0].additionalFields?["list-id"] == "<announcements.example.com>")
         #expect(infos[0].additionalFields?["list-unsubscribe"] == "<https://example.com/unsubscribe>")
         #expect(infos[0].additionalFields?["x-newsletter-id"] == "12345")
-        // Envelope / threading headers must NOT be duplicated in additionalFields
         #expect(infos[0].additionalFields?["in-reply-to"] == nil)
         #expect(infos[0].additionalFields?["references"] == nil)
     }
 
     private func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
-        let channel = EmbeddedChannel()
-        defer { _ = try? channel.finish() }
+        let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -149,12 +145,12 @@ struct FetchMessageInfoHandlerTests {
 
         let command = TaggedCommand(tag: "A001", command: .noop)
         try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(command)))
-        _ = try channel.readOutbound(as: ByteBuffer.self)
+        _ = try await channel.readOutbound(as: ByteBuffer.self)
 
         for rawResponse in rawResponses {
             var buffer = channel.allocator.buffer(capacity: rawResponse.utf8.count)
             buffer.writeString(rawResponse)
-            try channel.writeInbound(buffer)
+            try await channel.writeInbound(buffer)
         }
 
         return try await promise.futureResult.get()

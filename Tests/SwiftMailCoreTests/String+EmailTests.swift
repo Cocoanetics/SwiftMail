@@ -10,60 +10,65 @@ extension Tag {
     @Tag static var security: Self
 }
 
-@Suite("String Email Validation Tests", .tags(.core, .validation))
+@Suite("String Email Validation Tests", .serialized, .tags(.core, .validation), .timeLimit(.minutes(1)))
 struct StringEmailTests {
+    private let validEmails = [
+        "user@example.com",
+        "user.name@example.com",
+        "user+tag@example.com",
+        "user@subdomain.example.com",
+        "123@example.com",
+        "user@example.co.uk",
+        "a@b.cc",  // Minimal length
+        "disposable.style.email.with+symbol@example.com",
+        "other.email-with-hyphen@example.com",
+        "fully-qualified-domain@example.com",
+        "user.name+tag+sorting@example.com",
+        "x@example.com",  // One-letter local-part
+        "example-indeed@strange-example.com",
+        "example@s.example",  // Short but valid domain
+        "test.email.with+symbol@example.com",
+        "user123@test-domain.org"
+    ]
+
+    private let invalidEmails = [
+        "",
+        "@example.com",
+        "user@",
+        "user@.com",
+        "user@example",
+        "user.example.com",
+        "user@exam ple.com",  // Space in domain
+        "user@@example.com",  // Double @
+        ".user@example.com",  // Leading dot
+        "user.@example.com",  // Trailing dot
+        "user@example..com",  // Double dot
+        "user@-example.com",  // Leading hyphen in domain
+        "user@example-.com",  // Trailing hyphen in domain
+        "user@.example.com",  // Leading dot in domain
+        "user@example.",      // Trailing dot in domain
+        "user@ex*ample.com",  // Invalid character
+        "user@example.c",     // TLD too short
+        "user name@example.com", // Space in local part
+        "user<script>@example.com", // Security: HTML injection attempt
+        "user@example.com; DROP TABLE users;", // Security: SQL injection attempt
+        "user@192.168.1.1", // IP addresses without proper format
+        "user@[192.168.1.1", // Malformed IP bracket
+        "user@192.168.1.1]" // Malformed IP bracket
+    ]
     
-    @Test("Valid email addresses should pass validation", .tags(.validation),
-          arguments: [
-            "user@example.com",
-            "user.name@example.com", 
-            "user+tag@example.com",
-            "user@subdomain.example.com",
-            "123@example.com",
-            "user@example.co.uk",
-            "a@b.cc",  // Minimal length
-            "disposable.style.email.with+symbol@example.com",
-            "other.email-with-hyphen@example.com",
-            "fully-qualified-domain@example.com",
-            "user.name+tag+sorting@example.com",
-            "x@example.com",  // One-letter local-part
-            "example-indeed@strange-example.com",
-            "example@s.example",  // Short but valid domain
-            "test.email.with+symbol@example.com",
-            "user123@test-domain.org"
-          ])
-    func validEmails(email: String) {
-        #expect(email.isValidEmail(), "'\(email)' should be a valid email address")
+    @Test("Valid email addresses should pass validation", .tags(.validation))
+    func validEmailsPassValidation() {
+        for email in validEmails {
+            #expect(email.isValidEmail(), "'\(email)' should be a valid email address")
+        }
     }
     
-    @Test("Invalid email addresses should fail validation", .tags(.validation, .security),
-          arguments: [
-            "",
-            "@example.com",
-            "user@",
-            "user@.com",
-            "user@example",
-            "user.example.com",
-            "user@exam ple.com",  // Space in domain
-            "user@@example.com",  // Double @
-            ".user@example.com",  // Leading dot
-            "user.@example.com",  // Trailing dot
-            "user@example..com",  // Double dot
-            "user@-example.com",  // Leading hyphen in domain
-            "user@example-.com",  // Trailing hyphen in domain
-            "user@.example.com",  // Leading dot in domain
-            "user@example.",      // Trailing dot in domain
-            "user@ex*ample.com",  // Invalid character
-            "user@example.c",     // TLD too short
-            "user name@example.com", // Space in local part
-            "user<script>@example.com", // Security: HTML injection attempt
-            "user@example.com; DROP TABLE users;", // Security: SQL injection attempt
-            "user@192.168.1.1", // IP addresses without proper format
-            "user@[192.168.1.1", // Malformed IP bracket
-            "user@192.168.1.1]" // Malformed IP bracket
-          ])
-    func invalidEmails(email: String) {
-        #expect(!email.isValidEmail(), "'\(email)' should be an invalid email address")
+    @Test("Invalid email addresses should fail validation", .tags(.validation, .security))
+    func invalidEmailsFailValidation() {
+        for email in invalidEmails {
+            #expect(!email.isValidEmail(), "'\(email)' should be an invalid email address")
+        }
     }
     
     @Test("Edge cases for email validation")
@@ -142,4 +147,3 @@ struct StringEmailTests {
         #expect("user+tag@example.com".isValidEmail(), "Plus sign should typically be allowed in email addresses")
     }
 } 
-

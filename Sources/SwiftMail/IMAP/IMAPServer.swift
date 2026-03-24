@@ -35,6 +35,9 @@ public actor IMAPServer {
     
     /** The port number of the IMAP server */
     private let port: Int
+
+    /// Explicit TLS preference. `nil` means infer from the standard IMAP port.
+    private let useTLS: Bool?
     
     /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
@@ -121,9 +124,10 @@ public actor IMAPServer {
      that may contain thousands of message IDs. This prevents PayloadTooLargeError when
      searching large mailboxes.
      */
-    public init(host: String, port: Int, numberOfThreads: Int = 1) {
+    public init(host: String, port: Int, useTLS: Bool? = nil, numberOfThreads: Int = 1) {
         self.host = host
         self.port = port
+        self.useTLS = useTLS
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
         
         // Initialize loggers
@@ -135,6 +139,7 @@ public actor IMAPServer {
         self.primaryConnection = IMAPConnection(
             host: host,
             port: port,
+            useTLS: useTLS,
             group: group,
             loggerLabel: primaryLoggerLabel,
             outboundLabel: outboundLabel,
@@ -156,9 +161,10 @@ public actor IMAPServer {
     /**
      Connect to the IMAP server using SSL/TLS
      
-     This method establishes a secure connection to the IMAP server and retrieves
-     its capabilities. The connection is made using SSL/TLS and includes setting up
-     the necessary handlers for IMAP protocol communication.
+     This method establishes the IMAP transport connection and retrieves
+     its capabilities. Port `993` defaults to implicit TLS, port `143` defaults to
+     plain text with opportunistic STARTTLS, and other ports require an explicit
+     `useTLS` decision.
      
      - Throws:
      - `IMAPError.connectionFailed` if the connection cannot be established
@@ -346,6 +352,7 @@ public actor IMAPServer {
         return IMAPConnection(
             host: host,
             port: port,
+            useTLS: useTLS,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,
@@ -367,6 +374,7 @@ public actor IMAPServer {
         return IMAPConnection(
             host: host,
             port: port,
+            useTLS: useTLS,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,

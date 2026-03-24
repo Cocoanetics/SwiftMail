@@ -14,6 +14,7 @@ private actor EventRecorder {
     }
 }
 
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPCommandQueueTests {
     @Test
     func testRunIsReentrantForNestedCallsOnSameTask() async throws {

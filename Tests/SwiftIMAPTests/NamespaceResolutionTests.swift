@@ -1,6 +1,7 @@
 import Testing
 @testable import SwiftMail
 
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct NamespaceResolutionTests {
     @Test
     func defaultNamespaceUsesExistingPaths() {

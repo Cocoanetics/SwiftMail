@@ -7,8 +7,15 @@ import NIOSSL
 
 /// Internal connection wrapper used by IMAPServer to manage per-connection state.
 final class IMAPConnection {
+    enum TLSTransportMode: Equatable {
+        case implicitTLS
+        case plainText
+        case startTLSIfAvailable(requireTLS: Bool)
+    }
+
     private let host: String
     private let port: Int
+    private let useTLS: Bool?
     private let group: EventLoopGroup
     private let connectionID: String
     private let connectionRole: String
@@ -29,6 +36,7 @@ final class IMAPConnection {
     init(
         host: String,
         port: Int,
+        useTLS: Bool? = nil,
         group: EventLoopGroup,
         loggerLabel: String,
         outboundLabel: String,
@@ -38,6 +46,7 @@ final class IMAPConnection {
     ) {
         self.host = host
         self.port = port
+        self.useTLS = useTLS
         self.group = group
         self.connectionID = connectionID
         self.connectionRole = connectionRole
@@ -66,6 +75,43 @@ final class IMAPConnection {
             inboundLogger: inboundLogger,
             contextPrefix: connectionContext
         )
+    }
+
+    static func resolveTLSTransportMode(port: Int, useTLS: Bool?) throws -> TLSTransportMode {
+        if let useTLS {
+            if port == 143 && useTLS {
+                return .startTLSIfAvailable(requireTLS: true)
+            }
+
+            return useTLS ? .implicitTLS : .plainText
+        }
+
+        switch port {
+        case 993:
+            return .implicitTLS
+        case 143:
+            return .startTLSIfAvailable(requireTLS: false)
+        default:
+            throw IMAPError.invalidArgument(
+                "Port \(port) requires explicit useTLS because SwiftMail cannot infer whether to use implicit TLS or plain text"
+            )
+        }
+    }
+
+    static func requiresSTARTTLSUpgrade(
+        port: Int,
+        tlsTransportMode: TLSTransportMode,
+        capabilities: [Capability]
+    ) -> Bool {
+        guard port == 143 else {
+            return false
+        }
+
+        guard case .startTLSIfAvailable = tlsTransportMode else {
+            return false
+        }
+
+        return capabilities.contains(.startTLS)
     }
 
     var isConnected: Bool {
@@ -103,6 +149,10 @@ final class IMAPConnection {
         self.capabilities = capabilities
     }
 
+    func replaceChannelForTesting(_ channel: Channel?) {
+        self.channel = channel
+    }
+
     func connect() async throws {
         try await commandQueue.run { [self] in
             try await self.connectBody()
@@ -133,30 +183,46 @@ final class IMAPConnection {
         idleHandler = nil
         idleTerminationInProgress = false
 
-        let sslContext = try NIOSSLContext(configuration: TLSConfiguration.makeClientConfiguration())
+        let tlsTransportMode = try Self.resolveTLSTransportMode(port: port, useTLS: useTLS)
+        let initialTLSMode = tlsTransportMode
         let host = self.host
-
         let duplexLogger = self.duplexLogger
+        let responseBuffer = self.responseBuffer
+        
+        // Create greeting handler and promise before connecting so they can be installed
+        // in the channelInitializer. This prevents a race condition where the server
+        // greeting arrives before the handler is installed (especially in plaintext mode).
+        let greetingPromise = group.next().makePromise(of: [Capability].self)
+        let greetingHandler = IMAPGreetingHandler(commandTag: "", promise: greetingPromise)
+        
         let bootstrap = ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
             .channelInitializer { channel in
-                let sslHandler = try! NIOSSLClientHandler(context: sslContext, serverHostname: host)
+                do {
+                    let parserOptions = ResponseParser.Options(
+                        bufferLimit: 1024 * 1024,
+                        messageAttributeLimit: .max,
+                        bodySizeLimit: .max,
+                        literalSizeLimit: IMAPDefaults.literalSizeLimit
+                    )
 
-                let parserOptions = ResponseParser.Options(
-                    bufferLimit: 1024 * 1024,
-                    messageAttributeLimit: .max,
-                    bodySizeLimit: .max,
-                    literalSizeLimit: IMAPDefaults.literalSizeLimit
-                )
+                    if case .implicitTLS = initialTLSMode {
+                        let sslHandler = try Self.makeTLSHandler(for: channel, host: host)
+                        try channel.pipeline.syncOperations.addHandler(sslHandler)
+                    }
 
-                try! channel.pipeline.syncOperations.addHandlers([
-                    sslHandler,
-                    IMAPClientHandler(parserOptions: parserOptions),
-                    duplexLogger
-                ])
+                    try channel.pipeline.syncOperations.addHandlers([
+                        IMAPClientHandler(parserOptions: parserOptions),
+                        duplexLogger,
+                        greetingHandler,
+                        responseBuffer
+                    ])
 
-                return channel.eventLoop.makeSucceededFuture(())
+                    return channel.eventLoop.makeSucceededFuture(())
+                } catch {
+                    return channel.eventLoop.makeFailedFuture(error)
+                }
             }
 
         let channel = try await bootstrap.connect(host: host, port: port).get()
@@ -164,17 +230,27 @@ final class IMAPConnection {
         self.isSessionAuthenticated = false
         self.namespaces = nil
 
-        // Add the persistent untagged response buffer as the LAST handler in the pipeline.
-        // Transient command handlers are added BEFORE it (position: .before(responseBuffer)).
-        // channelRead flows first→last, so: command handler processes response → calls
-        // fireChannelRead → buffer sees it. When no command handler is active, responses
-        // flow directly to the buffer which captures them for later draining.
-        try await channel.pipeline.addHandler(responseBuffer).get()
-
         logger.info("\(connectionContext) Connected to IMAP server with 1MB buffer limit for large responses")
 
-        let greetingCapabilities: [Capability] = try await executeHandlerOnly(handlerType: IMAPGreetingHandler.self, timeoutSeconds: 5)
+        // Wait for the greeting with timeout
+        let timeoutTask = group.next().scheduleTask(in: .seconds(5)) {
+            greetingPromise.fail(IMAPError.timeout)
+        }
+        
+        let greetingCapabilities: [Capability]
+        do {
+            greetingCapabilities = try await greetingPromise.futureResult.get()
+            timeoutTask.cancel()
+            // Remove the greeting handler now that it's done
+            try? await channel.pipeline.removeHandler(greetingHandler).get()
+        } catch {
+            timeoutTask.cancel()
+            try? await channel.pipeline.removeHandler(greetingHandler).get()
+            throw error
+        }
         try await refreshCapabilities(using: greetingCapabilities)
+
+        try await applyPostGreetingTLSPolicy(tlsTransportMode: tlsTransportMode, capabilities: Array(capabilities))
     }
 
     private func doneBody(timeoutSeconds: TimeInterval = 15) async throws {
@@ -428,6 +504,49 @@ final class IMAPConnection {
         }
 
         try await fetchCapabilities()
+    }
+
+    private static func makeTLSHandler(for channel: Channel, host: String) throws -> NIOSSLClientHandler {
+        let configuration = TLSConfiguration.makeClientConfiguration()
+        let context = try NIOSSLContext(configuration: configuration)
+        return try NIOSSLClientHandler(context: context, serverHostname: host)
+    }
+
+    func applyPostGreetingTLSPolicy(
+        tlsTransportMode: TLSTransportMode,
+        capabilities: [Capability]
+    ) async throws {
+        if Self.requiresSTARTTLSUpgrade(port: port, tlsTransportMode: tlsTransportMode, capabilities: capabilities) {
+            try await startTLS()
+            return
+        }
+
+        if case .startTLSIfAvailable(let requireTLS) = tlsTransportMode, requireTLS {
+            try? await disconnectBody()
+            throw IMAPError.connectionFailed("Server did not advertise STARTTLS on port \(port)")
+        }
+    }
+
+    private func startTLS() async throws {
+        let command = IMAPStartTLSCommand()
+        let accepted = try await executeCommandBody(command)
+
+        guard accepted else {
+            throw IMAPError.connectionFailed("Server rejected STARTTLS")
+        }
+
+        guard let channel = self.channel, channel.isActive else {
+            throw IMAPError.connectionFailed("Channel not initialized")
+        }
+
+        let host = self.host
+        try await channel.eventLoop.submit {
+            let sslHandler = try Self.makeTLSHandler(for: channel, host: host)
+            try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
+        }.get()
+
+        let refreshedCapabilities = try await executeCommandBody(CapabilityCommand())
+        self.capabilities = Set(refreshedCapabilities)
     }
 
     
