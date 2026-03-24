@@ -16,7 +16,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Verify Swift version
         run: swift --version
       - name: Build (macOS)
@@ -27,7 +27,7 @@ jobs:
   build-ios:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Select Xcode 26.0
         uses: maxim-lobanov/setup-xcode@v1
         with:
@@ -38,7 +38,7 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Verify Swift version
         run: swift --version
       - name: Build (Linux)
