@@ -913,6 +913,32 @@ public actor IMAPServer {
     }
 
     /**
+     Fetch multiple body parts in a pipelined burst (RFC 3501 §5.5).
+
+     Sends all FETCH BODY[section] commands without awaiting individual responses.
+     The server processes them in order; responses are matched by tag.
+     Significantly faster than sequential `fetchPart` calls (~3-5x for body fetching).
+
+     - Parameter parts: Array of (uid, section) pairs to fetch.
+     - Returns: Dictionary mapping UID to array of (section, data) results.
+     - Throws: If the connection is unavailable.
+     */
+    public func fetchPartsPipelined(
+        parts: [(uid: UID, section: Section)]
+    ) async throws -> [UID: [(section: Section, data: Data)]] {
+        if let authentication, !primaryConnection.isAuthenticated {
+            logger.info("Primary connection not authenticated; re-authenticating before pipelined fetch")
+            try await authentication.authenticate(on: primaryConnection)
+        }
+        let results = try await primaryConnection.executePipelinedFetchParts(requests: parts)
+        var grouped: [UID: [(section: Section, data: Data)]] = [:]
+        for result in results {
+            grouped[result.uid, default: []].append((section: result.section, data: result.data))
+        }
+        return grouped
+    }
+
+    /**
      Fetches the complete raw RFC822 message (headers + body) without setting the \Seen flag.
 
      - Parameter identifier: The identifier of the message
