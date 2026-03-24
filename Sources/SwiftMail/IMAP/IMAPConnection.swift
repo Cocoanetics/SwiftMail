@@ -1066,7 +1066,7 @@ final class IMAPConnection {
 
             // Send all commands without awaiting responses
             do {
-                for (_, (tag, uid, section)) in tagToRequest.enumerated() {
+                for (tag, uid, section) in tagToRequest {
                     let command = FetchMessagePartCommand(identifier: uid, section: section)
                     try await command.send(on: channel, tag: tag)
                 }
