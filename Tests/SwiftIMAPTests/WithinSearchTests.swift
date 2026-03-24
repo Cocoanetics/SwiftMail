@@ -6,7 +6,7 @@ import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
-@Suite(.serialized, .timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)))
 struct WithinSearchTests {
     @Test
     func testYoungerSearchKeyWireFormat() async throws {

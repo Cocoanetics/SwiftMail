@@ -5,7 +5,7 @@ import Testing
 @testable import SwiftMail
 
 #if false
-@Suite(.serialized, .timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)))
 struct IMAPConnectionTLSModeTests {
     @Test
     func infersImplicitTLSOnPort993() throws {

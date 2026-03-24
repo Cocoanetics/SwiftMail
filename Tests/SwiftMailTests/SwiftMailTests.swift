@@ -2,7 +2,7 @@ import Testing
 @testable import SwiftMail
 import SwiftMail
 
-@Suite(.serialized, .timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)))
 struct SwiftMailTests {
     @Test
     func testIMAPReExport() {

@@ -2,7 +2,7 @@ import Testing
 import NIOIMAPCore
 @testable import SwiftMail
 
-@Suite(.serialized, .timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)))
 struct AppendLimitTests {
 
     // MARK: - globalAppendLimit extraction

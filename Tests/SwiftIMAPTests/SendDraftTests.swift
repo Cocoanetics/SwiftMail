@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import SwiftMail
 
-@Suite(.serialized, .timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)))
 struct SendDraftTests {
 
     // MARK: - parseEmailAddresses (single address)

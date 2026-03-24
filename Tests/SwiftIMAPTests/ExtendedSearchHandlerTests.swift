@@ -9,7 +9,7 @@ import Testing
 private typealias UID = SwiftMail.UID
 private typealias SequenceNumber = SwiftMail.SequenceNumber
 
-@Suite(.serialized, .timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)))
 struct ExtendedSearchHandlerTests {
 
     // MARK: - Helpers

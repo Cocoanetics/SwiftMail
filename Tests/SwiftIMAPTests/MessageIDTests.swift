@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import SwiftMail
 
-@Suite("MessageID Tests", .serialized, .timeLimit(.minutes(1)))
+@Suite("MessageID Tests", .timeLimit(.minutes(1)))
 struct MessageIDTests {
 
     // MARK: - Parsing

@@ -3,7 +3,7 @@ import Testing
 @testable import SwiftMail
 
 #if os(macOS)
-@Suite(.serialized, .timeLimit(.minutes(1)))
+@Suite(.timeLimit(.minutes(1)))
 struct IMAPPlaintextIntegrationTests {
     @Test(.timeLimit(.minutes(1)))
     func connectsToPlaintextIMAPServer() async throws {

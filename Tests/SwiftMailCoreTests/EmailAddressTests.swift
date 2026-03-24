@@ -1,7 +1,7 @@
 import Testing
 import SwiftMail
 
-@Suite("EmailAddress Tests", .serialized, .timeLimit(.minutes(1)))
+@Suite("EmailAddress Tests", .timeLimit(.minutes(1)))
 struct EmailAddressTests {
     @Test("Email address formatting without name")
     func testFormattingWithoutName() throws {
