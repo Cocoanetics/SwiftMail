@@ -24,7 +24,7 @@ jobs:
       - name: Verify Swift version
         run: swift --version
       - name: Build (macOS)
-        run: swift build -v
+        run: swift build --build-tests -v
       - name: Test (macOS)
         run: swift test -v --skip-build
 
