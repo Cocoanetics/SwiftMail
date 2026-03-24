@@ -4,7 +4,7 @@ import NIOIMAPCore
 import Testing
 @testable import SwiftMail
 
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPNamedConnectionTests {
     private func makeConnection(name: String = "test", authenticate: @escaping @Sendable (IMAPConnection) async throws -> Void = { _ in }) -> IMAPNamedConnection {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)

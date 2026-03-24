@@ -3,7 +3,7 @@ import Testing
 import NIO
 @testable import SwiftMail
 
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct ByteBufferStringValueTests {
     
     // MARK: - String Value Tests

@@ -5,7 +5,7 @@ import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct UntaggedResponseBufferTests {
     @Test
     func testTracksBufferedByeAsTerminationSignal() async throws {
