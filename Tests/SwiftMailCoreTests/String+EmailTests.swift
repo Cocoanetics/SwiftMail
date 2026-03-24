@@ -10,7 +10,7 @@ extension Tag {
     @Tag static var security: Self
 }
 
-@Suite("String Email Validation Tests", .tags(.core, .validation), .timeLimit(.minutes(1)))
+@Suite("String Email Validation Tests", .serialized, .tags(.core, .validation), .timeLimit(.minutes(1)))
 struct StringEmailTests {
     private let validEmails = [
         "user@example.com",

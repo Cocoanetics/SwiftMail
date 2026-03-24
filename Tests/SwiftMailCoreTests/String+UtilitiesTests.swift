@@ -4,7 +4,7 @@
 import Testing
 @testable import SwiftMail
 
-@Suite("String Utilities Tests", .timeLimit(.minutes(1)))
+@Suite("String Utilities Tests", .serialized, .timeLimit(.minutes(1)))
 struct StringUtilitiesTests {
     
     @Test("Sanitized file name validation")

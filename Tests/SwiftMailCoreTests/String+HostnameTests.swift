@@ -5,7 +5,7 @@ import Testing
 import Foundation
 @testable import SwiftMail
 
-@Suite("String Hostname Extensions Tests", .timeLimit(.minutes(1)))
+@Suite("String Hostname Extensions Tests", .serialized, .timeLimit(.minutes(1)))
 struct StringHostnameTests {
     
     @Test("Local hostname resolution returns valid hostname")

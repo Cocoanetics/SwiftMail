@@ -5,7 +5,7 @@ import NIOIMAPCore
 import NIO
 
 /// Tests for Array<MessagePart> init from BodyStructure — rfc822 recursion and embedded MessageInfo.
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct MessagePartBodyStructureTests {
 
     // MARK: - Helpers

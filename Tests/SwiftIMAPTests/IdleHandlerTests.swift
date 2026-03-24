@@ -6,7 +6,7 @@ import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
-@Suite(.timeLimit(.minutes(1)))
+@Suite(.serialized, .timeLimit(.minutes(1)))
 struct IdleHandlerTests {
     @Test
     func testIdleStartedKeepsHandlerActiveUntilTaggedOK() async throws {
