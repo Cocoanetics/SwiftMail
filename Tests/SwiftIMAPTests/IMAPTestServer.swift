@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(Glibc)
+import Glibc
+#endif
 
 enum IMAPTestError: Error {
     case setup(String)
@@ -42,7 +45,11 @@ final class IMAPTestServer {
     }
 
     func start() throws {
+        #if os(Linux)
+        listenFd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+        #else
         listenFd = socket(AF_INET, SOCK_STREAM, 0)
+        #endif
         guard listenFd >= 0 else {
             throw IMAPTestError.setup("socket() failed: \(errno)")
         }
@@ -51,7 +58,9 @@ final class IMAPTestServer {
         setsockopt(listenFd, SOL_SOCKET, SO_REUSEADDR, &yes, socklen_t(MemoryLayout<Int32>.size))
 
         var addr = sockaddr_in()
+        #if !os(Linux)
         addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        #endif
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = UInt16(port).bigEndian
         addr.sin_addr.s_addr = INADDR_ANY
@@ -74,7 +83,7 @@ final class IMAPTestServer {
         // Get actual port
         var boundAddr = sockaddr_in()
         var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
-        withUnsafeMutablePointer(to: &boundAddr) {
+        _ = withUnsafeMutablePointer(to: &boundAddr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                 getsockname(listenFd, $0, &addrLen)
             }
