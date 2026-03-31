@@ -76,6 +76,21 @@ struct ProblematicMessageTests {
         }
     }
     
+    @Test("Inline PDFs are included in attachments (issue #142)")
+    func testInlinePDFsCountedAsAttachments() throws {
+        guard let url = getResourceURL(for: "Italki_invoices_Sylvia", withExtension: "eml") else {
+            throw TestFailure("Failed to locate Italki_invoices_Sylvia.eml resource")
+        }
+        let data = try Data(contentsOf: url)
+        let message = try Message(emlData: data)
+
+        #expect(message.attachments.count == 7, "Expected 7 PDF attachments, got \(message.attachments.count)")
+        for attachment in message.attachments {
+            #expect(attachment.contentType.lowercased().hasPrefix("application/pdf"),
+                    "Expected application/pdf but got \(attachment.contentType)")
+        }
+    }
+
     @Test("Test specific quoted-printable decoding patterns")
     func testQuotedPrintablePatterns() throws {
         // Test specific patterns that appear in the problematic message
