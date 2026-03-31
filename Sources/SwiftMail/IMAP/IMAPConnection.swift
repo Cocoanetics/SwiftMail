@@ -225,7 +225,15 @@ final class IMAPConnection {
                 }
             }
 
-        let channel = try await bootstrap.connect(host: host, port: port).get()
+        let channel: Channel
+        do {
+            channel = try await bootstrap.connect(host: host, port: port).get()
+        } catch {
+            // Fail the greeting promise before rethrowing — prevents NIO "leaking promise"
+            // fatal error when TCP connection fails (e.g. no internet).
+            greetingPromise.fail(error)
+            throw error
+        }
         self.channel = channel
         self.isSessionAuthenticated = false
         self.namespaces = nil
@@ -834,6 +842,8 @@ final class IMAPConnection {
         } catch {
             responseBuffer.hasActiveHandler = false
             idleHandler = nil
+            // Ensure the promise is resolved to prevent NIO "leaking promise" fatal error
+            promise.fail(error)
             if !handler.isCompleted {
                 try? await channel.pipeline.removeHandler(handler)
             }

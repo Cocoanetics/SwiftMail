@@ -588,7 +588,10 @@ public actor SMTPServer {
 		} catch {
 			// Cancel the timeout
 			scheduledTask.cancel()
-			
+
+			// Ensure the promise is resolved to prevent NIO "leaking promise" fatal error
+			resultPromise.fail(error)
+
 			// If it's a timeout error, throw a more specific error
 			if error is SMTPError {
 				throw error
