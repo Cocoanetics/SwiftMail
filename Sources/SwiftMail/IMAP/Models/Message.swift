@@ -74,11 +74,17 @@ public struct Message: Codable, Sendable {
             let hasFilename = !(part.filename?.isEmpty ?? true)
             let isExplicitAttachment = disposition == "attachment"
             let hasFileNotInline = hasFilename && disposition != "inline"
+            // Inline non-image parts (e.g. PDF, ZIP, DOCX) cannot render inline meaningfully
+            // and should be treated as file attachments. Inline images are excluded because
+            // they are typically embedded via cid: references (logos, signatures).
+            let isInlineNonImage = disposition == "inline"
+                && hasFilename
+                && !ct.hasPrefix("image/")
             let isCidOnly = part.contentId != nil && !isExplicitAttachment
             // text/calendar (ICS invites) are attachments even without explicit
             // disposition or filename.
             let isCalendar = ct.hasPrefix("text/calendar")
-            return isExplicitAttachment || (hasFileNotInline && !isCidOnly) || isCalendar
+            return isExplicitAttachment || (hasFileNotInline && !isCidOnly) || (isInlineNonImage && !isCidOnly) || isCalendar
         }
     }
 
