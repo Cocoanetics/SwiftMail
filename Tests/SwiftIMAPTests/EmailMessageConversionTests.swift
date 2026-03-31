@@ -309,7 +309,7 @@ func testMessageFromEmail_withAttachments() {
     #expect(attPart.disposition == "attachment")
     #expect(attPart.filename == "file.dat")
     #expect(attPart.data == attachmentData)
-    #expect(attPart.encoding == "base64")
+    #expect(attPart.encoding == nil)
 }
 
 @Test

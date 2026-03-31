@@ -6,20 +6,22 @@ import Foundation
 extension Message {
     /// Initialize a `Message` from an `Email` for local preview or storage.
     ///
-    /// Part data is stored raw (not transfer-encoded).
-    /// `MessagePart.decodedData()` handles decoding based on the `encoding` field.
+    /// Part data is stored as raw bytes with a matching non-transforming encoding
+    /// declaration (`8bit` for text, `nil` for binary attachments) so that
+    /// `MessagePart.decodedData()` returns the bytes unchanged.
     ///
     /// - Parameter email: The email to convert.
     public init(email: Email) {
         var parts: [MessagePart] = []
         var nextSection = 1
 
+        // Text parts: raw UTF-8, declared as 8bit — no transformation applied by decodedData()
         if !email.textBody.isEmpty {
             parts.append(MessagePart(
                 sectionString: String(nextSection),
                 contentType: "text/plain",
                 disposition: "inline",
-                encoding: "quoted-printable",
+                encoding: "8bit",
                 data: email.textBody.data(using: .utf8)
             ))
             nextSection += 1
@@ -30,18 +32,19 @@ extension Message {
                 sectionString: String(nextSection),
                 contentType: "text/html",
                 disposition: "inline",
-                encoding: "quoted-printable",
+                encoding: "8bit",
                 data: htmlBody.data(using: .utf8)
             ))
             nextSection += 1
         }
 
+        // Attachment parts: raw binary data, no encoding declared (nil = pass-through)
         for att in email.attachments ?? [] {
             parts.append(MessagePart(
                 sectionString: String(nextSection),
                 contentType: att.mimeType,
                 disposition: att.isInline ? "inline" : "attachment",
-                encoding: "base64",
+                encoding: nil,
                 filename: att.filename,
                 contentId: att.contentID,
                 data: att.data
