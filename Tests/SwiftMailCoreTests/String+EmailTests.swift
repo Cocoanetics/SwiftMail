@@ -28,7 +28,10 @@ struct StringEmailTests {
         "example-indeed@strange-example.com",
         "example@s.example",  // Short but valid domain
         "test.email.with+symbol@example.com",
-        "user123@test-domain.org"
+        "user123@test-domain.org",
+        "user@mail.some-company.com",  // Hyphens in intermediate domain labels
+        "user@sub1.sub-2.example.com",   // Multiple hyphenated subdomains
+        "user@a1-b2.c3-d4.example.org"   // Digits + hyphens in subdomains
     ]
 
     private let invalidEmails = [
