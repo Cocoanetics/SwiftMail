@@ -577,10 +577,6 @@ public actor IMAPServer {
             let serverPort = self.port
 
             let cycleTask = Task.detached { [idleGroup] in
-                defer {
-                    Task { try? await idleGroup.shutdownGracefully() }
-                }
-
                 enum CycleTrigger: String {
                     case noop
                     case renewal
@@ -821,6 +817,7 @@ public actor IMAPServer {
                 }
 
                 continuation.finish()
+                try? await idleGroup.shutdownGracefully()
             }
 
             let session = IMAPIdleSession(events: wrappedEvents) { [weak self] in
