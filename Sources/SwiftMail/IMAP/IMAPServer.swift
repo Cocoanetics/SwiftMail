@@ -338,7 +338,7 @@ public actor IMAPServer {
 
     // MARK: - Connection Management
 
-    private func makeIdleConnection(sessionID: UUID, mailbox: String) -> IMAPConnection {
+    private func makeIdleConnection(sessionID: UUID, mailbox: String, group: EventLoopGroup) -> IMAPConnection {
         let shortID = String(sessionID.uuidString.prefix(8))
         let suffix = "idle-\(shortID)"
         let sanitizedMailbox = mailbox
@@ -555,7 +555,11 @@ public actor IMAPServer {
 
         let sessionID = UUID()
         let resolvedMailbox = resolveMailboxPath(mailbox)
-        let connection = makeIdleConnection(sessionID: sessionID, mailbox: resolvedMailbox)
+        // Each IDLE connection gets its own EventLoopGroup so that IMAPServer.deinit
+        // shutting down the primary group cannot pull the rug from under a long-lived
+        // IDLE cycle task (which is Task.detached and can outlive the server).
+        let idleGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let connection = makeIdleConnection(sessionID: sessionID, mailbox: resolvedMailbox, group: idleGroup)
         idleConnections[sessionID] = IdleConnection(mailbox: resolvedMailbox, connection: connection)
 
         do {
@@ -572,7 +576,7 @@ public actor IMAPServer {
             let serverHost = self.host
             let serverPort = self.port
 
-            let cycleTask = Task.detached {
+            let cycleTask = Task.detached { [idleGroup] in
                 enum CycleTrigger: String {
                     case noop
                     case renewal
@@ -813,6 +817,7 @@ public actor IMAPServer {
                 }
 
                 continuation.finish()
+                try? await idleGroup.shutdownGracefully()
             }
 
             let session = IMAPIdleSession(events: wrappedEvents) { [weak self] in
@@ -825,6 +830,7 @@ public actor IMAPServer {
         } catch {
             idleConnections[sessionID] = nil
             try? await connection.disconnect()
+            try? await idleGroup.shutdownGracefully()
             throw error
         }
     }

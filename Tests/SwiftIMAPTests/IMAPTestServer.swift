@@ -143,6 +143,8 @@ final class IMAPTestServer {
         let readBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 65536)
         defer { readBuf.deallocate() }
 
+        var idleTag: String? = nil  // non-nil while in IDLE state
+
         while true {
             let n = read(fd, readBuf, 65536)
             if n <= 0 { break }
@@ -154,6 +156,13 @@ final class IMAPTestServer {
 
                 guard let line = String(data: lineData, encoding: .utf8) else { continue }
 
+                // Handle DONE (untagged) while in IDLE state
+                if let tag = idleTag, line.uppercased() == "DONE" {
+                    sendLine(fd: fd, "\(tag) OK IDLE terminated\r\n")
+                    idleTag = nil
+                    continue
+                }
+
                 let parts = line.split(separator: " ", maxSplits: 2).map(String.init)
                 guard parts.count >= 2 else {
                     sendLine(fd: fd, "* BAD Invalid command\r\n")
@@ -163,6 +172,12 @@ final class IMAPTestServer {
                 let tag = parts[0]
                 let command = parts[1].uppercased()
                 let args = parts.count > 2 ? parts[2] : ""
+
+                if command == "IDLE" {
+                    sendLine(fd: fd, "+ idling\r\n")
+                    idleTag = tag
+                    continue
+                }
 
                 let response = handleCommand(tag: tag, command: command, args: args, authenticated: &authenticated, selectedMailbox: &selectedMailbox)
                 sendLine(fd: fd, response)
@@ -195,7 +210,7 @@ final class IMAPTestServer {
     private func handleCommand(tag: String, command: String, args: String, authenticated: inout Bool, selectedMailbox: inout String?) -> String {
         switch command {
         case "CAPABILITY":
-            return "* CAPABILITY IMAP4rev1 AUTH=PLAIN LITERAL+ ID NAMESPACE UIDPLUS\r\n\(tag) OK CAPABILITY completed\r\n"
+            return "* CAPABILITY IMAP4rev1 AUTH=PLAIN LITERAL+ ID NAMESPACE UIDPLUS IDLE\r\n\(tag) OK CAPABILITY completed\r\n"
         case "LOGIN":
             authenticated = true
             return "\(tag) OK LOGIN completed\r\n"
