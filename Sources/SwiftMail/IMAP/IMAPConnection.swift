@@ -225,9 +225,24 @@ final class IMAPConnection {
                 }
             }
 
+        // Resolve the address up-front so we can use connect(to:) instead of
+        // connect(host:port:). The latter goes through HappyEyeballsConnector which
+        // has a debug-mode bug: when TCP connection fails, internal promises inside the
+        // connector may not be fulfilled before it is deallocated, triggering a
+        // "leaking promise" fatal error in NIO's EventLoopFuture.deinit.
+        // Resolving first and connecting to a concrete SocketAddress bypasses the
+        // connector entirely.
+        let address: SocketAddress
+        do {
+            address = try SocketAddress.makeAddressResolvingHost(host, port: port)
+        } catch {
+            greetingPromise.fail(error)
+            throw error
+        }
+
         let channel: Channel
         do {
-            channel = try await bootstrap.connect(host: host, port: port).get()
+            channel = try await bootstrap.connect(to: address).get()
         } catch {
             // Fail the greeting promise before rethrowing — prevents NIO "leaking promise"
             // fatal error when TCP connection fails (e.g. no internet).
