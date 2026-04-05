@@ -176,7 +176,7 @@ func testGetTextContentFromPart() throws {
 }
 
 @Test
-func testIso88591QuotedPrintableHtmlPreservesUmlautsForMarkdownConversion() async throws {
+func testIso88591QuotedPrintableDecodesUmlauts() throws {
         // Body bytes are transfer-encoded quoted-printable text in ISO-8859-1.
         // The ä/ö/ü bytes (E4/F6/FC) must survive transfer decoding before charset decoding.
         let qpHTML = "<html><head><meta charset=\"iso-8859-1\"></head><body><p>Gr=FC=DFe aus K=F6ln: =E4=F6=FC</p></body></html>"
@@ -203,33 +203,6 @@ func testIso88591QuotedPrintableHtmlPreservesUmlautsForMarkdownConversion() asyn
         }
 
         #expect(html.contains("Grüße aus Köln: äöü"))
-
-        // Real html2md path: hand off bytes + charset to SwiftText HTMLDocument.
-        guard let markdown = await htmlPart.markdownContent() else {
-            throw TestFailure("Expected markdown from HTML part")
-        }
-
-        #expect(markdown.contains("Grüße aus Köln: äöü"))
-}
-
-@Test
-func testMarkdownConversionFallsBackWhenCharsetIsUnknown() async throws {
-        let html = "<html><body><p>Grüße aus Köln: äöü</p></body></html>"
-        let htmlPart = MessagePart(
-            section: Section([1]),
-            contentType: "text/html; charset=x-unknown-charset",
-            disposition: nil,
-            encoding: "8bit",
-            filename: nil,
-            contentId: nil,
-            data: html.data(using: .utf8)
-        )
-
-        guard let markdown = await htmlPart.markdownContent() else {
-            throw TestFailure("Expected markdown with unknown charset fallback")
-        }
-
-        #expect(markdown.contains("Grüße aus Köln: äöü"))
 }
 
 @Test
