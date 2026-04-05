@@ -213,6 +213,39 @@ func testIso88591QuotedPrintableHtmlPreservesUmlautsForMarkdownConversion() asyn
 }
 
 @Test
+func testMarkdownContentSanitizesUnicodeAbuse() async throws {
+    // Build an HTML part whose text body contains Unicode-abuse patterns:
+    //   - A cluster with many stacked combining marks (zalgo-style)
+    //   - A bidi override character (U+202E RIGHT-TO-LEFT OVERRIDE)
+    // After markdownContent() both must be stripped by UnicodeAbuseSanitizer.
+    let zalgo = "e\u{0300}\u{0301}\u{0302}\u{0303}\u{0304}\u{0305}\u{0306}\u{0307}\u{0308}\u{0309}\u{030A}\u{030B}\u{030C}\u{030D}\u{030E}\u{030F}\u{0310}" // 17 combining marks on 'e'
+    let bidiAbuse = "safe\u{202E}esrever"   // RTL override mid-text
+    let html = "<html><body><p>\(zalgo)</p><p>\(bidiAbuse)</p></body></html>"
+
+    let htmlPart = MessagePart(
+        section: Section([1]),
+        contentType: "text/html; charset=utf-8",
+        disposition: nil,
+        encoding: "8bit",
+        filename: nil,
+        contentId: nil,
+        data: html.data(using: .utf8)
+    )
+
+    guard let markdown = await htmlPart.markdownContent() else {
+        throw TestFailure("Expected markdown output")
+    }
+
+    // The bidi override scalar U+202E must have been removed.
+    #expect(!markdown.unicodeScalars.contains(where: { $0.value == 0x202E }), "Bidi override must be stripped")
+
+    // The 'e' with 17 combining marks must be reduced: the base character survives,
+    // but the excessive combining marks are trimmed (only ≤ 15 kept).
+    let maxCluster = markdown.map { String($0).unicodeScalars.count }.max() ?? 0
+    #expect(maxCluster <= 16, "No grapheme cluster should exceed 16 scalars after sanitization")
+}
+
+@Test
 func testMarkdownConversionFallsBackWhenCharsetIsUnknown() async throws {
         let html = "<html><body><p>Grüße aus Köln: äöü</p></body></html>"
         let htmlPart = MessagePart(

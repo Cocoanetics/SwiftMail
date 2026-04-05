@@ -3,6 +3,7 @@
 
 import Foundation
 import SwiftTextHTML
+import SwiftTextCore
 
 /// A part of an email message
 public struct MessagePart: Sendable {
@@ -150,13 +151,13 @@ public struct MessagePart: Sendable {
 				baseURL: baseURL,
 				encoding: declaredEncoding
 			)
-			return document.markdown()
+			return UnicodeAbuseSanitizer.sanitize(document.markdown()).text
 		} catch {
 			// Fallback path for unknown/unsupported/malformed charset labels:
 			// allow SwiftText to auto-detect by not forcing an encoding.
 			do {
 				let document = try await HTMLDocument(data: transferDecodedData, baseURL: baseURL, encoding: nil)
-				return document.markdown()
+				return UnicodeAbuseSanitizer.sanitize(document.markdown()).text
 			} catch {
 				return nil
 			}
