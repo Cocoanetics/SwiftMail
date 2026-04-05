@@ -2,8 +2,6 @@
 // Structure to hold information about a message part
 
 import Foundation
-import SwiftTextHTML
-import SwiftTextCore
 
 /// A part of an email message
 public struct MessagePart: Sendable {
@@ -127,43 +125,6 @@ public struct MessagePart: Sendable {
 		return nil
 	}
 	
-	/// Convert HTML body content to Markdown while preserving original charset bytes.
-	///
-	/// This passes transfer-decoded bytes and the declared charset through to
-	/// `HTMLDocument(data:baseURL:encoding:)` so HTML parsing can decode text correctly.
-	///
-	/// - Parameter baseURL: Optional base URL for resolving relative links/images.
-	/// - Returns: Markdown text for HTML parts, otherwise `nil`.
-	public func markdownContent(baseURL: URL? = nil) async -> String? {
-		guard contentType.lowercased().hasPrefix("text/html") else {
-			return nil
-		}
-
-		guard let transferDecodedData = decodedData() else {
-			return nil
-		}
-
-		let declaredEncoding = declaredCharset.flatMap { stringEncoding(for: $0) }
-
-		do {
-			let document = try await HTMLDocument(
-				data: transferDecodedData,
-				baseURL: baseURL,
-				encoding: declaredEncoding
-			)
-			return UnicodeAbuseSanitizer.sanitize(document.markdown()).text
-		} catch {
-			// Fallback path for unknown/unsupported/malformed charset labels:
-			// allow SwiftText to auto-detect by not forcing an encoding.
-			do {
-				let document = try await HTMLDocument(data: transferDecodedData, baseURL: baseURL, encoding: nil)
-				return UnicodeAbuseSanitizer.sanitize(document.markdown()).text
-			} catch {
-				return nil
-			}
-		}
-	}
-
 	/// Decode the part content using appropriate decoding based on content type and encoding
 	/// - Returns: The decoded data, or nil if no data is available
 	public func decodedData() -> Data? {
