@@ -174,6 +174,14 @@ struct QuotedPrintableTests {
         let expected = "[ Last Chance - 10% OFF ] 🎓 Hot Deal: Top Online Courses Starting at just $9 – Don’t Miss Out"
         #expect(raw.decodeMIMEHeader() == expected)
     }
+
+    @Test("MIME header concatenates adjacent base64 encoded-words before UTF-8 decoding", .tags(.decoding, .mime))
+    func mimeHeaderConcatenatesAdjacentBase64EncodedWords() {
+        let raw = "=?utf-8?B?0A==?=\r\n =?utf-8?B?o9Cy0LXQtNC+0LzQu9C10L3QuNC1INC+INC90L7QstC+0Lwg0YHQvtC+0LHRidC10L3QuNC4INC+0YIg0JjQstCw0L3QvtCy0LAg0J/QtdGC0YDQsCA=?=\r\n =?utf-8?B?0KHQtdGA0LPQtdC10LLQuNGH0LA=?="
+        let expected = "Уведомление о новом сообщении от Иванова Петра Сергеевича"
+
+        #expect(raw.decodeMIMEHeader() == expected)
+    }
     
     // MARK: - HTML File Tests
     
