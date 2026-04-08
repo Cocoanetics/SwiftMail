@@ -3,6 +3,14 @@ import Foundation
 import CoreFoundation
 #endif
 
+private struct MIMEEncodedWordRun {
+    let charset: String
+    let encoding: String
+    let stringEncoding: String.Encoding
+    var bytes: Data
+    var originalText: String
+}
+
 extension String {
     /// Encodes the string using quoted-printable encoding
     public func quotedPrintableEncoded() -> String {
@@ -214,7 +222,22 @@ extension String {
 
         var result = ""
         var lastIndex = self.startIndex
-        var lastWasEncodedWord = false
+        var hasPreviousEncodedWord = false
+        var pendingRun: MIMEEncodedWordRun?
+
+        func flushPendingRun() {
+            guard let currentRun = pendingRun else {
+                return
+            }
+
+            if let decoded = String.decodeMIMEHeaderBytes(currentRun.bytes, preferredEncoding: currentRun.stringEncoding) {
+                result += decoded
+            } else {
+                result += currentRun.originalText
+            }
+
+            pendingRun = nil
+        }
 
         for match in matches {
             guard let range = Range(match.range, in: self),
@@ -225,40 +248,51 @@ extension String {
             }
 
             let between = self[lastIndex..<range.lowerBound]
-            if !(lastWasEncodedWord && between.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) {
+            let isAdjacentEncodedWordWhitespace = hasPreviousEncodedWord &&
+                between.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+            if !between.isEmpty && !isAdjacentEncodedWordWhitespace {
+                flushPendingRun()
+                pendingRun = nil
                 result += String(between)
             }
 
             let charset = String(self[charsetRange])
+            let normalizedCharset = charset.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             let encoding = String(self[encodingRange]).uppercased()
-            var encodedText = String(self[textRange])
-            var decodedText = ""
-
+            let encodedText = String(self[textRange])
+            let originalWord = String(self[range])
             let stringEncoding = String.encodingFromCharset(charset)
 
-            if encoding == "B" {
-                if let data = Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters),
-                   let decoded = String(data: data, encoding: stringEncoding) {
-                    decodedText = decoded
-                } else if let data = Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters),
-                          let decoded = String(data: data, encoding: .utf8) {
-                    decodedText = decoded
+            if let rawBytes = String.decodeMIMEEncodedWordBytes(encodedText, encoding: encoding) {
+                if var existingRun = pendingRun,
+                   isAdjacentEncodedWordWhitespace,
+                   existingRun.charset == normalizedCharset,
+                   existingRun.encoding == encoding {
+                    existingRun.bytes.append(rawBytes)
+                    existingRun.originalText += originalWord
+                    pendingRun = existingRun
+                } else {
+                    flushPendingRun()
+                    pendingRun = MIMEEncodedWordRun(
+                        charset: normalizedCharset,
+                        encoding: encoding,
+                        stringEncoding: stringEncoding,
+                        bytes: rawBytes,
+                        originalText: originalWord
+                    )
                 }
-            } else if encoding == "Q" {
-                // In MIME headers, underscores represent spaces
-                encodedText = encodedText.replacingOccurrences(of: "_", with: " ")
-                if let decoded = encodedText.decodeQuotedPrintable(encoding: stringEncoding) {
-                    decodedText = decoded
-                } else if let decoded = encodedText.decodeQuotedPrintable() {
-                    decodedText = decoded
-                }
+            } else {
+                flushPendingRun()
+                pendingRun = nil
+                result += originalWord
             }
 
-            result += decodedText
             lastIndex = range.upperBound
-            lastWasEncodedWord = true
+            hasPreviousEncodedWord = true
         }
 
+        flushPendingRun()
         let remainder = self[lastIndex...]
         result += String(remainder)
 
@@ -353,5 +387,75 @@ extension String {
 
         // Last resort: try with UTF-8
         return self.decodeQuotedPrintable() ?? self
+    }
+}
+
+private extension String {
+    static func decodeMIMEEncodedWordBytes(_ encodedText: String, encoding: String) -> Data? {
+        switch encoding {
+        case "B":
+            return Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters)
+        case "Q":
+            return decodeMIMEHeaderQuotedPrintableBytes(
+                encodedText.replacingOccurrences(of: "_", with: " ")
+            )
+        default:
+            return nil
+        }
+    }
+
+    static func decodeMIMEHeaderBytes(_ bytes: Data, preferredEncoding: String.Encoding) -> String? {
+        if let decoded = String(data: bytes, encoding: preferredEncoding) {
+            return decoded
+        }
+
+        if preferredEncoding != .utf8, let decoded = String(data: bytes, encoding: .utf8) {
+            return decoded
+        }
+
+        return nil
+    }
+
+    static func decodeMIMEHeaderQuotedPrintableBytes(_ text: String) -> Data? {
+        let withoutSoftBreaks = text.replacingOccurrences(of: "=\r\n", with: "")
+            .replacingOccurrences(of: "=\n", with: "")
+
+        var bytes = Data()
+        var index = withoutSoftBreaks.startIndex
+
+        while index < withoutSoftBreaks.endIndex {
+            let character = withoutSoftBreaks[index]
+
+            if character == "=" {
+                let nextIndex = withoutSoftBreaks.index(after: index)
+                guard nextIndex < withoutSoftBreaks.endIndex else {
+                    return nil
+                }
+
+                let nextNextIndex = withoutSoftBreaks.index(after: nextIndex)
+                guard nextNextIndex < withoutSoftBreaks.endIndex else {
+                    return nil
+                }
+
+                let hex = String(withoutSoftBreaks[nextIndex...nextNextIndex])
+                guard let byte = UInt8(hex, radix: 16) else {
+                    return nil
+                }
+
+                bytes.append(byte)
+                index = withoutSoftBreaks.index(after: nextNextIndex)
+                continue
+            }
+
+            if let ascii = character.asciiValue {
+                bytes.append(ascii)
+            } else if let data = String(character).data(using: .utf8) {
+                bytes.append(contentsOf: data)
+            }
+
+            index = withoutSoftBreaks.index(after: index)
+        }
+
+        return bytes
     }
 }
