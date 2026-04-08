@@ -29,22 +29,51 @@ struct SendContentCommand: SMTPCommand {
     
     /**
      Convert the command to raw bytes that can be sent to the server.
-     Appends CRLF and the terminating period.
+     Applies RFC 5321 §4.5.2 dot-stuffing and appends the terminating sequence.
      */
     func toCommandData() -> Data {
-        var result = contentData
+        let stuffed = Self.dotStuff(contentData)
+        var result = stuffed
         // Add terminating CRLF.CRLF (the DATA terminator)
         result.append(contentsOf: [0x0D, 0x0A, 0x2E]) // \r\n.
         return result
     }
-    
+
     /**
      Convert the command to a string that can be sent to the server
      - Note: Prefer `toCommandData()` for raw byte handling.
      */
 	func toCommandString() -> String {
-        // Decode as UTF-8 (lossy for non-UTF-8 content)
-        let contentString = String(decoding: contentData, as: UTF8.self)
+        let stuffed = Self.dotStuff(contentData)
+        let contentString = String(decoding: stuffed, as: UTF8.self)
         return contentString + "\r\n."
+    }
+
+    /// RFC 5321 §4.5.2 — Any line in the message body that starts with a period
+    /// must have an additional period prepended ("dot-stuffing"). The receiving
+    /// server strips the extra dot. Without this, a leading dot can be mistaken
+    /// for the end-of-data indicator, truncating the message.
+    static func dotStuff(_ data: Data) -> Data {
+        let cr: UInt8 = 0x0D
+        let lf: UInt8 = 0x0A
+        let dot: UInt8 = 0x2E
+
+        var result = Data(capacity: data.count + data.count / 40) // small over-allocation
+        var atLineStart = true
+
+        for byte in data {
+            if atLineStart && byte == dot {
+                result.append(dot) // extra dot
+            }
+            result.append(byte)
+            if byte == lf {
+                atLineStart = true
+            } else if byte != cr {
+                atLineStart = false
+            }
+            // CR keeps atLineStart unchanged (waiting for LF)
+        }
+
+        return result
     }
 } 
