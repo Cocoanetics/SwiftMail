@@ -230,7 +230,11 @@ extension String {
                 return
             }
 
-            if let decoded = String.decodeMIMEHeaderBytes(currentRun.bytes, preferredEncoding: currentRun.stringEncoding) {
+            if let decoded = String.decodeMIMEHeaderBytes(
+                currentRun.bytes,
+                preferredEncoding: currentRun.stringEncoding,
+                transferEncoding: currentRun.encoding
+            ) {
                 result += decoded
             } else {
                 result += currentRun.originalText
@@ -404,12 +408,21 @@ private extension String {
         }
     }
 
-    static func decodeMIMEHeaderBytes(_ bytes: Data, preferredEncoding: String.Encoding) -> String? {
+    static func decodeMIMEHeaderBytes(
+        _ bytes: Data,
+        preferredEncoding: String.Encoding,
+        transferEncoding: String
+    ) -> String? {
         if let decoded = String(data: bytes, encoding: preferredEncoding) {
             return decoded
         }
 
         if preferredEncoding != .utf8, let decoded = String(data: bytes, encoding: .utf8) {
+            return decoded
+        }
+
+        if transferEncoding == "Q", preferredEncoding != .isoLatin1,
+           let decoded = String(data: bytes, encoding: .isoLatin1) {
             return decoded
         }
 
