@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
 
 /// A user-controlled, reusable IMAP connection managed by ``IMAPServer``.
@@ -11,6 +12,7 @@ public actor IMAPNamedConnection {
 
     private let connection: IMAPConnection
     private let authenticateOnConnection: @Sendable (IMAPConnection) async throws -> Void
+    private var selectedMailboxPath: String?
 
     /// The timestamp of the last successfully completed command on this connection.
     /// Useful for implementing staleness checks in ephemeral connection patterns.
@@ -61,8 +63,11 @@ public actor IMAPNamedConnection {
         // Authenticate first so namespacesSnapshot is populated (or repopulated
         // after a reconnect) before we resolve the mailbox path.
         try await ensureAuthenticated()
-        let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
-        return try await executeCommand(command)
+        let resolvedMailboxPath = resolveMailboxPath(mailboxName)
+        let command = SelectMailboxCommand(mailboxName: resolvedMailboxPath)
+        let selection = try await executeCommand(command)
+        selectedMailboxPath = resolvedMailboxPath
+        return selection
     }
 
     /// Compatibility alias for selecting a mailbox.
@@ -75,6 +80,7 @@ public actor IMAPNamedConnection {
     public func closeMailbox() async throws {
         let command = CloseCommand()
         try await executeCommand(command)
+        selectedMailboxPath = nil
     }
 
     /// Unselect the currently selected mailbox without expunging.
@@ -85,6 +91,7 @@ public actor IMAPNamedConnection {
 
         let command = UnselectCommand()
         try await executeCommand(command)
+        selectedMailboxPath = nil
     }
 
     /// Start IDLE and receive server events.
@@ -179,12 +186,52 @@ public actor IMAPNamedConnection {
     }
 
     /// Search within the selected mailbox.
+    @available(
+        *,
+        deprecated,
+        message: "Use extendedSearch(...) for structured results or search(..., sortCriteria:) for ordered results."
+    )
     public func search<T: MessageIdentifier>(
         identifierSet: MessageIdentifierSet<T>? = nil,
-        criteria: [SearchCriteria]
+        criteria: [SearchCriteria],
+        calendar: Calendar = Calendar(identifier: .gregorian)
     ) async throws -> MessageIdentifierSet<T> {
-        let command = SearchCommand(identifierSet: identifierSet, criteria: criteria)
+        if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
+            throw IMAPError.commandNotSupported("WITHIN extension not supported by server (required for OLDER/YOUNGER search)")
+        }
+        let command = SearchCommand(
+            identifierSet: identifierSet,
+            criteria: criteria,
+            calendar: calendar
+        )
         return try await executeCommand(command)
+    }
+
+    /// Search within the selected mailbox and preserve server sort order.
+    public func search<T: MessageIdentifier>(
+        identifierSet: MessageIdentifierSet<T>? = nil,
+        criteria: [SearchCriteria],
+        sortCriteria: [SortCriterion],
+        sortCharset: String = "UTF-8",
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) async throws -> [T] {
+        let result = try await extendedSearch(
+            identifierSet: identifierSet,
+            criteria: criteria,
+            sortCriteria: sortCriteria,
+            sortCharset: sortCharset,
+            calendar: calendar
+        )
+
+        if let ordered = result.ordered {
+            return ordered
+        }
+
+        if let partial = result.partial {
+            return partial.results.toArray()
+        }
+
+        return result.all?.toArray() ?? []
     }
 
     /// Search within the selected mailbox, returning structured ESEARCH results (RFC 4731).
@@ -196,12 +243,63 @@ public actor IMAPNamedConnection {
     public func extendedSearch<T: MessageIdentifier>(
         identifierSet: MessageIdentifierSet<T>? = nil,
         criteria: [SearchCriteria],
+        sortCriteria: [SortCriterion] = [],
+        sortCharset: String = "UTF-8",
         calendar: Calendar = Calendar(identifier: .gregorian),
         partialRange: PartialRange? = nil
     ) async throws -> ExtendedSearchResult<T> {
-        let useEsearch = capabilities.contains(.extendedSearch)
-        let command = ExtendedSearchCommand<T>(identifierSet: identifierSet, criteria: criteria, calendar: calendar, useEsearch: useEsearch, partialRange: partialRange)
-        return try await executeCommand(command)
+        if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
+            throw IMAPError.commandNotSupported("WITHIN extension not supported by server (required for OLDER/YOUNGER search)")
+        }
+        let useSort = capabilities.supportsSort(criteria: sortCriteria)
+        if !useSort && sortCriteria.contains(where: \.requiresDisplaySortCapability) {
+            throw IMAPError.commandNotSupported("DISPLAY sort requires SORT=DISPLAY capability")
+        }
+        let useEsearch = capabilities.contains(.extendedSearch) && (!useSort || partialRange != nil)
+        let command = ExtendedSearchCommand<T>(
+            identifierSet: identifierSet,
+            criteria: criteria,
+            sortCriteria: sortCriteria,
+            sortCharset: sortCharset,
+            calendar: calendar,
+            useSort: useSort,
+            useEsearch: useEsearch,
+            partialRange: partialRange
+        )
+        do {
+            return try await executeCommand(command)
+        } catch {
+            guard useSort, LocalSortFallback.isSortResponseDecodeFailure(error) else {
+                throw error
+            }
+
+            try await reselectMailboxIfNeeded()
+            let fallback = SearchCommand(
+                identifierSet: identifierSet,
+                criteria: criteria,
+                calendar: calendar
+            )
+            let identifiers: MessageIdentifierSet<T> = try await executeCommand(fallback)
+            guard !identifiers.isEmpty else {
+                return ExtendedSearchResult(count: 0, ordered: [])
+            }
+            let infos = try await fetchMessageInfosBulk(using: identifiers)
+            return try LocalSortFallback.makeExtendedSearchResult(
+                from: infos,
+                as: T.self,
+                sortCriteria: sortCriteria,
+                partialRange: partialRange
+            )
+        }
+    }
+
+    private func reselectMailboxIfNeeded() async throws {
+        guard let selectedMailboxPath else {
+            return
+        }
+
+        let command = SelectMailboxCommand(mailboxName: selectedMailboxPath)
+        _ = try await executeCommand(command)
     }
 
     /// Copy messages to another mailbox.

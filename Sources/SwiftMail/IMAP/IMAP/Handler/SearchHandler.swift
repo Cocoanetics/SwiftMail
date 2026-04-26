@@ -39,14 +39,19 @@ final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageI
             }
         }
         
-		// Check for search response data using proper pattern matching
-		if case let .untagged(untagged) = response,
-		   case let .mailboxData(mailboxData) = untagged,
-		   case let .search(ids, _) = mailboxData {
-			// Convert the IDs to the appropriate MessageIdentifier type
-			let results = ids.map { T.init(UInt32($0)) }
-			searchResults.append(contentsOf: results)
-		}
+        if case let .untagged(untagged) = response,
+           case let .mailboxData(mailboxData) = untagged {
+            switch mailboxData {
+            case .search(let ids, _):
+                let results = ids.map { T.init(UInt32($0)) }
+                searchResults.append(contentsOf: results)
+            case .sort(let ids, _):
+                let results = ids.map { T.init(UInt32($0)) }
+                searchResults.append(contentsOf: results)
+            default:
+                break
+            }
+        }
         
         return handled
     }

@@ -24,6 +24,13 @@ public struct ExtendedSearchResult<T: MessageIdentifier>: Sendable {
     /// All message identifiers matching the search criteria, if requested.
     public let all: MessageIdentifierSet<T>?
 
+    /// Message identifiers in the order returned by the server.
+    ///
+    /// This is populated when SwiftMail synthesises the result from a plain
+    /// `SEARCH` or `SORT` response. For `SORT`, the array preserves the server's
+    /// requested sort order.
+    public let ordered: [T]?
+
     /// A paged subset of results returned when PARTIAL was requested.
     ///
     /// Non-nil only when the command was issued with a ``PartialRange`` and the
@@ -45,12 +52,14 @@ public struct ExtendedSearchResult<T: MessageIdentifier>: Sendable {
         min: T? = nil,
         max: T? = nil,
         all: MessageIdentifierSet<T>? = nil,
+        ordered: [T]? = nil,
         partial: PartialResult? = nil
     ) {
         self.count = count
         self.min = min
         self.max = max
         self.all = all
+        self.ordered = ordered
         self.partial = partial
     }
 }

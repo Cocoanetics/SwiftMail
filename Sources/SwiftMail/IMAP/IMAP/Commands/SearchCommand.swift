@@ -20,6 +20,12 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
     let identifierSet: MessageIdentifierSet<T>?
     /// Criteria that all messages must satisfy.
     let criteria: [SearchCriteria]
+    /// Optional server-side sort criteria.
+    let sortCriteria: [SortCriterion]
+    /// Charset used when emitting `SORT`.
+    let sortCharset: String
+    /// Whether the server-side `SORT` command should be used.
+    let useSort: Bool
     /// Calendar used for date-to-day conversions in search criteria.
     let calendar: Calendar
 
@@ -33,9 +39,19 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
        - criteria: The search criteria to apply.
        - calendar: The calendar used for date-to-day conversions. Defaults to the Gregorian calendar.
      */
-    init(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], calendar: Calendar = Calendar(identifier: .gregorian)) {
+    init(
+        identifierSet: MessageIdentifierSet<T>? = nil,
+        criteria: [SearchCriteria],
+        sortCriteria: [SortCriterion] = [],
+        sortCharset: String = "UTF-8",
+        useSort: Bool = false,
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) {
         self.identifierSet = identifierSet
         self.criteria = criteria
+        self.sortCriteria = sortCriteria
+        self.sortCharset = sortCharset
+        self.useSort = useSort
         self.calendar = calendar
     }
 
@@ -43,6 +59,9 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
     func validate() throws {
         guard !criteria.isEmpty else {
             throw IMAPError.invalidArgument("Search criteria cannot be empty")
+        }
+        guard !useSort || !sortCriteria.isEmpty else {
+            throw IMAPError.invalidArgument("Sort criteria cannot be empty when SORT is enabled")
         }
         for criterion in criteria { try criterion.validate() }
     }
@@ -64,10 +83,18 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
             nioCriteria.insert(scopeKey, at: 0)
         }
 
-        if T.self == UID.self {
-            return TaggedCommand(tag: tag, command: .uidSearch(key: .and(nioCriteria)))
+        let key = SearchKey.and(nioCriteria)
+
+        if useSort {
+            if T.self == UID.self {
+                return TaggedCommand(tag: tag, command: .uidSort(criteria: sortCriteria, charset: sortCharset, key: key))
+            } else {
+                return TaggedCommand(tag: tag, command: .sort(criteria: sortCriteria, charset: sortCharset, key: key))
+            }
+        } else if T.self == UID.self {
+            return TaggedCommand(tag: tag, command: .uidSearch(key: key))
         } else {
-            return TaggedCommand(tag: tag, command: .search(key: .and(nioCriteria)))
+            return TaggedCommand(tag: tag, command: .search(key: key))
         }
     }
 }
