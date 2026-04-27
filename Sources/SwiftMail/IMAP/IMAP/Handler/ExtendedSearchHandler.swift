@@ -17,6 +17,7 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
 
     // Accumulated results from a plain SEARCH response (fallback path).
     private var fallbackIdentifiers: [T] = []
+    private var fallbackOrderedIdentifiers: [T] = []
 
     // Results accumulated from an ESEARCH response.
     private var esearchCount: Int?
@@ -77,6 +78,15 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
            case let .search(ids, _) = mailboxData {
             let converted = ids.map { T(UInt32($0)) }
             fallbackIdentifiers.append(contentsOf: converted)
+            fallbackOrderedIdentifiers.append(contentsOf: converted)
+        }
+
+        if case let .untagged(untagged) = response,
+           case let .mailboxData(mailboxData) = untagged,
+           case let .sort(ids, _) = mailboxData {
+            let converted = ids.map { T(UInt32($0)) }
+            fallbackIdentifiers.append(contentsOf: converted)
+            fallbackOrderedIdentifiers.append(contentsOf: converted)
         }
 
         return handled
@@ -106,7 +116,8 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
                 count: count,
                 min: fallbackIdentifiers.min(),
                 max: fallbackIdentifiers.max(),
-                all: identifierSet.isEmpty ? nil : identifierSet
+                all: identifierSet.isEmpty ? nil : identifierSet,
+                ordered: fallbackOrderedIdentifiers.isEmpty ? nil : fallbackOrderedIdentifiers
             )
         }
 

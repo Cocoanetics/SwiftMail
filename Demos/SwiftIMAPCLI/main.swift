@@ -448,6 +448,9 @@ struct Search: ParsableCommand {
     
     @ArgumentParser.Flag(help: "Use OR instead of AND across all criteria")
     var any: Bool = false
+
+    @Option(help: "Sort key (repeatable). Prefix with '-' for descending, e.g. --sort -date --sort subject")
+    var sort: [String] = []
     
     @Option(help: "Attachment file extension to match (repeatable, e.g. pdf, docx)")
     var attachment: [String] = []
@@ -549,6 +552,44 @@ struct Search: ParsableCommand {
         )
     }
 
+    private func buildSortCriteria() throws -> [SortCriterion] {
+        try sort.map { rawValue in
+            let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else {
+                throw ValidationError("Empty --sort value is not allowed.")
+            }
+
+            let descending = trimmed.hasPrefix("-")
+            let normalized = (descending ? String(trimmed.dropFirst()) : trimmed).lowercased()
+
+            let key: SortCriterion.Key
+            switch normalized {
+            case "arrival":
+                key = .arrival
+            case "cc":
+                key = .cc
+            case "date":
+                key = .date
+            case "from":
+                key = .from
+            case "size":
+                key = .size
+            case "subject":
+                key = .subject
+            case "to":
+                key = .to
+            case "displayfrom", "display-from":
+                key = .displayFrom
+            case "displayto", "display-to":
+                key = .displayTo
+            default:
+                throw ValidationError("Unsupported --sort value: \(rawValue). Supported values: arrival, cc, date, from, size, subject, to, displayfrom, displayto. Prefix with '-' for descending.")
+            }
+
+            return descending ? .descending(key) : .ascending(key)
+        }
+    }
+
     func run() throws {
         runAsyncBlock {
             try await withServer { server in
@@ -556,15 +597,29 @@ struct Search: ParsableCommand {
                 
                 print("Building search criteria...")
                 let criteria = try buildCriteria()
-                print("Running IMAP SEARCH...")
-                let uids: MessageIdentifierSet<UID> = try await server.search(criteria: criteria)
+                let sortCriteria = try buildSortCriteria()
+                let sortDescription = sortCriteria.isEmpty ? "none" : sort.map { $0 }.joined(separator: ", ")
+                print("Running IMAP SEARCH (sort: \(sortDescription))...")
+                let searchResult: ExtendedSearchResult<UID> = try await server.extendedSearch(
+                    criteria: criteria,
+                    sortCriteria: sortCriteria
+                )
+                let uids = searchResult.all ?? MessageIdentifierSet<UID>()
                 let attachmentExts = attachmentExtensions()
                 let criteriaDescription = any ? "OR" : "AND"
                 print("Found \(uids.count) messages matching \(criteriaDescription) criteria")
                 
                 if !uids.isEmpty {
-                     print("Fetching messages for results...")
-                     for try await message in server.fetchMessages(using: uids) {
+                    let orderedUIDs = searchResult.ordered ?? uids.toArray()
+                    print("Fetching messages for results...")
+                    for uid in orderedUIDs {
+                        guard let header = try await server.fetchMessageInfo(for: uid) else {
+                            continue
+                        }
+                        let message = try await server.fetchMessage(from: header)
+                        if message.uid == nil {
+                            continue
+                        }
                         if !attachmentExts.isEmpty {
                             let hasMatch = message.attachments.contains { part in
                                 guard let filename = part.filename?.lowercased() else { return false }
@@ -574,8 +629,8 @@ struct Search: ParsableCommand {
                                 continue
                             }
                         }
-                        
-                        let uidValue = message.uid?.value ?? 0
+
+                        let uidValue = message.uid?.value ?? uid.value
                         print("--- UID \(uidValue) ---")
                         print("From: \(message.from ?? "")")
                         let toList = message.to.joined(separator: ", ")

@@ -38,6 +38,7 @@ public actor IMAPServer {
 
     /// Explicit TLS preference. `nil` means infer from the standard IMAP port.
     private let useTLS: Bool?
+    private var selectedMailboxPath: String?
     
     /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
@@ -467,8 +468,11 @@ public actor IMAPServer {
      To get the count of unseen messages, use `mailboxStatus("INBOX").unseenCount` instead.
      */
     @discardableResult public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
-        let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
-        return try await executeCommand(command)
+        let resolvedMailboxPath = resolveMailboxPath(mailboxName)
+        let command = SelectMailboxCommand(mailboxName: resolvedMailboxPath)
+        let selection = try await executeCommand(command)
+        selectedMailboxPath = resolvedMailboxPath
+        return selection
     }
     
     /**
@@ -485,6 +489,7 @@ public actor IMAPServer {
     public func closeMailbox() async throws {
         let command = CloseCommand()
         try await executeCommand(command)
+        selectedMailboxPath = nil
     }
     
     /**
@@ -507,6 +512,7 @@ public actor IMAPServer {
         
         let command = UnselectCommand()
         try await executeCommand(command)
+        selectedMailboxPath = nil
     }
     
     // MARK: - Idle
@@ -1238,12 +1244,52 @@ public actor IMAPServer {
      - `IMAPError.connectionFailed` if not connected
      - Note: Logs search operations at debug level with criteria count and results count
      */
-    public func search<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], calendar: Calendar = Calendar(identifier: .gregorian)) async throws -> MessageIdentifierSet<T> {
+    @available(
+        *,
+        deprecated,
+        message: "Use extendedSearch(...) for structured results or search(..., sortCriteria:) for ordered results."
+    )
+    public func search<T: MessageIdentifier>(
+        identifierSet: MessageIdentifierSet<T>? = nil,
+        criteria: [SearchCriteria],
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) async throws -> MessageIdentifierSet<T> {
         if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
             throw IMAPError.commandNotSupported("WITHIN extension not supported by server (required for OLDER/YOUNGER search)")
         }
-        let command = SearchCommand(identifierSet: identifierSet, criteria: criteria, calendar: calendar)
+        let command = SearchCommand(
+            identifierSet: identifierSet,
+            criteria: criteria,
+            calendar: calendar
+        )
         return try await executeCommand(command)
+    }
+
+    /// Search the selected mailbox and preserve server sort order.
+    public func search<T: MessageIdentifier>(
+        identifierSet: MessageIdentifierSet<T>? = nil,
+        criteria: [SearchCriteria],
+        sortCriteria: [SortCriterion],
+        sortCharset: String = "UTF-8",
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) async throws -> [T] {
+        let result = try await extendedSearch(
+            identifierSet: identifierSet,
+            criteria: criteria,
+            sortCriteria: sortCriteria,
+            sortCharset: sortCharset,
+            calendar: calendar
+        )
+
+        if let ordered = result.ordered {
+            return ordered
+        }
+
+        if let partial = result.partial {
+            return partial.results.toArray()
+        }
+
+        return result.all?.toArray() ?? []
     }
 
     /**
@@ -1270,13 +1316,66 @@ public actor IMAPServer {
        - `IMAPError.commandFailed` if the search operation fails
        - `IMAPError.connectionFailed` if not connected
      */
-    public func extendedSearch<T: MessageIdentifier>(identifierSet: MessageIdentifierSet<T>? = nil, criteria: [SearchCriteria], calendar: Calendar = Calendar(identifier: .gregorian), partialRange: PartialRange? = nil) async throws -> ExtendedSearchResult<T> {
+    public func extendedSearch<T: MessageIdentifier>(
+        identifierSet: MessageIdentifierSet<T>? = nil,
+        criteria: [SearchCriteria],
+        sortCriteria: [SortCriterion] = [],
+        sortCharset: String = "UTF-8",
+        calendar: Calendar = Calendar(identifier: .gregorian),
+        partialRange: PartialRange? = nil
+    ) async throws -> ExtendedSearchResult<T> {
         if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
             throw IMAPError.commandNotSupported("WITHIN extension not supported by server (required for OLDER/YOUNGER search)")
         }
-        let useEsearch = capabilities.contains(.extendedSearch)
-        let command = ExtendedSearchCommand<T>(identifierSet: identifierSet, criteria: criteria, calendar: calendar, useEsearch: useEsearch, partialRange: partialRange)
-        return try await executeCommand(command)
+        let useSort = capabilities.supportsSort(criteria: sortCriteria)
+        if !useSort && sortCriteria.contains(where: \.requiresDisplaySortCapability) {
+            throw IMAPError.commandNotSupported("DISPLAY sort requires SORT=DISPLAY capability")
+        }
+        let useEsearch = capabilities.contains(.extendedSearch) && (!useSort || partialRange != nil)
+        let command = ExtendedSearchCommand<T>(
+            identifierSet: identifierSet,
+            criteria: criteria,
+            sortCriteria: sortCriteria,
+            sortCharset: sortCharset,
+            calendar: calendar,
+            useSort: useSort,
+            useEsearch: useEsearch,
+            partialRange: partialRange
+        )
+        do {
+            return try await executeCommand(command)
+        } catch {
+            guard useSort, LocalSortFallback.isSortResponseDecodeFailure(error) else {
+                throw error
+            }
+
+            try await reselectMailboxIfNeeded()
+            let fallback = SearchCommand(
+                identifierSet: identifierSet,
+                criteria: criteria,
+                calendar: calendar
+            )
+            let identifiers: MessageIdentifierSet<T> = try await executeCommand(fallback)
+            guard !identifiers.isEmpty else {
+                return ExtendedSearchResult(count: 0, ordered: [])
+            }
+            let infos = try await fetchMessageInfosBulk(using: identifiers)
+            return try LocalSortFallback.makeExtendedSearchResult(
+                from: infos,
+                as: T.self,
+                sortCriteria: sortCriteria,
+                partialRange: partialRange
+            )
+        }
+    }
+
+    private func reselectMailboxIfNeeded() async throws {
+        guard let selectedMailboxPath else {
+            return
+        }
+
+        let command = SelectMailboxCommand(mailboxName: selectedMailboxPath)
+        _ = try await executeCommand(command)
     }
 
 

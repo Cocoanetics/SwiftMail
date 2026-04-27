@@ -17,8 +17,14 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
     let identifierSet: MessageIdentifierSet<T>?
     /// Criteria that all messages must satisfy.
     let criteria: [SearchCriteria]
+    /// Optional server-side sort criteria.
+    let sortCriteria: [SortCriterion]
+    /// Charset used when emitting `SORT`.
+    let sortCharset: String
     /// Calendar used for date-to-day conversions.
     let calendar: Calendar
+    /// Whether to issue SORT/UID SORT instead of SEARCH/UID SEARCH.
+    let useSort: Bool
     /// Whether the server supports ESEARCH (determines which command is sent).
     let useEsearch: Bool
     /// Optional window for paged (PARTIAL) results. Only used when `useEsearch` is true.
@@ -30,13 +36,19 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
     init(
         identifierSet: MessageIdentifierSet<T>? = nil,
         criteria: [SearchCriteria],
+        sortCriteria: [SortCriterion] = [],
+        sortCharset: String = "UTF-8",
         calendar: Calendar = Calendar(identifier: .gregorian),
+        useSort: Bool = false,
         useEsearch: Bool,
         partialRange: NIOIMAPCore.PartialRange? = nil
     ) {
         self.identifierSet = identifierSet
         self.criteria = criteria
+        self.sortCriteria = sortCriteria
+        self.sortCharset = sortCharset
         self.calendar = calendar
+        self.useSort = useSort
         self.useEsearch = useEsearch
         self.partialRange = partialRange
     }
@@ -44,6 +56,9 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
     func validate() throws {
         guard !criteria.isEmpty else {
             throw IMAPError.invalidArgument("Search criteria cannot be empty")
+        }
+        guard !useSort || !sortCriteria.isEmpty else {
+            throw IMAPError.invalidArgument("Sort criteria cannot be empty when SORT is enabled")
         }
         for criterion in criteria { try criterion.validate() }
     }
@@ -74,7 +89,13 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
             returnOptions = []
         }
 
-        if T.self == UID.self {
+        if useSort {
+            if T.self == UID.self {
+                return TaggedCommand(tag: tag, command: .uidSort(criteria: sortCriteria, charset: sortCharset, key: key, returnOptions: returnOptions))
+            } else {
+                return TaggedCommand(tag: tag, command: .sort(criteria: sortCriteria, charset: sortCharset, key: key, returnOptions: returnOptions))
+            }
+        } else if T.self == UID.self {
             return TaggedCommand(tag: tag, command: .uidSearch(key: key, returnOptions: returnOptions))
         } else {
             return TaggedCommand(tag: tag, command: .search(key: key, returnOptions: returnOptions))

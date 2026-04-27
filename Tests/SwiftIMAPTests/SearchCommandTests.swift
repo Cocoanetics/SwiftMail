@@ -36,6 +36,34 @@ struct SearchCommandTests {
     }
 
     @Test
+    func testUIDSortWireFormatUsesSortCommand() async throws {
+        let channel = NIOAsyncTestingChannel()
+        try await channel.pipeline.addHandler(IMAPClientHandler())
+
+        let ids = MessageIdentifierSet<UID>([UID(10), UID(20), UID(30)])
+        let command = SearchCommand<UID>(
+            identifierSet: ids,
+            criteria: [SearchCriteria.unseen],
+            sortCriteria: [.descending(.date)],
+            useSort: true
+        )
+        let tagged = command.toTaggedCommand(tag: "S001A")
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        try await channel.writeAndFlush(wrapped)
+
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
+        }
+        let wire = outbound.readString(length: outbound.readableBytes) ?? ""
+
+        #expect(wire.contains("UID SORT"))
+        #expect(wire.contains("(REVERSE DATE)"))
+        #expect(wire.contains("UTF-8"))
+        #expect(wire.contains("UID 10:30") || wire.contains("UID 10,20,30"))
+    }
+
+    @Test
     func testNoIdentifierSetSearchesEntireMailbox() async throws {
         let channel = NIOAsyncTestingChannel()
         try await channel.pipeline.addHandler(IMAPClientHandler())

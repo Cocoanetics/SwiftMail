@@ -127,6 +127,22 @@ struct ExtendedSearchHandlerTests {
         #expect(result.min?.value == 4)
         #expect(result.max?.value == 10)
         #expect(result.all != nil)
+        #expect(result.ordered?.map(\.value) == [4, 7, 10])
+    }
+
+    @Test
+    func testFallbackSortPreservesServerOrder() async throws {
+        let channel = NIOAsyncTestingChannel()
+        let promise = channel.eventLoop.makePromise(of: ExtendedSearchResult<UID>.self)
+        let handler = ExtendedSearchHandler<UID>(commandTag: "A003B", promise: promise)
+        _ = handler.processResponse(.untagged(.mailboxData(.sort([10, 7, 4], 123))))
+        handler.handleTaggedOKResponse(.init(tag: "A003B", state: .ok(.init(text: "Sort complete"))))
+
+        let result = try await promise.futureResult.get()
+
+        #expect(result.count == 3)
+        #expect(result.ordered?.map(\.value) == [10, 7, 4])
+        #expect(result.all?.toArray().map(\.value) == [4, 7, 10])
     }
 
     // MARK: - Empty ESEARCH result
@@ -184,6 +200,34 @@ struct ExtendedSearchHandlerTests {
         #expect(wireString.contains("MIN"))
         #expect(wireString.contains("MAX"))
         #expect(wireString.contains("ALL"))
+    }
+
+    @Test
+    func testSortedCommandWireFormatUsesUIDSort() async throws {
+        let channel = NIOAsyncTestingChannel()
+
+        try await channel.pipeline.addHandler(IMAPClientHandler())
+
+        let command = ExtendedSearchCommand<UID>(
+            criteria: [SearchCriteria.all],
+            sortCriteria: [.descending(.date)],
+            useSort: true,
+            useEsearch: false
+        )
+        let tagged = command.toTaggedCommand(tag: "C001A")
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        try await channel.writeAndFlush(wrapped)
+
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
+        }
+        let wireString = outbound.readString(length: outbound.readableBytes) ?? ""
+
+        #expect(wireString.contains("UID SORT"))
+        #expect(wireString.contains("(REVERSE DATE)"))
+        #expect(wireString.contains("UTF-8"))
+        #expect(!wireString.contains("RETURN"))
     }
 
     @Test
