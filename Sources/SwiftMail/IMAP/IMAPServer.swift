@@ -38,7 +38,6 @@ public actor IMAPServer {
 
     /// Explicit TLS preference. `nil` means infer from the standard IMAP port.
     private let useTLS: Bool?
-    private var selectedMailboxPath: String?
     
     /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
@@ -468,11 +467,8 @@ public actor IMAPServer {
      To get the count of unseen messages, use `mailboxStatus("INBOX").unseenCount` instead.
      */
     @discardableResult public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
-        let resolvedMailboxPath = resolveMailboxPath(mailboxName)
-        let command = SelectMailboxCommand(mailboxName: resolvedMailboxPath)
-        let selection = try await executeCommand(command)
-        selectedMailboxPath = resolvedMailboxPath
-        return selection
+        let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
+        return try await executeCommand(command)
     }
     
     /**
@@ -489,7 +485,6 @@ public actor IMAPServer {
     public func closeMailbox() async throws {
         let command = CloseCommand()
         try await executeCommand(command)
-        selectedMailboxPath = nil
     }
     
     /**
@@ -512,7 +507,6 @@ public actor IMAPServer {
         
         let command = UnselectCommand()
         try await executeCommand(command)
-        selectedMailboxPath = nil
     }
     
     // MARK: - Idle
@@ -1328,8 +1322,11 @@ public actor IMAPServer {
             throw IMAPError.commandNotSupported("WITHIN extension not supported by server (required for OLDER/YOUNGER search)")
         }
         let useSort = capabilities.supportsSort(criteria: sortCriteria)
-        if !useSort && sortCriteria.contains(where: \.requiresDisplaySortCapability) {
-            throw IMAPError.commandNotSupported("DISPLAY sort requires SORT=DISPLAY capability")
+        if !sortCriteria.isEmpty && !useSort {
+            if sortCriteria.contains(where: \.requiresDisplaySortCapability) {
+                throw IMAPError.commandNotSupported("DISPLAY sort requires SORT=DISPLAY capability")
+            }
+            throw IMAPError.commandNotSupported("SORT command not supported by server")
         }
         let useEsearch = capabilities.contains(.extendedSearch) && (!useSort || partialRange != nil)
         let command = ExtendedSearchCommand<T>(
@@ -1342,40 +1339,7 @@ public actor IMAPServer {
             useEsearch: useEsearch,
             partialRange: partialRange
         )
-        do {
-            return try await executeCommand(command)
-        } catch {
-            guard useSort, LocalSortFallback.isSortResponseDecodeFailure(error) else {
-                throw error
-            }
-
-            try await reselectMailboxIfNeeded()
-            let fallback = SearchCommand(
-                identifierSet: identifierSet,
-                criteria: criteria,
-                calendar: calendar
-            )
-            let identifiers: MessageIdentifierSet<T> = try await executeCommand(fallback)
-            guard !identifiers.isEmpty else {
-                return ExtendedSearchResult(count: 0, ordered: [])
-            }
-            let infos = try await fetchMessageInfosBulk(using: identifiers)
-            return try LocalSortFallback.makeExtendedSearchResult(
-                from: infos,
-                as: T.self,
-                sortCriteria: sortCriteria,
-                partialRange: partialRange
-            )
-        }
-    }
-
-    private func reselectMailboxIfNeeded() async throws {
-        guard let selectedMailboxPath else {
-            return
-        }
-
-        let command = SelectMailboxCommand(mailboxName: selectedMailboxPath)
-        _ = try await executeCommand(command)
+        return try await executeCommand(command)
     }
 
 
