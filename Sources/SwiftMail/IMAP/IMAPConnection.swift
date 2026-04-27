@@ -952,6 +952,15 @@ final class IMAPConnection {
             }
         }
 
+        // Raw NIO transport failure (e.g. writeAndFlush on a closed channel). The substring
+        // check below misses most ChannelError cases — `String(describing:)` returns just the
+        // case name (`alreadyClosed`, `ioOnClosedChannel`, `connectPending`, `inputClosed`,
+        // `outputClosed`), none of which match the literals we look for. Without this guard
+        // the dead channel stays in `self.channel` and the next command hits the same socket.
+        if error is ChannelError {
+            return true
+        }
+
         let description = String(describing: error).lowercased()
         return description.contains("decodererror")
             || description.contains("parsererror")
