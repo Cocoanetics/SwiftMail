@@ -67,24 +67,24 @@ final class LoginAuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     private var context: ChannelHandlerContext?
     
     /// Store the context when added to the pipeline
-	func channelRegistered(context: ChannelHandlerContext) {
+    override public func channelRegistered(context: ChannelHandlerContext) {
         self.context = context
         context.fireChannelRegistered()
     }
-    
+
     /// Store the context when handler is added to the pipeline (alternative to channelRegistered)
-	func handlerAdded(context: ChannelHandlerContext) {
+    override public func handlerAdded(context: ChannelHandlerContext) {
         self.context = context
     }
-    
+
     /// Store the context when the channel becomes active
-	func channelActive(context: ChannelHandlerContext) {
+    override public func channelActive(context: ChannelHandlerContext) {
         self.context = context
         context.fireChannelActive()
     }
-    
+
     /// Clear the context when removed from the pipeline
-	func handlerRemoved(context: ChannelHandlerContext) {
+    override public func handlerRemoved(context: ChannelHandlerContext) {
         self.context = nil
     }
 } 

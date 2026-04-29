@@ -103,14 +103,35 @@ class BaseSMTPHandler<T: Sendable>: ChannelInboundHandler, RemovableChannelHandl
     public func errorCaught(context: ChannelHandlerContext, error: Error) {
         // Fail the promise with the error
         promise.fail(error)
-        
+
         // Remove this handler from the pipeline
         context.pipeline.removeHandler(self, promise: nil)
-        
+
         // Forward the error to the next handler
         context.fireErrorCaught(error)
     }
-    
+
+    // These four lifecycle methods are implemented here so subclasses can `override` them.
+    // Without an implementation on this class, the protocol witness table for any subclass
+    // points at the `ChannelInboundHandler` default implementations, and methods declared
+    // on the subclass (without `override`) silently never get called.
+
+    /// Called when the handler is added to a channel pipeline. Default no-op.
+    public func handlerAdded(context: ChannelHandlerContext) {}
+
+    /// Called when the handler is removed from a channel pipeline. Default no-op.
+    public func handlerRemoved(context: ChannelHandlerContext) {}
+
+    /// Called when the channel is registered with its EventLoop. Default propagates the event.
+    public func channelRegistered(context: ChannelHandlerContext) {
+        context.fireChannelRegistered()
+    }
+
+    /// Called when the channel becomes active. Default propagates the event.
+    public func channelActive(context: ChannelHandlerContext) {
+        context.fireChannelActive()
+    }
+
     // MARK: - Helper Methods
     
     /// Fulfill the promise with the result
