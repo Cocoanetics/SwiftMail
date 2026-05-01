@@ -90,10 +90,12 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         }
 
         if useSort {
+            let returnOptionsPrefix = returnOptions.isEmpty ? "" : "\(returnOptions.imapSearchReturnOptionsWireRepresentation) "
+            let payload = "\(returnOptionsPrefix)\(sortCriteria.imapSortCriteriaWireRepresentation) \(sortCharset) \(key.debugDescription)"
             if T.self == UID.self {
-                return TaggedCommand(tag: tag, command: .uidSort(criteria: sortCriteria, charset: sortCharset, key: key, returnOptions: returnOptions))
+                return makeCustomTaggedCommand(tag: tag, name: "UID", payload: "SORT \(payload)")
             } else {
-                return TaggedCommand(tag: tag, command: .sort(criteria: sortCriteria, charset: sortCharset, key: key, returnOptions: returnOptions))
+                return makeCustomTaggedCommand(tag: tag, name: "SORT", payload: payload)
             }
         } else if T.self == UID.self {
             return TaggedCommand(tag: tag, command: .uidSearch(key: key, returnOptions: returnOptions))

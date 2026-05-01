@@ -86,10 +86,11 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
         let key = SearchKey.and(nioCriteria)
 
         if useSort {
+            let payload = "\(sortCriteria.imapSortCriteriaWireRepresentation) \(sortCharset) \(key.debugDescription)"
             if T.self == UID.self {
-                return TaggedCommand(tag: tag, command: .uidSort(criteria: sortCriteria, charset: sortCharset, key: key))
+                return makeCustomTaggedCommand(tag: tag, name: "UID", payload: "SORT \(payload)")
             } else {
-                return TaggedCommand(tag: tag, command: .sort(criteria: sortCriteria, charset: sortCharset, key: key))
+                return makeCustomTaggedCommand(tag: tag, name: "SORT", payload: payload)
             }
         } else if T.self == UID.self {
             return TaggedCommand(tag: tag, command: .uidSearch(key: key))

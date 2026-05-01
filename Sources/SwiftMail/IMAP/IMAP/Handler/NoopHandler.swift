@@ -73,7 +73,7 @@ final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandH
                 noopLogger.debug("NoopHandler: ignoring unsolicited STATUS for mailbox '\(name)'")
             case .search:
                 noopLogger.debug("NoopHandler: ignoring unsolicited SEARCH response")
-            case .sort:
+            case .searchSort:
                 noopLogger.debug("NoopHandler: ignoring unsolicited SORT response")
             case .list:
                 noopLogger.debug("NoopHandler: ignoring unsolicited LIST response")
