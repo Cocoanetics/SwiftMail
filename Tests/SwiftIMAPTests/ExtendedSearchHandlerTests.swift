@@ -135,7 +135,7 @@ struct ExtendedSearchHandlerTests {
         let channel = NIOAsyncTestingChannel()
         let promise = channel.eventLoop.makePromise(of: ExtendedSearchResult<UID>.self)
         let handler = ExtendedSearchHandler<UID>(commandTag: "A003B", promise: promise)
-        _ = handler.processResponse(.untagged(.mailboxData(.searchSort(.init(identifiers: [10, 7, 4], modificationSequence: 123)))))
+        _ = handler.processResponse(.untagged(.mailboxData(.sort([10, 7, 4], 123))))
         handler.handleTaggedOKResponse(.init(tag: "A003B", state: .ok(.init(text: "Sort complete"))))
 
         let result = try await promise.futureResult.get()

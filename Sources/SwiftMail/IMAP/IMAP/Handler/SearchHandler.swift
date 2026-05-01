@@ -45,8 +45,8 @@ final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageI
             case .search(let ids, _):
                 let results = ids.map { T.init(UInt32($0)) }
                 searchResults.append(contentsOf: results)
-            case .searchSort(let data):
-                let results = data.identifiers.map { T.init(UInt32($0)) }
+            case .sort(let ids, _):
+                let results = ids.map { T.init(UInt32($0)) }
                 searchResults.append(contentsOf: results)
             default:
                 break

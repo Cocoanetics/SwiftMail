@@ -83,8 +83,8 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
 
         if case let .untagged(untagged) = response,
            case let .mailboxData(mailboxData) = untagged,
-           case let .searchSort(data) = mailboxData {
-            let converted = data.identifiers.map { T(UInt32($0)) }
+           case let .sort(ids, _) = mailboxData {
+            let converted = ids.map { T(UInt32($0)) }
             fallbackIdentifiers.append(contentsOf: converted)
             fallbackOrderedIdentifiers.append(contentsOf: converted)
         }
