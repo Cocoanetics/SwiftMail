@@ -167,6 +167,14 @@ struct FetchMessageInfoHandlerTests {
         #expect(date == nil)
     }
 
+    @Test
+    func testParseEnvelopeDateRejectsOutOfRangeDay() {
+        // Strict parsing must reject impossible day numbers rather than rolling
+        // them forward into a different valid date.
+        let date = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 99 Apr 2026 02:14:25 +0000")
+        #expect(date == nil)
+    }
+
     private static func makeDate(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Date? {
         var components = DateComponents()
         components.year = year
