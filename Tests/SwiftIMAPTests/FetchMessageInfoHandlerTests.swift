@@ -134,6 +134,59 @@ struct FetchMessageInfoHandlerTests {
         #expect(infos[0].additionalFields?["references"] == nil)
     }
 
+    @Test
+    func testParseEnvelopeDateAcceptsRFC5322() {
+        let date = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 29 Apr 2026 02:14:25 +0000")
+        #expect(date != nil)
+    }
+
+    @Test
+    func testParseEnvelopeDateAcceptsLowercaseMonth() {
+        // Issue #157: senders sometimes emit lowercase month names.
+        let date = FetchMessageInfoHandler.parseEnvelopeDate("29 apr 2026 02:14:25")
+        let expected = Self.makeDate(year: 2026, month: 4, day: 29, hour: 2, minute: 14, second: 25)
+        #expect(date == expected)
+    }
+
+    @Test
+    func testParseEnvelopeDateAcceptsLowercaseWeekday() {
+        let date = FetchMessageInfoHandler.parseEnvelopeDate("wed, 29 Apr 2026 02:14:25 +0000")
+        let expected = Self.makeDate(year: 2026, month: 4, day: 29, hour: 2, minute: 14, second: 25)
+        #expect(date == expected)
+    }
+
+    @Test
+    func testParseEnvelopeDateStripsTrailingComment() {
+        let date = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 29 Apr 2026 02:14:25 +0000 (UTC)")
+        #expect(date != nil)
+    }
+
+    @Test
+    func testParseEnvelopeDateRejectsGarbage() {
+        let date = FetchMessageInfoHandler.parseEnvelopeDate("not a date")
+        #expect(date == nil)
+    }
+
+    @Test
+    func testParseEnvelopeDateRejectsOutOfRangeDay() {
+        // Strict parsing must reject impossible day numbers rather than rolling
+        // them forward into a different valid date.
+        let date = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 99 Apr 2026 02:14:25 +0000")
+        #expect(date == nil)
+    }
+
+    private static func makeDate(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Date? {
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = hour
+        components.minute = minute
+        components.second = second
+        components.timeZone = TimeZone(secondsFromGMT: 0)
+        return Calendar(identifier: .gregorian).date(from: components)
+    }
+
     private func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
         let channel = NIOAsyncTestingChannel()
 

@@ -187,33 +187,9 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             
             if let date = envelope.date {
                 let dateString = String(date)
-                
-                // Remove timezone comments in parentheses
-                let cleanDateString = dateString.replacingOccurrences(of: "\\s*\\([^)]+\\)\\s*$", with: "", options: .regularExpression)
-                
-                // Create a date formatter for RFC 5322 dates
-                let formatter = DateFormatter()
-                formatter.locale = Locale(identifier: "en_US_POSIX")
-                formatter.timeZone = TimeZone(secondsFromGMT: 0)
-                
-                // Try different date formats commonly used in email headers
-                let formats = [
-                    "EEE, dd MMM yyyy HH:mm:ss Z",       // RFC 5322
-                    "EEE, d MMM yyyy HH:mm:ss Z",        // RFC 5322 with single-digit day
-                    "d MMM yyyy HH:mm:ss Z",             // Without day of week
-                    "EEE, dd MMM yy HH:mm:ss Z"          // Two-digit year
-                ]
-                
-                for format in formats {
-                    formatter.dateFormat = format
-                    if let parsedDate = formatter.date(from: cleanDateString) {
-                        header.date = parsedDate
-                        break
-                    }
-                }
-                
-                // If no format worked, log the issue instead of crashing
-                if header.date == nil {
+                if let parsedDate = Self.parseEnvelopeDate(dateString) {
+                    header.date = parsedDate
+                } else {
                     print("Warning: Failed to parse email date: \(dateString)")
                 }
             }
@@ -302,6 +278,85 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
     static func shouldCollectThreadingHeaders(for kind: StreamingKind) -> Bool {
         kind.sectionSpecifier.kind == .header
+    }
+
+    /// Parse a date string from an IMAP envelope into a `Date`.
+    ///
+    /// Accepts the standard RFC 5322 forms and additionally tolerates several common
+    /// deviations seen in the wild: lowercase month or weekday abbreviations
+    /// (e.g. `29 apr 2026 02:14:25`) and a missing timezone (interpreted as GMT).
+    ///
+    /// Out-of-range numeric fields (e.g. `99 Apr`) are still rejected — strict
+    /// parsing is used so corrupted dates surface as `nil` rather than silently
+    /// rolling over into a different valid timestamp.
+    static func parseEnvelopeDate(_ dateString: String) -> Date? {
+        // Strip trailing parenthetical comments such as " (UTC)"
+        let cleaned = dateString.replacingOccurrences(
+            of: "\\s*\\([^)]+\\)\\s*$",
+            with: "",
+            options: .regularExpression
+        )
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+
+        let formats = [
+            "EEE, dd MMM yyyy HH:mm:ss Z",       // RFC 5322
+            "EEE, d MMM yyyy HH:mm:ss Z",        // single-digit day
+            "d MMM yyyy HH:mm:ss Z",             // no weekday
+            "dd MMM yyyy HH:mm:ss Z",            // no weekday, two-digit day
+            "EEE, dd MMM yy HH:mm:ss Z",         // two-digit year
+            "EEE, dd MMM yyyy HH:mm:ss",         // no timezone
+            "EEE, d MMM yyyy HH:mm:ss",
+            "d MMM yyyy HH:mm:ss",               // no weekday, no timezone
+            "dd MMM yyyy HH:mm:ss",
+        ]
+
+        if let date = parseEnvelopeDate(cleaned, formats: formats, formatter: formatter) {
+            return date
+        }
+
+        // Fallback: capitalize lowercase month/weekday tokens and retry. This
+        // handles the case-mismatch deviation without enabling lenient parsing,
+        // so out-of-range numeric fields still fail.
+        let normalized = normalizeMonthAndWeekdayCase(cleaned)
+        if normalized != cleaned {
+            return parseEnvelopeDate(normalized, formats: formats, formatter: formatter)
+        }
+        return nil
+    }
+
+    private static func parseEnvelopeDate(_ string: String, formats: [String], formatter: DateFormatter) -> Date? {
+        for format in formats {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: string) {
+                return date
+            }
+        }
+        return nil
+    }
+
+    private static let monthAbbreviations: Set<String> = [
+        "jan", "feb", "mar", "apr", "may", "jun",
+        "jul", "aug", "sep", "oct", "nov", "dec",
+    ]
+
+    private static let weekdayAbbreviations: Set<String> = [
+        "mon", "tue", "wed", "thu", "fri", "sat", "sun",
+    ]
+
+    private static func normalizeMonthAndWeekdayCase(_ string: String) -> String {
+        let tokens = string.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
+        let normalized: [String] = tokens.map { token in
+            let stripped = token.trimmingCharacters(in: CharacterSet(charactersIn: ","))
+            let lower = stripped.lowercased()
+            if monthAbbreviations.contains(lower) || weekdayAbbreviations.contains(lower) {
+                return token.capitalized
+            }
+            return token
+        }
+        return normalized.joined(separator: " ")
     }
 
     /// Parse a space/whitespace-separated list of Message-IDs from a References or similar header.
