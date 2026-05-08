@@ -372,26 +372,6 @@ public actor SMTPServer {
         transportSecurity == .startTLS && !capabilities.contains("STARTTLS")
     }
 
-    static func requiresSTARTTLSUpgrade(port: Int, useSSL: Bool, capabilities: [String]) -> Bool {
-        guard !useSSL else {
-            return false
-        }
-
-        let transportSecurity = resolveTransportSecurity(
-            port: port,
-            transportSecurity: .automatic
-        )
-        return requiresSTARTTLSUpgrade(
-            transportSecurity: transportSecurity,
-            capabilities: capabilities
-        )
-    }
-
-    static func shouldFailClosedOnSTARTTLSFailure(port: Int, host: String) -> Bool {
-        _ = host
-        return port == 587
-    }
-
     /**
      Disconnect from the SMTP server
      

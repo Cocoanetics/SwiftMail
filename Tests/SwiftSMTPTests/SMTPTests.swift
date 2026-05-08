@@ -61,36 +61,66 @@ struct SMTPTests {
     func testRequiresSTARTTLSUpgradePolicy() {
         #expect(
             SMTPServer.requiresSTARTTLSUpgrade(
-                port: 587,
-                useSSL: false,
+                transportSecurity: SMTPServer.resolveTransportSecurity(
+                    port: 587,
+                    transportSecurity: .automatic
+                ),
                 capabilities: ["SIZE", "STARTTLS", "AUTH PLAIN"]
             )
         )
 
         #expect(
             !SMTPServer.requiresSTARTTLSUpgrade(
-                port: 587,
-                useSSL: false,
+                transportSecurity: SMTPServer.resolveTransportSecurity(
+                    port: 587,
+                    transportSecurity: .automatic
+                ),
                 capabilities: ["SIZE", "AUTH PLAIN"]
             )
         )
 
         #expect(
             !SMTPServer.requiresSTARTTLSUpgrade(
-                port: 465,
-                useSSL: true,
+                transportSecurity: SMTPServer.resolveTransportSecurity(
+                    port: 465,
+                    transportSecurity: .automatic
+                ),
                 capabilities: ["STARTTLS"]
             )
         )
     }
 
     @Test
-    func testSTARTTLSFailureIsFatalForPort587RegardlessOfHost() {
-        #expect(SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 587, host: "smtp.gmail.com"))
-        #expect(SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 587, host: "smtp.example.com"))
+    func testMissingSTARTTLSIsFatalForResolvedSTARTTLSPolicy() {
+        #expect(
+            SMTPServer.requiresMissingSTARTTLSError(
+                transportSecurity: SMTPServer.resolveTransportSecurity(
+                    port: 587,
+                    transportSecurity: .automatic
+                ),
+                capabilities: ["SIZE", "AUTH PLAIN"]
+            )
+        )
 
-        #expect(!SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 465, host: "smtp.gmail.com"))
-        #expect(!SMTPServer.shouldFailClosedOnSTARTTLSFailure(port: 25, host: "smtp.example.com"))
+        #expect(
+            !SMTPServer.requiresMissingSTARTTLSError(
+                transportSecurity: SMTPServer.resolveTransportSecurity(
+                    port: 465,
+                    transportSecurity: .automatic
+                ),
+                capabilities: ["SIZE", "AUTH PLAIN"]
+            )
+        )
+
+        #expect(
+            !SMTPServer.requiresMissingSTARTTLSError(
+                transportSecurity: SMTPServer.resolveTransportSecurity(
+                    port: 25,
+                    transportSecurity: .automatic
+                ),
+                capabilities: ["SIZE", "AUTH PLAIN"]
+            )
+        )
     }
 
     @Test
