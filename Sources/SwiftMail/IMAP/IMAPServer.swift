@@ -36,8 +36,8 @@ public actor IMAPServer {
     /** The port number of the IMAP server */
     private let port: Int
 
-    /// Explicit TLS preference. `nil` means infer from the standard IMAP port.
-    private let useTLS: Bool?
+    /// Explicit TLS preference. `.automatic` infers from the standard IMAP ports.
+    private let transportSecurity: MailTransportSecurity
     
     /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
@@ -124,10 +124,15 @@ public actor IMAPServer {
      that may contain thousands of message IDs. This prevents PayloadTooLargeError when
      searching large mailboxes.
      */
-    public init(host: String, port: Int, useTLS: Bool? = nil, numberOfThreads: Int = 1) {
+    public init(
+        host: String,
+        port: Int,
+        transportSecurity: MailTransportSecurity = .automatic,
+        numberOfThreads: Int = 1
+    ) {
         self.host = host
         self.port = port
-        self.useTLS = useTLS
+        self.transportSecurity = transportSecurity
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
         
         // Initialize loggers
@@ -139,7 +144,7 @@ public actor IMAPServer {
         self.primaryConnection = IMAPConnection(
             host: host,
             port: port,
-            useTLS: useTLS,
+            transportSecurity: transportSecurity,
             group: group,
             loggerLabel: primaryLoggerLabel,
             outboundLabel: outboundLabel,
@@ -147,6 +152,27 @@ public actor IMAPServer {
             connectionID: "primary",
             connectionRole: "primary"
         )
+    }
+
+    public init(host: String, port: Int, useTLS: Bool?, numberOfThreads: Int = 1) {
+        self.init(
+            host: host,
+            port: port,
+            transportSecurity: Self.resolveLegacyTransportSecurity(port: port, useTLS: useTLS),
+            numberOfThreads: numberOfThreads
+        )
+    }
+
+    private static func resolveLegacyTransportSecurity(port: Int, useTLS: Bool?) -> MailTransportSecurity {
+        guard let useTLS else {
+            return .automatic
+        }
+
+        if useTLS {
+            return port == 143 ? .startTLS : .implicitTLS
+        }
+
+        return .plainText
     }
     
     deinit {
@@ -163,8 +189,7 @@ public actor IMAPServer {
      
      This method establishes the IMAP transport connection and retrieves
      its capabilities. Port `993` defaults to implicit TLS, port `143` defaults to
-     plain text with opportunistic STARTTLS, and other ports require an explicit
-     `useTLS` decision.
+     plain text with opportunistic STARTTLS.
      
      - Throws:
      - `IMAPError.connectionFailed` if the connection cannot be established
@@ -352,7 +377,7 @@ public actor IMAPServer {
         return IMAPConnection(
             host: host,
             port: port,
-            useTLS: useTLS,
+            transportSecurity: transportSecurity,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,
@@ -374,7 +399,7 @@ public actor IMAPServer {
         return IMAPConnection(
             host: host,
             port: port,
-            useTLS: useTLS,
+            transportSecurity: transportSecurity,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,
