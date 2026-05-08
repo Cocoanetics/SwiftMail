@@ -56,6 +56,9 @@ public actor SMTPServer {
     
     /** The port number of the SMTP server */
     private let port: Int
+
+    /** The requested SMTP transport security policy */
+    private let transportSecurity: MailTransportSecurity
     
     /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
@@ -125,6 +128,7 @@ public actor SMTPServer {
      - Parameters:
        - host: The hostname of the SMTP server
        - port: The port number of the SMTP server
+       - transportSecurity: The transport security policy to use for this connection
        - numberOfThreads: The number of threads to use for the event loop group
      
      The port number determines the initial security mode:
@@ -134,9 +138,15 @@ public actor SMTPServer {
      
      - Note: Logs initialization at debug level with connection details
      */
-    public init(host: String, port: Int, numberOfThreads: Int = 1) {
+    public init(
+        host: String,
+        port: Int,
+        transportSecurity: MailTransportSecurity = .automatic,
+        numberOfThreads: Int = 1
+    ) {
         self.host = host
         self.port = port
+        self.transportSecurity = transportSecurity
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 		
 		let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
@@ -170,15 +180,18 @@ public actor SMTPServer {
     public func connect() async throws {
         logger.debug("Connecting to SMTP server at \(host):\(port)")
         
-        // Determine if we should use SSL based on the port
-        let useSSL = (port == 465) // SMTPS port
+        let resolvedTransportSecurity = Self.resolveTransportSecurity(
+            port: port,
+            transportSecurity: transportSecurity
+        )
+        let useImplicitTLS = resolvedTransportSecurity == .implicitTLS
         
         // Create the bootstrap
         let bootstrap = ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
             .channelInitializer { channel in
-                if useSSL {
+                if useImplicitTLS {
                     do {
                         // Create SSL context with proper configuration for secure connection
                         var tlsConfig = TLSConfiguration.makeClientConfiguration()
@@ -229,17 +242,23 @@ public actor SMTPServer {
         // Fetch capabilities using our new method
         let capabilities = try await fetchCapabilities()
         
-        // Upgrade submission connections to TLS when advertised.
-        if Self.requiresSTARTTLSUpgrade(port: port, useSSL: useSSL, capabilities: capabilities) {
+        if Self.requiresMissingSTARTTLSError(
+            transportSecurity: resolvedTransportSecurity,
+            capabilities: capabilities
+        ) {
+            logger.error("STARTTLS required for \(host):\(port) but was not advertised. Cannot continue without encryption.")
+            throw SMTPError.tlsFailed("STARTTLS required but not advertised by server")
+        }
+
+        if Self.requiresSTARTTLSUpgrade(
+            transportSecurity: resolvedTransportSecurity,
+            capabilities: capabilities
+        ) {
             do {
                 try await startTLS()
             } catch {
-                if Self.shouldFailClosedOnSTARTTLSFailure(port: port, host: host) {
-                    logger.error("STARTTLS failed for \(host): \(error.localizedDescription). Cannot continue without encryption.")
-                    throw SMTPError.tlsFailed("STARTTLS required on port 587 but failed: \(error.localizedDescription)")
-                }
-
-                logger.warning("STARTTLS failed: \(error.localizedDescription). Continuing without encryption.")
+                logger.error("STARTTLS failed for \(host):\(port): \(error.localizedDescription). Cannot continue without encryption.")
+                throw SMTPError.tlsFailed("STARTTLS required but failed: \(error.localizedDescription)")
             }
         }
         
@@ -320,8 +339,52 @@ public actor SMTPServer {
         }
     }
 
+    static func resolveTransportSecurity(
+        port: Int,
+        transportSecurity: MailTransportSecurity
+    ) -> MailTransportSecurity {
+        switch transportSecurity {
+        case .automatic:
+            switch port {
+            case 465:
+                return .implicitTLS
+            case 587:
+                return .startTLS
+            default:
+                return .plainText
+            }
+        case .implicitTLS, .startTLS, .plainText:
+            return transportSecurity
+        }
+    }
+
+    static func requiresSTARTTLSUpgrade(
+        transportSecurity: MailTransportSecurity,
+        capabilities: [String]
+    ) -> Bool {
+        transportSecurity == .startTLS && capabilities.contains("STARTTLS")
+    }
+
+    static func requiresMissingSTARTTLSError(
+        transportSecurity: MailTransportSecurity,
+        capabilities: [String]
+    ) -> Bool {
+        transportSecurity == .startTLS && !capabilities.contains("STARTTLS")
+    }
+
     static func requiresSTARTTLSUpgrade(port: Int, useSSL: Bool, capabilities: [String]) -> Bool {
-        !useSSL && port == 587 && capabilities.contains("STARTTLS")
+        guard !useSSL else {
+            return false
+        }
+
+        let transportSecurity = resolveTransportSecurity(
+            port: port,
+            transportSecurity: .automatic
+        )
+        return requiresSTARTTLSUpgrade(
+            transportSecurity: transportSecurity,
+            capabilities: capabilities
+        )
     }
 
     static func shouldFailClosedOnSTARTTLSFailure(port: Int, host: String) -> Bool {
