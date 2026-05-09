@@ -250,6 +250,19 @@ public actor SMTPServer {
         // Fetch capabilities using our new method
         let capabilities = try await fetchCapabilities()
         
+        try await applyPostEHLOTLSPolicy(
+            transportMode: transportMode,
+            capabilities: capabilities
+        )
+        
+        logger.info("Connected to SMTP server \(self.host):\(self.port)")
+    }
+    
+    func applyPostEHLOTLSPolicy(
+        transportMode: SMTPTransportMode,
+        capabilities: [String],
+        startTLSOverrideForTesting: (@Sendable () async throws -> Void)? = nil
+    ) async throws {
         if Self.requiresMissingSTARTTLSError(
             transportMode: transportMode,
             capabilities: capabilities
@@ -264,15 +277,17 @@ public actor SMTPServer {
             capabilities: capabilities
         ) {
             do {
-                try await startTLS()
+                if let startTLSOverrideForTesting {
+                    try await startTLSOverrideForTesting()
+                } else {
+                    try await startTLS()
+                }
             } catch {
                 logger.error("STARTTLS failed for \(host):\(port): \(error.localizedDescription). Cannot continue without encryption.")
                 await closeAndClearChannelAfterSTARTTLSPolicyFailure()
                 throw SMTPError.tlsFailed("STARTTLS upgrade failed: \(error.localizedDescription)")
             }
         }
-        
-        logger.info("Connected to SMTP server \(self.host):\(self.port)")
     }
     
     /**

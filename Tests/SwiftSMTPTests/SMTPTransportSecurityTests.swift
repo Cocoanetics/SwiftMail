@@ -1,3 +1,4 @@
+import NIO
 import NIOEmbedded
 import Testing
 @testable import SwiftMail
@@ -73,12 +74,57 @@ struct SMTPTransportSecurityTests {
     }
 
     @Test
-    func startTLSPolicyFailureClearsChannel() async throws {
+    func explicitSTARTTLSMissingCapabilityClearsChannelThroughPolicy() async throws {
         let server = SMTPServer(host: "localhost", port: 587, transportSecurity: .startTLS)
         let channel = EmbeddedChannel()
+        let address = try SocketAddress(ipAddress: "127.0.0.1", port: 587)
+        try await channel.connect(to: address).get()
+
         await server.replaceChannelForTesting(channel)
 
-        await server.closeAndClearChannelAfterSTARTTLSPolicyFailure()
+        do {
+            try await server.applyPostEHLOTLSPolicy(
+                transportMode: .startTLSRequired,
+                capabilities: ["SIZE", "AUTH PLAIN"]
+            )
+            Issue.record("Expected missing STARTTLS capability failure")
+        } catch let error as SMTPError {
+            if case .tlsFailed(let message) = error {
+                #expect(message.contains("STARTTLS required but not advertised"))
+            } else {
+                Issue.record("Expected tlsFailed error, got \(error)")
+            }
+        }
+
+        #expect(await !server.hasChannelForTesting)
+        #expect(!channel.isActive)
+    }
+
+    @Test
+    func advertisedSTARTTLSUpgradeFailureClearsChannelThroughPolicy() async throws {
+        let server = SMTPServer(host: "localhost", port: 587, transportSecurity: .startTLS)
+        let channel = EmbeddedChannel()
+        let address = try SocketAddress(ipAddress: "127.0.0.1", port: 587)
+        try await channel.connect(to: address).get()
+
+        await server.replaceChannelForTesting(channel)
+
+        do {
+            try await server.applyPostEHLOTLSPolicy(
+                transportMode: .startTLSRequired,
+                capabilities: ["SIZE", "STARTTLS", "AUTH PLAIN"],
+                startTLSOverrideForTesting: {
+                    throw SMTPError.tlsFailed("Injected STARTTLS failure")
+                }
+            )
+            Issue.record("Expected STARTTLS upgrade failure")
+        } catch let error as SMTPError {
+            if case .tlsFailed(let message) = error {
+                #expect(message.contains("STARTTLS upgrade failed"))
+            } else {
+                Issue.record("Expected tlsFailed error, got \(error)")
+            }
+        }
 
         #expect(await !server.hasChannelForTesting)
         #expect(!channel.isActive)
