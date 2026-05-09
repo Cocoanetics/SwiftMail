@@ -17,6 +17,7 @@ final class IMAPConnection {
     private let host: String
     private let port: Int
     private let transportSecurity: MailTransportSecurity
+    private let certificateVerificationPolicy: MailCertificateVerificationPolicy
     private let group: EventLoopGroup
     private let connectionID: String
     private let connectionRole: String
@@ -39,6 +40,7 @@ final class IMAPConnection {
         host: String,
         port: Int,
         transportSecurity: MailTransportSecurity = .automatic,
+        certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
         group: EventLoopGroup,
         loggerLabel: String,
         outboundLabel: String,
@@ -49,6 +51,7 @@ final class IMAPConnection {
         self.host = host
         self.port = port
         self.transportSecurity = transportSecurity
+        self.certificateVerificationPolicy = certificateVerificationPolicy
         self.group = group
         self.connectionID = connectionID
         self.connectionRole = connectionRole
@@ -94,6 +97,7 @@ final class IMAPConnection {
             host: host,
             port: port,
             transportSecurity: Self.resolveLegacyTransportSecurity(port: port, useTLS: useTLS),
+            certificateVerificationPolicy: .fullVerification,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,
@@ -168,6 +172,10 @@ final class IMAPConnection {
         capabilities
     }
 
+    var certificateVerificationPolicyForTesting: MailCertificateVerificationPolicy {
+        certificateVerificationPolicy
+    }
+
     var namespacesSnapshot: NamespaceResponse? {
         namespaces
     }
@@ -233,6 +241,7 @@ final class IMAPConnection {
         let tlsTransportMode = try Self.resolveTLSTransportMode(port: port, transportSecurity: transportSecurity)
         let initialTLSMode = tlsTransportMode
         let host = self.host
+        let certificateVerificationPolicy = self.certificateVerificationPolicy
         let duplexLogger = self.duplexLogger
         let responseBuffer = self.responseBuffer
         
@@ -255,7 +264,11 @@ final class IMAPConnection {
                     )
 
                     if case .implicitTLS = initialTLSMode {
-                        let sslHandler = try Self.makeTLSHandler(for: channel, host: host)
+                        let sslHandler = try Self.makeTLSHandler(
+                            for: channel,
+                            host: host,
+                            certificateVerificationPolicy: certificateVerificationPolicy
+                        )
                         try channel.pipeline.syncOperations.addHandler(sslHandler)
                     }
 
@@ -564,8 +577,14 @@ final class IMAPConnection {
         try await fetchCapabilities()
     }
 
-    private static func makeTLSHandler(for channel: Channel, host: String) throws -> NIOSSLClientHandler {
-        let configuration = TLSConfiguration.makeClientConfiguration()
+    private static func makeTLSHandler(
+        for channel: Channel,
+        host: String,
+        certificateVerificationPolicy: MailCertificateVerificationPolicy
+    ) throws -> NIOSSLClientHandler {
+        let configuration = MailTLSConfiguration.makeClientConfiguration(
+            certificateVerificationPolicy: certificateVerificationPolicy
+        )
         let context = try NIOSSLContext(configuration: configuration)
         return try NIOSSLClientHandler(context: context, serverHostname: host)
     }
@@ -612,8 +631,13 @@ final class IMAPConnection {
         }
 
         let host = self.host
+        let certificateVerificationPolicy = self.certificateVerificationPolicy
         try await channel.eventLoop.submit {
-            let sslHandler = try Self.makeTLSHandler(for: channel, host: host)
+            let sslHandler = try Self.makeTLSHandler(
+                for: channel,
+                host: host,
+                certificateVerificationPolicy: certificateVerificationPolicy
+            )
             try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
         }.get()
 

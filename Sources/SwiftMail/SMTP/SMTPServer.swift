@@ -66,6 +66,9 @@ public actor SMTPServer {
 
     /** The requested SMTP transport security policy */
     private let transportSecurity: MailTransportSecurity
+
+    /** The certificate verification policy for TLS connections */
+    private let certificateVerificationPolicy: MailCertificateVerificationPolicy
     
     /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
@@ -136,6 +139,7 @@ public actor SMTPServer {
        - host: The hostname of the SMTP server
        - port: The port number of the SMTP server
        - transportSecurity: The transport security policy to use for this connection
+       - certificateVerificationPolicy: The certificate verification policy to use for TLS connections
        - numberOfThreads: The number of threads to use for the event loop group
      
      `.automatic` infers the initial security mode from the port:
@@ -150,11 +154,13 @@ public actor SMTPServer {
         host: String,
         port: Int,
         transportSecurity: MailTransportSecurity = .automatic,
+        certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
         numberOfThreads: Int = 1
     ) {
         self.host = host
         self.port = port
         self.transportSecurity = transportSecurity
+        self.certificateVerificationPolicy = certificateVerificationPolicy
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 		
 		let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
@@ -193,6 +199,9 @@ public actor SMTPServer {
             transportSecurity: transportSecurity
         )
         let useImplicitTLS = transportMode == .implicitTLS
+        let host = self.host
+        let certificateVerificationPolicy = self.certificateVerificationPolicy
+        let duplexLogger = self.duplexLogger
         
         // Create the bootstrap
         let bootstrap = ClientBootstrap(group: group)
@@ -202,18 +211,18 @@ public actor SMTPServer {
                 if useImplicitTLS {
                     do {
                         // Create SSL context with proper configuration for secure connection
-                        var tlsConfig = TLSConfiguration.makeClientConfiguration()
-                        tlsConfig.certificateVerification = .fullVerification
-                        tlsConfig.trustRoots = .default
+                        let tlsConfig = MailTLSConfiguration.makeClientConfiguration(
+                            certificateVerificationPolicy: certificateVerificationPolicy
+                        )
                         
                         let sslContext = try NIOSSLContext(configuration: tlsConfig)
-                        let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: self.host)
+                        let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: host)
                         
                         // Add SSL handler first, then SMTP handlers using syncOperations
                         try! channel.pipeline.syncOperations.addHandler(sslHandler)
                         try! channel.pipeline.syncOperations.addHandlers([
 							ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-							self.duplexLogger,
+							duplexLogger,
 							SMTPResponseHandler()
 						])
                         
@@ -225,7 +234,7 @@ public actor SMTPServer {
                     // Just add SMTP handlers without SSL using syncOperations
                     try! channel.pipeline.syncOperations.addHandlers([
 						ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-						self.duplexLogger,
+						duplexLogger,
 						SMTPResponseHandler()
 					])
                     
@@ -408,6 +417,10 @@ public actor SMTPServer {
 
     var hasChannelForTesting: Bool {
         channel != nil
+    }
+
+    var certificateVerificationPolicyForTesting: MailCertificateVerificationPolicy {
+        certificateVerificationPolicy
     }
 
     func replaceChannelForTesting(_ channel: Channel?) {
@@ -805,17 +818,18 @@ public actor SMTPServer {
         }
         
         // Create SSL context with proper configuration for secure connection
-        var tlsConfig = TLSConfiguration.makeClientConfiguration()
-        tlsConfig.certificateVerification = .fullVerification
-        tlsConfig.trustRoots = .default
+        let tlsConfig = MailTLSConfiguration.makeClientConfiguration(
+            certificateVerificationPolicy: certificateVerificationPolicy
+        )
         
         // Capture the configuration before the closure to avoid concurrency issues
         let finalTlsConfig = tlsConfig
+        let host = self.host
         
         // Add SSL handler to the pipeline using EventLoop submission to ensure correct thread
         try await channel.eventLoop.submit {
             let sslContext = try NIOSSLContext(configuration: finalTlsConfig)
-            let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: self.host)
+            let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: host)
             try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
         }.get()
         

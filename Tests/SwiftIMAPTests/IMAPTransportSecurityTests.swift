@@ -1,11 +1,37 @@
 import NIOIMAPCore
 import NIO
 import NIOEmbedded
+import NIOSSL
 import Testing
 @testable import SwiftMail
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPTransportSecurityTests {
+    @Test
+    func certificateVerificationPolicyMapsToNIOSSLConfiguration() {
+        let fullVerification = MailTLSConfiguration.makeClientConfiguration(
+            certificateVerificationPolicy: .fullVerification
+        )
+        #expect(fullVerification.certificateVerification == .fullVerification)
+
+        let noVerification = MailTLSConfiguration.makeClientConfiguration(
+            certificateVerificationPolicy: .noVerification
+        )
+        #expect(noVerification.certificateVerification == .none)
+    }
+
+    @Test
+    func imapServerPropagatesCertificateVerificationPolicyToPrimaryConnection() async {
+        let server = IMAPServer(
+            host: "127.0.0.1",
+            port: 1143,
+            transportSecurity: .startTLS,
+            certificateVerificationPolicy: .noVerification
+        )
+
+        #expect(await server.primaryConnectionCertificateVerificationPolicyForTesting == .noVerification)
+    }
+
     @Test
     func explicitStartTLSRequiresUpgradeOnArbitraryPorts() throws {
         let mode = try IMAPConnection.resolveTLSTransportMode(port: 1143, transportSecurity: .startTLS)

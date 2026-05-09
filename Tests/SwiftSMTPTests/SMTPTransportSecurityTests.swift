@@ -1,10 +1,30 @@
 import NIO
 import NIOEmbedded
+import NIOSSL
 import Testing
 @testable import SwiftMail
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SMTPTransportSecurityTests {
+    @Test
+    func smtpServerDefaultsToFullCertificateVerification() async {
+        let server = SMTPServer(host: "smtp.example.com", port: 587)
+
+        #expect(await server.certificateVerificationPolicyForTesting == .fullVerification)
+    }
+
+    @Test
+    func smtpServerStoresExplicitNoCertificateVerificationPolicy() async {
+        let server = SMTPServer(
+            host: "127.0.0.1",
+            port: 1025,
+            transportSecurity: .startTLS,
+            certificateVerificationPolicy: .noVerification
+        )
+
+        #expect(await server.certificateVerificationPolicyForTesting == .noVerification)
+    }
+
     @Test
     func explicitSTARTTLSRequiresAdvertisedUpgrade() {
         #expect(

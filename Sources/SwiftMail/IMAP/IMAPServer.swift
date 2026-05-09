@@ -38,6 +38,9 @@ public actor IMAPServer {
 
     /// Explicit TLS preference. `.automatic` infers from the standard IMAP ports.
     private let transportSecurity: MailTransportSecurity
+
+    /// Certificate verification preference used by all TLS transports for this server.
+    private let certificateVerificationPolicy: MailCertificateVerificationPolicy
     
     /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
@@ -71,6 +74,10 @@ public actor IMAPServer {
     /// Whether the primary connection advertised UIDPLUS.
     public var supportsUIDPlus: Bool {
         capabilities.contains(.uidPlus)
+    }
+
+    var primaryConnectionCertificateVerificationPolicyForTesting: MailCertificateVerificationPolicy {
+        primaryConnection.certificateVerificationPolicyForTesting
     }
     
     /**
@@ -119,6 +126,7 @@ public actor IMAPServer {
      - host: The hostname of the IMAP server
      - port: The port number of the IMAP server (typically 993 for SSL)
      - transportSecurity: The transport security policy to use. `.automatic` infers from standard IMAP ports; explicit values override that inference.
+     - certificateVerificationPolicy: The certificate verification policy to use for TLS connections.
      - numberOfThreads: The number of threads to use for the event loop group
      
      - Note: The connection is configured with a 1MB buffer limit to handle large SEARCH responses
@@ -129,11 +137,13 @@ public actor IMAPServer {
         host: String,
         port: Int,
         transportSecurity: MailTransportSecurity = .automatic,
+        certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
         numberOfThreads: Int = 1
     ) {
         self.host = host
         self.port = port
         self.transportSecurity = transportSecurity
+        self.certificateVerificationPolicy = certificateVerificationPolicy
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
         
         // Initialize loggers
@@ -146,6 +156,7 @@ public actor IMAPServer {
             host: host,
             port: port,
             transportSecurity: transportSecurity,
+            certificateVerificationPolicy: certificateVerificationPolicy,
             group: group,
             loggerLabel: primaryLoggerLabel,
             outboundLabel: outboundLabel,
@@ -160,6 +171,7 @@ public actor IMAPServer {
             host: host,
             port: port,
             transportSecurity: Self.resolveLegacyTransportSecurity(port: port, useTLS: useTLS),
+            certificateVerificationPolicy: .fullVerification,
             numberOfThreads: numberOfThreads
         )
     }
@@ -379,6 +391,7 @@ public actor IMAPServer {
             host: host,
             port: port,
             transportSecurity: transportSecurity,
+            certificateVerificationPolicy: certificateVerificationPolicy,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,
@@ -401,6 +414,7 @@ public actor IMAPServer {
             host: host,
             port: port,
             transportSecurity: transportSecurity,
+            certificateVerificationPolicy: certificateVerificationPolicy,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,
