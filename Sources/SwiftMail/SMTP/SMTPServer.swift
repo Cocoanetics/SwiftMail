@@ -49,6 +49,13 @@ import Musl
    - Trace: Raw SMTP protocol communication
  */
 public actor SMTPServer {
+    enum SMTPTransportMode: Sendable, Equatable {
+        case implicitTLS
+        case plainText
+        case startTLSIfAvailable
+        case startTLSRequired
+    }
+
     // MARK: - Properties
     
     /** The hostname of the SMTP server */
@@ -180,11 +187,11 @@ public actor SMTPServer {
     public func connect() async throws {
         logger.debug("Connecting to SMTP server at \(host):\(port)")
         
-        let resolvedTransportSecurity = Self.resolveTransportSecurity(
+        let transportMode = Self.resolveTransportMode(
             port: port,
             transportSecurity: transportSecurity
         )
-        let useImplicitTLS = resolvedTransportSecurity == .implicitTLS
+        let useImplicitTLS = transportMode == .implicitTLS
         
         // Create the bootstrap
         let bootstrap = ClientBootstrap(group: group)
@@ -243,7 +250,7 @@ public actor SMTPServer {
         let capabilities = try await fetchCapabilities()
         
         if Self.requiresMissingSTARTTLSError(
-            transportSecurity: resolvedTransportSecurity,
+            transportMode: transportMode,
             capabilities: capabilities
         ) {
             logger.error("STARTTLS required for \(host):\(port) but was not advertised. Cannot continue without encryption.")
@@ -251,14 +258,14 @@ public actor SMTPServer {
         }
 
         if Self.requiresSTARTTLSUpgrade(
-            transportSecurity: resolvedTransportSecurity,
+            transportMode: transportMode,
             capabilities: capabilities
         ) {
             do {
                 try await startTLS()
             } catch {
                 logger.error("STARTTLS failed for \(host):\(port): \(error.localizedDescription). Cannot continue without encryption.")
-                throw SMTPError.tlsFailed("STARTTLS required but failed: \(error.localizedDescription)")
+                throw SMTPError.tlsFailed("STARTTLS upgrade failed: \(error.localizedDescription)")
             }
         }
         
@@ -339,37 +346,46 @@ public actor SMTPServer {
         }
     }
 
-    static func resolveTransportSecurity(
+    static func resolveTransportMode(
         port: Int,
         transportSecurity: MailTransportSecurity
-    ) -> MailTransportSecurity {
+    ) -> SMTPTransportMode {
         switch transportSecurity {
         case .automatic:
             switch port {
             case 465:
                 return .implicitTLS
             case 587:
-                return .startTLS
+                return .startTLSIfAvailable
             default:
                 return .plainText
             }
-        case .implicitTLS, .startTLS, .plainText:
-            return transportSecurity
+        case .implicitTLS:
+            return .implicitTLS
+        case .startTLS:
+            return .startTLSRequired
+        case .plainText:
+            return .plainText
         }
     }
 
     static func requiresSTARTTLSUpgrade(
-        transportSecurity: MailTransportSecurity,
+        transportMode: SMTPTransportMode,
         capabilities: [String]
     ) -> Bool {
-        transportSecurity == .startTLS && capabilities.contains("STARTTLS")
+        switch transportMode {
+        case .startTLSIfAvailable, .startTLSRequired:
+            return capabilities.contains("STARTTLS")
+        case .implicitTLS, .plainText:
+            return false
+        }
     }
 
     static func requiresMissingSTARTTLSError(
-        transportSecurity: MailTransportSecurity,
+        transportMode: SMTPTransportMode,
         capabilities: [String]
     ) -> Bool {
-        transportSecurity == .startTLS && !capabilities.contains("STARTTLS")
+        transportMode == .startTLSRequired && !capabilities.contains("STARTTLS")
     }
 
     /**

@@ -6,7 +6,7 @@ import Testing
 struct IMAPTransportSecurityTests {
     @Test
     func explicitStartTLSRequiresUpgradeOnArbitraryPorts() throws {
-        let mode = IMAPConnection.resolveTLSTransportMode(port: 1143, transportSecurity: .startTLS)
+        let mode = try IMAPConnection.resolveTLSTransportMode(port: 1143, transportSecurity: .startTLS)
 
         #expect(mode == .startTLSRequired)
     }
@@ -32,8 +32,8 @@ struct IMAPTransportSecurityTests {
     }
 
     @Test
-    func explicitImplicitTLSOnArbitraryPortsSkipsStartTLS() {
-        let mode = IMAPConnection.resolveTLSTransportMode(port: 1143, transportSecurity: .implicitTLS)
+    func explicitImplicitTLSOnArbitraryPortsSkipsStartTLS() throws {
+        let mode = try IMAPConnection.resolveTLSTransportMode(port: 1143, transportSecurity: .implicitTLS)
 
         #expect(mode == .implicitTLS)
         #expect(
@@ -45,12 +45,29 @@ struct IMAPTransportSecurityTests {
     }
 
     @Test
-    func automaticPreservesStandardIMAPPortBehavior() {
+    func automaticPreservesStandardIMAPPortBehavior() throws {
         #expect(
-            IMAPConnection.resolveTLSTransportMode(port: 993, transportSecurity: .automatic) == .implicitTLS
+            try IMAPConnection.resolveTLSTransportMode(port: 993, transportSecurity: .automatic) == .implicitTLS
         )
         #expect(
-            IMAPConnection.resolveTLSTransportMode(port: 143, transportSecurity: .automatic) == .startTLSIfAvailable
+            try IMAPConnection.resolveTLSTransportMode(port: 143, transportSecurity: .automatic) == .startTLSIfAvailable
         )
+    }
+
+    @Test
+    func automaticRejectsAmbiguousCustomPorts() {
+        var didThrowInvalidArgument = false
+
+        do {
+            _ = try IMAPConnection.resolveTLSTransportMode(port: 1143, transportSecurity: .automatic)
+        } catch let error as IMAPError {
+            if case .invalidArgument(let message) = error {
+                didThrowInvalidArgument = message.contains("requires explicit useTLS")
+            }
+        } catch {
+            didThrowInvalidArgument = false
+        }
+
+        #expect(didThrowInvalidArgument)
     }
 }

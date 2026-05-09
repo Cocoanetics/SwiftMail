@@ -7,7 +7,7 @@ struct SMTPTransportSecurityTests {
     func explicitSTARTTLSRequiresAdvertisedUpgrade() {
         #expect(
             SMTPServer.requiresSTARTTLSUpgrade(
-                transportSecurity: .startTLS,
+                transportMode: .startTLSRequired,
                 capabilities: ["SIZE", "STARTTLS", "AUTH PLAIN"]
             )
         )
@@ -17,7 +17,7 @@ struct SMTPTransportSecurityTests {
     func explicitSTARTTLSRequiresMissingSTARTTLSErrorWhenNotAdvertised() {
         #expect(
             SMTPServer.requiresMissingSTARTTLSError(
-                transportSecurity: .startTLS,
+                transportMode: .startTLSRequired,
                 capabilities: ["SIZE", "AUTH PLAIN"]
             )
         )
@@ -27,14 +27,14 @@ struct SMTPTransportSecurityTests {
     func implicitTLSSkipsSTARTTLSPolicyHelpers() {
         #expect(
             !SMTPServer.requiresSTARTTLSUpgrade(
-                transportSecurity: .implicitTLS,
+                transportMode: .implicitTLS,
                 capabilities: ["SIZE", "STARTTLS", "AUTH PLAIN"]
             )
         )
 
         #expect(
             !SMTPServer.requiresMissingSTARTTLSError(
-                transportSecurity: .implicitTLS,
+                transportMode: .implicitTLS,
                 capabilities: ["SIZE", "AUTH PLAIN"]
             )
         )
@@ -42,8 +42,32 @@ struct SMTPTransportSecurityTests {
 
     @Test
     func automaticTransportSecurityPreservesPortInferredBehavior() {
-        #expect(SMTPServer.resolveTransportSecurity(port: 465, transportSecurity: .automatic) == .implicitTLS)
-        #expect(SMTPServer.resolveTransportSecurity(port: 587, transportSecurity: .automatic) == .startTLS)
-        #expect(SMTPServer.resolveTransportSecurity(port: 1025, transportSecurity: .automatic) == .plainText)
+        #expect(SMTPServer.resolveTransportMode(port: 465, transportSecurity: .automatic) == .implicitTLS)
+        #expect(SMTPServer.resolveTransportMode(port: 587, transportSecurity: .automatic) == .startTLSIfAvailable)
+        #expect(SMTPServer.resolveTransportMode(port: 1025, transportSecurity: .automatic) == .plainText)
+    }
+
+    @Test
+    func automatic587DoesNotRequireSTARTTLSWhenCapabilityIsMissing() {
+        let transportMode = SMTPServer.resolveTransportMode(port: 587, transportSecurity: .automatic)
+
+        #expect(
+            !SMTPServer.requiresMissingSTARTTLSError(
+                transportMode: transportMode,
+                capabilities: ["SIZE", "AUTH PLAIN"]
+            )
+        )
+    }
+
+    @Test
+    func automatic587RequestsSTARTTLSWhenCapabilityIsAdvertised() {
+        let transportMode = SMTPServer.resolveTransportMode(port: 587, transportSecurity: .automatic)
+
+        #expect(
+            SMTPServer.requiresSTARTTLSUpgrade(
+                transportMode: transportMode,
+                capabilities: ["SIZE", "STARTTLS", "AUTH PLAIN"]
+            )
+        )
     }
 }

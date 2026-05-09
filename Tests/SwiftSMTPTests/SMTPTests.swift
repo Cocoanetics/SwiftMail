@@ -61,7 +61,7 @@ struct SMTPTests {
     func testRequiresSTARTTLSUpgradePolicy() {
         #expect(
             SMTPServer.requiresSTARTTLSUpgrade(
-                transportSecurity: SMTPServer.resolveTransportSecurity(
+                transportMode: SMTPServer.resolveTransportMode(
                     port: 587,
                     transportSecurity: .automatic
                 ),
@@ -71,7 +71,7 @@ struct SMTPTests {
 
         #expect(
             !SMTPServer.requiresSTARTTLSUpgrade(
-                transportSecurity: SMTPServer.resolveTransportSecurity(
+                transportMode: SMTPServer.resolveTransportMode(
                     port: 587,
                     transportSecurity: .automatic
                 ),
@@ -81,7 +81,7 @@ struct SMTPTests {
 
         #expect(
             !SMTPServer.requiresSTARTTLSUpgrade(
-                transportSecurity: SMTPServer.resolveTransportSecurity(
+                transportMode: SMTPServer.resolveTransportMode(
                     port: 465,
                     transportSecurity: .automatic
                 ),
@@ -91,10 +91,20 @@ struct SMTPTests {
     }
 
     @Test
-    func testMissingSTARTTLSIsFatalForResolvedSTARTTLSPolicy() {
+    func testMissingSTARTTLSIsFatalForExplicitSTARTTLSPolicy() {
         #expect(
             SMTPServer.requiresMissingSTARTTLSError(
-                transportSecurity: SMTPServer.resolveTransportSecurity(
+                transportMode: SMTPServer.resolveTransportMode(
+                    port: 587,
+                    transportSecurity: .startTLS
+                ),
+                capabilities: ["SIZE", "AUTH PLAIN"]
+            )
+        )
+
+        #expect(
+            !SMTPServer.requiresMissingSTARTTLSError(
+                transportMode: SMTPServer.resolveTransportMode(
                     port: 587,
                     transportSecurity: .automatic
                 ),
@@ -104,7 +114,7 @@ struct SMTPTests {
 
         #expect(
             !SMTPServer.requiresMissingSTARTTLSError(
-                transportSecurity: SMTPServer.resolveTransportSecurity(
+                transportMode: SMTPServer.resolveTransportMode(
                     port: 465,
                     transportSecurity: .automatic
                 ),
@@ -114,7 +124,7 @@ struct SMTPTests {
 
         #expect(
             !SMTPServer.requiresMissingSTARTTLSError(
-                transportSecurity: SMTPServer.resolveTransportSecurity(
+                transportMode: SMTPServer.resolveTransportMode(
                     port: 25,
                     transportSecurity: .automatic
                 ),

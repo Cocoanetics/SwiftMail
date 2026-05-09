@@ -117,7 +117,7 @@ final class IMAPConnection {
     static func resolveTLSTransportMode(
         port: Int,
         transportSecurity: MailTransportSecurity
-    ) -> TLSTransportMode {
+    ) throws -> TLSTransportMode {
         switch transportSecurity {
         case .automatic:
             switch port {
@@ -126,7 +126,7 @@ final class IMAPConnection {
             case 143:
                 return .startTLSIfAvailable
             default:
-                return .plainText
+                throw IMAPError.invalidArgument("Port \(port) requires explicit useTLS because TLS mode cannot be inferred")
             }
         case .implicitTLS:
             return .implicitTLS
@@ -225,7 +225,7 @@ final class IMAPConnection {
         idleHandler = nil
         idleTerminationInProgress = false
 
-        let tlsTransportMode = Self.resolveTLSTransportMode(port: port, transportSecurity: transportSecurity)
+        let tlsTransportMode = try Self.resolveTLSTransportMode(port: port, transportSecurity: transportSecurity)
         let initialTLSMode = tlsTransportMode
         let host = self.host
         let duplexLogger = self.duplexLogger
