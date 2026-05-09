@@ -64,7 +64,7 @@ struct IMAPTransportSecurityTests {
             _ = try IMAPConnection.resolveTLSTransportMode(port: 1143, transportSecurity: .automatic)
         } catch let error as IMAPError {
             if case .invalidArgument(let message) = error {
-                didThrowInvalidArgument = message.contains("requires explicit useTLS")
+                didThrowInvalidArgument = message.contains("requires explicit transportSecurity")
             }
         } catch {
             didThrowInvalidArgument = false

@@ -127,7 +127,7 @@ final class IMAPConnection {
             case 143:
                 return .startTLSIfAvailable
             default:
-                throw IMAPError.invalidArgument("Port \(port) requires explicit useTLS because TLS mode cannot be inferred")
+                throw IMAPError.invalidArgument("Port \(port) requires explicit transportSecurity because TLS mode cannot be inferred")
             }
         case .implicitTLS:
             return .implicitTLS
