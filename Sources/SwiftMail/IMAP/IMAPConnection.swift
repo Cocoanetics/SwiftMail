@@ -586,7 +586,8 @@ final class IMAPConnection {
             certificateVerificationPolicy: certificateVerificationPolicy
         )
         let context = try NIOSSLContext(configuration: configuration)
-        return try NIOSSLClientHandler(context: context, serverHostname: host)
+        let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
+        return try NIOSSLClientHandler(context: context, serverHostname: serverHostname)
     }
 
     func applyPostGreetingTLSPolicy(

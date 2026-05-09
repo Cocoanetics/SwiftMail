@@ -216,7 +216,8 @@ public actor SMTPServer {
                         )
                         
                         let sslContext = try NIOSSLContext(configuration: tlsConfig)
-                        let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: host)
+                        let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
+                        let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: serverHostname)
                         
                         // Add SSL handler first, then SMTP handlers using syncOperations
                         try! channel.pipeline.syncOperations.addHandler(sslHandler)
@@ -829,7 +830,8 @@ public actor SMTPServer {
         // Add SSL handler to the pipeline using EventLoop submission to ensure correct thread
         try await channel.eventLoop.submit {
             let sslContext = try NIOSSLContext(configuration: finalTlsConfig)
-            let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: host)
+            let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
+            let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: serverHostname)
             try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
         }.get()
         

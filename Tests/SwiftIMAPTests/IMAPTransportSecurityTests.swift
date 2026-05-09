@@ -21,6 +21,15 @@ struct IMAPTransportSecurityTests {
     }
 
     @Test
+    func tlsServerHostnameOmitsIPLiteralSNI() {
+        #expect(MailTLSConfiguration.serverHostnameForTLSHandler(host: "127.0.0.1") == nil)
+        #expect(MailTLSConfiguration.serverHostnameForTLSHandler(host: "::1") == nil)
+        #expect(MailTLSConfiguration.serverHostnameForTLSHandler(host: "[::1]") == nil)
+        #expect(MailTLSConfiguration.serverHostnameForTLSHandler(host: "localhost") == "localhost")
+        #expect(MailTLSConfiguration.serverHostnameForTLSHandler(host: "mail.example.com") == "mail.example.com")
+    }
+
+    @Test
     func imapServerPropagatesCertificateVerificationPolicyToPrimaryConnection() async {
         let server = IMAPServer(
             host: "127.0.0.1",

@@ -1,3 +1,4 @@
+import NIO
 import NIOSSL
 
 /// Transport-security policy for IMAP and SMTP connections.
@@ -40,5 +41,18 @@ enum MailTLSConfiguration {
             configuration.certificateVerification = .none
         }
         return configuration
+    }
+
+    static func serverHostnameForTLSHandler(host: String) -> String? {
+        let normalizedHost = if host.hasPrefix("[") && host.hasSuffix("]") {
+            String(host.dropFirst().dropLast())
+        } else {
+            host
+        }
+
+        if (try? SocketAddress(ipAddress: normalizedHost, port: 0)) != nil {
+            return nil
+        }
+        return host
     }
 }
