@@ -49,6 +49,13 @@ import Musl
    - Trace: Raw SMTP protocol communication
  */
 public actor SMTPServer {
+    enum SMTPTransportMode: Sendable, Equatable {
+        case implicitTLS
+        case plainText
+        case startTLSIfAvailable
+        case startTLSRequired
+    }
+
     // MARK: - Properties
     
     /** The hostname of the SMTP server */
@@ -56,6 +63,12 @@ public actor SMTPServer {
     
     /** The port number of the SMTP server */
     private let port: Int
+
+    /** The requested SMTP transport security policy */
+    private let transportSecurity: MailTransportSecurity
+
+    /** The certificate verification policy for TLS connections */
+    private let certificateVerificationPolicy: MailCertificateVerificationPolicy
     
     /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
@@ -125,18 +138,29 @@ public actor SMTPServer {
      - Parameters:
        - host: The hostname of the SMTP server
        - port: The port number of the SMTP server
+       - transportSecurity: The transport security policy to use for this connection
+       - certificateVerificationPolicy: The certificate verification policy to use for TLS connections
        - numberOfThreads: The number of threads to use for the event loop group
      
-     The port number determines the initial security mode:
+     `.automatic` infers the initial security mode from the port:
      - Port 25: Plain SMTP (not recommended)
      - Port 587: STARTTLS (recommended)
      - Port 465: SMTPS (implicit TLS)
+     Passing an explicit `transportSecurity` value overrides this port-inferred behavior.
      
      - Note: Logs initialization at debug level with connection details
      */
-    public init(host: String, port: Int, numberOfThreads: Int = 1) {
+    public init(
+        host: String,
+        port: Int,
+        transportSecurity: MailTransportSecurity = .automatic,
+        certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
+        numberOfThreads: Int = 1
+    ) {
         self.host = host
         self.port = port
+        self.transportSecurity = transportSecurity
+        self.certificateVerificationPolicy = certificateVerificationPolicy
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 		
 		let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
@@ -170,29 +194,36 @@ public actor SMTPServer {
     public func connect() async throws {
         logger.debug("Connecting to SMTP server at \(host):\(port)")
         
-        // Determine if we should use SSL based on the port
-        let useSSL = (port == 465) // SMTPS port
+        let transportMode = Self.resolveTransportMode(
+            port: port,
+            transportSecurity: transportSecurity
+        )
+        let useImplicitTLS = transportMode == .implicitTLS
+        let host = self.host
+        let certificateVerificationPolicy = self.certificateVerificationPolicy
+        let duplexLogger = self.duplexLogger
         
         // Create the bootstrap
         let bootstrap = ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
             .channelInitializer { channel in
-                if useSSL {
+                if useImplicitTLS {
                     do {
                         // Create SSL context with proper configuration for secure connection
-                        var tlsConfig = TLSConfiguration.makeClientConfiguration()
-                        tlsConfig.certificateVerification = .fullVerification
-                        tlsConfig.trustRoots = .default
+                        let tlsConfig = MailTLSConfiguration.makeClientConfiguration(
+                            certificateVerificationPolicy: certificateVerificationPolicy
+                        )
                         
                         let sslContext = try NIOSSLContext(configuration: tlsConfig)
-                        let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: self.host)
+                        let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
+                        let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: serverHostname)
                         
                         // Add SSL handler first, then SMTP handlers using syncOperations
                         try! channel.pipeline.syncOperations.addHandler(sslHandler)
                         try! channel.pipeline.syncOperations.addHandlers([
 							ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-							self.duplexLogger,
+							duplexLogger,
 							SMTPResponseHandler()
 						])
                         
@@ -204,7 +235,7 @@ public actor SMTPServer {
                     // Just add SMTP handlers without SSL using syncOperations
                     try! channel.pipeline.syncOperations.addHandlers([
 						ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-						self.duplexLogger,
+						duplexLogger,
 						SMTPResponseHandler()
 					])
                     
@@ -229,21 +260,44 @@ public actor SMTPServer {
         // Fetch capabilities using our new method
         let capabilities = try await fetchCapabilities()
         
-        // Upgrade submission connections to TLS when advertised.
-        if Self.requiresSTARTTLSUpgrade(port: port, useSSL: useSSL, capabilities: capabilities) {
-            do {
-                try await startTLS()
-            } catch {
-                if Self.shouldFailClosedOnSTARTTLSFailure(port: port, host: host) {
-                    logger.error("STARTTLS failed for \(host): \(error.localizedDescription). Cannot continue without encryption.")
-                    throw SMTPError.tlsFailed("STARTTLS required on port 587 but failed: \(error.localizedDescription)")
-                }
+        try await applyPostEHLOTLSPolicy(
+            transportMode: transportMode,
+            capabilities: capabilities
+        )
 
-                logger.warning("STARTTLS failed: \(error.localizedDescription). Continuing without encryption.")
+        logger.info("Connected to SMTP server \(self.host):\(self.port)")
+    }
+
+    func applyPostEHLOTLSPolicy(
+        transportMode: SMTPTransportMode,
+        capabilities: [String],
+        startTLSOverrideForTesting: (@Sendable () async throws -> Void)? = nil
+    ) async throws {
+        if Self.requiresMissingSTARTTLSError(
+            transportMode: transportMode,
+            capabilities: capabilities
+        ) {
+            logger.error("STARTTLS required for \(host):\(port) but was not advertised. Cannot continue without encryption.")
+            await closeAndClearChannelAfterSTARTTLSPolicyFailure()
+            throw SMTPError.tlsFailed("STARTTLS required but not advertised by server")
+        }
+
+        if Self.requiresSTARTTLSUpgrade(
+            transportMode: transportMode,
+            capabilities: capabilities
+        ) {
+            do {
+                if let startTLSOverrideForTesting {
+                    try await startTLSOverrideForTesting()
+                } else {
+                    try await startTLS()
+                }
+            } catch {
+                logger.error("STARTTLS failed for \(host):\(port): \(error.localizedDescription). Cannot continue without encryption.")
+                await closeAndClearChannelAfterSTARTTLSPolicyFailure()
+                throw SMTPError.tlsFailed("STARTTLS upgrade failed: \(error.localizedDescription)")
             }
         }
-        
-        logger.info("Connected to SMTP server \(self.host):\(self.port)")
     }
     
     /**
@@ -320,13 +374,75 @@ public actor SMTPServer {
         }
     }
 
-    static func requiresSTARTTLSUpgrade(port: Int, useSSL: Bool, capabilities: [String]) -> Bool {
-        !useSSL && port == 587 && capabilities.contains("STARTTLS")
+    static func resolveTransportMode(
+        port: Int,
+        transportSecurity: MailTransportSecurity
+    ) -> SMTPTransportMode {
+        switch transportSecurity {
+        case .automatic:
+            switch port {
+            case 465:
+                return .implicitTLS
+            case 587:
+                return .startTLSIfAvailable
+            default:
+                return .plainText
+            }
+        case .implicitTLS:
+            return .implicitTLS
+        case .startTLS:
+            return .startTLSRequired
+        case .plainText:
+            return .plainText
+        }
     }
 
-    static func shouldFailClosedOnSTARTTLSFailure(port: Int, host: String) -> Bool {
-        _ = host
-        return port == 587
+    static func requiresSTARTTLSUpgrade(
+        transportMode: SMTPTransportMode,
+        capabilities: [String]
+    ) -> Bool {
+        switch transportMode {
+        case .startTLSIfAvailable, .startTLSRequired:
+            return capabilities.contains("STARTTLS")
+        case .implicitTLS, .plainText:
+            return false
+        }
+    }
+
+    static func requiresMissingSTARTTLSError(
+        transportMode: SMTPTransportMode,
+        capabilities: [String]
+    ) -> Bool {
+        transportMode == .startTLSRequired && !capabilities.contains("STARTTLS")
+    }
+
+    var hasChannelForTesting: Bool {
+        channel != nil
+    }
+
+    var certificateVerificationPolicyForTesting: MailCertificateVerificationPolicy {
+        certificateVerificationPolicy
+    }
+
+    func replaceChannelForTesting(_ channel: Channel?) {
+        self.channel = channel
+    }
+
+    func closeAndClearChannelAfterSTARTTLSPolicyFailure() async {
+        let channel = self.channel
+        self.channel = nil
+        self.isTLSEnabled = false
+        self.capabilities = []
+
+        guard let channel else {
+            return
+        }
+
+        do {
+            try await channel.close().get()
+        } catch {
+            logger.debug("Channel close after STARTTLS policy failure reported: \(error)")
+        }
     }
 
     /**
@@ -703,17 +819,19 @@ public actor SMTPServer {
         }
         
         // Create SSL context with proper configuration for secure connection
-        var tlsConfig = TLSConfiguration.makeClientConfiguration()
-        tlsConfig.certificateVerification = .fullVerification
-        tlsConfig.trustRoots = .default
+        let tlsConfig = MailTLSConfiguration.makeClientConfiguration(
+            certificateVerificationPolicy: certificateVerificationPolicy
+        )
         
         // Capture the configuration before the closure to avoid concurrency issues
         let finalTlsConfig = tlsConfig
+        let host = self.host
         
         // Add SSL handler to the pipeline using EventLoop submission to ensure correct thread
         try await channel.eventLoop.submit {
             let sslContext = try NIOSSLContext(configuration: finalTlsConfig)
-            let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: self.host)
+            let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
+            let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: serverHostname)
             try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
         }.get()
         

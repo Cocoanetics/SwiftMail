@@ -23,14 +23,14 @@ struct IMAPConnectionTLSModeTests {
     func requiresExplicitTLSChoiceOnNonStandardPorts() {
         do {
             _ = try IMAPConnection.resolveTLSTransportMode(port: 1143, useTLS: nil)
-            Issue.record("Expected non-standard ports to require explicit useTLS")
+            Issue.record("Expected non-standard ports to require explicit transportSecurity")
         } catch let error as IMAPError {
             guard case .invalidArgument(let message) = error else {
                 Issue.record("Expected invalidArgument, got \(error)")
                 return
             }
 
-            #expect(message.contains("requires explicit useTLS"))
+            #expect(message.contains("requires explicit transportSecurity"))
         } catch {
             Issue.record("Expected IMAPError.invalidArgument, got \(error)")
         }

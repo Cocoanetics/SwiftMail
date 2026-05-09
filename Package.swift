@@ -80,7 +80,8 @@ let package = Package(
             name: "SwiftSMTPTests",
             dependencies: [
                 "SwiftMail",
-                .product(name: "Testing", package: "swift-testing")
+                .product(name: "Testing", package: "swift-testing"),
+                .product(name: "NIOEmbedded", package: "swift-nio")
             ]
         ),
         .testTarget(

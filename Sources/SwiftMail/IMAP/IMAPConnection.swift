@@ -10,12 +10,14 @@ final class IMAPConnection {
     enum TLSTransportMode: Equatable {
         case implicitTLS
         case plainText
-        case startTLSIfAvailable(requireTLS: Bool)
+        case startTLSIfAvailable
+        case startTLSRequired
     }
 
     private let host: String
     private let port: Int
-    private let useTLS: Bool?
+    private let transportSecurity: MailTransportSecurity
+    private let certificateVerificationPolicy: MailCertificateVerificationPolicy
     private let group: EventLoopGroup
     private let connectionID: String
     private let connectionRole: String
@@ -29,6 +31,7 @@ final class IMAPConnection {
     private var idleTerminationInProgress: Bool = false
     private let commandQueue = IMAPCommandQueue()
     private let responseBuffer = UntaggedResponseBuffer()
+    private var startTLSUpgradeOverrideForTesting: (() async throws -> Void)?
 
     private let logger: Logging.Logger
     private let duplexLogger: IMAPLogger
@@ -36,7 +39,8 @@ final class IMAPConnection {
     init(
         host: String,
         port: Int,
-        useTLS: Bool? = nil,
+        transportSecurity: MailTransportSecurity = .automatic,
+        certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
         group: EventLoopGroup,
         loggerLabel: String,
         outboundLabel: String,
@@ -46,7 +50,8 @@ final class IMAPConnection {
     ) {
         self.host = host
         self.port = port
-        self.useTLS = useTLS
+        self.transportSecurity = transportSecurity
+        self.certificateVerificationPolicy = certificateVerificationPolicy
         self.group = group
         self.connectionID = connectionID
         self.connectionRole = connectionRole
@@ -77,41 +82,83 @@ final class IMAPConnection {
         )
     }
 
-    static func resolveTLSTransportMode(port: Int, useTLS: Bool?) throws -> TLSTransportMode {
-        if let useTLS {
-            if port == 143 && useTLS {
-                return .startTLSIfAvailable(requireTLS: true)
-            }
+    convenience init(
+        host: String,
+        port: Int,
+        useTLS: Bool?,
+        group: EventLoopGroup,
+        loggerLabel: String,
+        outboundLabel: String,
+        inboundLabel: String,
+        connectionID: String,
+        connectionRole: String
+    ) {
+        self.init(
+            host: host,
+            port: port,
+            transportSecurity: Self.resolveLegacyTransportSecurity(port: port, useTLS: useTLS),
+            certificateVerificationPolicy: .fullVerification,
+            group: group,
+            loggerLabel: loggerLabel,
+            outboundLabel: outboundLabel,
+            inboundLabel: inboundLabel,
+            connectionID: connectionID,
+            connectionRole: connectionRole
+        )
+    }
 
-            return useTLS ? .implicitTLS : .plainText
+    private static func resolveLegacyTransportSecurity(port: Int, useTLS: Bool?) -> MailTransportSecurity {
+        guard let useTLS else {
+            return .automatic
         }
 
-        switch port {
-        case 993:
+        if useTLS {
+            return port == 143 ? .startTLS : .implicitTLS
+        }
+
+        return .plainText
+    }
+
+    static func resolveTLSTransportMode(
+        port: Int,
+        transportSecurity: MailTransportSecurity
+    ) throws -> TLSTransportMode {
+        switch transportSecurity {
+        case .automatic:
+            switch port {
+            case 993:
+                return .implicitTLS
+            case 143:
+                return .startTLSIfAvailable
+            default:
+                throw IMAPError.invalidArgument("Port \(port) requires explicit transportSecurity because TLS mode cannot be inferred")
+            }
+        case .implicitTLS:
             return .implicitTLS
-        case 143:
-            return .startTLSIfAvailable(requireTLS: false)
-        default:
-            throw IMAPError.invalidArgument(
-                "Port \(port) requires explicit useTLS because SwiftMail cannot infer whether to use implicit TLS or plain text"
-            )
+        case .startTLS:
+            return .startTLSRequired
+        case .plainText:
+            return .plainText
         }
     }
 
     static func requiresSTARTTLSUpgrade(
-        port: Int,
         tlsTransportMode: TLSTransportMode,
         capabilities: [Capability]
     ) -> Bool {
-        guard port == 143 else {
+        switch tlsTransportMode {
+        case .startTLSIfAvailable, .startTLSRequired:
+            return capabilities.contains(.startTLS)
+        case .implicitTLS, .plainText:
             return false
         }
+    }
 
-        guard case .startTLSIfAvailable = tlsTransportMode else {
-            return false
-        }
-
-        return capabilities.contains(.startTLS)
+    static func requiresMissingSTARTTLSError(
+        tlsTransportMode: TLSTransportMode,
+        capabilities: [Capability]
+    ) -> Bool {
+        tlsTransportMode == .startTLSRequired && !capabilities.contains(.startTLS)
     }
 
     var isConnected: Bool {
@@ -123,6 +170,10 @@ final class IMAPConnection {
 
     var capabilitiesSnapshot: Set<NIOIMAPCore.Capability> {
         capabilities
+    }
+
+    var certificateVerificationPolicyForTesting: MailCertificateVerificationPolicy {
+        certificateVerificationPolicy
     }
 
     var namespacesSnapshot: NamespaceResponse? {
@@ -151,6 +202,10 @@ final class IMAPConnection {
 
     func replaceChannelForTesting(_ channel: Channel?) {
         self.channel = channel
+    }
+
+    func replaceStartTLSUpgradeForTesting(_ upgrade: (() async throws -> Void)?) {
+        self.startTLSUpgradeOverrideForTesting = upgrade
     }
 
     func connect() async throws {
@@ -183,9 +238,10 @@ final class IMAPConnection {
         idleHandler = nil
         idleTerminationInProgress = false
 
-        let tlsTransportMode = try Self.resolveTLSTransportMode(port: port, useTLS: useTLS)
+        let tlsTransportMode = try Self.resolveTLSTransportMode(port: port, transportSecurity: transportSecurity)
         let initialTLSMode = tlsTransportMode
         let host = self.host
+        let certificateVerificationPolicy = self.certificateVerificationPolicy
         let duplexLogger = self.duplexLogger
         let responseBuffer = self.responseBuffer
         
@@ -208,7 +264,11 @@ final class IMAPConnection {
                     )
 
                     if case .implicitTLS = initialTLSMode {
-                        let sslHandler = try Self.makeTLSHandler(for: channel, host: host)
+                        let sslHandler = try Self.makeTLSHandler(
+                            for: channel,
+                            host: host,
+                            certificateVerificationPolicy: certificateVerificationPolicy
+                        )
                         try channel.pipeline.syncOperations.addHandler(sslHandler)
                     }
 
@@ -345,6 +405,8 @@ final class IMAPConnection {
         guard let channel = self.channel else {
             logger.warning("\(connectionContext) Attempted to disconnect when channel was already nil")
             isSessionAuthenticated = false
+            capabilities = []
+            namespaces = nil
             responseBuffer.reset()
             idleHandler = nil
             idleTerminationInProgress = false
@@ -358,6 +420,7 @@ final class IMAPConnection {
         }
         self.channel = nil
         self.isSessionAuthenticated = false
+        self.capabilities = []
         self.namespaces = nil
         self.idleHandler = nil
         self.idleTerminationInProgress = false
@@ -514,28 +577,49 @@ final class IMAPConnection {
         try await fetchCapabilities()
     }
 
-    private static func makeTLSHandler(for channel: Channel, host: String) throws -> NIOSSLClientHandler {
-        let configuration = TLSConfiguration.makeClientConfiguration()
+    private static func makeTLSHandler(
+        for channel: Channel,
+        host: String,
+        certificateVerificationPolicy: MailCertificateVerificationPolicy
+    ) throws -> NIOSSLClientHandler {
+        let configuration = MailTLSConfiguration.makeClientConfiguration(
+            certificateVerificationPolicy: certificateVerificationPolicy
+        )
         let context = try NIOSSLContext(configuration: configuration)
-        return try NIOSSLClientHandler(context: context, serverHostname: host)
+        let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
+        return try NIOSSLClientHandler(context: context, serverHostname: serverHostname)
     }
 
     func applyPostGreetingTLSPolicy(
         tlsTransportMode: TLSTransportMode,
         capabilities: [Capability]
     ) async throws {
-        if Self.requiresSTARTTLSUpgrade(port: port, tlsTransportMode: tlsTransportMode, capabilities: capabilities) {
-            try await startTLS()
-            return
+        if Self.requiresMissingSTARTTLSError(tlsTransportMode: tlsTransportMode, capabilities: capabilities) {
+            await closeAndClearChannelAfterSTARTTLSPolicyFailure()
+            throw IMAPError.connectionFailed("Server did not advertise STARTTLS on port \(port)")
         }
 
-        if case .startTLSIfAvailable(let requireTLS) = tlsTransportMode, requireTLS {
-            try? await disconnectBody()
-            throw IMAPError.connectionFailed("Server did not advertise STARTTLS on port \(port)")
+        if Self.requiresSTARTTLSUpgrade(tlsTransportMode: tlsTransportMode, capabilities: capabilities) {
+            do {
+                try await startTLS()
+            } catch {
+                await closeAndClearChannelAfterSTARTTLSPolicyFailure()
+                throw error
+            }
         }
     }
 
+    func closeAndClearChannelAfterSTARTTLSPolicyFailure() async {
+        capabilities = []
+        try? await disconnectBody()
+    }
+
     private func startTLS() async throws {
+        if let startTLSUpgradeOverrideForTesting {
+            try await startTLSUpgradeOverrideForTesting()
+            return
+        }
+
         let command = IMAPStartTLSCommand()
         let accepted = try await executeCommandBody(command)
 
@@ -548,8 +632,13 @@ final class IMAPConnection {
         }
 
         let host = self.host
+        let certificateVerificationPolicy = self.certificateVerificationPolicy
         try await channel.eventLoop.submit {
-            let sslHandler = try Self.makeTLSHandler(for: channel, host: host)
+            let sslHandler = try Self.makeTLSHandler(
+                for: channel,
+                host: host,
+                certificateVerificationPolicy: certificateVerificationPolicy
+            )
             try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
         }.get()
 
