@@ -30,6 +30,7 @@ final class IMAPConnection {
     private var idleTerminationInProgress: Bool = false
     private let commandQueue = IMAPCommandQueue()
     private let responseBuffer = UntaggedResponseBuffer()
+    private var startTLSUpgradeOverrideForTesting: (() async throws -> Void)?
 
     private let logger: Logging.Logger
     private let duplexLogger: IMAPLogger
@@ -193,6 +194,10 @@ final class IMAPConnection {
 
     func replaceChannelForTesting(_ channel: Channel?) {
         self.channel = channel
+    }
+
+    func replaceStartTLSUpgradeForTesting(_ upgrade: (() async throws -> Void)?) {
+        self.startTLSUpgradeOverrideForTesting = upgrade
     }
 
     func connect() async throws {
@@ -387,6 +392,8 @@ final class IMAPConnection {
         guard let channel = self.channel else {
             logger.warning("\(connectionContext) Attempted to disconnect when channel was already nil")
             isSessionAuthenticated = false
+            capabilities = []
+            namespaces = nil
             responseBuffer.reset()
             idleHandler = nil
             idleTerminationInProgress = false
@@ -400,6 +407,7 @@ final class IMAPConnection {
         }
         self.channel = nil
         self.isSessionAuthenticated = false
+        self.capabilities = []
         self.namespaces = nil
         self.idleHandler = nil
         self.idleTerminationInProgress = false
@@ -582,10 +590,16 @@ final class IMAPConnection {
     }
 
     func closeAndClearChannelAfterSTARTTLSPolicyFailure() async {
+        capabilities = []
         try? await disconnectBody()
     }
 
     private func startTLS() async throws {
+        if let startTLSUpgradeOverrideForTesting {
+            try await startTLSUpgradeOverrideForTesting()
+            return
+        }
+
         let command = IMAPStartTLSCommand()
         let accepted = try await executeCommandBody(command)
 

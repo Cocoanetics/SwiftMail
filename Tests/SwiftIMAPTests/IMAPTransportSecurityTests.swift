@@ -76,34 +76,45 @@ struct IMAPTransportSecurityTests {
     @Test
     func advertisedSTARTTLSFailureClearsChannel() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer {
-            Task {
-                try? await group.shutdownGracefully()
-            }
-        }
-
-        let connection = IMAPConnection(
-            host: "localhost",
-            port: 143,
-            transportSecurity: .startTLS,
-            group: group,
-            loggerLabel: "test.imap",
-            outboundLabel: "test.imap.out",
-            inboundLabel: "test.imap.in",
-            connectionID: "test-starttls-failure",
-            connectionRole: "test"
-        )
-        let channel = EmbeddedChannel()
-        connection.replaceChannelForTesting(channel)
-
         do {
-            try await connection.applyPostGreetingTLSPolicy(
-                tlsTransportMode: .startTLSRequired,
-                capabilities: [.startTLS]
+            let connection = IMAPConnection(
+                host: "localhost",
+                port: 143,
+                transportSecurity: .startTLS,
+                group: group,
+                loggerLabel: "test.imap",
+                outboundLabel: "test.imap.out",
+                inboundLabel: "test.imap.in",
+                connectionID: "test-starttls-failure",
+                connectionRole: "test"
             )
-            Issue.record("Expected STARTTLS upgrade failure")
+            let channel = EmbeddedChannel()
+            let address = try SocketAddress(ipAddress: "127.0.0.1", port: 143)
+            try await channel.connect(to: address).get()
+
+            connection.replaceChannelForTesting(channel)
+            connection.replaceCapabilitiesForTesting([.idle, .startTLS])
+            #expect(connection.isConnected)
+            connection.replaceStartTLSUpgradeForTesting {
+                throw IMAPError.connectionFailed("Injected STARTTLS failure")
+            }
+
+            do {
+                try await connection.applyPostGreetingTLSPolicy(
+                    tlsTransportMode: .startTLSRequired,
+                    capabilities: [.startTLS]
+                )
+                Issue.record("Expected STARTTLS upgrade failure")
+            } catch {
+                #expect(!connection.isConnected)
+            }
+
+            #expect(connection.capabilitiesSnapshot.isEmpty)
         } catch {
-            #expect(!connection.isConnected)
+            try? await group.shutdownGracefully()
+            throw error
         }
+
+        try await group.shutdownGracefully()
     }
 }
