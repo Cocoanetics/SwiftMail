@@ -254,10 +254,10 @@ public actor SMTPServer {
             transportMode: transportMode,
             capabilities: capabilities
         )
-        
+
         logger.info("Connected to SMTP server \(self.host):\(self.port)")
     }
-    
+
     func applyPostEHLOTLSPolicy(
         transportMode: SMTPTransportMode,
         capabilities: [String],
