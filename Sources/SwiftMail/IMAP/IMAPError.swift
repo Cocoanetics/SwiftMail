@@ -16,6 +16,8 @@ public enum IMAPError: Error {
     case emptyIdentifierSet
     case commandFailed(String)
     case createFailed(String)
+    case deleteFailed(String)
+    case renameFailed(String)
     case copyFailed(String)
     case storeFailed(String)
     case expungeFailed(String)
@@ -55,6 +57,10 @@ extension IMAPError: CustomStringConvertible {
             return "Command failed: \(reason)"
         case .createFailed(let reason):
             return "Create mailbox failed: \(reason)"
+        case .deleteFailed(let reason):
+            return "Delete mailbox failed: \(reason)"
+        case .renameFailed(let reason):
+            return "Rename mailbox failed: \(reason)"
         case .copyFailed(let reason):
             return "Copy failed: \(reason)"
         case .storeFailed(let reason):
@@ -105,6 +111,10 @@ extension IMAPError: LocalizedError {
             return "The IMAP command failed to execute: \(reason)"
         case .createFailed(let reason):
             return "Failed to create mailbox: \(reason)"
+        case .deleteFailed(let reason):
+            return "Failed to delete mailbox: \(reason)"
+        case .renameFailed(let reason):
+            return "Failed to rename mailbox: \(reason)"
         case .copyFailed(let reason):
             return "Failed to copy messages: \(reason)"
         case .storeFailed(let reason):

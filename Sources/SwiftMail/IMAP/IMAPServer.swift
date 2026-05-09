@@ -26,6 +26,13 @@ import OrderedCollections
  */
 /// Maximum number of identifiers per IMAP FETCH command when chunking large sets.
 private let defaultFetchChunkSize = 50
+/// Slim fetches (UID + ENVELOPE + INTERNALDATE + FLAGS) are roughly 25× smaller per message than
+/// the default attribute set, so we can use larger chunks while still staying inside the
+/// per-command timeout. 500 keeps the round-trip count down for very large mailboxes.
+private let slimFetchChunkSize = 500
+/// UID + FLAGS is ~50 bytes per message — even tens of thousands fit comfortably in a single
+/// command response. 5000 is generous and almost always one round-trip.
+private let uidFlagsFetchChunkSize = 5000
 
 public actor IMAPServer {
     // MARK: - Properties
@@ -448,6 +455,27 @@ public actor IMAPServer {
      */
     public func createMailbox(_ mailboxName: String) async throws {
         let command = CreateMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
+        try await executeCommand(command)
+    }
+
+    /// Delete an existing mailbox.
+    ///
+    /// - Note: Most servers refuse to delete a mailbox that still contains messages. The caller
+    ///   is responsible for moving or expunging messages first when desired.
+    /// - Throws: `IMAPError.deleteFailed` on tagged-NO/BAD responses.
+    public func deleteMailbox(_ mailboxName: String) async throws {
+        let command = DeleteMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
+        try await executeCommand(command)
+    }
+
+    /// Rename an existing mailbox.
+    ///
+    /// - Throws: `IMAPError.renameFailed` on tagged-NO/BAD responses (e.g. destination already exists).
+    public func renameMailbox(from source: String, to destination: String) async throws {
+        let command = RenameMailboxCommand(
+            from: resolveMailboxPath(source),
+            to: resolveMailboxPath(destination)
+        )
         try await executeCommand(command)
     }
 
@@ -1091,6 +1119,99 @@ public actor IMAPServer {
                     for chunk in chunks {
                         try Task.checkCancellation()
                         let command = FetchMessageInfoCommand(identifierSet: chunk)
+                        let result = try await executeCommand(command)
+                        for header in result {
+                            continuation.yield(header)
+                        }
+                    }
+
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
+
+    /// Fetch only `(UID FLAGS)` per message. For incremental-sync diffing, where we just need
+    /// the set of UIDs currently on the server and their read/flag state. Auto-chunks at
+    /// `uidFlagsFetchChunkSize`.
+    public func fetchUIDFlagsBulk<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) async throws -> [MessageInfo] {
+        let command = FetchUIDFlagsCommand(identifierSet: identifierSet)
+        return try await executeCommand(command)
+    }
+
+    public func fetchUIDFlags(sequenceRange: ClosedRange<SequenceNumber>) async throws -> [MessageInfo] {
+        try await fetchUIDFlagsBulk(using: SequenceNumberSet(sequenceRange))
+    }
+
+    public nonisolated func fetchUIDFlags<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) -> AsyncThrowingStream<MessageInfo, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard !identifierSet.isEmpty else {
+                        throw IMAPError.emptyIdentifierSet
+                    }
+                    let chunks = identifierSet.chunked(size: uidFlagsFetchChunkSize)
+                    for chunk in chunks {
+                        try Task.checkCancellation()
+                        let command = FetchUIDFlagsCommand(identifierSet: chunk)
+                        let result = try await executeCommand(command)
+                        for entry in result { continuation.yield(entry) }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+
+    /// Fetch slim message infos (UID, ENVELOPE, INTERNALDATE, FLAGS only — no BODYSTRUCTURE,
+    /// no header section). Drops bandwidth dramatically for large mailboxes where the full
+    /// `fetchMessageInfos` response can exceed the per-command 10s timeout.
+    public func fetchSlimMessageInfosBulk<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) async throws -> [MessageInfo] {
+        let command = FetchSlimMessageInfoCommand(identifierSet: identifierSet)
+        return try await executeCommand(command)
+    }
+
+    public func fetchSlimMessageInfos(uidRange: PartialRangeFrom<UID>) async throws -> [MessageInfo] {
+        try await fetchSlimMessageInfosBulk(using: UIDSet(uidRange))
+    }
+
+    public func fetchSlimMessageInfos(uidRange: ClosedRange<UID>) async throws -> [MessageInfo] {
+        try await fetchSlimMessageInfosBulk(using: UIDSet(uidRange))
+    }
+
+    public func fetchSlimMessageInfos(sequenceRange: PartialRangeFrom<SequenceNumber>) async throws -> [MessageInfo] {
+        try await fetchSlimMessageInfosBulk(using: SequenceNumberSet(sequenceRange))
+    }
+
+    public func fetchSlimMessageInfos(sequenceRange: ClosedRange<SequenceNumber>) async throws -> [MessageInfo] {
+        try await fetchSlimMessageInfosBulk(using: SequenceNumberSet(sequenceRange))
+    }
+
+    /// Streaming variant of `fetchSlimMessageInfos`. Chunks are larger than the regular variant
+    /// because the per-message response is roughly an order of magnitude smaller — fewer
+    /// round-trips for the same total fetch.
+    public nonisolated func fetchSlimMessageInfos<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) -> AsyncThrowingStream<MessageInfo, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard !identifierSet.isEmpty else {
+                        throw IMAPError.emptyIdentifierSet
+                    }
+
+                    let chunks = identifierSet.chunked(size: slimFetchChunkSize)
+
+                    for chunk in chunks {
+                        try Task.checkCancellation()
+                        let command = FetchSlimMessageInfoCommand(identifierSet: chunk)
                         let result = try await executeCommand(command)
                         for header in result {
                             continuation.yield(header)

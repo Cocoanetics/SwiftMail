@@ -50,6 +50,9 @@ public struct MessageInfo: Codable, Sendable {
     /// Additional header fields
     public var additionalFields: [String: String]?
 
+    /// RFC822.SIZE — total size of the message in bytes (when requested via FETCH).
+    public var size: Int?
+
     private enum CodingKeys: String, CodingKey {
         case sequenceNumber
         case uid
@@ -66,6 +69,7 @@ public struct MessageInfo: Codable, Sendable {
         case flags
         case parts
         case additionalFields
+        case size
     }
     
     /// Initialize a new email header
