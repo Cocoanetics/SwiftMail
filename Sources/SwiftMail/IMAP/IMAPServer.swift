@@ -118,6 +118,7 @@ public actor IMAPServer {
      - Parameters:
      - host: The hostname of the IMAP server
      - port: The port number of the IMAP server (typically 993 for SSL)
+     - transportSecurity: The transport security policy to use. `.automatic` infers from standard IMAP ports; explicit values override that inference.
      - numberOfThreads: The number of threads to use for the event loop group
      
      - Note: The connection is configured with a 1MB buffer limit to handle large SEARCH responses

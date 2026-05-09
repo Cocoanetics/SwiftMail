@@ -1,4 +1,6 @@
 import NIOIMAPCore
+import NIO
+import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
@@ -69,5 +71,39 @@ struct IMAPTransportSecurityTests {
         }
 
         #expect(didThrowInvalidArgument)
+    }
+
+    @Test
+    func advertisedSTARTTLSFailureClearsChannel() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer {
+            Task {
+                try? await group.shutdownGracefully()
+            }
+        }
+
+        let connection = IMAPConnection(
+            host: "localhost",
+            port: 143,
+            transportSecurity: .startTLS,
+            group: group,
+            loggerLabel: "test.imap",
+            outboundLabel: "test.imap.out",
+            inboundLabel: "test.imap.in",
+            connectionID: "test-starttls-failure",
+            connectionRole: "test"
+        )
+        let channel = EmbeddedChannel()
+        connection.replaceChannelForTesting(channel)
+
+        do {
+            try await connection.applyPostGreetingTLSPolicy(
+                tlsTransportMode: .startTLSRequired,
+                capabilities: [.startTLS]
+            )
+            Issue.record("Expected STARTTLS upgrade failure")
+        } catch {
+            #expect(!connection.isConnected)
+        }
     }
 }

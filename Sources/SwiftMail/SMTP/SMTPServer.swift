@@ -138,10 +138,11 @@ public actor SMTPServer {
        - transportSecurity: The transport security policy to use for this connection
        - numberOfThreads: The number of threads to use for the event loop group
      
-     The port number determines the initial security mode:
+     `.automatic` infers the initial security mode from the port:
      - Port 25: Plain SMTP (not recommended)
      - Port 587: STARTTLS (recommended)
      - Port 465: SMTPS (implicit TLS)
+     Passing an explicit `transportSecurity` value overrides this port-inferred behavior.
      
      - Note: Logs initialization at debug level with connection details
      */
@@ -254,6 +255,7 @@ public actor SMTPServer {
             capabilities: capabilities
         ) {
             logger.error("STARTTLS required for \(host):\(port) but was not advertised. Cannot continue without encryption.")
+            await closeAndClearChannelAfterSTARTTLSPolicyFailure()
             throw SMTPError.tlsFailed("STARTTLS required but not advertised by server")
         }
 
@@ -265,6 +267,7 @@ public actor SMTPServer {
                 try await startTLS()
             } catch {
                 logger.error("STARTTLS failed for \(host):\(port): \(error.localizedDescription). Cannot continue without encryption.")
+                await closeAndClearChannelAfterSTARTTLSPolicyFailure()
                 throw SMTPError.tlsFailed("STARTTLS upgrade failed: \(error.localizedDescription)")
             }
         }
@@ -386,6 +389,31 @@ public actor SMTPServer {
         capabilities: [String]
     ) -> Bool {
         transportMode == .startTLSRequired && !capabilities.contains("STARTTLS")
+    }
+
+    var hasChannelForTesting: Bool {
+        channel != nil
+    }
+
+    func replaceChannelForTesting(_ channel: Channel?) {
+        self.channel = channel
+    }
+
+    func closeAndClearChannelAfterSTARTTLSPolicyFailure() async {
+        let channel = self.channel
+        self.channel = nil
+        self.isTLSEnabled = false
+        self.capabilities = []
+
+        guard let channel else {
+            return
+        }
+
+        do {
+            try await channel.close().get()
+        } catch {
+            logger.debug("Channel close after STARTTLS policy failure reported: \(error)")
+        }
     }
 
     /**

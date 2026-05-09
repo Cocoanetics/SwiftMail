@@ -1,3 +1,4 @@
+import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
@@ -69,5 +70,17 @@ struct SMTPTransportSecurityTests {
                 capabilities: ["SIZE", "STARTTLS", "AUTH PLAIN"]
             )
         )
+    }
+
+    @Test
+    func startTLSPolicyFailureClearsChannel() async throws {
+        let server = SMTPServer(host: "localhost", port: 587, transportSecurity: .startTLS)
+        let channel = EmbeddedChannel()
+        await server.replaceChannelForTesting(channel)
+
+        await server.closeAndClearChannelAfterSTARTTLSPolicyFailure()
+
+        #expect(await !server.hasChannelForTesting)
+        #expect(!channel.isActive)
     }
 }

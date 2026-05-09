@@ -567,13 +567,22 @@ final class IMAPConnection {
         capabilities: [Capability]
     ) async throws {
         if Self.requiresMissingSTARTTLSError(tlsTransportMode: tlsTransportMode, capabilities: capabilities) {
-            try? await disconnectBody()
+            await closeAndClearChannelAfterSTARTTLSPolicyFailure()
             throw IMAPError.connectionFailed("Server did not advertise STARTTLS on port \(port)")
         }
 
         if Self.requiresSTARTTLSUpgrade(tlsTransportMode: tlsTransportMode, capabilities: capabilities) {
-            try await startTLS()
+            do {
+                try await startTLS()
+            } catch {
+                await closeAndClearChannelAfterSTARTTLSPolicyFailure()
+                throw error
+            }
         }
+    }
+
+    func closeAndClearChannelAfterSTARTTLSPolicyFailure() async {
+        try? await disconnectBody()
     }
 
     private func startTLS() async throws {
