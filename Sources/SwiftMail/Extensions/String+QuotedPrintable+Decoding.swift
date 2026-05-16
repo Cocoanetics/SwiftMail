@@ -3,11 +3,11 @@
 
 import Foundation
 
-extension String {
+public extension String {
     /// Decodes a quoted-printable encoded string by removing "soft line" breaks and replacing all
     /// quoted-printable escape sequences with the matching characters.
     /// - Returns: The decoded string, or `nil` for invalid input.
-    public func decodeQuotedPrintable() -> String? {
+    func decodeQuotedPrintable() -> String? {
         if let decoded = decodeQuotedPrintable(encoding: .utf8) {
             return decoded
         }
@@ -18,16 +18,16 @@ extension String {
     /// in the output. This is useful for handling real-world messages that might contain malformed
     /// quoted-printable data.
     /// - Returns: The decoded string with invalid sequences preserved.
-    public func decodeQuotedPrintableLossy() -> String {
-        return decodeQuotedPrintableLossy(encoding: .utf8)
+    func decodeQuotedPrintableLossy() -> String {
+        decodeQuotedPrintableLossy(encoding: .utf8)
     }
 
     /// Decodes a quoted-printable encoded string with a specific encoding
     /// - Parameter enc: The target string encoding. The default is UTF-8.
     /// - Returns: The decoded string, or `nil` for invalid input.
-    public func decodeQuotedPrintable(encoding enc: String.Encoding) -> String? {
+    func decodeQuotedPrintable(encoding enc: String.Encoding) -> String? {
         // Remove soft line breaks (=<CR><LF> or =<LF>)
-        let withoutSoftBreaks = self.replacingOccurrences(of: "=\r\n", with: "")
+        let withoutSoftBreaks = replacingOccurrences(of: "=\r\n", with: "")
             .replacingOccurrences(of: "=\n", with: "")
 
         var bytes = Data()
@@ -45,7 +45,7 @@ extension String {
                 guard nextNextIndex < withoutSoftBreaks.endIndex else {
                     return nil
                 }
-                let hex = String(withoutSoftBreaks[nextIndex...nextNextIndex])
+                let hex = String(withoutSoftBreaks[nextIndex ... nextNextIndex])
                 guard let byte = UInt8(hex, radix: 16) else {
                     return nil
                 }
@@ -68,9 +68,9 @@ extension String {
     /// by preserving them in the output.
     /// - Parameter enc: The target string encoding. The default is UTF-8.
     /// - Returns: The decoded string with invalid sequences preserved.
-    public func decodeQuotedPrintableLossy(encoding enc: String.Encoding) -> String {
+    func decodeQuotedPrintableLossy(encoding enc: String.Encoding) -> String {
         // Remove soft line breaks
-        let withoutSoftBreaks = self.replacingOccurrences(of: "=\r\n", with: "")
+        let withoutSoftBreaks = replacingOccurrences(of: "=\r\n", with: "")
             .replacingOccurrences(of: "=\n", with: "")
 
         var bytes = Data()
@@ -84,7 +84,7 @@ extension String {
                 if nextIndex < withoutSoftBreaks.endIndex {
                     let nextNextIndex = withoutSoftBreaks.index(after: nextIndex)
                     if nextNextIndex < withoutSoftBreaks.endIndex {
-                        let hex = String(withoutSoftBreaks[nextIndex...nextNextIndex])
+                        let hex = String(withoutSoftBreaks[nextIndex ... nextNextIndex])
                         if let byte = UInt8(hex, radix: 16) {
                             bytes.append(byte)
                             index = withoutSoftBreaks.index(after: nextNextIndex)

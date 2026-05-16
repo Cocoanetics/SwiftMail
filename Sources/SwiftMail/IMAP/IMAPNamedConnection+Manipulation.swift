@@ -1,9 +1,9 @@
 import Foundation
 
-extension IMAPNamedConnection {
+public extension IMAPNamedConnection {
     /// Copy messages to another mailbox.
-    public func copy<T: MessageIdentifier>(
-        messages identifierSet: MessageIdentifierSet<T>,
+    func copy(
+        messages identifierSet: MessageIdentifierSet<some MessageIdentifier>,
         to destinationMailbox: String
     ) async throws {
         let command = CopyCommand(
@@ -14,9 +14,9 @@ extension IMAPNamedConnection {
     }
 
     /// Update flags for messages.
-    public func store<T: MessageIdentifier>(
+    func store(
         flags: [Flag],
-        on identifierSet: MessageIdentifierSet<T>,
+        on identifierSet: MessageIdentifierSet<some MessageIdentifier>,
         operation: StoreData.StoreType
     ) async throws {
         let data = StoreData.flags(flags, operation)
@@ -25,13 +25,13 @@ extension IMAPNamedConnection {
     }
 
     /// Expunge messages marked with `\Deleted`.
-    public func expunge() async throws {
+    func expunge() async throws {
         let command = ExpungeCommand()
         try await executeCommand(command)
     }
 
     /// Expunge specific messages marked with `\Deleted` using UIDPLUS.
-    public func expunge(messages identifierSet: UIDSet) async throws {
+    func expunge(messages identifierSet: UIDSet) async throws {
         guard supportsUIDPlus else {
             throw IMAPError.commandNotSupported("UID EXPUNGE command not supported by server")
         }
@@ -41,11 +41,11 @@ extension IMAPNamedConnection {
     }
 
     /// Move messages to another mailbox (uses MOVE if supported, otherwise COPY+STORE+EXPUNGE).
-    public func move<T: MessageIdentifier>(
+    func move<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>,
         to destinationMailbox: String
     ) async throws {
-        if capabilities.contains(.move) && (T.self != UID.self || capabilities.contains(.uidPlus)) {
+        if capabilities.contains(.move), T.self != UID.self || capabilities.contains(.uidPlus) {
             try await executeMove(messages: identifierSet, to: destinationMailbox)
         } else {
             try await copy(messages: identifierSet, to: destinationMailbox)
@@ -55,13 +55,13 @@ extension IMAPNamedConnection {
     }
 
     /// Move a single message to another mailbox.
-    public func move<T: MessageIdentifier>(message identifier: T, to destinationMailbox: String) async throws {
+    func move<T: MessageIdentifier>(message identifier: T, to destinationMailbox: String) async throws {
         let set = MessageIdentifierSet<T>(identifier)
         try await move(messages: set, to: destinationMailbox)
     }
 
-    private func executeMove<T: MessageIdentifier>(
-        messages identifierSet: MessageIdentifierSet<T>,
+    private func executeMove(
+        messages identifierSet: MessageIdentifierSet<some MessageIdentifier>,
         to destinationMailbox: String
     ) async throws {
         let command = MoveCommand(
@@ -74,7 +74,7 @@ extension IMAPNamedConnection {
     private func expungeMoveFallback<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>
     ) async throws {
-        if T.self == UID.self && capabilities.contains(.uidPlus) {
+        if T.self == UID.self, capabilities.contains(.uidPlus) {
             let uidSet = UIDSet(identifierSet.toArray().map { UID($0.value) })
             try await expunge(messages: uidSet)
         } else {

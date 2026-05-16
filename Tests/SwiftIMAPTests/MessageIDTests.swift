@@ -1,14 +1,13 @@
 import Foundation
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite("MessageID Tests", .serialized, .timeLimit(.minutes(1)))
 struct MessageIDTests {
-
     // MARK: - Parsing
 
     @Test("Parse angle-bracketed Message-ID")
-    func testParseWithBrackets() {
+    func parseWithBrackets() {
         let id = MessageID("<local@domain.com>")
         #expect(id != nil)
         #expect(id?.localPart == "local")
@@ -16,7 +15,7 @@ struct MessageIDTests {
     }
 
     @Test("Parse Message-ID without brackets")
-    func testParseWithoutBrackets() {
+    func parseWithoutBrackets() {
         let id = MessageID("local@domain.com")
         #expect(id != nil)
         #expect(id?.localPart == "local")
@@ -24,24 +23,24 @@ struct MessageIDTests {
     }
 
     @Test("Parse fails for string without @")
-    func testParseNoAt() {
+    func parseNoAt() {
         #expect(MessageID("nodomain") == nil)
     }
 
     @Test("Parse fails for empty local part")
-    func testParseEmptyLocal() {
+    func parseEmptyLocal() {
         #expect(MessageID("<@domain.com>") == nil)
         #expect(MessageID("@domain.com") == nil)
     }
 
     @Test("Parse fails for empty domain")
-    func testParseEmptyDomain() {
+    func parseEmptyDomain() {
         #expect(MessageID("<local@>") == nil)
         #expect(MessageID("local@") == nil)
     }
 
     @Test("Parse splits on last @ for local parts containing @")
-    func testParseLastAt() {
+    func parseLastAt() {
         let id = MessageID("user@host@domain.com")
         #expect(id != nil)
         #expect(id?.localPart == "user@host")
@@ -57,7 +56,7 @@ struct MessageIDTests {
     }
 
     @Test("description from parsed input includes angle brackets")
-    func testDescriptionFromParsed() {
+    func descriptionFromParsed() {
         let id = MessageID("test@example.com")
         #expect(id?.description == "<test@example.com>")
     }
@@ -75,7 +74,7 @@ struct MessageIDTests {
     }
 
     @Test("generate produces unique IDs")
-    func testGenerateUnique() {
+    func generateUnique() {
         let id1 = MessageID.generate(domain: "example.com")
         let id2 = MessageID.generate(domain: "example.com")
         #expect(id1 != id2)
@@ -84,7 +83,7 @@ struct MessageIDTests {
     // MARK: - Round-trip
 
     @Test("Round-trip: parse(description) == original")
-    func testRoundTrip() {
+    func roundTrip() {
         let original = MessageID(localPart: "test-123", domain: "mail.example.com")
         let reparsed = MessageID(original.description)
         #expect(reparsed == original)
@@ -93,13 +92,13 @@ struct MessageIDTests {
     // MARK: - Codable
 
     @Test("Codable round-trip encodes as single string")
-    func testCodableRoundTrip() throws {
+    func codableRoundTrip() throws {
         let original = MessageID(localPart: "coded", domain: "example.com")
         let encoder = JSONEncoder()
         let data = try encoder.encode(original)
 
         // Verify it encodes as a string, not an object
-        let jsonString = String(data: data, encoding: .utf8)!
+        let jsonString = try #require(String(data: data, encoding: .utf8))
         #expect(jsonString.contains("<coded@example.com>"))
         #expect(!jsonString.contains("localPart"))
 
@@ -109,7 +108,7 @@ struct MessageIDTests {
     }
 
     @Test("Codable decoding fails for invalid format")
-    func testCodableDecodingInvalid() {
+    func codableDecodingInvalid() {
         let json = Data("\"not-a-valid-id\"".utf8)
         let decoder = JSONDecoder()
         #expect(throws: DecodingError.self) {
@@ -120,21 +119,21 @@ struct MessageIDTests {
     // MARK: - Hashable / Equatable
 
     @Test("Equatable: same parts are equal")
-    func testEquatable() {
+    func equatable() {
         let lhs = MessageID(localPart: "abc", domain: "example.com")
         let rhs = MessageID(localPart: "abc", domain: "example.com")
         #expect(lhs == rhs)
     }
 
     @Test("Equatable: different parts are not equal")
-    func testNotEqual() {
+    func notEqual() {
         let lhs = MessageID(localPart: "abc", domain: "example.com")
         let rhs = MessageID(localPart: "xyz", domain: "example.com")
         #expect(lhs != rhs)
     }
 
     @Test("Hashable: equal values have same hash")
-    func testHashable() {
+    func hashable() {
         let lhs = MessageID(localPart: "abc", domain: "example.com")
         let rhs = MessageID(localPart: "abc", domain: "example.com")
         #expect(lhs.hashValue == rhs.hashValue)
@@ -148,16 +147,16 @@ struct MessageIDTests {
     // MARK: - LosslessStringConvertible
 
     @Test("LosslessStringConvertible init")
-    func testLosslessStringConvertible() {
+    func losslessStringConvertible() throws {
         let id: MessageID? = MessageID("<lossless@example.com>")
         #expect(id != nil)
-        #expect(String(describing: id!) == "<lossless@example.com>")
+        #expect(try String(describing: #require(id)) == "<lossless@example.com>")
     }
 
     // MARK: - References Parsing
 
     @Test("parseMessageIDs handles space-separated IDs")
-    func testParseReferencesSpaces() {
+    func parseReferencesSpaces() {
         let refs = FetchMessageInfoHandler.parseMessageIDs(from: "<a@x.com> <b@y.com> <c@z.com>")
         #expect(refs.count == 3)
         #expect(refs[0] == MessageID(localPart: "a", domain: "x.com"))
@@ -166,7 +165,7 @@ struct MessageIDTests {
     }
 
     @Test("parseMessageIDs handles tab-separated IDs")
-    func testParseReferencesTabs() {
+    func parseReferencesTabs() {
         let refs = FetchMessageInfoHandler.parseMessageIDs(from: "<a@x.com>\t<b@y.com>")
         #expect(refs.count == 2)
         #expect(refs[0] == MessageID(localPart: "a", domain: "x.com"))
@@ -174,26 +173,26 @@ struct MessageIDTests {
     }
 
     @Test("parseMessageIDs handles folded whitespace (CRLF + space/tab)")
-    func testParseReferencesFolded() {
+    func parseReferencesFolded() {
         let refs = FetchMessageInfoHandler.parseMessageIDs(from: "<a@x.com>\r\n <b@y.com>\r\n\t<c@z.com>")
         #expect(refs.count == 3)
     }
 
     @Test("parseMessageIDs handles single ID")
-    func testParseReferencesSingle() {
+    func parseReferencesSingle() {
         let refs = FetchMessageInfoHandler.parseMessageIDs(from: "<only@one.com>")
         #expect(refs.count == 1)
         #expect(refs[0] == MessageID(localPart: "only", domain: "one.com"))
     }
 
     @Test("parseMessageIDs handles empty string")
-    func testParseReferencesEmpty() {
+    func parseReferencesEmpty() {
         let refs = FetchMessageInfoHandler.parseMessageIDs(from: "")
         #expect(refs.isEmpty)
     }
 
     @Test("parseMessageIDs skips malformed IDs")
-    func testParseReferencesSkipsMalformed() {
+    func parseReferencesSkipsMalformed() {
         let refs = FetchMessageInfoHandler.parseMessageIDs(from: "<good@ok.com> <nope> <also-good@fine.com>")
         #expect(refs.count == 2)
         #expect(refs[0].domain == "ok.com")

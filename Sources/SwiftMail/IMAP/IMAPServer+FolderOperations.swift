@@ -4,11 +4,11 @@ import NIOIMAPCore
 
 // MARK: - Special Folder Operations
 
-extension IMAPServer {
+public extension IMAPServer {
     /// Ensures special-use mailboxes and the general mailbox list have been fetched.
     /// Called automatically by convenience folder operations so callers don't need
     /// to manually call `listSpecialUseMailboxes()` first.
-    func ensureMailboxesLoaded() async throws {
+    internal func ensureMailboxesLoaded() async throws {
         if mailboxes.isEmpty {
             // listSpecialUseMailboxes also populates self.mailboxes internally
             try await listSpecialUseMailboxes()
@@ -30,9 +30,9 @@ extension IMAPServer {
      - Parameter identifierSet: The set of messages to move
      - Throws: An error if the move operation fails or trash folder is not found
      */
-    public func moveToTrash<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+    func moveToTrash(messages identifierSet: MessageIdentifierSet<some MessageIdentifier>) async throws {
         try await ensureMailboxesLoaded()
-        try await move(messages: identifierSet, to: try trashFolder.name)
+        try await move(messages: identifierSet, to: trashFolder.name)
     }
 
     /**
@@ -48,10 +48,10 @@ extension IMAPServer {
      - Parameter identifierSet: The set of messages to archive
      - Throws: An error if the archive operation fails or archive folder is not found
      */
-    public func archive<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+    func archive(messages identifierSet: MessageIdentifierSet<some MessageIdentifier>) async throws {
         try await ensureMailboxesLoaded()
         try await store(flags: [.seen], on: identifierSet, operation: .add)
-        try await move(messages: identifierSet, to: try archiveFolder.name)
+        try await move(messages: identifierSet, to: archiveFolder.name)
     }
 
     /**
@@ -67,23 +67,23 @@ extension IMAPServer {
      - Parameter identifierSet: The set of messages to mark as junk
      - Throws: An error if the operation fails or junk folder is not found
      */
-    public func markAsJunk<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+    func markAsJunk(messages identifierSet: MessageIdentifierSet<some MessageIdentifier>) async throws {
         try await ensureMailboxesLoaded()
-        try await move(messages: identifierSet, to: try junkFolder.name)
+        try await move(messages: identifierSet, to: junkFolder.name)
     }
 
     /**
-     Save messages as drafts by adding the draft flag and moving them to the drafts folder
+      Save messages as drafts by adding the draft flag and moving them to the drafts folder
 
-     The generic type T determines the identifier type:
-     - Use `SequenceNumber` for temporary message numbers that may change
-     - Use `UID` for permanent message identifiers that remain stable
+      The generic type T determines the identifier type:
+      - Use `SequenceNumber` for temporary message numbers that may change
+      - Use `UID` for permanent message identifiers that remain stable
 
-     - Parameter identifierSet: The set of messages to save as drafts
-     - Throws: An error if the operation fails or drafts folder is not found
-    */
-    public func saveAsDraft<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+      - Parameter identifierSet: The set of messages to save as drafts
+      - Throws: An error if the operation fails or drafts folder is not found
+     */
+    func saveAsDraft(messages identifierSet: MessageIdentifierSet<some MessageIdentifier>) async throws {
         try await store(flags: [.draft], on: identifierSet, operation: .add)
-        try await move(messages: identifierSet, to: try draftsFolder.name)
+        try await move(messages: identifierSet, to: draftsFolder.name)
     }
 }

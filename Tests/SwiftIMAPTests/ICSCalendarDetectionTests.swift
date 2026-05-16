@@ -1,13 +1,12 @@
 import Foundation
-import Testing
-@testable import SwiftMail
-import NIOIMAPCore
 import NIO
+import NIOIMAPCore
+@testable import SwiftMail
+import Testing
 
 /// Tests for ICS/text/calendar detection, body filtering, and suggestedFilename.
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct ICSCalendarDetectionTests {
-
     // MARK: - Helpers
 
     private func emptyFields() -> BodyStructure.Fields {

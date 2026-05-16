@@ -1,8 +1,8 @@
 import Foundation
 import Logging
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 
 // MARK: - Resilient IDLE Recovery and Event Drain
 
@@ -12,7 +12,9 @@ extension IMAPResilientIdleRunner {
         var noopEvents: [IMAPServerEvent] = []
         var bufferedEvents: [IMAPServerEvent] = []
 
-        var allEvents: [IMAPServerEvent] { noopEvents + bufferedEvents }
+        var allEvents: [IMAPServerEvent] {
+            noopEvents + bufferedEvents
+        }
 
         var sawBye: Bool {
             allEvents.contains { event in
@@ -23,7 +25,7 @@ extension IMAPResilientIdleRunner {
 
         var byeMessage: String? {
             allEvents.compactMap { event -> String? in
-                guard case .bye(let message) = event else { return nil }
+                guard case let .bye(message) = event else { return nil }
                 return message ?? "<no message>"
             }.first
         }

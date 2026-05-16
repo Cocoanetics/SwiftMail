@@ -1,11 +1,11 @@
 import Foundation
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SMTPMessageIDTests {
     @Test
-    func testMessageIDGenerate() {
+    func messageIDGenerate() {
         let id = MessageID.generate(domain: "example.com")
         #expect(id.domain == "example.com")
         #expect(!id.localPart.isEmpty)
@@ -14,7 +14,7 @@ struct SMTPMessageIDTests {
     }
 
     @Test
-    func testMessageIDParseValid() {
+    func messageIDParseValid() {
         let id = MessageID("<abc-123@example.com>")
         #expect(id != nil)
         #expect(id?.localPart == "abc-123")
@@ -23,7 +23,7 @@ struct SMTPMessageIDTests {
     }
 
     @Test
-    func testMessageIDParseWithoutBrackets() {
+    func messageIDParseWithoutBrackets() {
         let id = MessageID("abc-123@example.com")
         #expect(id != nil)
         #expect(id?.localPart == "abc-123")
@@ -31,7 +31,7 @@ struct SMTPMessageIDTests {
     }
 
     @Test
-    func testMessageIDParseInvalid() {
+    func messageIDParseInvalid() {
         #expect(MessageID("no-at-sign") == nil)
         #expect(MessageID("@domain.com") == nil)
         #expect(MessageID("local@") == nil)

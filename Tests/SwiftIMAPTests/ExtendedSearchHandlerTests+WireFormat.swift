@@ -3,19 +3,18 @@ import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
-import Testing
 @testable import SwiftMail
+import Testing
 
 private typealias UID = SwiftMail.UID
 private typealias SequenceNumber = SwiftMail.SequenceNumber
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct ExtendedSearchHandlerWireFormatTests {
-
     // MARK: - Command wire format
 
     @Test
-    func testCommandWireFormatWithEsearch() async throws {
+    func commandWireFormatWithEsearch() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -40,7 +39,7 @@ struct ExtendedSearchHandlerWireFormatTests {
     }
 
     @Test
-    func testSortedCommandWireFormatUsesUIDSort() async throws {
+    func sortedCommandWireFormatUsesUIDSort() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -68,7 +67,7 @@ struct ExtendedSearchHandlerWireFormatTests {
     }
 
     @Test
-    func testCommandWireFormatWithoutEsearch() async throws {
+    func commandWireFormatWithoutEsearch() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -89,7 +88,7 @@ struct ExtendedSearchHandlerWireFormatTests {
     }
 
     @Test
-    func testCommandWireFormatSequenceNumberWithEsearch() async throws {
+    func commandWireFormatSequenceNumberWithEsearch() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -111,7 +110,7 @@ struct ExtendedSearchHandlerWireFormatTests {
     }
 
     @Test
-    func testIdentifierSetScopeIsIncludedInUIDSearch() async throws {
+    func identifierSetScopeIsIncludedInUIDSearch() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -133,7 +132,7 @@ struct ExtendedSearchHandlerWireFormatTests {
     }
 
     @Test
-    func testNoIdentifierSetSearchesEntireMailbox() async throws {
+    func noIdentifierSetSearchesEntireMailbox() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -157,12 +156,12 @@ struct ExtendedSearchHandlerWireFormatTests {
     // MARK: - PARTIAL wire format
 
     @Test
-    func testCommandWireFormatWithPartial() async throws {
+    func commandWireFormatWithPartial() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
-        let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1...100))
+        let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1 ... 100))
         let command = ExtendedSearchCommand<UID>(
             criteria: [SearchCriteria.unseen],
             useEsearch: true,

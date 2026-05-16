@@ -52,9 +52,9 @@ extension Email {
             related: "SwiftSMTP-Related-Boundary-\(UUID().uuidString)"
         )
 
-        let hasHtmlBody = self.htmlBody != nil
-        let hasInlineAttachments = !self.inlineAttachments.isEmpty
-        let hasRegularAttachments = !self.regularAttachments.isEmpty
+        let hasHtmlBody = htmlBody != nil
+        let hasInlineAttachments = !inlineAttachments.isEmpty
+        let hasRegularAttachments = !regularAttachments.isEmpty
 
         if hasRegularAttachments {
             content += renderMixedBody(
@@ -63,7 +63,7 @@ extension Email {
                 hasInlineAttachments: hasInlineAttachments,
                 boundaries: boundaries
             )
-        } else if hasHtmlBody && hasInlineAttachments {
+        } else if hasHtmlBody, hasInlineAttachments {
             content += renderRelatedBody(bodies: bodies, boundaries: boundaries)
         } else if hasHtmlBody {
             content += renderAlternativeBody(bodies: bodies, altBoundary: boundaries.alt)
@@ -77,32 +77,32 @@ extension Email {
     /// Render the message headers section (everything up to but not including the body Content-Type).
     private func renderHeaders() -> String {
         var content = ""
-        content += "From: \(self.sender)\r\n"
+        content += "From: \(sender)\r\n"
 
-        if !self.recipients.isEmpty {
-            content += "To: \(self.recipients.map { $0.description }.joined(separator: ", "))\r\n"
+        if !recipients.isEmpty {
+            content += "To: \(recipients.map(\.description).joined(separator: ", "))\r\n"
         }
-        if !self.ccRecipients.isEmpty {
-            content += "Cc: \(self.ccRecipients.map { $0.description }.joined(separator: ", "))\r\n"
+        if !ccRecipients.isEmpty {
+            content += "Cc: \(ccRecipients.map(\.description).joined(separator: ", "))\r\n"
         }
 
-        content += "Subject: \(self.subject)\r\n"
+        content += "Subject: \(subject)\r\n"
         content += "Date: \(Self.rfc2822Date())\r\n"
 
         let resolvedAdditionalHeaderMessageID = resolvedMessageIDHeader()
-        let shouldSuppressAdditionalHeaderMessageID = self.messageID != nil || resolvedAdditionalHeaderMessageID != nil
+        let shouldSuppressAdditionalHeaderMessageID = messageID != nil || resolvedAdditionalHeaderMessageID != nil
 
-        if let msgID = self.messageID ?? resolvedAdditionalHeaderMessageID {
+        if let msgID = messageID ?? resolvedAdditionalHeaderMessageID {
             content += "Message-Id: \(msgID)\r\n"
         } else if !hasMessageIDHeaderInAdditionalHeaders() {
-            let generatedMessageID = MessageID.generate(domain: Self.senderDomain(from: self.sender))
+            let generatedMessageID = MessageID.generate(domain: Self.senderDomain(from: sender))
             content += "Message-Id: \(generatedMessageID)\r\n"
         }
         content += "MIME-Version: 1.0\r\n"
 
         if let additionalHeaders {
             for (key, value) in additionalHeaders.sorted(by: { $0.key < $1.key }) {
-                if shouldSuppressAdditionalHeaderMessageID && Self.isMessageIDHeaderName(key) {
+                if shouldSuppressAdditionalHeaderMessageID, Self.isMessageIDHeaderName(key) {
                     continue
                 }
                 content += "\(key): \(value)\r\n"
@@ -113,14 +113,14 @@ extension Email {
 
     /// Returns the transfer encoding plus encoded text/html bodies, chosen based on 8BITMIME safety.
     private func renderTextBodies(use8BitMIME: Bool) -> EncodedBodies {
-        if use8BitMIME && self.textBody.isSafe8BitContent() &&
-            (self.htmlBody == nil || self.htmlBody!.isSafe8BitContent()) {
-            return EncodedBodies(encoding: "8bit", text: self.textBody, html: self.htmlBody)
+        if use8BitMIME, textBody.isSafe8BitContent(),
+           htmlBody == nil || htmlBody!.isSafe8BitContent() {
+            return EncodedBodies(encoding: "8bit", text: textBody, html: htmlBody)
         }
         return EncodedBodies(
             encoding: "quoted-printable",
-            text: self.textBody.quotedPrintableEncoded(),
-            html: self.htmlBody?.quotedPrintableEncoded()
+            text: textBody.quotedPrintableEncoded(),
+            html: htmlBody?.quotedPrintableEncoded()
         )
     }
 
@@ -175,7 +175,7 @@ extension Email {
         content += renderAlternativePartsBody(bodies: bodies, altBoundary: boundaries.alt)
         content += "--\(boundaries.alt)--\r\n\r\n"
 
-        for attachment in self.inlineAttachments {
+        for attachment in inlineAttachments {
             content += "--\(boundaries.related)\r\n"
             content += renderInlineAttachment(attachment)
         }
@@ -211,7 +211,7 @@ extension Email {
             content += "\(bodies.text)\r\n\r\n"
         }
 
-        for attachment in self.regularAttachments {
+        for attachment in regularAttachments {
             content += "--\(boundaries.main)\r\n"
             content += renderRegularAttachment(attachment)
         }

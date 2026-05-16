@@ -18,10 +18,10 @@ public struct QuotaResource: Codable, Sendable {
     }
 
     /// Create from NIOIMAPCore representation
-    internal init(from nio: NIOIMAPCore.QuotaResource) {
-        self.resourceName = nio.resourceName
-        self.usage = nio.usage
-        self.limit = nio.limit
+    init(from nio: NIOIMAPCore.QuotaResource) {
+        resourceName = nio.resourceName
+        usage = nio.usage
+        limit = nio.limit
     }
 }
 
@@ -39,8 +39,8 @@ public struct Quota: Codable, Sendable {
     }
 
     /// Create from NIOIMAPCore representation
-    internal init(root: NIOIMAPCore.QuotaRoot, resources: [NIOIMAPCore.QuotaResource]) {
-        self.quotaRoot = String(root) ?? ""
+    init(root: NIOIMAPCore.QuotaRoot, resources: [NIOIMAPCore.QuotaResource]) {
+        quotaRoot = String(root) ?? ""
         self.resources = resources.map { QuotaResource(from: $0) }
     }
 }

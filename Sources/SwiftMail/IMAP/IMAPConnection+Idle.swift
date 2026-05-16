@@ -1,7 +1,7 @@
 import Foundation
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 
 extension IMAPConnection {
     func idle() async throws -> AsyncStream<IMAPServerEvent> {
@@ -15,7 +15,7 @@ extension IMAPConnection {
         }
 
         try await commandQueue.run { [self] in
-            try await self.startIdleSession(continuation: continuation)
+            try await startIdleSession(continuation: continuation)
         }
 
         return stream
@@ -39,7 +39,7 @@ extension IMAPConnection {
             try await connectBody()
         }
 
-        guard let channel = self.channel, channel.isActive else {
+        guard let channel, channel.isActive else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
 
@@ -100,7 +100,7 @@ extension IMAPConnection {
                 throw IMAPError.timeout
             }
 
-            if self.channel?.isActive != true {
+            if channel?.isActive != true {
                 throw IMAPError.connectionFailed("Channel became inactive before IDLE confirmation")
             }
 
@@ -121,7 +121,7 @@ extension IMAPConnection {
         }
 
         let timeout = max(timeoutSeconds, 0.1)
-        let timeoutMilliseconds = max(Int64(timeout * 1_000), 100)
+        let timeoutMilliseconds = max(Int64(timeout * 1000), 100)
         let timeoutPromise = future.eventLoop.makePromise(of: T.self)
         let timeoutTask = future.eventLoop.scheduleTask(in: .milliseconds(timeoutMilliseconds)) {
             timeoutPromise.fail(IMAPError.timeout)

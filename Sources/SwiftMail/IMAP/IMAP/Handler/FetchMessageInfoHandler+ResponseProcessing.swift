@@ -3,53 +3,52 @@
 // main type body within the SwiftLint `type_body_length` limit.
 
 import Foundation
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 
 extension FetchMessageInfoHandler {
-
     /// Process a fetch response
     /// - Parameter fetchResponse: The fetch response to process
     func processFetchResponse(_ fetchResponse: FetchResponse) {
         switch fetchResponse {
-        case .simpleAttribute(let attribute):
-            // Process simple attributes (no sequence number)
-            processMessageAttribute(attribute, sequenceNumber: nil)
+            case let .simpleAttribute(attribute):
+                // Process simple attributes (no sequence number)
+                processMessageAttribute(attribute, sequenceNumber: nil)
 
-        case .start(let sequenceNumber):
-            // Create a new header for this sequence number
-            currentSequenceNumber = SequenceNumber(sequenceNumber.rawValue)
-            currentHeaderLiteral.removeAll(keepingCapacity: true)
-            collectingThreadingHeaders = false
-            let messageInfo = MessageInfo(sequenceNumber: SequenceNumber(sequenceNumber.rawValue))
-            lock.withLock {
-                self.messageInfos.append(messageInfo)
-            }
-
-        case .streamingBegin(let kind, _):
-            collectingThreadingHeaders = Self.shouldCollectThreadingHeaders(for: kind)
-            if collectingThreadingHeaders {
+            case let .start(sequenceNumber):
+                // Create a new header for this sequence number
+                currentSequenceNumber = SequenceNumber(sequenceNumber.rawValue)
                 currentHeaderLiteral.removeAll(keepingCapacity: true)
-            }
+                collectingThreadingHeaders = false
+                let messageInfo = MessageInfo(sequenceNumber: SequenceNumber(sequenceNumber.rawValue))
+                lock.withLock {
+                    self.messageInfos.append(messageInfo)
+                }
 
-        case .streamingBytes(let data):
-            guard collectingThreadingHeaders else { break }
-            currentHeaderLiteral.append(contentsOf: data.readableBytesView)
+            case let .streamingBegin(kind, _):
+                collectingThreadingHeaders = Self.shouldCollectThreadingHeaders(for: kind)
+                if collectingThreadingHeaders {
+                    currentHeaderLiteral.removeAll(keepingCapacity: true)
+                }
 
-        case .streamingEnd:
-            guard collectingThreadingHeaders else { break }
-            applyCollectedThreadingHeaders()
-            collectingThreadingHeaders = false
-            currentHeaderLiteral.removeAll(keepingCapacity: true)
+            case let .streamingBytes(data):
+                guard collectingThreadingHeaders else { break }
+                currentHeaderLiteral.append(contentsOf: data.readableBytesView)
 
-        case .finish:
-            currentSequenceNumber = nil
-            collectingThreadingHeaders = false
-            currentHeaderLiteral.removeAll(keepingCapacity: true)
+            case .streamingEnd:
+                guard collectingThreadingHeaders else { break }
+                applyCollectedThreadingHeaders()
+                collectingThreadingHeaders = false
+                currentHeaderLiteral.removeAll(keepingCapacity: true)
 
-        default:
-            break
+            case .finish:
+                currentSequenceNumber = nil
+                collectingThreadingHeaders = false
+                currentHeaderLiteral.removeAll(keepingCapacity: true)
+
+            default:
+                break
         }
     }
 
@@ -61,7 +60,7 @@ extension FetchMessageInfoHandler {
         let allHeaders = EMLParser.parseHeaders(headerBlock)
 
         // Headers already exposed via ENVELOPE or stored in dedicated fields
-        let envelopeKeys: Set<String> = [
+        let envelopeKeys: Set = [
             "from", "to", "cc", "bcc", "subject", "date",
             "message-id", "in-reply-to", "references", "reply-to"
         ]
@@ -98,7 +97,7 @@ extension FetchMessageInfoHandler {
     ///   - sequenceNumber: The sequence number of the message (if known)
     func processMessageAttribute(_ attribute: MessageAttribute, sequenceNumber: SequenceNumber?) {
         // If we don't have a sequence number, we can't update a header
-        guard let sequenceNumber = sequenceNumber else {
+        guard let sequenceNumber else {
             // For attributes that come without a sequence number, we assume they belong to the last header
             lock.withLock {
                 if let lastIndex = self.messageInfos.indices.last {
@@ -131,20 +130,20 @@ extension FetchMessageInfoHandler {
     ///   - attribute: The attribute containing the information
     private func updateHeader(_ header: inout MessageInfo, with attribute: MessageAttribute) {
         switch attribute {
-        case .envelope(let envelope):
-            applyEnvelope(envelope, to: &header)
-        case .uid(let uid):
-            header.uid = UID(nio: uid)
-        case .internalDate(let serverDate):
-            applyInternalDate(serverDate, to: &header)
-        case .flags(let flags):
-            header.flags = flags.map(Self.convertFlag)
-        case .body(let bodyStructure, _):
-            if case .valid(let structure) = bodyStructure {
-                header.parts = [MessagePart](structure)
-            }
-        default:
-            break
+            case let .envelope(envelope):
+                applyEnvelope(envelope, to: &header)
+            case let .uid(uid):
+                header.uid = UID(nio: uid)
+            case let .internalDate(serverDate):
+                applyInternalDate(serverDate, to: &header)
+            case let .flags(flags):
+                header.flags = flags.map(Self.convertFlag)
+            case let .body(bodyStructure, _):
+                if case let .valid(structure) = bodyStructure {
+                    header.parts = [MessagePart](structure)
+                }
+            default:
+                break
         }
     }
 
@@ -210,19 +209,19 @@ extension FetchMessageInfoHandler {
         let flagString = String(flag)
 
         switch flagString.uppercased() {
-        case "\\SEEN":
-            return .seen
-        case "\\ANSWERED":
-            return .answered
-        case "\\FLAGGED":
-            return .flagged
-        case "\\DELETED":
-            return .deleted
-        case "\\DRAFT":
-            return .draft
-        default:
-            // For any other flag, treat it as a custom flag
-            return .custom(flagString)
+            case "\\SEEN":
+                return .seen
+            case "\\ANSWERED":
+                return .answered
+            case "\\FLAGGED":
+                return .flagged
+            case "\\DELETED":
+                return .deleted
+            case "\\DRAFT":
+                return .draft
+            default:
+                // For any other flag, treat it as a custom flag
+                return .custom(flagString)
         }
     }
 
@@ -231,21 +230,21 @@ extension FetchMessageInfoHandler {
     /// - Returns: A formatted string representation of the address
     static func formatAddress(_ address: EmailAddressListElement) -> String {
         switch address {
-        case .singleAddress(let emailAddress):
-            let name = emailAddress.personName?.stringValue.decodeMIMEHeader() ?? ""
-            let mailbox = emailAddress.mailbox?.stringValue ?? ""
-            let host = emailAddress.host?.stringValue ?? ""
+            case let .singleAddress(emailAddress):
+                let name = emailAddress.personName?.stringValue.decodeMIMEHeader() ?? ""
+                let mailbox = emailAddress.mailbox?.stringValue ?? ""
+                let host = emailAddress.host?.stringValue ?? ""
 
-            if !name.isEmpty {
-                return "\"\(name)\" <\(mailbox)@\(host)>"
-            } else {
-                return "\(mailbox)@\(host)"
-            }
+                if !name.isEmpty {
+                    return "\"\(name)\" <\(mailbox)@\(host)>"
+                } else {
+                    return "\(mailbox)@\(host)"
+                }
 
-        case .group(let group):
-            let groupName = group.groupName.stringValue.decodeMIMEHeader()
-            let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
-            return "\(groupName): \(members)"
+            case let .group(group):
+                let groupName = group.groupName.stringValue.decodeMIMEHeader()
+                let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
+                return "\(groupName): \(members)"
         }
     }
 
@@ -275,14 +274,14 @@ extension FetchMessageInfoHandler {
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
 
         let formats = [
-            "EEE, dd MMM yyyy HH:mm:ss Z",       // RFC 5322
-            "EEE, d MMM yyyy HH:mm:ss Z",        // single-digit day
-            "d MMM yyyy HH:mm:ss Z",             // no weekday
-            "dd MMM yyyy HH:mm:ss Z",            // no weekday, two-digit day
-            "EEE, dd MMM yy HH:mm:ss Z",         // two-digit year
-            "EEE, dd MMM yyyy HH:mm:ss",         // no timezone
+            "EEE, dd MMM yyyy HH:mm:ss Z", // RFC 5322
+            "EEE, d MMM yyyy HH:mm:ss Z", // single-digit day
+            "d MMM yyyy HH:mm:ss Z", // no weekday
+            "dd MMM yyyy HH:mm:ss Z", // no weekday, two-digit day
+            "EEE, dd MMM yy HH:mm:ss Z", // two-digit year
+            "EEE, dd MMM yyyy HH:mm:ss", // no timezone
             "EEE, d MMM yyyy HH:mm:ss",
-            "d MMM yyyy HH:mm:ss",               // no weekday, no timezone
+            "d MMM yyyy HH:mm:ss", // no weekday, no timezone
             "dd MMM yyyy HH:mm:ss"
         ]
 
@@ -338,14 +337,14 @@ extension FetchMessageInfoHandler {
     static func parseMessageIDs(from value: String) -> [MessageID] {
         // Extract all angle-bracketed tokens — this handles any whitespace between IDs
         var results: [MessageID] = []
-        var searchRange = value.startIndex..<value.endIndex
+        var searchRange = value.startIndex ..< value.endIndex
         while let openRange = value.range(of: "<", range: searchRange),
-              let closeRange = value.range(of: ">", range: openRange.upperBound..<value.endIndex) {
-            let token = String(value[openRange.lowerBound...closeRange.lowerBound])
+              let closeRange = value.range(of: ">", range: openRange.upperBound ..< value.endIndex) {
+            let token = String(value[openRange.lowerBound ... closeRange.lowerBound])
             if let id = MessageID(token) {
                 results.append(id)
             }
-            searchRange = closeRange.upperBound..<value.endIndex
+            searchRange = closeRange.upperBound ..< value.endIndex
         }
         return results
     }

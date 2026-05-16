@@ -1,9 +1,9 @@
-// Email+CustomDebugStringConvertible.swift
+// Message+CustomDebugStringConvertible.swift
 // CustomDebugStringConvertible extension for Email
 
 import Foundation
 
-// Detailed debug description - comprehensive information for debugging
+/// Detailed debug description - comprehensive information for debugging
 extension Message: CustomDebugStringConvertible {
     public var debugDescription: String {
         // Format date safely
@@ -62,7 +62,7 @@ extension Message: CustomDebugStringConvertible {
 
     /// Format the date for display
     private func formatDate() -> String {
-        guard let date = date else {
+        guard let date else {
             return "No date"
         }
 
@@ -74,13 +74,13 @@ extension Message: CustomDebugStringConvertible {
     }
 }
 
-// Helper extension to truncate strings for display
+/// Helper extension to truncate strings for display
 private extension String {
     func truncated(maxLength: Int) -> String {
-        if self.count <= maxLength {
+        if count <= maxLength {
             return self
         }
-        let endIndex = self.index(self.startIndex, offsetBy: maxLength - 3)
+        let endIndex = index(startIndex, offsetBy: maxLength - 3)
         return String(self[..<endIndex]) + "..."
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
-@preconcurrency import NIOIMAP
 import NIO
+@preconcurrency import NIOIMAP
 
 /// Handler for IMAP STARTTLS command responses.
 final class IMAPStartTLSHandler: BaseIMAPCommandHandler<Bool>, IMAPCommandHandler, @unchecked Sendable {

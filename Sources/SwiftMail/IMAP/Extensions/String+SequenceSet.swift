@@ -1,4 +1,4 @@
-// String+Utilities.swift
+// String+SequenceSet.swift
 // Extensions for String to handle IMAP-related utilities
 
 import Foundation
@@ -10,7 +10,7 @@ extension String {
     /// - Throws: An error if the range string is invalid
     func toSequenceSet() throws -> NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOIMAPCore.SequenceNumber> {
         // Split the range by colon
-        let parts = self.split(separator: ":")
+        let parts = split(separator: ":")
 
         if parts.count == 1, let number = UInt32(parts[0]) {
             // Single number
@@ -21,7 +21,7 @@ extension String {
             // Range
             let startSeq = SequenceNumber(start)
             let endSeq = SequenceNumber(end)
-            let set = SequenceNumberSet(startSeq...endSeq)
+            let set = SequenceNumberSet(startSeq ... endSeq)
             return set.toNIOSet()!
         } else {
             throw IMAPError.invalidArgument("Invalid sequence range: \(self)")

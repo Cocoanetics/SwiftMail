@@ -1,6 +1,6 @@
 import Foundation
-import NIOCore
 import Logging
+import NIOCore
 
 /// State machine for handling SMTP authentication processes
 final class AuthHandlerStateMachine {
@@ -39,19 +39,19 @@ final class AuthHandlerStateMachine {
     ///   - response: The SMTP response to process
     ///   - sendCredential: Closure to send credentials when needed
     /// - Returns: A tuple with a boolean indicating if auth is complete and the result if complete
-	func processResponse(_ response: SMTPResponse,
-	                     sendCredential: (String) -> Void) -> (isComplete: Bool, result: AuthResult?) {
+    func processResponse(_ response: SMTPResponse,
+                         sendCredential: (String) -> Void) -> (isComplete: Bool, result: AuthResult?) {
         switch method {
-        case .plain, .xoauth2:
-            return processImmediateResponse(response)
-        case .login:
-            return processLoginResponse(response, sendCredential: sendCredential)
+            case .plain, .xoauth2:
+                processImmediateResponse(response)
+            case .login:
+                processLoginResponse(response, sendCredential: sendCredential)
         }
     }
 
     /// Resolve a single-shot auth method (PLAIN, XOAUTH2): success on 2xx, failure on 4xx/5xx.
     private func processImmediateResponse(_ response: SMTPResponse) -> (isComplete: Bool, result: AuthResult?) {
-        if response.code >= 200 && response.code < 300 {
+        if response.code >= 200, response.code < 300 {
             return (true, AuthResult(method: method, success: true))
         } else if response.code >= 400 {
             return (true, AuthResult(method: method, success: false, errorMessage: response.message))
@@ -65,22 +65,22 @@ final class AuthHandlerStateMachine {
         sendCredential: (String) -> Void
     ) -> (isComplete: Bool, result: AuthResult?) {
         switch state {
-        case .initial:
-            return advanceLoginState(
-                response,
-                sending: username,
-                sendCredential: sendCredential,
-                nextState: .usernameProvided
-            )
-        case .usernameProvided:
-            return advanceLoginState(
-                response,
-                sending: password,
-                sendCredential: sendCredential,
-                nextState: .completed
-            )
-        case .completed:
-            return finalizeLogin(response)
+            case .initial:
+                advanceLoginState(
+                    response,
+                    sending: username,
+                    sendCredential: sendCredential,
+                    nextState: .usernameProvided
+                )
+            case .usernameProvided:
+                advanceLoginState(
+                    response,
+                    sending: password,
+                    sendCredential: sendCredential,
+                    nextState: .completed
+                )
+            case .completed:
+                finalizeLogin(response)
         }
     }
 
@@ -103,7 +103,7 @@ final class AuthHandlerStateMachine {
 
     /// Resolve the LOGIN flow after the password has been sent: success on 2xx, failure otherwise.
     private func finalizeLogin(_ response: SMTPResponse) -> (isComplete: Bool, result: AuthResult?) {
-        if response.code >= 200 && response.code < 300 {
+        if response.code >= 200, response.code < 300 {
             return (true, AuthResult(method: method, success: true))
         }
         return (true, AuthResult(method: method, success: false, errorMessage: response.message))
@@ -111,6 +111,6 @@ final class AuthHandlerStateMachine {
 
     /// Get the current auth state
     var currentState: AuthState {
-        return state
+        state
     }
 }

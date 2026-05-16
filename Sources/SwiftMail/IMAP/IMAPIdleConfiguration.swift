@@ -79,7 +79,7 @@ extension IMAPIdleConfiguration {
         guard reconnectMaxDelay >= reconnectBaseDelay else {
             throw IMAPError.invalidArgument("IDLE reconnectMaxDelay must be >= reconnectBaseDelay")
         }
-        guard (0...1).contains(reconnectJitterFactor) else {
+        guard (0 ... 1).contains(reconnectJitterFactor) else {
             throw IMAPError.invalidArgument("IDLE reconnectJitterFactor must be between 0 and 1")
         }
         return self

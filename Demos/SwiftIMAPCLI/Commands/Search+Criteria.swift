@@ -1,13 +1,13 @@
-import Foundation
 import ArgumentParser
+import Foundation
 import SwiftMail
 
 extension Search {
     func buildCriteria() throws -> [SearchCriteria] {
         var criterias: [SearchCriteria] = []
         criterias.append(contentsOf: textCriteria())
-        criterias.append(contentsOf: try headerCriteria())
-        criterias.append(contentsOf: try dateCriteria())
+        try criterias.append(contentsOf: headerCriteria())
+        try criterias.append(contentsOf: dateCriteria())
         criterias.append(contentsOf: sizeCriteria())
         criterias.append(contentsOf: flagCriteria())
 
@@ -15,7 +15,7 @@ extension Search {
             throw ValidationError("No search criteria provided. Use --subject, --from, --text, etc.")
         }
 
-        if any && criterias.count > 1 {
+        if any, criterias.count > 1 {
             return [criterias.reduce(criterias[0]) { .or($0, $1) }]
         }
 
@@ -76,22 +76,22 @@ extension Search {
     private func dateCriteria() throws -> [SearchCriteria] {
         var result: [SearchCriteria] = []
         if let since {
-            result.append(.since(try Self.parseDate(since, label: "--since")))
+            try result.append(.since(Self.parseDate(since, label: "--since")))
         }
         if let before {
-            result.append(.before(try Self.parseDate(before, label: "--before")))
+            try result.append(.before(Self.parseDate(before, label: "--before")))
         }
         if let on {
-            result.append(.on(try Self.parseDate(on, label: "--on")))
+            try result.append(.on(Self.parseDate(on, label: "--on")))
         }
         if let sentSince {
-            result.append(.sentSince(try Self.parseDate(sentSince, label: "--sent-since")))
+            try result.append(.sentSince(Self.parseDate(sentSince, label: "--sent-since")))
         }
         if let sentBefore {
-            result.append(.sentBefore(try Self.parseDate(sentBefore, label: "--sent-before")))
+            try result.append(.sentBefore(Self.parseDate(sentBefore, label: "--sent-before")))
         }
         if let sentOn {
-            result.append(.sentOn(try Self.parseDate(sentOn, label: "--sent-on")))
+            try result.append(.sentOn(Self.parseDate(sentOn, label: "--sent-on")))
         }
         return result
     }
@@ -147,30 +147,30 @@ extension Search {
 
     private static func sortKey(forNormalized normalized: String, rawValue: String) throws -> SortCriterion.Key {
         switch normalized {
-        case "arrival":
-            return .arrival
-        case "cc":
-            return .cc
-        case "date":
-            return .date
-        case "from":
-            return .from
-        case "size":
-            return .size
-        case "subject":
-            return .subject
-        case "to":
-            return .to
-        case "displayfrom", "display-from":
-            return .displayFrom
-        case "displayto", "display-to":
-            return .displayTo
-        default:
-            throw ValidationError(
-                "Unsupported --sort value: \(rawValue). "
-                + "Supported values: arrival, cc, date, from, size, subject, to, "
-                + "displayfrom, displayto. Prefix with '-' for descending."
-            )
+            case "arrival":
+                return .arrival
+            case "cc":
+                return .cc
+            case "date":
+                return .date
+            case "from":
+                return .from
+            case "size":
+                return .size
+            case "subject":
+                return .subject
+            case "to":
+                return .to
+            case "displayfrom", "display-from":
+                return .displayFrom
+            case "displayto", "display-to":
+                return .displayTo
+            default:
+                throw ValidationError(
+                    "Unsupported --sort value: \(rawValue). "
+                        + "Supported values: arrival, cc, date, from, size, subject, to, "
+                        + "displayfrom, displayto. Prefix with '-' for descending."
+                )
         }
     }
 }

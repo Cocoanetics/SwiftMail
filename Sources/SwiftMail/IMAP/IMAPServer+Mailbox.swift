@@ -4,7 +4,7 @@ import NIOIMAPCore
 
 // MARK: - Mailbox Commands
 
-extension IMAPServer {
+public extension IMAPServer {
     /**
      Create a new mailbox on the server
 
@@ -17,7 +17,7 @@ extension IMAPServer {
      - `IMAPError.connectionFailed` if not connected
      - Note: Logs mailbox creation at debug level
      */
-    public func createMailbox(_ mailboxName: String) async throws {
+    func createMailbox(_ mailboxName: String) async throws {
         let command = CreateMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
         try await executeCommand(command)
     }
@@ -38,7 +38,7 @@ extension IMAPServer {
      IMAP SELECT command.
      To get the count of unseen messages, use `mailboxStatus("INBOX").unseenCount` instead.
      */
-    @discardableResult public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
+    @discardableResult func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
         let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
         return try await executeCommand(command)
     }
@@ -54,7 +54,7 @@ extension IMAPServer {
      - `IMAPError.connectionFailed` if not connected
      - Note: Logs mailbox closure at debug level
      */
-    public func closeMailbox() async throws {
+    func closeMailbox() async throws {
         let command = CloseCommand()
         try await executeCommand(command)
     }
@@ -71,7 +71,7 @@ extension IMAPServer {
      - `IMAPError.connectionFailed` if not connected
      - Note: Logs mailbox unselection at debug level
      */
-    public func unselectMailbox() async throws {
+    func unselectMailbox() async throws {
         // Check if the server supports UNSELECT capability
         if !capabilities.contains(.unselect) {
             throw IMAPError.commandNotSupported("UNSELECT command not supported by server")
@@ -98,7 +98,7 @@ extension IMAPServer {
      `STATUS` is issued for the currently selected mailbox. Call this method when no mailbox is selected
      (before `selectMailbox(_)`) or after `unselectMailbox()`/`closeMailbox()` to avoid the warning.
      */
-    public func mailboxStatus(_ mailboxName: String) async throws -> Mailbox.Status {
+    func mailboxStatus(_ mailboxName: String) async throws -> Mailbox.Status {
         // Always request standard attributes
         var attributes: [NIOIMAPCore.MailboxAttribute] = [
             .messageCount,

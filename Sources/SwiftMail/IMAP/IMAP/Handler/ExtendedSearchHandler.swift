@@ -52,50 +52,50 @@ final class ExtendedSearchHandler<T: MessageIdentifier>:
 
     private func checkUntaggedFailure(_ status: UntaggedStatus) -> IMAPError? {
         switch status {
-        case .bad(let responseText):
-            return IMAPError.commandFailed("Extended search failed: BAD \(responseText.text)")
-        case .no(let responseText):
-            return IMAPError.commandFailed("Extended search failed: NO \(responseText.text)")
-        default:
-            return nil
+            case let .bad(responseText):
+                IMAPError.commandFailed("Extended search failed: BAD \(responseText.text)")
+            case let .no(responseText):
+                IMAPError.commandFailed("Extended search failed: NO \(responseText.text)")
+            default:
+                nil
         }
     }
 
     private func processMailboxData(_ mailboxData: MailboxData) {
         switch mailboxData {
-        case .extendedSearch(let esearchResponse):
-            // ESEARCH response (RFC 4731)
-            receivedEsearch = true
-            for datum in esearchResponse.returnData {
-                processESearchDatum(datum)
-            }
-        case .search(let ids, _):
-            // Plain SEARCH response (fallback when ESEARCH is not used)
-            appendFallback(ids: ids)
-        case .sort(let ids, _):
-            appendFallback(ids: ids)
-        default:
-            break
+            case let .extendedSearch(esearchResponse):
+                // ESEARCH response (RFC 4731)
+                receivedEsearch = true
+                for datum in esearchResponse.returnData {
+                    processESearchDatum(datum)
+                }
+            case let .search(ids, _):
+                // Plain SEARCH response (fallback when ESEARCH is not used)
+                appendFallback(ids: ids)
+            case let .sort(ids, _):
+                appendFallback(ids: ids)
+            default:
+                break
         }
     }
 
     private func processESearchDatum(_ datum: SearchReturnData) {
         switch datum {
-        case .min(let nioId):
-            esearchMin = T(UInt32(nioId))
-        case .max(let nioId):
-            esearchMax = T(UInt32(nioId))
-        case .all(let lastCommandSet):
-            if case .set(let nioSet) = lastCommandSet {
-                esearchAll = convertNIOSet(nioSet.set)
-            }
-        case .count(let count):
-            esearchCount = count
-        case .partial(let range, let nioSet):
-            let ids = convertNIOSet(nioSet)
-            esearchPartial = ExtendedSearchResult<T>.PartialResult(range: range, results: ids)
-        default:
-            break
+            case let .min(nioId):
+                esearchMin = T(UInt32(nioId))
+            case let .max(nioId):
+                esearchMax = T(UInt32(nioId))
+            case let .all(lastCommandSet):
+                if case let .set(nioSet) = lastCommandSet {
+                    esearchAll = convertNIOSet(nioSet.set)
+                }
+            case let .count(count):
+                esearchCount = count
+            case let .partial(range, nioSet):
+                let ids = convertNIOSet(nioSet)
+                esearchPartial = ExtendedSearchResult<T>.PartialResult(range: range, results: ids)
+            default:
+                break
         }
     }
 
@@ -139,12 +139,12 @@ final class ExtendedSearchHandler<T: MessageIdentifier>:
 
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         switch response.state {
-        case .bad(let responseText):
-            failWithError(IMAPError.commandFailed("Extended search failed: BAD \(responseText.text)"))
-        case .no(let responseText):
-            failWithError(IMAPError.commandFailed("Extended search failed: NO \(responseText.text)"))
-        default:
-            failWithError(IMAPError.commandFailed("Extended search failed: \(String(describing: response.state))"))
+            case let .bad(responseText):
+                failWithError(IMAPError.commandFailed("Extended search failed: BAD \(responseText.text)"))
+            case let .no(responseText):
+                failWithError(IMAPError.commandFailed("Extended search failed: NO \(responseText.text)"))
+            default:
+                failWithError(IMAPError.commandFailed("Extended search failed: \(String(describing: response.state))"))
         }
     }
 
@@ -159,7 +159,7 @@ final class ExtendedSearchHandler<T: MessageIdentifier>:
         for nioRange in source.ranges {
             let lower = T(UInt32(nioRange.range.lowerBound))
             let upper = T(UInt32(nioRange.range.upperBound))
-            result.insert(range: lower...upper)
+            result.insert(range: lower ... upper)
         }
         return result
     }

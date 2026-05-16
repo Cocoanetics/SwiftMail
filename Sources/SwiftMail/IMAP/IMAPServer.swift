@@ -1,8 +1,8 @@
 import Foundation
 import Logging
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 import OrderedCollections
 
 /**
@@ -106,13 +106,13 @@ public actor IMAPServer {
 
         func authenticate(on connection: IMAPConnection) async throws {
             switch self {
-            case .login(let username, let password):
-                try await connection.login(username: username, password: password)
-            case .plain(let username, let password):
-                try await connection.authenticatePlain(username: username, password: password)
-            case .xoauth2(let email, let accessTokenProvider):
-                let accessToken = try await accessTokenProvider()
-                try await connection.authenticateXOAUTH2(email: email, accessToken: accessToken)
+                case let .login(username, password):
+                    try await connection.login(username: username, password: password)
+                case let .plain(username, password):
+                    try await connection.authenticatePlain(username: username, password: password)
+                case let .xoauth2(email, accessTokenProvider):
+                    let accessToken = try await accessTokenProvider()
+                    try await connection.authenticateXOAUTH2(email: email, accessToken: accessToken)
             }
         }
     }
@@ -145,15 +145,15 @@ public actor IMAPServer {
         self.port = port
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
-        self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
+        group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
         // Initialize loggers
-        self.logger = Logging.Logger(label: "com.cocoanetics.SwiftMail.IMAPServer")
+        logger = Logging.Logger(label: "com.cocoanetics.SwiftMail.IMAPServer")
 
         let primaryLoggerLabel = "com.cocoanetics.SwiftMail.IMAPServer"
         let outboundLabel = "com.cocoanetics.SwiftMail.IMAP_OUT"
         let inboundLabel = "com.cocoanetics.SwiftMail.IMAP_IN"
-        self.primaryConnection = IMAPConnection(
+        primaryConnection = IMAPConnection(
             host: host,
             port: port,
             transportSecurity: transportSecurity,
@@ -191,7 +191,7 @@ public actor IMAPServer {
 
     deinit {
         // Schedule shutdown on a background thread to avoid EventLoop issues
-        Task {  @MainActor [group] in
+        Task { @MainActor [group] in
             try? await group.shutdownGracefully()
         }
     }
@@ -200,18 +200,18 @@ public actor IMAPServer {
 
     /// Replace the cached mailbox listing. Used by mailbox-listing extensions.
     func updateMailboxes(_ value: [Mailbox.Info]) {
-        self.mailboxes = value
+        mailboxes = value
     }
 
     /// Replace the cached special-use mailbox listing. Used by special-use extensions.
     func updateSpecialMailboxes(_ value: [Mailbox.Info]) {
-        self.specialMailboxes = value
+        specialMailboxes = value
     }
 
     /// Reset cached mailbox state when closing all connections.
     func clearMailboxState() {
-        self.namespaces = nil
-        self.mailboxes = []
-        self.specialMailboxes = []
+        namespaces = nil
+        mailboxes = []
+        specialMailboxes = []
     }
 }

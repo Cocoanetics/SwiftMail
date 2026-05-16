@@ -12,7 +12,7 @@ extension EmailAddress: LosslessStringConvertible {
      */
     public init?(_ description: String) {
         // Simple email address without a name
-        if description.contains("@") && !description.contains("<") {
+        if description.contains("@"), !description.contains("<") {
             self.init(address: description)
             return
         }
@@ -54,20 +54,20 @@ extension EmailAddress: LosslessStringConvertible {
         return nil
     }
 
-	/**
-	 Get the string representation of the email address
-	 This uses the formatted representation which includes the name if available
-	 */
-	public var description: String {
-		if let name = name, !name.isEmpty {
-			// Use quotes if the name contains special characters
-			if name.contains(where: { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }) {
-				return "\"\(name)\" <\(address)>"
-			} else {
-				return "\(name) <\(address)>"
-			}
-		} else {
-			return address
-		}
-	}
+    /**
+     Get the string representation of the email address
+     This uses the formatted representation which includes the name if available
+     */
+    public var description: String {
+        if let name, !name.isEmpty {
+            // Use quotes if the name contains special characters
+            if name.contains(where: { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }) {
+                "\"\(name)\" <\(address)>"
+            } else {
+                "\(name) <\(address)>"
+            }
+        } else {
+            address
+        }
+    }
 }

@@ -1,10 +1,9 @@
 import Foundation
 #if canImport(Glibc)
-import Glibc
+    import Glibc
 #endif
 
 extension IMAPTestServer {
-
     // MARK: - Connection Handling
 
     func acceptClient() {
@@ -34,7 +33,7 @@ extension IMAPTestServer {
         let readBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 65536)
         defer { readBuf.deallocate() }
 
-        var idleTag: String?  // non-nil while in IDLE state
+        var idleTag: String? // non-nil while in IDLE state
 
         while true {
             let bytesRead = read(fileDescriptor, readBuf, 65536)
@@ -42,7 +41,7 @@ extension IMAPTestServer {
             buffer.append(readBuf, count: bytesRead)
 
             while let crlfRange = buffer.range(of: Data("\r\n".utf8)) {
-                let lineData = buffer[buffer.startIndex..<crlfRange.lowerBound]
+                let lineData = buffer[buffer.startIndex ..< crlfRange.lowerBound]
                 buffer = Data(buffer[crlfRange.upperBound...])
 
                 guard let line = String(data: lineData, encoding: .utf8) else { continue }
@@ -115,43 +114,43 @@ extension IMAPTestServer {
             return staticResp
         }
         switch command {
-        case "LOGIN":
-            authenticated = true
-            return "\(tag) OK LOGIN completed\r\n"
-        case "SELECT":
-            guard authenticated else { return "\(tag) NO Not authenticated\r\n" }
-            let mailbox = args.trimmingCharacters(in: .init(charactersIn: "\" "))
-            selectedMailbox = mailbox
-            return selectResponse(tag: tag)
-        case "UID":
-            guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
-            return handleUID(tag: tag, args: args)
-        case "FETCH":
-            guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
-            return handleFetch(tag: tag, args: args, uidMode: false)
-        default:
-            return "\(tag) BAD Unknown command \(command)\r\n"
+            case "LOGIN":
+                authenticated = true
+                return "\(tag) OK LOGIN completed\r\n"
+            case "SELECT":
+                guard authenticated else { return "\(tag) NO Not authenticated\r\n" }
+                let mailbox = args.trimmingCharacters(in: .init(charactersIn: "\" "))
+                selectedMailbox = mailbox
+                return selectResponse(tag: tag)
+            case "UID":
+                guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
+                return handleUID(tag: tag, args: args)
+            case "FETCH":
+                guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
+                return handleFetch(tag: tag, args: args, uidMode: false)
+            default:
+                return "\(tag) BAD Unknown command \(command)\r\n"
         }
     }
 
     /// Returns canned responses for commands that take no arguments and don't mutate state.
     private func staticResponse(tag: String, command: String) -> String? {
         switch command {
-        case "CAPABILITY":
-            let caps = "* CAPABILITY IMAP4rev1 AUTH=PLAIN LITERAL+ ID NAMESPACE UIDPLUS IDLE\r\n"
-            return caps + "\(tag) OK CAPABILITY completed\r\n"
-        case "NAMESPACE":
-            return "* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n\(tag) OK NAMESPACE completed\r\n"
-        case "LIST":
-            return "* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n\(tag) OK LIST completed\r\n"
-        case "ID":
-            return "* ID NIL\r\n\(tag) OK ID completed\r\n"
-        case "NOOP":
-            return "\(tag) OK NOOP completed\r\n"
-        case "LOGOUT":
-            return "* BYE IMAP server shutting down\r\n\(tag) OK LOGOUT completed\r\n"
-        default:
-            return nil
+            case "CAPABILITY":
+                let caps = "* CAPABILITY IMAP4rev1 AUTH=PLAIN LITERAL+ ID NAMESPACE UIDPLUS IDLE\r\n"
+                return caps + "\(tag) OK CAPABILITY completed\r\n"
+            case "NAMESPACE":
+                return "* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n\(tag) OK NAMESPACE completed\r\n"
+            case "LIST":
+                return "* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n\(tag) OK LIST completed\r\n"
+            case "ID":
+                return "* ID NIL\r\n\(tag) OK ID completed\r\n"
+            case "NOOP":
+                return "\(tag) OK NOOP completed\r\n"
+            case "LOGOUT":
+                return "* BYE IMAP server shutting down\r\n\(tag) OK LOGOUT completed\r\n"
+            default:
+                return nil
         }
     }
 
@@ -175,13 +174,13 @@ extension IMAPTestServer {
         }
         let subargs = parts.count > 1 ? parts[1] : ""
         switch subcmd {
-        case "FETCH":
-            return handleFetch(tag: tag, args: subargs, uidMode: true)
-        case "SEARCH":
-            let uids = messages.map { String($0.uid) }.joined(separator: " ")
-            return "* SEARCH \(uids)\r\n\(tag) OK UID SEARCH completed\r\n"
-        default:
-            return "\(tag) BAD Unknown UID subcommand\r\n"
+            case "FETCH":
+                return handleFetch(tag: tag, args: subargs, uidMode: true)
+            case "SEARCH":
+                let uids = messages.map { String($0.uid) }.joined(separator: " ")
+                return "* SEARCH \(uids)\r\n\(tag) OK UID SEARCH completed\r\n"
+            default:
+                return "\(tag) BAD Unknown UID subcommand\r\n"
         }
     }
 
@@ -205,8 +204,8 @@ extension IMAPTestServer {
     private func parseFetchArguments(_ args: String) -> (seqStr: String, itemsStr: String?) {
         if let parenOpen = args.firstIndex(of: "("),
            let parenClose = args.lastIndex(of: ")") {
-            let seqStr = String(args[args.startIndex..<parenOpen]).trimmingCharacters(in: .whitespaces)
-            let itemsStr = String(args[args.index(after: parenOpen)..<parenClose]).uppercased()
+            let seqStr = String(args[args.startIndex ..< parenOpen]).trimmingCharacters(in: .whitespaces)
+            let itemsStr = String(args[args.index(after: parenOpen) ..< parenClose]).uppercased()
             return (seqStr, itemsStr)
         }
         let fetchParts = args.split(separator: " ", maxSplits: 1).map(String.init)
@@ -255,15 +254,14 @@ extension IMAPTestServer {
             if part.contains(":") {
                 let range = part.split(separator: ":").map(String.init)
                 let start = Int(range[0]) ?? 1
-                let end: Int
-                if range.count > 1, range[1] != "*" {
-                    end = Int(range[1]) ?? messages.count
+                let end: Int = if range.count > 1, range[1] != "*" {
+                    Int(range[1]) ?? messages.count
                 } else {
-                    end = uidMode ? (messages.last?.uid ?? 0) : messages.count
+                    uidMode ? (messages.last?.uid ?? 0) : messages.count
                 }
                 for (index, msg) in messages.enumerated() {
                     let val = uidMode ? msg.uid : (index + 1)
-                    if val >= start && val <= end {
+                    if val >= start, val <= end {
                         results.append(msg)
                     }
                 }

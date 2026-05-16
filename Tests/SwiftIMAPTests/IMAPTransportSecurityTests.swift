@@ -1,9 +1,9 @@
-import NIOIMAPCore
 import NIO
 import NIOEmbedded
+import NIOIMAPCore
 import NIOSSL
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPTransportSecurityTests {
@@ -98,7 +98,7 @@ struct IMAPTransportSecurityTests {
         do {
             _ = try IMAPConnection.resolveTLSTransportMode(port: 1143, transportSecurity: .automatic)
         } catch let error as IMAPError {
-            if case .invalidArgument(let message) = error {
+            if case let .invalidArgument(message) = error {
                 didThrowInvalidArgument = message.contains("requires explicit transportSecurity")
             }
         } catch {

@@ -16,8 +16,8 @@ public struct Namespace: Sendable {
 
     /// Initialize from ``NIOIMAPCore.NamespaceDescription``
     init(from nio: NIOIMAPCore.NamespaceDescription) {
-        self.prefix = nio.string.stringValue
-        self.delimiter = nio.delimiter
+        prefix = nio.string.stringValue
+        delimiter = nio.delimiter
     }
 }
 
@@ -39,9 +39,9 @@ public struct NamespaceResponse: Sendable {
 
     /// Initialize from ``NIOIMAPCore.NamespaceResponse``
     init(from nio: NIOIMAPCore.NamespaceResponse) {
-        self.personal = nio.userNamespace.map { Namespace(from: $0) }
-        self.otherUsers = nio.otherUserNamespace.map { Namespace(from: $0) }
-        self.shared = nio.sharedNamespace.map { Namespace(from: $0) }
+        personal = nio.userNamespace.map { Namespace(from: $0) }
+        otherUsers = nio.otherUserNamespace.map { Namespace(from: $0) }
+        shared = nio.sharedNamespace.map { Namespace(from: $0) }
     }
 
     /// All advertised namespaces in stable order (personal, other users, shared).
@@ -106,7 +106,7 @@ public struct NamespaceResponse: Sendable {
 
         var patterns: [String] = []
         func appendUnique(_ value: String) {
-            if !value.isEmpty && !patterns.contains(value) {
+            if !value.isEmpty, !patterns.contains(value) {
                 patterns.append(value)
             }
         }
@@ -120,11 +120,11 @@ public struct NamespaceResponse: Sendable {
             appendUnique(namespace.prefix + wildcard)
 
             if wildcard == "*" || wildcard == "%" {
-                let root: String
-                if let delimiter = namespace.delimiter.map(String.init), namespace.prefix.hasSuffix(delimiter) {
-                    root = String(namespace.prefix.dropLast(delimiter.count))
+                let delimiter = namespace.delimiter.map(String.init)
+                let root: String = if let delimiter, namespace.prefix.hasSuffix(delimiter) {
+                    String(namespace.prefix.dropLast(delimiter.count))
                 } else {
-                    root = namespace.prefix
+                    namespace.prefix
                 }
                 appendUnique(root)
             }

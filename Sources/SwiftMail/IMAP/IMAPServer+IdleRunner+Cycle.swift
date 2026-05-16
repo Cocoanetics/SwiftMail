@@ -1,8 +1,8 @@
 import Foundation
 import Logging
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 
 // MARK: - Resilient IDLE Cycle Step Helpers
 
@@ -41,7 +41,7 @@ extension IMAPResilientIdleRunner {
                 var byeMessage: String?
                 for await event in idleStream {
                     continuation.yield(event)
-                    if case .bye(let message) = event {
+                    if case let .bye(message) = event {
                         sawBye = true
                         byeMessage = message
                         break
@@ -70,16 +70,16 @@ extension IMAPResilientIdleRunner {
         state: inout IdleCycleState
     ) async throws {
         switch cycleResult {
-        case .streamEnded(let sawBye, let byeMessage):
-            try await handleStreamEnded(
-                sawBye: sawBye,
-                byeMessage: byeMessage,
-                context: context,
-                state: &state
-            )
+            case let .streamEnded(sawBye, byeMessage):
+                try await handleStreamEnded(
+                    sawBye: sawBye,
+                    byeMessage: byeMessage,
+                    context: context,
+                    state: &state
+                )
 
-        case .timer(let checkpoint):
-            try await handleTimer(checkpoint: checkpoint, context: context, state: &state)
+            case let .timer(checkpoint):
+                try await handleTimer(checkpoint: checkpoint, context: context, state: &state)
         }
     }
 

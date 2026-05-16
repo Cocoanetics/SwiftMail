@@ -3,7 +3,7 @@
 
 import Foundation
 
-extension SMTPServer {
+public extension SMTPServer {
     /**
      Authenticate with the SMTP server
 
@@ -23,8 +23,7 @@ extension SMTPServer {
        - `SMTPError.tlsRequired` if attempting to authenticate without TLS
      - Note: Logs authentication attempts at info level (without credentials)
      */
-    public func login(username: String, password: String) async throws {
-
+    func login(username: String, password: String) async throws {
         // Check if we have PLAIN auth support
         if capabilities.contains("AUTH PLAIN") {
             let plainCommand = PlainAuthCommand(username: username, password: password)
@@ -65,7 +64,7 @@ extension SMTPServer {
          or if the token is rejected
        - `SMTPError.connectionFailed` if not connected
      */
-    public func authenticateXOAUTH2(email: String, accessToken: String) async throws {
+    func authenticateXOAUTH2(email: String, accessToken: String) async throws {
         guard capabilities.contains("AUTH XOAUTH2") else {
             throw SMTPError.authenticationFailed("Server does not support XOAUTH2 authentication")
         }

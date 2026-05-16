@@ -1,6 +1,6 @@
 import Foundation
 #if canImport(Glibc)
-import Glibc
+    import Glibc
 #endif
 
 enum IMAPTestError: Error {
@@ -17,7 +17,7 @@ final class IMAPTestServer {
         let from: String
         let to: String
         let date: String
-        let internalDate: String  // IMAP format: "DD-Mon-YYYY HH:MM:SS +ZZZZ"
+        let internalDate: String // IMAP format: "DD-Mon-YYYY HH:MM:SS +ZZZZ"
         let messageID: String
         let contentType: String
         let charset: String
@@ -47,14 +47,14 @@ final class IMAPTestServer {
         self.port = port
         self.username = username
         self.password = password
-        self.messages = try Self.loadMaildir(maildirURL)
+        messages = try Self.loadMaildir(maildirURL)
     }
 
     func start() throws {
         #if os(Linux)
-        listenFd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+            listenFd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
         #else
-        listenFd = socket(AF_INET, SOCK_STREAM, 0)
+            listenFd = socket(AF_INET, SOCK_STREAM, 0)
         #endif
         guard listenFd >= 0 else {
             throw IMAPTestError.setup("socket() failed: \(errno)")
@@ -65,7 +65,7 @@ final class IMAPTestServer {
 
         var addr = sockaddr_in()
         #if !os(Linux)
-        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+            addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         #endif
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = UInt16(port).bigEndian
@@ -94,7 +94,7 @@ final class IMAPTestServer {
                 getsockname(listenFd, $0, &addrLen)
             }
         }
-        self.port = Int(UInt16(bigEndian: boundAddr.sin_port))
+        port = Int(UInt16(bigEndian: boundAddr.sin_port))
 
         // Set up accept dispatch source
         let source = DispatchSource.makeReadSource(fileDescriptor: listenFd, queue: queue)
@@ -107,7 +107,7 @@ final class IMAPTestServer {
                 self?.listenFd = -1
             }
         }
-        self.acceptSource = source
+        acceptSource = source
         source.resume()
     }
 

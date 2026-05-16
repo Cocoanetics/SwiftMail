@@ -50,7 +50,7 @@ public struct Attachment: Codable, Sendable {
      */
     public init(fileURL: URL, mimeType: String? = nil, contentID: String? = nil, isInline: Bool = false) throws {
         // Get the filename from the URL
-        self.filename = fileURL.lastPathComponent
+        filename = fileURL.lastPathComponent
 
         // Determine MIME type if not provided
         if let providedMimeType = mimeType {
@@ -60,7 +60,7 @@ public struct Attachment: Codable, Sendable {
         }
 
         // Read the file data
-        self.data = try Data(contentsOf: fileURL)
+        data = try Data(contentsOf: fileURL)
 
         // Set content ID and inline flag
         self.contentID = contentID

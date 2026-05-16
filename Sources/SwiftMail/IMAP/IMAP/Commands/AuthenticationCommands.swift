@@ -20,7 +20,7 @@ struct LoginCommand: IMAPTaggedCommand {
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        return TaggedCommand(tag: tag, command: .login(
+        TaggedCommand(tag: tag, command: .login(
             username: username,
             password: password
         ))
@@ -36,6 +36,6 @@ struct LogoutCommand: IMAPTaggedCommand {
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        return TaggedCommand(tag: tag, command: .logout)
+        TaggedCommand(tag: tag, command: .logout)
     }
 }

@@ -1,13 +1,12 @@
 // String+HostnameTests.swift
 // Tests for hostname-related String extensions
 
-import Testing
 import Foundation
 @testable import SwiftMail
+import Testing
 
 @Suite("String Hostname Extensions Tests", .serialized, .timeLimit(.minutes(1)))
 struct StringHostnameTests {
-
     @Test("Local hostname resolution returns valid hostname")
     func localHostname() {
         let hostname = String.localHostname
@@ -16,7 +15,7 @@ struct StringHostnameTests {
         #expect(!hostname.isEmpty, "Hostname should not be empty")
 
         // Test hostname format
-        if hostname.hasPrefix("[") && hostname.hasSuffix("]") {
+        if hostname.hasPrefix("["), hostname.hasSuffix("]") {
             // IP address format
             let ipAddress = String(hostname.dropFirst().dropLast())
             #expect(isValidIP(ipAddress), "Invalid IP address format: \(ipAddress)")
@@ -57,9 +56,9 @@ struct StringHostnameTests {
             return false
         }
 
-        let range = NSRange(ipAddress.startIndex..<ipAddress.endIndex, in: ipAddress)
+        let range = NSRange(ipAddress.startIndex ..< ipAddress.endIndex, in: ipAddress)
         return ipv4Regex.firstMatch(in: ipAddress, range: range) != nil ||
-               ipv6Regex.firstMatch(in: ipAddress, range: range) != nil
+            ipv6Regex.firstMatch(in: ipAddress, range: range) != nil
     }
 
     private func isValidHostname(_ hostname: String) -> Bool {
@@ -67,7 +66,7 @@ struct StringHostnameTests {
         // swiftlint:disable:next line_length
         let strictPattern = "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$"
         guard let strictRegex = try? NSRegularExpression(pattern: strictPattern) else { return false }
-        let range = NSRange(hostname.startIndex..<hostname.endIndex, in: hostname)
+        let range = NSRange(hostname.startIndex ..< hostname.endIndex, in: hostname)
         if strictRegex.firstMatch(in: hostname, range: range) != nil {
             return true
         }

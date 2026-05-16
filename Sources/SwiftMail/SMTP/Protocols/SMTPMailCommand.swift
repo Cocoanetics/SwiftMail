@@ -23,7 +23,7 @@ protocol SMTPMailCommand: MailCommand {
 extension SMTPMailCommand {
     /// Default implementation encodes the command string as UTF-8 data
     func toCommandData() -> Data {
-        return Data(toCommandString().utf8)
+        Data(toCommandString().utf8)
     }
 
     /// Default implementation that defers to toString
@@ -32,8 +32,8 @@ extension SMTPMailCommand {
     }
 
     /// Default implementation returns the basic command string
-    func toString(localHostname: String) -> String {
-        return toCommandString()
+    func toString(localHostname _: String) -> String {
+        toCommandString()
     }
 }
 

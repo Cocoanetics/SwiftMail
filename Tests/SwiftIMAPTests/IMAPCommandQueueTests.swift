@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 @testable import SwiftMail
+import Testing
 
 private actor EventRecorder {
     private var events: [String] = []
@@ -17,7 +17,7 @@ private actor EventRecorder {
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPCommandQueueTests {
     @Test
-    func testRunIsReentrantForNestedCallsOnSameTask() async throws {
+    func runIsReentrantForNestedCallsOnSameTask() async {
         let queue = IMAPCommandQueue()
         let recorder = EventRecorder()
 
@@ -36,7 +36,7 @@ struct IMAPCommandQueueTests {
     }
 
     @Test
-    func testRunSerializesDifferentTasks() async throws {
+    func runSerializesDifferentTasks() async throws {
         let queue = IMAPCommandQueue()
         let recorder = EventRecorder()
 

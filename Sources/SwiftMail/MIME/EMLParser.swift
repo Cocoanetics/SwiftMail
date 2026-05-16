@@ -11,19 +11,18 @@ public enum EMLParserError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidData:
-            return "The data is not valid RFC 822 / EML content"
-        case .missingHeaders:
-            return "No headers found in the message"
-        case .malformedHeader(let detail):
-            return "Malformed header: \(detail)"
+            case .invalidData:
+                "The data is not valid RFC 822 / EML content"
+            case .missingHeaders:
+                "No headers found in the message"
+            case let .malformedHeader(detail):
+                "Malformed header: \(detail)"
         }
     }
 }
 
 /// Parses raw RFC 822 / EML data into SwiftMail model types.
-public struct EMLParser {
-
+public enum EMLParser {
     // MARK: - Public API
 
     /// Parse raw EML data into a ``Message``.

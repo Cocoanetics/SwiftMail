@@ -4,7 +4,7 @@ import NIOIMAPCore
 
 // MARK: - Append Commands
 
-extension IMAPServer {
+public extension IMAPServer {
     /// Append a raw RFC 822 message to a mailbox.
     ///
     /// - Parameters:
@@ -14,7 +14,7 @@ extension IMAPServer {
     ///   - internalDate: Optional internal date to store on the server.
     /// - Returns: ``AppendResult`` describing server-assigned identifiers.
     @discardableResult
-    public func append(
+    func append(
         rawMessage: String,
         to mailbox: String,
         flags: [Flag],
@@ -50,7 +50,7 @@ extension IMAPServer {
      - Returns: ``AppendResult`` describing server-assigned identifiers.
      */
     @discardableResult
-    public func append(
+    func append(
         email: Email,
         to mailbox: String,
         flags: [Flag] = [],
@@ -82,7 +82,7 @@ extension IMAPServer {
      - Returns: ``AppendResult`` describing server-assigned identifiers.
      */
     @discardableResult
-    public func createDraft(
+    func createDraft(
         from email: Email,
         in mailbox: String? = nil,
         date: Date? = nil,
@@ -91,11 +91,10 @@ extension IMAPServer {
         var flags: [Flag] = [.draft]
         flags.append(contentsOf: additionalFlags)
 
-        let targetMailbox: String
-        if let mailbox {
-            targetMailbox = mailbox
+        let targetMailbox: String = if let mailbox {
+            mailbox
         } else {
-            targetMailbox = try draftsFolder.name
+            try draftsFolder.name
         }
 
         // Mark as a draft so mail clients (e.g. Apple Mail) recognize ownership
@@ -112,18 +111,17 @@ extension IMAPServer {
 
     // MARK: - Append Helpers
 
-    func makeInternalDate(from date: Date) -> ServerMessageDate? {
+    internal func makeInternalDate(from date: Date) -> ServerMessageDate? {
         var calendar = Calendar(identifier: .gregorian)
         let timeZone = TimeZone.current
         calendar.timeZone = timeZone
 
         let components = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: date)
-        guard
-            let year = components.year,
-            let month = components.month,
-            let day = components.day,
-            let hour = components.hour,
-            let minute = components.minute
+        guard let year = components.year,
+              let month = components.month,
+              let day = components.day,
+              let hour = components.hour,
+              let minute = components.minute
         else {
             return nil
         }

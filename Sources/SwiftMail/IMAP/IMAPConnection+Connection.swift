@@ -1,7 +1,7 @@
 import Foundation
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 import NIOSSL
 
 extension IMAPConnection {
@@ -25,8 +25,8 @@ extension IMAPConnection {
         let channel = try await openChannel(bootstrap: bootstrap, greetingPromise: greetingPromise)
 
         self.channel = channel
-        self.isSessionAuthenticated = false
-        self.namespaces = nil
+        isSessionAuthenticated = false
+        namespaces = nil
 
         logger.info("\(connectionContext) Connected to IMAP server with 1MB buffer limit for large responses")
 
@@ -43,10 +43,10 @@ extension IMAPConnection {
         initialTLSMode: TLSTransportMode,
         greetingHandler: IMAPGreetingHandler
     ) -> ClientBootstrap {
-        let host = self.host
-        let certificateVerificationPolicy = self.certificateVerificationPolicy
-        let duplexLogger = self.duplexLogger
-        let responseBuffer = self.responseBuffer
+        let host = host
+        let certificateVerificationPolicy = certificateVerificationPolicy
+        let duplexLogger = duplexLogger
+        let responseBuffer = responseBuffer
 
         return ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
@@ -162,7 +162,7 @@ extension IMAPConnection {
     }
 
     private func resolveActiveChannelForDone() async throws -> Channel? {
-        guard let channel = self.channel, channel.isActive else {
+        guard let channel, channel.isActive else {
             let terminationReasons = responseBuffer.consumeBufferedConnectionTerminationReasons()
             if !terminationReasons.isEmpty {
                 let reason = terminationReasons.joined(separator: " | ")
@@ -219,7 +219,7 @@ extension IMAPConnection {
     }
 
     func disconnectBody() async throws {
-        guard let channel = self.channel else {
+        guard let channel else {
             logger.warning("\(connectionContext) Attempted to disconnect when channel was already nil")
             isSessionAuthenticated = false
             capabilities = []
@@ -236,22 +236,22 @@ extension IMAPConnection {
             logger.debug("\(connectionContext) Channel close during disconnect reported: \(error)")
         }
         self.channel = nil
-        self.isSessionAuthenticated = false
-        self.capabilities = []
-        self.namespaces = nil
-        self.idleHandler = nil
-        self.idleTerminationInProgress = false
-        self.responseBuffer.reset()
+        isSessionAuthenticated = false
+        capabilities = []
+        namespaces = nil
+        idleHandler = nil
+        idleTerminationInProgress = false
+        responseBuffer.reset()
     }
 
     func clearInvalidChannel() {
-        if let channel = self.channel, !channel.isActive {
+        if let channel, !channel.isActive {
             logger.info("\(connectionContext) Channel is no longer active, clearing channel reference")
             self.channel = nil
-            self.isSessionAuthenticated = false
-            self.idleHandler = nil
-            self.idleTerminationInProgress = false
-            self.responseBuffer.reset()
+            isSessionAuthenticated = false
+            idleHandler = nil
+            idleTerminationInProgress = false
+            responseBuffer.reset()
         }
     }
 
@@ -272,10 +272,10 @@ extension IMAPConnection {
 
         if let imapError = error as? IMAPError {
             switch imapError {
-            case .connectionFailed, .timeout:
-                return true
-            default:
-                break
+                case .connectionFailed, .timeout:
+                    return true
+                default:
+                    break
             }
         }
 

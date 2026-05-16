@@ -55,7 +55,7 @@ extension SMTPServer {
 
             // For EHLO responses, each line starts with a response code (e.g., "250-AUTH LOGIN PLAIN")
             let prefix = capabilityLine.prefix(4)
-            if capabilityLine.count > 4 && (prefix.hasPrefix("250-") || prefix.hasPrefix("250 ")) {
+            if capabilityLine.count > 4, prefix.hasPrefix("250-") || prefix.hasPrefix("250 ") {
                 // Extract the capability (after the response code)
                 let capabilityPart = capabilityLine.dropFirst(4).trimmingCharacters(in: .whitespaces)
 

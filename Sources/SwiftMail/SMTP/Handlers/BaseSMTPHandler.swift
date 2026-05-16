@@ -1,6 +1,6 @@
 import Foundation
-import NIOCore
 import Logging
+import NIOCore
 
 /// Base class for SMTP command handlers that provides common functionality
 class BaseSMTPHandler<T: Sendable>:
@@ -13,16 +13,16 @@ class BaseSMTPHandler<T: Sendable>:
     typealias ResultType = T
 
     /// The command tag (optional for SMTP)
-    public let commandTag: String?
+    let commandTag: String?
 
     /// The promise that will be fulfilled when the command completes
-    public let promise: EventLoopPromise<ResultType>
+    let promise: EventLoopPromise<ResultType>
 
     /// Initialize a new handler
     /// - Parameters:
     ///   - commandTag: Optional tag for the command (not commonly used in SMTP but included for consistency)
     ///   - promise: The promise to fulfill when the command completes
-    public required init(commandTag: String?, promise: EventLoopPromise<ResultType>) {
+    required init(commandTag: String?, promise: EventLoopPromise<ResultType>) {
         self.commandTag = commandTag
         self.promise = promise
     }
@@ -34,7 +34,7 @@ class BaseSMTPHandler<T: Sendable>:
         // Default implementation just checks for success/failure response codes
         // Subclasses should override this to handle command-specific responses
 
-        if response.code >= 200 && response.code < 400 {
+        if response.code >= 200, response.code < 400 {
             // Success response (2xx or 3xx)
             handleSuccess(response: response)
             return true
@@ -49,7 +49,7 @@ class BaseSMTPHandler<T: Sendable>:
 
     /// Handle a successful response
     /// - Parameter response: The parsed SMTP response
-    open func handleSuccess(response: SMTPResponse) {
+    open func handleSuccess(response _: SMTPResponse) {
         // Default implementation, subclasses should override
         promise.fail(SMTPError.connectionFailed("BaseSMTPHandler.handleSuccess not implemented"))
     }
@@ -73,7 +73,7 @@ class BaseSMTPHandler<T: Sendable>:
     /// - Parameters:
     ///   - context: The channel handler context
     ///   - data: The data read from the channel
-    public func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
 
         // Process the response directly
@@ -87,14 +87,14 @@ class BaseSMTPHandler<T: Sendable>:
 
     /// Handle channel read complete events
     /// - Parameter context: The channel handler context
-    public func channelReadComplete(context: ChannelHandlerContext) {
+    func channelReadComplete(context: ChannelHandlerContext) {
         // Flush any pending writes
         context.flush()
     }
 
     /// Handle channel inactive events
     /// - Parameter context: The channel handler context
-    public func channelInactive(context: ChannelHandlerContext) {
+    func channelInactive(context _: ChannelHandlerContext) {
         // If the channel becomes inactive, fail the promise with connection closed error
         // No need to check if it's fulfilled - Swift's promise system will ignore second attempts
         promise.fail(SMTPError.connectionFailed("Connection closed"))
@@ -104,7 +104,7 @@ class BaseSMTPHandler<T: Sendable>:
     /// - Parameters:
     ///   - context: The channel handler context
     ///   - error: The error caught
-    public func errorCaught(context: ChannelHandlerContext, error: Error) {
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
         // Fail the promise with the error
         promise.fail(error)
 
@@ -121,18 +121,18 @@ class BaseSMTPHandler<T: Sendable>:
     // on the subclass (without `override`) silently never get called.
 
     /// Called when the handler is added to a channel pipeline. Default no-op.
-    public func handlerAdded(context: ChannelHandlerContext) {}
+    func handlerAdded(context _: ChannelHandlerContext) {}
 
     /// Called when the handler is removed from a channel pipeline. Default no-op.
-    public func handlerRemoved(context: ChannelHandlerContext) {}
+    func handlerRemoved(context _: ChannelHandlerContext) {}
 
     /// Called when the channel is registered with its EventLoop. Default propagates the event.
-    public func channelRegistered(context: ChannelHandlerContext) {
+    func channelRegistered(context: ChannelHandlerContext) {
         context.fireChannelRegistered()
     }
 
     /// Called when the channel becomes active. Default propagates the event.
-    public func channelActive(context: ChannelHandlerContext) {
+    func channelActive(context: ChannelHandlerContext) {
         context.fireChannelActive()
     }
 
@@ -140,25 +140,25 @@ class BaseSMTPHandler<T: Sendable>:
 
     /// Fulfill the promise with the result
     /// - Parameter value: The value to fulfill the promise with
-    internal func fulfill(_ value: T) {
+    func fulfill(_ value: T) {
         promise.succeed(value)
     }
 
     /// Fail the promise with an error
     /// - Parameter error: The error to fail the promise with
-    internal func fail(_ error: Error) {
+    func fail(_ error: Error) {
         promise.fail(error)
     }
 
     /// Called when the handler's future is successful
     /// Simply an interface to standardize our handler architecture
-    public func onSuccess(_ value: T) {
+    func onSuccess(_ value: T) {
         promise.succeed(value)
     }
 
     /// Called when the handler's future fails
     /// Simply an interface to standardize our handler architecture
-    public func onFailure(_ error: Error) {
+    func onFailure(_ error: Error) {
         promise.fail(error)
     }
 }

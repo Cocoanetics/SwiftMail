@@ -1,7 +1,6 @@
 import Foundation
 
 extension IMAPTestServer {
-
     // MARK: - Response Builders
 
     func buildEnvelope(_ msg: Message) -> String {
@@ -19,8 +18,8 @@ extension IMAPTestServer {
         let email: String
         if let angleOpen = header.firstIndex(of: "<"),
            let angleClose = header.firstIndex(of: ">") {
-            name = String(header[header.startIndex..<angleOpen]).trimmingCharacters(in: .whitespaces)
-            email = String(header[header.index(after: angleOpen)..<angleClose])
+            name = String(header[header.startIndex ..< angleOpen]).trimmingCharacters(in: .whitespaces)
+            email = String(header[header.index(after: angleOpen) ..< angleClose])
         } else {
             name = ""
             email = header.trimmingCharacters(in: .whitespaces)

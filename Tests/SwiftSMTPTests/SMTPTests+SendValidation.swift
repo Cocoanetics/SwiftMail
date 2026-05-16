@@ -1,13 +1,13 @@
 import Foundation
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SMTPSendValidationTests {
     // MARK: - sendRawMessage validation
 
     @Test
-    func testSendRawMessageRequiresAtLeastOneRecipient() async {
+    func sendRawMessageRequiresAtLeastOneRecipient() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
         let rawMessage = Data("Subject: Test\r\n\r\nBody".utf8)
         let sender = EmailAddress(address: "sender@example.com")
@@ -18,7 +18,7 @@ struct SMTPSendValidationTests {
     }
 
     @Test
-    func testSendRawMessageRequiresConnection() async {
+    func sendRawMessageRequiresConnection() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
         let rawMessage = Data("Subject: Test\r\n\r\nBody".utf8)
         let sender = EmailAddress(address: "sender@example.com")
@@ -30,7 +30,7 @@ struct SMTPSendValidationTests {
     }
 
     @Test
-    func testSendRawMessageRequiresConnectionBeforeValidation() async {
+    func sendRawMessageRequiresConnectionBeforeValidation() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
         // Data with 8-bit content
         let data8Bit = Data([0xFF, 0xFE, 0x00, 0x48, 0x65, 0x6C, 0x6C, 0x6F])
@@ -54,7 +54,7 @@ struct SMTPSendValidationTests {
     }
 
     @Test
-    func testSendRawMessage7BitContentDoesNotRequire8BitMIME() async {
+    func sendRawMessage7BitContentDoesNotRequire8BitMIME() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
         // Pure 7-bit ASCII content (all bytes <= 127)
         let data7Bit = Data([0x48, 0x65, 0x6C, 0x6C, 0x6F]) // "Hello"

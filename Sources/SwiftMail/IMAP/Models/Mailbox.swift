@@ -65,14 +65,14 @@ public enum Mailbox {
             /// Returns an empty set for unknown attributes.
             private static func attribute(from attribute: NIOIMAPCore.MailboxInfo.Attribute) -> Attributes {
                 switch attribute {
-                case .noSelect: return .noSelect
-                case .hasChildren: return .hasChildren
-                case .hasNoChildren: return .hasNoChildren
-                case .marked: return .marked
-                case .unmarked: return .unmarked
-                default:
-                    // Check for special-use attributes in the raw value (RFC 6154).
-                    return specialUseAttribute(from: String(describing: attribute))
+                    case .noSelect: .noSelect
+                    case .hasChildren: .hasChildren
+                    case .hasNoChildren: .hasNoChildren
+                    case .marked: .marked
+                    case .unmarked: .unmarked
+                    default:
+                        // Check for special-use attributes in the raw value (RFC 6154).
+                        specialUseAttribute(from: String(describing: attribute))
                 }
             }
 
@@ -107,11 +107,11 @@ public enum Mailbox {
         /// Initialize from NIOIMAPCore.MailboxInfo.
         /// Mailbox names use IMAP's modified UTF-7 encoding; lossy decoding preserves the
         /// raw bytes for later interpretation rather than failing on non-UTF-8 sequences.
-        internal init(nio info: NIOIMAPCore.MailboxInfo) {
+        init(nio info: NIOIMAPCore.MailboxInfo) {
             // swiftlint:disable:next optional_data_string_conversion
-            self.name = String(decoding: info.path.name.bytes, as: UTF8.self)
-            self.attributes = Attributes(from: Array(info.attributes))
-            self.hierarchyDelimiter = info.path.pathSeparator.map(String.init)
+            name = String(decoding: info.path.name.bytes, as: UTF8.self)
+            attributes = Attributes(from: Array(info.attributes))
+            hierarchyDelimiter = info.path.pathSeparator.map(String.init)
         }
 
         /// Initialize with raw values
@@ -123,27 +123,27 @@ public enum Mailbox {
 
         /// Whether this mailbox can be selected
         public var isSelectable: Bool {
-            return !attributes.contains(.noSelect)
+            !attributes.contains(.noSelect)
         }
 
         /// Whether this mailbox has child mailboxes
         public var hasChildren: Bool {
-            return attributes.contains(.hasChildren)
+            attributes.contains(.hasChildren)
         }
 
         /// Whether this mailbox has no child mailboxes
         public var hasNoChildren: Bool {
-            return attributes.contains(.hasNoChildren)
+            attributes.contains(.hasNoChildren)
         }
 
         /// Whether this mailbox is marked
         public var isMarked: Bool {
-            return attributes.contains(.marked)
+            attributes.contains(.marked)
         }
 
         /// Whether this mailbox is unmarked
         public var isUnmarked: Bool {
-            return attributes.contains(.unmarked)
+            attributes.contains(.unmarked)
         }
     }
 
@@ -159,10 +159,10 @@ public enum Mailbox {
         public var firstUnseen: Int = 0
 
         /// The UID validity value for the mailbox
-        public var uidValidity: UIDValidity = UIDValidity(0)
+        public var uidValidity: UIDValidity = .init(0)
 
         /// The next UID value for the mailbox
-        public var uidNext: UID = UID(0)
+        public var uidNext: UID = .init(0)
 
         /// Whether the mailbox is read-only
         public var isReadOnly: Bool = false
@@ -185,12 +185,13 @@ public enum Mailbox {
             let startMessage = SequenceNumber(startIndex)
             let endMessage = SequenceNumber(endIndex)
 
-            return SequenceNumberSet(startMessage...endMessage)
+            return SequenceNumberSet(startMessage ... endMessage)
         }
     }
 }
 
 // MARK: - CustomStringConvertible
+
 extension Mailbox.Info: CustomStringConvertible {
     public var description: String {
         var desc = "Info(\(name)"
@@ -248,9 +249,10 @@ extension Mailbox.Selection: CustomStringConvertible {
 }
 
 // MARK: - Special Folders Extension
-extension Array where Element == Mailbox.Info {
+
+public extension [Mailbox.Info] {
     /// Find the first mailbox with the inbox attribute, defaulting to the standard "INBOX" if none found
-    public var inbox: Element? {
+    var inbox: Element? {
         if let inboxMailbox = first(where: { $0.attributes.contains(.inbox) }) {
             return inboxMailbox
         }
@@ -259,7 +261,7 @@ extension Array where Element == Mailbox.Info {
     }
 
     /// Find the first mailbox with the sent attribute, falling back to common names
-    public var sent: Element? {
+    var sent: Element? {
         if let match = first(where: { $0.attributes.contains(.sent) }) {
             return match
         }
@@ -270,7 +272,7 @@ extension Array where Element == Mailbox.Info {
     }
 
     /// Find the first mailbox with the drafts attribute, falling back to common names
-    public var drafts: Element? {
+    var drafts: Element? {
         if let match = first(where: { $0.attributes.contains(.drafts) }) {
             return match
         }
@@ -281,7 +283,7 @@ extension Array where Element == Mailbox.Info {
     }
 
     /// Find the first mailbox with the trash attribute, falling back to common names
-    public var trash: Element? {
+    var trash: Element? {
         if let match = first(where: { $0.attributes.contains(.trash) }) {
             return match
         }
@@ -292,7 +294,7 @@ extension Array where Element == Mailbox.Info {
     }
 
     /// Find the first mailbox with the junk attribute, falling back to common names
-    public var junk: Element? {
+    var junk: Element? {
         if let match = first(where: { $0.attributes.contains(.junk) }) {
             return match
         }
@@ -303,7 +305,7 @@ extension Array where Element == Mailbox.Info {
     }
 
     /// Find the first mailbox with the archive attribute, falling back to common names
-    public var archive: Element? {
+    var archive: Element? {
         if let match = first(where: { $0.attributes.contains(.archive) }) {
             return match
         }
@@ -314,7 +316,7 @@ extension Array where Element == Mailbox.Info {
     }
 
     /// Find the first mailbox with the flagged attribute, falling back to common names
-    public var flagged: Element? {
+    var flagged: Element? {
         if let match = first(where: { $0.attributes.contains(.flagged) }) {
             return match
         }
@@ -352,15 +354,15 @@ extension Array where Element == Mailbox.Info {
     }
 
     /// Get only mailboxes with special-use attributes
-    public var specialFolders: [Element] {
+    var specialFolders: [Element] {
         filter { mailbox in
             mailbox.attributes.contains(.inbox) ||
-            mailbox.attributes.contains(.sent) ||
-            mailbox.attributes.contains(.drafts) ||
-            mailbox.attributes.contains(.trash) ||
-            mailbox.attributes.contains(.junk) ||
-            mailbox.attributes.contains(.archive) ||
-            mailbox.attributes.contains(.flagged)
+                mailbox.attributes.contains(.sent) ||
+                mailbox.attributes.contains(.drafts) ||
+                mailbox.attributes.contains(.trash) ||
+                mailbox.attributes.contains(.junk) ||
+                mailbox.attributes.contains(.archive) ||
+                mailbox.attributes.contains(.flagged)
         }
     }
 }

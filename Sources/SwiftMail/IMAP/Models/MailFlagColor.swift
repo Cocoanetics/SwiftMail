@@ -49,23 +49,23 @@ public enum MailFlagColor: String, Codable, Sendable, CaseIterable {
 
         // Map bit pattern to color
         switch (bit0, bit1, bit2) {
-        case (false, false, false):
-            self = .red
-        case (false, true, false):
-            self = .orange
-        case (false, false, true):
-            self = .yellow
-        case (true, true, false):
-            self = .green
-        case (true, false, true):
-            self = .blue
-        case (false, true, true):
-            self = .purple
-        case (true, true, true):
-            self = .gray
-        case (true, false, false):
-            // Standalone bit0 - not used by Mail.app, treat as red
-            self = .red
+            case (false, false, false):
+                self = .red
+            case (false, true, false):
+                self = .orange
+            case (false, false, true):
+                self = .yellow
+            case (true, true, false):
+                self = .green
+            case (true, false, true):
+                self = .blue
+            case (false, true, true):
+                self = .purple
+            case (true, true, true):
+                self = .gray
+            case (true, false, false):
+                // Standalone bit0 - not used by Mail.app, treat as red
+                self = .red
         }
     }
 
@@ -73,54 +73,56 @@ public enum MailFlagColor: String, Codable, Sendable, CaseIterable {
     /// - Returns: Array of `$MailFlagBit*` custom flags for this color
     public var flagBits: [Flag] {
         switch self {
-        case .red:
-            return [] // no color bits
-        case .orange:
-            return [.custom("$MailFlagBit1")]
-        case .yellow:
-            return [.custom("$MailFlagBit2")]
-        case .green:
-            return [.custom("$MailFlagBit0"), .custom("$MailFlagBit1")]
-        case .blue:
-            return [.custom("$MailFlagBit0"), .custom("$MailFlagBit2")]
-        case .purple:
-            return [.custom("$MailFlagBit1"), .custom("$MailFlagBit2")]
-        case .gray:
-            return [.custom("$MailFlagBit0"), .custom("$MailFlagBit1"), .custom("$MailFlagBit2")]
+            case .red:
+                [] // no color bits
+            case .orange:
+                [.custom("$MailFlagBit1")]
+            case .yellow:
+                [.custom("$MailFlagBit2")]
+            case .green:
+                [.custom("$MailFlagBit0"), .custom("$MailFlagBit1")]
+            case .blue:
+                [.custom("$MailFlagBit0"), .custom("$MailFlagBit2")]
+            case .purple:
+                [.custom("$MailFlagBit1"), .custom("$MailFlagBit2")]
+            case .gray:
+                [.custom("$MailFlagBit0"), .custom("$MailFlagBit1"), .custom("$MailFlagBit2")]
         }
     }
 
     /// Emoji representation of the flag color
     public var emoji: String {
         switch self {
-        case .red:      return "🚩"
-        case .orange:   return "🟧"
-        case .yellow:   return "🟨"
-        case .green:    return "🟩"
-        case .blue:     return "🟦"
-        case .purple:   return "🟪"
-        case .gray:     return "⬜"
+            case .red: "🚩"
+            case .orange: "🟧"
+            case .yellow: "🟨"
+            case .green: "🟩"
+            case .blue: "🟦"
+            case .purple: "🟪"
+            case .gray: "⬜"
         }
     }
 
     /// Human-readable localized name (English)
     public var displayName: String {
         switch self {
-        case .red:      return "Red"
-        case .orange:   return "Orange"
-        case .yellow:   return "Yellow"
-        case .green:    return "Green"
-        case .blue:     return "Blue"
-        case .purple:   return "Purple"
-        case .gray:     return "Gray"
+            case .red: "Red"
+            case .orange: "Orange"
+            case .yellow: "Yellow"
+            case .green: "Green"
+            case .blue: "Blue"
+            case .purple: "Purple"
+            case .gray: "Gray"
         }
     }
 }
 
 // MARK: - Equatable
+
 extension MailFlagColor: Equatable {}
 
 // MARK: - CustomStringConvertible
+
 extension MailFlagColor: CustomStringConvertible {
     public var description: String {
         displayName

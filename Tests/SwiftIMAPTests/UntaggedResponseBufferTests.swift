@@ -2,13 +2,13 @@ import Foundation
 import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct UntaggedResponseBufferTests {
     @Test
-    func testTracksBufferedByeAsTerminationSignal() async throws {
+    func tracksBufferedByeAsTerminationSignal() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())

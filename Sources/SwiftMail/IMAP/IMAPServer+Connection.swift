@@ -1,11 +1,11 @@
 import Foundation
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 
 // MARK: - Connection and Login
 
-extension IMAPServer {
+public extension IMAPServer {
     /**
      Connect to the IMAP server using SSL/TLS
 
@@ -18,7 +18,7 @@ extension IMAPServer {
      - `NIOSSLError` if SSL/TLS negotiation fails
      - Note: Logs connection attempts and capability retrieval at info level
      */
-    public func connect() async throws {
+    func connect() async throws {
         try await primaryConnection.connect()
     }
 
@@ -32,7 +32,7 @@ extension IMAPServer {
      - Returns: An array of server capabilities
      - Note: Updates the internal capabilities set with the server's response
      */
-    @discardableResult public func fetchCapabilities() async throws -> [Capability] {
+    @discardableResult func fetchCapabilities() async throws -> [Capability] {
         try await primaryConnection.fetchCapabilities()
     }
 
@@ -41,15 +41,15 @@ extension IMAPServer {
      - Parameter capability: The capability to check for
      - Returns: True if the server supports the capability
      */
-    func supportsCapability(_ check: (Capability) -> Bool) -> Bool {
-        return primaryConnection.supportsCapability(check)
+    internal func supportsCapability(_ check: (Capability) -> Bool) -> Bool {
+        primaryConnection.supportsCapability(check)
     }
 
     /**
      Check if the connection to the IMAP server is currently active
      - Returns: True if the connection is active and ready for commands
      */
-    public var isConnected: Bool {
+    var isConnected: Bool {
         primaryConnection.isConnected
     }
 
@@ -68,7 +68,7 @@ extension IMAPServer {
      - `IMAPError.connectionFailed` if not connected
      - Note: Logs login attempts at info level (without credentials)
      */
-    public func login(username: String, password: String) async throws {
+    func login(username: String, password: String) async throws {
         try await primaryConnection.login(username: username, password: password)
         authentication = .login(username: username, password: password)
         namespaces = primaryConnection.namespacesSnapshot
@@ -85,7 +85,7 @@ extension IMAPServer {
     ///   - password: The password for authentication.
     /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise AUTH=PLAIN,
     ///   or ``IMAPError.authFailed`` when authentication fails.
-    public func authenticatePlain(username: String, password: String) async throws {
+    func authenticatePlain(username: String, password: String) async throws {
         try await primaryConnection.authenticatePlain(username: username, password: password)
         authentication = .plain(username: username, password: password)
         namespaces = primaryConnection.namespacesSnapshot
@@ -97,7 +97,7 @@ extension IMAPServer {
     ///   - accessToken: The OAuth 2.0 access token.
     /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise XOAUTH2 or
     ///   ``IMAPError.authFailed`` when authentication fails.
-    public func authenticateXOAUTH2(email: String, accessToken: String) async throws {
+    func authenticateXOAUTH2(email: String, accessToken: String) async throws {
         try await primaryConnection.authenticateXOAUTH2(email: email, accessToken: accessToken)
         authentication = .xoauth2(email: email, accessTokenProvider: { accessToken })
         namespaces = primaryConnection.namespacesSnapshot
@@ -105,7 +105,7 @@ extension IMAPServer {
 
     /// Configures XOAUTH2 re-authentication to resolve the access token dynamically.
     /// Use this after a successful OAuth-backed login so automatic reconnects do not reuse a stale token.
-    public func setXOAUTH2AccessTokenProvider(
+    func setXOAUTH2AccessTokenProvider(
         email: String,
         accessTokenProvider: @escaping @Sendable () async throws -> String
     ) {
@@ -117,7 +117,7 @@ extension IMAPServer {
     /// - Returns: Information returned by the server.
     /// - Throws: ``IMAPError.commandNotSupported`` if the server does not support the command or
     ///   ``IMAPError.commandFailed`` on failure.
-    public func id(_ identification: Identification = Identification()) async throws -> Identification {
+    func id(_ identification: Identification = Identification()) async throws -> Identification {
         guard capabilities.contains(.id) else {
             throw IMAPError.commandNotSupported("ID command not supported by server")
         }
@@ -135,7 +135,7 @@ extension IMAPServer {
      - Throws: An error if the disconnection fails
      - Note: Logs disconnection at debug level
      */
-    public func disconnect() async throws {
+    func disconnect() async throws {
         try await closeAllConnections()
     }
 
@@ -148,7 +148,7 @@ extension IMAPServer {
     /// - Returns: A user-controlled named connection.
     /// - Throws: ``IMAPError/invalidArgument(_:)`` when `name` is empty or
     ///   ``IMAPError/commandFailed(_:)`` if authentication is not configured.
-    public func connection(named name: String) async throws -> IMAPNamedConnection {
+    func connection(named name: String) async throws -> IMAPNamedConnection {
         let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalizedName.isEmpty else {
             throw IMAPError.invalidArgument("Connection name must not be empty")
@@ -195,7 +195,7 @@ extension IMAPServer {
      - `IMAPError.connectionFailed` if not connected
      - Note: Logs logout at info level
      */
-    public func logout() async throws {
+    func logout() async throws {
         let command = LogoutCommand()
         try await executeCommand(command)
         try await closeAllConnections()
@@ -203,7 +203,7 @@ extension IMAPServer {
 
     // MARK: - Connection Management Helpers
 
-    func makeIdleConnection(sessionID: UUID, mailbox: String, group: EventLoopGroup) -> IMAPConnection {
+    internal func makeIdleConnection(sessionID: UUID, mailbox: String, group: EventLoopGroup) -> IMAPConnection {
         let shortID = String(sessionID.uuidString.prefix(8))
         let suffix = "idle-\(shortID)"
         let sanitizedMailbox = mailbox
@@ -228,7 +228,7 @@ extension IMAPServer {
         )
     }
 
-    func makeNamedConnection(name: String) -> IMAPConnection {
+    internal func makeNamedConnection(name: String) -> IMAPConnection {
         let sanitizedName = sanitizedConnectionName(name)
         let suffix = "named-\(sanitizedName)"
         let shortID = String(sanitizedName.prefix(24))
@@ -251,7 +251,7 @@ extension IMAPServer {
         )
     }
 
-    func sanitizedConnectionName(_ name: String) -> String {
+    internal func sanitizedConnectionName(_ name: String) -> String {
         let mapped = name.map { character -> Character in
             if character.isLetter || character.isNumber || character == "-" || character == "_" {
                 return character
@@ -267,14 +267,14 @@ extension IMAPServer {
         return String(collapsed.prefix(48))
     }
 
-    func endIdleSession(id: UUID) async throws {
+    internal func endIdleSession(id: UUID) async throws {
         guard let entry = idleConnections.removeValue(forKey: id) else { return }
 
         try? await entry.connection.done()
         try? await entry.connection.disconnect()
     }
 
-    func closeAllConnections() async throws {
+    internal func closeAllConnections() async throws {
         let idleEntries = idleConnections
         idleConnections.removeAll()
 

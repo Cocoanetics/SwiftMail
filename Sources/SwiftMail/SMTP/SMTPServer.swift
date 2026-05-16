@@ -2,17 +2,16 @@
 // A Swift SMTP client that encapsulates connection logic
 
 import Foundation
+import Logging
 import NIO
+import NIOConcurrencyHelpers
 import NIOCore
 import NIOSSL
-import Logging
-
-import NIOConcurrencyHelpers
 
 #if canImport(Glibc)
-import Glibc
+    import Glibc
 #elseif canImport(Musl)
-import Musl
+    import Musl
 #endif
 
 /**
@@ -49,7 +48,7 @@ import Musl
    - Trace: Raw SMTP protocol communication
  */
 public actor SMTPServer {
-    enum SMTPTransportMode: Sendable, Equatable {
+    enum SMTPTransportMode: Equatable {
         case implicitTLS
         case plainText
         case startTLSIfAvailable
@@ -161,12 +160,12 @@ public actor SMTPServer {
         self.port = port
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
-        self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
+        group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
-		let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
-		let inboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_IN")
+        let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
+        let inboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_IN")
 
-		self.duplexLogger = SMTPLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
+        duplexLogger = SMTPLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
     }
 
     deinit {
@@ -197,7 +196,7 @@ public actor SMTPServer {
         _ command: CommandType
     ) async throws -> CommandType.ResultType {
         // Ensure we have a valid channel
-        guard let channel = channel else {
+        guard let channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
 
@@ -274,10 +273,10 @@ public actor SMTPServer {
      - Note: Logs handler execution at debug level
      */
     func executeHandlerOnly<T: Sendable, HandlerType: SMTPCommandHandler>(
-        handlerType: HandlerType.Type,
+        handlerType _: HandlerType.Type,
         timeoutSeconds: Int = 5
     ) async throws -> T where HandlerType.ResultType == T {
-        guard let channel = channel else {
+        guard let channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
 
@@ -285,21 +284,21 @@ public actor SMTPServer {
         let promise = channel.eventLoop.makePromise(of: T.self)
 
         // Create the handler directly using initializer
-        let handler = HandlerType.init(commandTag: "", promise: promise)
+        let handler = HandlerType(commandTag: "", promise: promise)
 
         do {
             // Wait for the handler to complete with a timeout
             return try await withTimeout(seconds: Double(timeoutSeconds), operation: {
-				// Add the handler to the pipeline
-				try await channel.pipeline.addHandler(handler).get()
+                // Add the handler to the pipeline
+                try await channel.pipeline.addHandler(handler).get()
 
-				// Wait for the result
-				let result = try await promise.futureResult.get()
+                // Wait for the result
+                let result = try await promise.futureResult.get()
 
-				// Flush the DuplexLogger's buffer even if there was an error
-				self.duplexLogger.flushInboundBuffer()
+                // Flush the DuplexLogger's buffer even if there was an error
+                self.duplexLogger.flushInboundBuffer()
 
-				return result
+                return result
             }, onTimeout: {
                 // Fulfill the promise with an error to prevent leaks
                 promise.fail(SMTPError.connectionFailed("Response timeout"))
@@ -320,7 +319,7 @@ public actor SMTPServer {
      Handle errors in the SMTP channel
      - Parameter error: The error that occurred
      */
-    internal func handleChannelError(_ error: Error) {
+    func handleChannelError(_ error: Error) {
         // Check if the error is an SSL unclean shutdown, which is common during disconnection
         if let sslError = error as? NIOSSLError, case .uncleanShutdown = sslError {
             logger.notice("SSL unclean shutdown in SMTP channel (this is normal during disconnection)")
@@ -340,15 +339,15 @@ public actor SMTPServer {
      - Returns: The result of the operation
      - Throws: An error if the operation fails or times out
      */
-	private func withTimeout<T: Sendable>(
-		seconds: TimeInterval,
-		operation: @escaping @Sendable () async throws -> T,
-		onTimeout: @escaping @Sendable () throws -> Void
-	) async throws -> T {
-        return try await withThrowingTaskGroup(of: T.self) { group in
+    private func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        operation: @escaping @Sendable () async throws -> T,
+        onTimeout: @escaping @Sendable () throws -> Void
+    ) async throws -> T {
+        try await withThrowingTaskGroup(of: T.self) { group in
             // Add the main operation
             group.addTask {
-                return try await operation()
+                try await operation()
             }
 
             // Add a timeout task

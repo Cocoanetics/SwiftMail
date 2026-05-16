@@ -1,6 +1,6 @@
 import Foundation
-import NIOCore
 import Logging
+import NIOCore
 
 /// Handler for SMTP LOGIN authentication
 final class LoginAuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
@@ -10,7 +10,7 @@ final class LoginAuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// Required initializer
     required init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
         // Create state machine with default values - these will be set in the command
-        self.stateMachine = AuthHandlerStateMachine(
+        stateMachine = AuthHandlerStateMachine(
             method: AuthMethod.login,
             username: "",
             password: ""
@@ -19,11 +19,11 @@ final class LoginAuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     }
 
     /// Custom initializer with command parameters
-	convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>,
-	                 command: LoginAuthCommand) {
+    convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>,
+                     command: LoginAuthCommand) {
         self.init(commandTag: commandTag, promise: promise)
         // Update the state machine with the actual credentials from the command
-        self.stateMachine = AuthHandlerStateMachine(
+        stateMachine = AuthHandlerStateMachine(
             method: AuthMethod.login,
             username: command.username,
             password: command.password
@@ -34,11 +34,10 @@ final class LoginAuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// - Parameter response: The response line to process
     /// - Returns: Whether the handler is complete
     override func processResponse(_ response: SMTPResponse) -> Bool {
-
         // Use the state machine to process the response
         let result = stateMachine.processResponse(response) { [weak self] credential in
             // This closure is called when we need to send a credential
-            guard let self = self, let context = self.context else {
+            guard let self, let context else {
                 self?.promise.fail(SMTPError.connectionFailed("Channel context is nil"))
                 return
             }
@@ -63,28 +62,28 @@ final class LoginAuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
         return false // Not yet complete
     }
 
-    // Current channel context for sending responses
+    /// Current channel context for sending responses
     private var context: ChannelHandlerContext?
 
     /// Store the context when added to the pipeline
-    override public func channelRegistered(context: ChannelHandlerContext) {
+    override func channelRegistered(context: ChannelHandlerContext) {
         self.context = context
         context.fireChannelRegistered()
     }
 
     /// Store the context when handler is added to the pipeline (alternative to channelRegistered)
-    override public func handlerAdded(context: ChannelHandlerContext) {
+    override func handlerAdded(context: ChannelHandlerContext) {
         self.context = context
     }
 
     /// Store the context when the channel becomes active
-    override public func channelActive(context: ChannelHandlerContext) {
+    override func channelActive(context: ChannelHandlerContext) {
         self.context = context
         context.fireChannelActive()
     }
 
     /// Clear the context when removed from the pipeline
-    override public func handlerRemoved(context: ChannelHandlerContext) {
-        self.context = nil
+    override func handlerRemoved(context _: ChannelHandlerContext) {
+        context = nil
     }
 }

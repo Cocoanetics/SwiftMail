@@ -1,11 +1,11 @@
 import Foundation
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SMTPServerCapabilitiesTests {
     @Test
-    func testRequiresSTARTTLSUpgradePolicy() {
+    func requiresSTARTTLSUpgradePolicy() {
         #expect(
             SMTPServer.requiresSTARTTLSUpgrade(
                 transportMode: SMTPServer.resolveTransportMode(
@@ -38,7 +38,7 @@ struct SMTPServerCapabilitiesTests {
     }
 
     @Test
-    func testMissingSTARTTLSIsFatalForExplicitSTARTTLSPolicy() {
+    func missingSTARTTLSIsFatalForExplicitSTARTTLSPolicy() {
         #expect(
             SMTPServer.requiresMissingSTARTTLSError(
                 transportMode: SMTPServer.resolveTransportMode(
@@ -81,7 +81,7 @@ struct SMTPServerCapabilitiesTests {
     }
 
     @Test
-    func testMaximumMessageSizeOctetsParsesSIZECapability() {
+    func maximumMessageSizeOctetsParsesSIZECapability() {
         #expect(
             SMTPServer.maximumMessageSizeOctets(
                 from: ["PIPELINING", "SIZE 12345678", "AUTH PLAIN"]
@@ -90,14 +90,14 @@ struct SMTPServerCapabilitiesTests {
     }
 
     @Test
-    func testMaximumMessageSizeOctetsIgnoresMalformedSIZECapability() {
+    func maximumMessageSizeOctetsIgnoresMalformedSIZECapability() {
         #expect(SMTPServer.maximumMessageSizeOctets(from: ["SIZE nope"]) == nil)
         #expect(SMTPServer.maximumMessageSizeOctets(from: ["SIZE 0"]) == nil)
         #expect(SMTPServer.maximumMessageSizeOctets(from: ["AUTH PLAIN"]) == nil)
     }
 
     @Test
-    func testMailFromCommandFormatsSizeAnd8BitMIMEParameters() throws {
+    func mailFromCommandFormatsSizeAnd8BitMIMEParameters() throws {
         let plain = try MailFromCommand(senderAddress: "sender@example.com", messageSizeOctets: 4096)
         #expect(plain.toCommandString() == "MAIL FROM:<sender@example.com> SIZE=4096")
 
@@ -113,7 +113,7 @@ struct SMTPServerCapabilitiesTests {
     }
 
     @Test
-    func testMessageSizeOctetsTracksGeneratedContentForAttachments() {
+    func messageSizeOctetsTracksGeneratedContentForAttachments() {
         let inlineAttachment = Attachment(
             filename: "inline.png",
             mimeType: "image/png",
@@ -145,7 +145,7 @@ struct SMTPServerCapabilitiesTests {
     }
 
     @Test
-    func testPrepareEmailForSendOmitsMailFromSizeWhenServerDoesNotAdvertiseSIZE() throws {
+    func prepareEmailForSendOmitsMailFromSizeWhenServerDoesNotAdvertiseSIZE() throws {
         let email = Email(
             sender: EmailAddress(address: "sender@example.com"),
             recipients: [EmailAddress(address: "recipient@example.com")],
@@ -164,7 +164,7 @@ struct SMTPServerCapabilitiesTests {
     }
 
     @Test
-    func testPrepareEmailForSendUsesMailFromSizeWhenServerAdvertisesSIZE() throws {
+    func prepareEmailForSendUsesMailFromSizeWhenServerAdvertisesSIZE() throws {
         let email = Email(
             sender: EmailAddress(address: "sender@example.com"),
             recipients: [EmailAddress(address: "recipient@example.com")],
@@ -182,7 +182,7 @@ struct SMTPServerCapabilitiesTests {
     }
 
     @Test
-    func testPrepareEmailForSendRejectsMessagesExceedingAdvertisedSIZE() {
+    func prepareEmailForSendRejectsMessagesExceedingAdvertisedSIZE() {
         let email = Email(
             sender: EmailAddress(address: "sender@example.com"),
             recipients: [EmailAddress(address: "recipient@example.com")],

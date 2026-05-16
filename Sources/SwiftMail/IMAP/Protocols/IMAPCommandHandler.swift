@@ -2,8 +2,8 @@
 // Protocol for IMAP command handlers
 
 import Foundation
-import NIO
 import Logging
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
 

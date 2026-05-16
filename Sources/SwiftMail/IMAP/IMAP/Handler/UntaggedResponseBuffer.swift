@@ -1,9 +1,9 @@
 import Foundation
 import Logging
-@preconcurrency import NIOIMAP
-import NIOIMAPCore
 import NIO
 import NIOConcurrencyHelpers
+@preconcurrency import NIOIMAP
+import NIOIMAPCore
 
 /// A persistent NIO pipeline handler that buffers untagged IMAP responses
 /// when no transient command handler is active.
@@ -40,18 +40,18 @@ final class UntaggedResponseBuffer: ChannelInboundHandler, RemovableChannelHandl
             guard !_hasActiveHandler else { return false }
 
             switch response {
-            case .untagged:
-                return true
-            case .fetch:
-                return true
-            case .fatal:
-                return true
-            case .tagged:
-                // Tagged responses should not arrive when no handler is active,
-                // but don't buffer them — let them flow.
-                return false
-            default:
-                return false
+                case .untagged:
+                    return true
+                case .fetch:
+                    return true
+                case .fatal:
+                    return true
+                case .tagged:
+                    // Tagged responses should not arrive when no handler is active,
+                    // but don't buffer them — let them flow.
+                    return false
+                default:
+                    return false
             }
         }
 
@@ -108,13 +108,13 @@ final class UntaggedResponseBuffer: ChannelInboundHandler, RemovableChannelHandl
     }
 
     private static func terminationReason(for response: Response) -> String? {
-        if case .untagged(let payload) = response,
-           case .conditionalState(let status) = payload,
-           case .bye(let text) = status {
+        if case let .untagged(payload) = response,
+           case let .conditionalState(status) = payload,
+           case let .bye(text) = status {
             return text.text
         }
 
-        if case .fatal(let text) = response {
+        if case let .fatal(text) = response {
             return text.text
         }
 

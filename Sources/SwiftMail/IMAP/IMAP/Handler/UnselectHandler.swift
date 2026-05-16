@@ -1,11 +1,11 @@
 import Foundation
-import NIOIMAPCore
-import NIO
 import Logging
+import NIO
+import NIOIMAPCore
 
 /**
  Handler for the UNSELECT command
- 
+
  This handler processes responses from the IMAP server to the UNSELECT command.
  The UNSELECT command is an extension to IMAP defined in RFC 3691 that allows
  a client to deselect the current mailbox without expunging deleted messages.
@@ -20,18 +20,18 @@ final class UnselectHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @
         let handled = super.processResponse(response)
 
         // Process the response
-        if case .tagged(let tagged) = response, tagged.tag == commandTag {
+        if case let .tagged(tagged) = response, tagged.tag == commandTag {
             // This is our tagged response, handle it
             switch tagged.state {
-            case .ok:
-                // UNSELECT succeeded
-                succeedWithResult(())
-            case .no(let text):
-                // UNSELECT failed with NO response
-                failWithError(IMAPError.commandFailed("NO response: \(text)"))
-            case .bad(let text):
-                // UNSELECT failed with BAD response (likely not supported)
-                failWithError(IMAPError.commandFailed("BAD response: \(text)"))
+                case .ok:
+                    // UNSELECT succeeded
+                    succeedWithResult(())
+                case let .no(text):
+                    // UNSELECT failed with NO response
+                    failWithError(IMAPError.commandFailed("NO response: \(text)"))
+                case let .bad(text):
+                    // UNSELECT failed with BAD response (likely not supported)
+                    failWithError(IMAPError.commandFailed("BAD response: \(text)"))
             }
             return true
         }

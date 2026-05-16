@@ -23,12 +23,12 @@ public struct UIDValidity: Hashable, Codable, Sendable {
     // MARK: - NIOIMAPCore Conversion
 
     /// Creates from NIOIMAPCore representation.
-    internal init(nio: NIOIMAPCore.UIDValidity) {
-        self.value = UInt32(nio)
+    init(nio: NIOIMAPCore.UIDValidity) {
+        value = UInt32(nio)
     }
 
     /// Converts to NIOIMAPCore representation.
-    internal func toNIO() -> NIOIMAPCore.UIDValidity {
+    func toNIO() -> NIOIMAPCore.UIDValidity {
         NIOIMAPCore.UIDValidity(exactly: value)!
     }
 
@@ -41,11 +41,12 @@ public struct UIDValidity: Hashable, Codable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
-        self.value = try container.decode(UInt32.self)
+        value = try container.decode(UInt32.self)
     }
 }
 
 // MARK: - CustomStringConvertible
+
 extension UIDValidity: CustomStringConvertible {
     public var description: String {
         "\(value)"
@@ -53,6 +54,7 @@ extension UIDValidity: CustomStringConvertible {
 }
 
 // MARK: - ExpressibleByIntegerLiteral
+
 extension UIDValidity: ExpressibleByIntegerLiteral {
     public init(integerLiteral value: UInt32) {
         self.value = value

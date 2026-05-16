@@ -7,9 +7,9 @@ import NIOCore
 import NIOSSL
 
 #if canImport(Glibc)
-import Glibc
+    import Glibc
 #elseif canImport(Musl)
-import Musl
+    import Musl
 #endif
 
 extension SMTPServer {
@@ -49,7 +49,7 @@ extension SMTPServer {
         let greeting = try await executeHandlerOnly(handlerType: SMTPGreetingHandler.self)
 
         // Check if the greeting is positive
-        guard greeting.code >= 200 && greeting.code < 300 else {
+        guard greeting.code >= 200, greeting.code < 300 else {
             throw SMTPError.connectionFailed("Server rejected connection: \(greeting.message)")
         }
 
@@ -61,14 +61,14 @@ extension SMTPServer {
             capabilities: capabilities
         )
 
-        logger.info("Connected to SMTP server \(self.host):\(self.port)")
+        logger.info("Connected to SMTP server \(host):\(port)")
     }
 
     /// Build the NIO `ClientBootstrap` used by ``connect()``, optionally configured for implicit TLS.
     private func makeClientBootstrap(useImplicitTLS: Bool) -> ClientBootstrap {
-        let host = self.host
-        let certificateVerificationPolicy = self.certificateVerificationPolicy
-        let duplexLogger = self.duplexLogger
+        let host = host
+        let certificateVerificationPolicy = certificateVerificationPolicy
+        let duplexLogger = duplexLogger
 
         return ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
@@ -155,21 +155,21 @@ extension SMTPServer {
         transportSecurity: MailTransportSecurity
     ) -> SMTPTransportMode {
         switch transportSecurity {
-        case .automatic:
-            switch port {
-            case 465:
-                return .implicitTLS
-            case 587:
-                return .startTLSIfAvailable
-            default:
-                return .plainText
-            }
-        case .implicitTLS:
-            return .implicitTLS
-        case .startTLS:
-            return .startTLSRequired
-        case .plainText:
-            return .plainText
+            case .automatic:
+                switch port {
+                    case 465:
+                        .implicitTLS
+                    case 587:
+                        .startTLSIfAvailable
+                    default:
+                        .plainText
+                }
+            case .implicitTLS:
+                .implicitTLS
+            case .startTLS:
+                .startTLSRequired
+            case .plainText:
+                .plainText
         }
     }
 
@@ -178,10 +178,10 @@ extension SMTPServer {
         capabilities: [String]
     ) -> Bool {
         switch transportMode {
-        case .startTLSIfAvailable, .startTLSRequired:
-            return capabilities.contains("STARTTLS")
-        case .implicitTLS, .plainText:
-            return false
+            case .startTLSIfAvailable, .startTLSRequired:
+                capabilities.contains("STARTTLS")
+            case .implicitTLS, .plainText:
+                false
         }
     }
 
@@ -205,10 +205,10 @@ extension SMTPServer {
     }
 
     func closeAndClearChannelAfterSTARTTLSPolicyFailure() async {
-        let channel = self.channel
+        let channel = channel
         self.channel = nil
-        self.isTLSEnabled = false
-        self.capabilities = []
+        isTLSEnabled = false
+        capabilities = []
 
         guard let channel else {
             return
@@ -235,7 +235,7 @@ extension SMTPServer {
      - Note: Logs disconnection at info level
      */
     public func disconnect() async throws {
-        guard let channel = channel else {
+        guard let channel else {
             logger.warning("Attempted to disconnect when channel was already nil")
             return
         }
@@ -279,7 +279,7 @@ extension SMTPServer {
             throw SMTPError.tlsFailed("Server rejected STARTTLS")
         }
 
-        guard let channel = channel else {
+        guard let channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
 
@@ -290,7 +290,7 @@ extension SMTPServer {
 
         // Capture the configuration before the closure to avoid concurrency issues
         let finalTlsConfig = tlsConfig
-        let host = self.host
+        let host = host
 
         // Add SSL handler to the pipeline using EventLoop submission to ensure correct thread
         try await channel.eventLoop.submit {

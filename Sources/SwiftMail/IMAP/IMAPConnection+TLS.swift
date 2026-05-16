@@ -1,12 +1,12 @@
 import Foundation
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 import NIOSSL
 
 extension IMAPConnection {
     static func makeTLSHandler(
-        for channel: Channel,
+        for _: Channel,
         host: String,
         certificateVerificationPolicy: MailCertificateVerificationPolicy
     ) throws -> NIOSSLClientHandler {
@@ -55,12 +55,12 @@ extension IMAPConnection {
             throw IMAPError.connectionFailed("Server rejected STARTTLS")
         }
 
-        guard let channel = self.channel, channel.isActive else {
+        guard let channel, channel.isActive else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
 
-        let host = self.host
-        let certificateVerificationPolicy = self.certificateVerificationPolicy
+        let host = host
+        let certificateVerificationPolicy = certificateVerificationPolicy
         try await channel.eventLoop.submit {
             let sslHandler = try Self.makeTLSHandler(
                 for: channel,
@@ -71,6 +71,6 @@ extension IMAPConnection {
         }.get()
 
         let refreshedCapabilities = try await executeCommandBody(CapabilityCommand())
-        self.capabilities = Set(refreshedCapabilities)
+        capabilities = Set(refreshedCapabilities)
     }
 }

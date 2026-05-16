@@ -7,14 +7,14 @@ import NIOIMAP
 
 /// Command for retrieving server capabilities
 struct CapabilityCommand: IMAPTaggedCommand {
-	typealias ResultType = [Capability]
-	typealias HandlerType = CapabilityHandler
+    typealias ResultType = [Capability]
+    typealias HandlerType = CapabilityHandler
 
     /// Convert to an IMAP tagged command
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        return TaggedCommand(tag: tag, command: .capability)
+        TaggedCommand(tag: tag, command: .capability)
     }
 }
 
@@ -73,9 +73,9 @@ struct StoreCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     /// - Returns: A TaggedCommand ready to be sent to the server
     func toTaggedCommand(tag: String) -> TaggedCommand {
         if T.self == UID.self {
-            return TaggedCommand(tag: tag, command: .uidStore(.set(identifierSet.toNIOSet()), [], data.toNIO()))
+            TaggedCommand(tag: tag, command: .uidStore(.set(identifierSet.toNIOSet()), [], data.toNIO()))
         } else {
-            return TaggedCommand(tag: tag, command: .store(.set(identifierSet.toNIOSet()), [], data.toNIO()))
+            TaggedCommand(tag: tag, command: .store(.set(identifierSet.toNIOSet()), [], data.toNIO()))
         }
     }
 }
@@ -89,7 +89,7 @@ struct ExpungeCommand: IMAPTaggedCommand {
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        return TaggedCommand(tag: tag, command: .expunge)
+        TaggedCommand(tag: tag, command: .expunge)
     }
 }
 

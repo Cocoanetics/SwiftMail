@@ -6,48 +6,48 @@
 //
 
 import Foundation
-import NIOIMAPCore
-import NIO
 import Logging
+import NIO
+import NIOIMAPCore
 
 /// Handler for processing LIST command responses
 final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, IMAPCommandHandler, @unchecked Sendable {
-	typealias ResultType = [Mailbox.Info]
-	typealias InboundIn = Response
-	typealias InboundOut = Never
+    typealias ResultType = [Mailbox.Info]
+    typealias InboundIn = Response
+    typealias InboundOut = Never
 
     private var mailboxes: [NIOIMAPCore.MailboxInfo] = []
 
-	override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let response = self.unwrapInboundIn(data)
+    override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        let response = unwrapInboundIn(data)
 
         switch response {
-        case .tagged(let tagged) where tagged.tag == commandTag:
-            handleTaggedResponse(tagged)
-            context.pipeline.removeHandler(self, promise: nil)
-        case .untagged(let untagged):
-            if case .mailboxData(.list(let info)) = untagged {
-                mailboxes.append(info)
-            }
-            context.fireChannelRead(data)
-        default:
-            context.fireChannelRead(data)
+            case let .tagged(tagged) where tagged.tag == commandTag:
+                handleTaggedResponse(tagged)
+                context.pipeline.removeHandler(self, promise: nil)
+            case let .untagged(untagged):
+                if case let .mailboxData(.list(info)) = untagged {
+                    mailboxes.append(info)
+                }
+                context.fireChannelRead(data)
+            default:
+                context.fireChannelRead(data)
         }
     }
 
-	override func errorCaught(context: ChannelHandlerContext, error: Error) {
+    override func errorCaught(context: ChannelHandlerContext, error: Error) {
         promise.fail(error)
         context.fireErrorCaught(error)
     }
 
     private func handleTaggedResponse(_ response: TaggedResponse) {
         switch response.state {
-        case .ok:
-            // Convert NIOIMAPCore.MailboxInfo to our Mailbox.Info
-            let convertedMailboxes = mailboxes.map { Mailbox.Info(nio: $0) }
-            promise.succeed(convertedMailboxes)
-        case .no, .bad:
-            promise.fail(IMAPError.commandFailed("List command failed"))
+            case .ok:
+                // Convert NIOIMAPCore.MailboxInfo to our Mailbox.Info
+                let convertedMailboxes = mailboxes.map { Mailbox.Info(nio: $0) }
+                promise.succeed(convertedMailboxes)
+            case .no, .bad:
+                promise.fail(IMAPError.commandFailed("List command failed"))
         }
     }
 }

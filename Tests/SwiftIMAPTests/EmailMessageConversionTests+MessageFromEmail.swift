@@ -1,12 +1,12 @@
 // EmailMessageConversionTests+MessageFromEmail.swift
 // Tests for converting an `Email` into a `Message` ready for IMAP append / SMTP send.
 
-import Testing
 import Foundation
 import SwiftMail
+import Testing
 
 @Test
-func testMessageFromEmail_simpleRoundTrip() {
+func messageFromEmail_simpleRoundTrip() {
     let sender = EmailAddress(name: "Alice", address: "alice@example.com")
     let recipient = EmailAddress(name: "Bob", address: "bob@example.com")
     let email = Email(
@@ -26,7 +26,7 @@ func testMessageFromEmail_simpleRoundTrip() {
 }
 
 @Test
-func testMessageFromEmail_withCCAndBCC() {
+func messageFromEmail_withCCAndBCC() {
     let sender = EmailAddress(address: "alice@example.com")
     let to = EmailAddress(address: "bob@example.com")
     let cc = EmailAddress(address: "carol@example.com")
@@ -48,7 +48,7 @@ func testMessageFromEmail_withCCAndBCC() {
 }
 
 @Test
-func testMessageFromEmail_withHTMLBody() {
+func messageFromEmail_withHTMLBody() {
     let sender = EmailAddress(address: "alice@example.com")
     let email = Email(
         sender: sender,
@@ -68,7 +68,7 @@ func testMessageFromEmail_withHTMLBody() {
 }
 
 @Test
-func testMessageFromEmail_withAttachments() {
+func messageFromEmail_withAttachments() {
     let attachmentData = Data([0xAA, 0xBB, 0xCC, 0xDD])
     let att = Attachment(
         filename: "file.dat",
@@ -98,7 +98,7 @@ func testMessageFromEmail_withAttachments() {
 }
 
 @Test
-func testMessageFromEmail_inlineAttachment() {
+func messageFromEmail_inlineAttachment() {
     let imageData = Data([0x89, 0x50, 0x4E, 0x47])
     let att = Attachment(
         filename: "image.png",
@@ -127,7 +127,7 @@ func testMessageFromEmail_inlineAttachment() {
 }
 
 @Test
-func testMessageFromEmail_preservesMessageID() {
+func messageFromEmail_preservesMessageID() {
     let msgId = MessageID(localPart: "test123", domain: "mail.example.com")
     let sender = EmailAddress(address: "alice@example.com")
     var email = Email(
@@ -144,7 +144,7 @@ func testMessageFromEmail_preservesMessageID() {
 }
 
 @Test
-func testMessageFromEmail_additionalHeaders() {
+func messageFromEmail_additionalHeaders() {
     let sender = EmailAddress(address: "alice@example.com")
     var email = Email(
         sender: sender,
@@ -160,7 +160,7 @@ func testMessageFromEmail_additionalHeaders() {
 }
 
 @Test
-func testBidirectionalRoundTrip_emailToMessageToEmail() throws {
+func bidirectionalRoundTrip_emailToMessageToEmail() throws {
     let sender = EmailAddress(name: "Alice", address: "alice@example.com")
     let recipient = EmailAddress(name: "Bob", address: "bob@example.com")
     let msgId = MessageID(localPart: "roundtrip01", domain: "example.com")

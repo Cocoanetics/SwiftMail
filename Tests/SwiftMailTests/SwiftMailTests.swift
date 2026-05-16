@@ -1,25 +1,26 @@
-import Testing
 @testable import SwiftMail
+import Testing
+
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SwiftMailTests {
     @Test
-    func testIMAPReExport() {
+    func iMAPReExport() {
         #expect(true, "IMAP types are accessible")
     }
 
     @Test
-    func testSMTPReExport() {
+    func sMTPReExport() {
         #expect(true, "SMTP types are accessible")
     }
 
     @Test
-    func testMailCoreTypesAvailable() {
+    func mailCoreTypesAvailable() {
         let address = EmailAddress(name: "Test", address: "test@example.com")
         #expect(address.formatted == "Test <test@example.com>", "Can create and use EmailAddress")
     }
 
     @Test
-    func testCombinedUsage() {
+    func combinedUsage() {
         // Test that we can use both IMAP and SMTP types together
         let imapServer = IMAPServer(host: "imap.example.com", port: 993)
         let smtpServer = SMTPServer(host: "smtp.example.com", port: 587)

@@ -1,9 +1,9 @@
-// Email+CustomStringConvertible.swift
+// Message+CustomStringConvertible.swift
 // CustomStringConvertible extension for Email
 
 import Foundation
 
-// Standard description - simple and concise
+/// Standard description - simple and concise
 extension Message: CustomStringConvertible {
     public var description: String {
         let subjectStr = subject ?? "No subject"
@@ -14,13 +14,13 @@ extension Message: CustomStringConvertible {
     }
 }
 
-// Helper extension to truncate strings for display
+/// Helper extension to truncate strings for display
 private extension String {
     func truncated(maxLength: Int) -> String {
-        if self.count <= maxLength {
+        if count <= maxLength {
             return self
         }
-        let endIndex = self.index(self.startIndex, offsetBy: maxLength - 3)
+        let endIndex = index(startIndex, offsetBy: maxLength - 3)
         return String(self[..<endIndex]) + "..."
     }
 }

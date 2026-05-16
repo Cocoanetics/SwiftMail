@@ -1,7 +1,7 @@
 import Foundation
-import NIOIMAPCore
-import NIO
 import Logging
+import NIO
+import NIOIMAPCore
 
 /** Handler for the CREATE command */
 final class CreateMailboxHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {

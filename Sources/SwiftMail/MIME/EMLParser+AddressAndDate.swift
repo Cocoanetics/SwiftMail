@@ -4,12 +4,11 @@
 import Foundation
 
 extension EMLParser {
-
     // MARK: - Address Parsing
 
     /// Parse a comma-separated list of email addresses.
     static func parseAddressList(_ value: String?) -> [String] {
-        guard let value = value, !value.isEmpty else { return [] }
+        guard let value, !value.isEmpty else { return [] }
 
         // Split by comma, but respect quoted strings and angle brackets
         var addresses: [String] = []
@@ -19,23 +18,23 @@ extension EMLParser {
 
         for char in value {
             switch char {
-            case "\"":
-                inQuotes.toggle()
-                current.append(char)
-            case "<":
-                inAngle = true
-                current.append(char)
-            case ">":
-                inAngle = false
-                current.append(char)
-            case "," where !inQuotes && !inAngle:
-                let trimmed = current.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty {
-                    addresses.append(decodeRFC2047(trimmed) ?? trimmed)
-                }
-                current = ""
-            default:
-                current.append(char)
+                case "\"":
+                    inQuotes.toggle()
+                    current.append(char)
+                case "<":
+                    inAngle = true
+                    current.append(char)
+                case ">":
+                    inAngle = false
+                    current.append(char)
+                case "," where !inQuotes && !inAngle:
+                    let trimmed = current.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty {
+                        addresses.append(decodeRFC2047(trimmed) ?? trimmed)
+                    }
+                    current = ""
+                default:
+                    current.append(char)
             }
         }
 
@@ -56,13 +55,13 @@ extension EMLParser {
         formatter.locale = Locale(identifier: "en_US_POSIX")
 
         let formats = [
-            "EEE, dd MMM yyyy HH:mm:ss Z",       // Standard RFC 2822
-            "EEE, d MMM yyyy HH:mm:ss Z",        // Single-digit day
-            "dd MMM yyyy HH:mm:ss Z",            // No day name
-            "d MMM yyyy HH:mm:ss Z",             // No day name, single-digit day
-            "EEE, dd MMM yyyy HH:mm:ss ZZZZ",    // Named timezone
+            "EEE, dd MMM yyyy HH:mm:ss Z", // Standard RFC 2822
+            "EEE, d MMM yyyy HH:mm:ss Z", // Single-digit day
+            "dd MMM yyyy HH:mm:ss Z", // No day name
+            "d MMM yyyy HH:mm:ss Z", // No day name, single-digit day
+            "EEE, dd MMM yyyy HH:mm:ss ZZZZ", // Named timezone
             "EEE, d MMM yyyy HH:mm:ss ZZZZ",
-            "EEE, dd MMM yy HH:mm:ss Z"         // Two-digit year
+            "EEE, dd MMM yy HH:mm:ss Z" // Two-digit year
         ]
 
         for format in formats {

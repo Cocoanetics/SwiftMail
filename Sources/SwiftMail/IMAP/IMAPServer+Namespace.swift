@@ -4,17 +4,17 @@ import NIOIMAPCore
 
 // MARK: - Namespace and Listing
 
-extension IMAPServer {
+public extension IMAPServer {
     /// Retrieve namespace information from the server.
     /// - Returns: The namespace response describing personal, other user and shared namespaces.
     /// - Throws: `IMAPError.commandFailed` if the command fails.
-    public func fetchNamespaces() async throws -> NamespaceResponse {
+    func fetchNamespaces() async throws -> NamespaceResponse {
         // Route through executeCommand so auto-reauthentication fires if the
         // primary session has dropped, matching the recovery behaviour of all
         // other IMAPServer command methods.
         let command = NamespaceCommand()
         let response = try await executeCommand(command)
-        self.namespaces = response
+        namespaces = response
         return response
     }
 
@@ -29,7 +29,7 @@ extension IMAPServer {
      - Throws: `IMAPError.commandFailed` if the list operation fails
      - Note: Logs mailbox listing at info level with count
      */
-    public func listMailboxes(wildcard: String = "*") async throws -> [Mailbox.Info] {
+    func listMailboxes(wildcard: String = "*") async throws -> [Mailbox.Info] {
         if let namespaces {
             let patterns = namespaces.listingPatterns(for: wildcard)
             var allMailboxes: [Mailbox.Info] = []

@@ -1,6 +1,6 @@
 import NIOIMAPCore
 
-extension Set where Element == NIOIMAPCore.Capability {
+extension Set<NIOIMAPCore.Capability> {
     /// Returns the global server-wide APPENDLIMIT in bytes, if advertised.
     ///
     /// Per RFC 7889, a server may advertise `APPENDLIMIT=<n>` (with a numeric value) in its
