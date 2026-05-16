@@ -1,10 +1,11 @@
 // String+MIMETests.swift
 // Tests for MIME-related String extensions
 
-import Testing
 @testable import SwiftMail
+import Testing
 
 // MARK: - Tag Definitions
+
 extension Tag {
     @Tag static var core: Self
     @Tag static var mime: Self
@@ -14,30 +15,29 @@ extension Tag {
 
 @Suite("String MIME Extensions Tests", .serialized, .tags(.core, .mime, .fileHandling), .timeLimit(.minutes(1)))
 struct StringMIMETests {
-
     @Test("File extension for MIME type resolution", .tags(.crossPlatform))
     func fileExtensionForMIMEType() {
         #if os(macOS)
-        // On macOS, we use UTType which might return different extensions
-        // We only test that we get a valid extension back
-        if let jpegExt = String.fileExtension(for: "image/jpeg") {
-            #expect(["jpg", "jpeg"].contains(jpegExt))
-        } else {
-            Issue.record("Failed to get extension for image/jpeg")
-        }
+            // On macOS, we use UTType which might return different extensions
+            // We only test that we get a valid extension back
+            if let jpegExt = String.fileExtension(for: "image/jpeg") {
+                #expect(["jpg", "jpeg"].contains(jpegExt))
+            } else {
+                Issue.record("Failed to get extension for image/jpeg")
+            }
         #else
-        // Test common MIME types
-        #expect(String.fileExtension(for: "image/jpeg") == "jpg")
-        #expect(String.fileExtension(for: "image/png") == "png")
-        #expect(String.fileExtension(for: "application/pdf") == "pdf")
-        #expect(String.fileExtension(for: "text/plain") == "txt")
-        #expect(String.fileExtension(for: "text/html") == "html")
+            // Test common MIME types
+            #expect(String.fileExtension(for: "image/jpeg") == "jpg")
+            #expect(String.fileExtension(for: "image/png") == "png")
+            #expect(String.fileExtension(for: "application/pdf") == "pdf")
+            #expect(String.fileExtension(for: "text/plain") == "txt")
+            #expect(String.fileExtension(for: "text/html") == "html")
 
-        // Test Office document types
-        #expect(String.fileExtension(for: "application/msword") == "doc")
-        let docxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        #expect(String.fileExtension(for: docxMime) == "docx")
-        #expect(String.fileExtension(for: "application/vnd.ms-excel") == "xls")
+            // Test Office document types
+            #expect(String.fileExtension(for: "application/msword") == "doc")
+            let docxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            #expect(String.fileExtension(for: docxMime) == "docx")
+            #expect(String.fileExtension(for: "application/vnd.ms-excel") == "xls")
         #endif
 
         // Test unknown MIME type (should work the same on all platforms)
@@ -94,14 +94,14 @@ struct StringMIMETests {
         // Test development file types
         let jsonType = String.mimeType(for: "json")
         #expect(jsonType.hasPrefix("application/") || jsonType.hasPrefix("text/"),
-               "JSON should be application or text type, got: \(jsonType)")
+                "JSON should be application or text type, got: \(jsonType)")
 
         let cssType = String.mimeType(for: "css")
         #expect(cssType.hasPrefix("text/"), "CSS should be a text type, got: \(cssType)")
 
         let jsType = String.mimeType(for: "js")
         #expect(jsType.hasPrefix("application/") || jsType.hasPrefix("text/"),
-               "JavaScript should be application or text type, got: \(jsType)")
+                "JavaScript should be application or text type, got: \(jsType)")
     }
 
     @Test("Edge cases for MIME type resolution")

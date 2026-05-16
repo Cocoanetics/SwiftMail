@@ -4,7 +4,7 @@ import NIOIMAPCore
 
 // MARK: - Search Commands
 
-extension IMAPServer {
+public extension IMAPServer {
     /**
      Searches for messages matching the given criteria.
 
@@ -33,12 +33,12 @@ extension IMAPServer {
         deprecated,
         message: "Use extendedSearch(...) for structured results or search(..., sortCriteria:) for ordered results."
     )
-    public func search<T: MessageIdentifier>(
+    func search<T: MessageIdentifier>(
         identifierSet: MessageIdentifierSet<T>? = nil,
         criteria: [SearchCriteria],
         calendar: Calendar = Calendar(identifier: .gregorian)
     ) async throws -> MessageIdentifierSet<T> {
-        if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
+        if criteria.contains(where: \.requiresWithin), !capabilities.contains(.within) {
             throw IMAPError.commandNotSupported(
                 "WITHIN extension not supported by server (required for OLDER/YOUNGER search)"
             )
@@ -52,7 +52,7 @@ extension IMAPServer {
     }
 
     /// Search the selected mailbox and preserve server sort order.
-    public func search<T: MessageIdentifier>(
+    func search<T: MessageIdentifier>(
         identifierSet: MessageIdentifierSet<T>? = nil,
         criteria: [SearchCriteria],
         sortCriteria: [SortCriterion],
@@ -102,7 +102,7 @@ extension IMAPServer {
        - `IMAPError.commandFailed` if the search operation fails
        - `IMAPError.connectionFailed` if not connected
      */
-    public func extendedSearch<T: MessageIdentifier>(
+    func extendedSearch<T: MessageIdentifier>(
         identifierSet: MessageIdentifierSet<T>? = nil,
         criteria: [SearchCriteria],
         sortCriteria: [SortCriterion] = [],
@@ -110,13 +110,13 @@ extension IMAPServer {
         calendar: Calendar = Calendar(identifier: .gregorian),
         partialRange: PartialRange? = nil
     ) async throws -> ExtendedSearchResult<T> {
-        if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
+        if criteria.contains(where: \.requiresWithin), !capabilities.contains(.within) {
             throw IMAPError.commandNotSupported(
                 "WITHIN extension not supported by server (required for OLDER/YOUNGER search)"
             )
         }
         let useSort = capabilities.supportsSort(criteria: sortCriteria)
-        if !sortCriteria.isEmpty && !useSort {
+        if !sortCriteria.isEmpty, !useSort {
             if sortCriteria.contains(where: \.requiresDisplaySortCapability) {
                 throw IMAPError.commandNotSupported("DISPLAY sort requires SORT=DISPLAY capability")
             }

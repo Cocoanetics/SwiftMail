@@ -10,10 +10,6 @@ struct SelectMailboxCommand: IMAPTaggedCommand {
     let mailboxName: String
     let timeoutSeconds: Int = 30
 
-    init(mailboxName: String) {
-        self.mailboxName = mailboxName
-    }
-
     func validate() throws {
         guard !mailboxName.isEmpty else {
             throw IMAPError.invalidArgument("Mailbox name cannot be empty")
@@ -21,6 +17,6 @@ struct SelectMailboxCommand: IMAPTaggedCommand {
     }
 
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        return TaggedCommand(tag: tag, command: .select(MailboxName(ByteBuffer(string: mailboxName))))
+        TaggedCommand(tag: tag, command: .select(MailboxName(ByteBuffer(string: mailboxName))))
     }
 }

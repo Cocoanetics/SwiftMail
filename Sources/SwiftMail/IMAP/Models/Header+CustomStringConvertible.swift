@@ -4,15 +4,15 @@ extension MessageInfo: CustomStringConvertible {
     public var description: String {
         var result = ""
 
-        if let from = from {
+        if let from {
             result += "From: \(from)\n"
         }
 
-        if let subject = subject {
+        if let subject {
             result += "Subject: \(subject)\n"
         }
 
-        if let date = date {
+        if let date {
             result += "Date: \(date.formattedForDisplay())"
         }
 

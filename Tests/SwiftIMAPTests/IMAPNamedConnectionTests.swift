@@ -1,8 +1,8 @@
 import Foundation
 import NIO
 import NIOIMAPCore
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPNamedConnectionTests {
@@ -78,7 +78,7 @@ struct IMAPNamedConnectionTests {
             try await named.expunge(messages: UIDSet(UID(7)))
             Issue.record("Expected UID EXPUNGE to require UIDPLUS")
         } catch let error as IMAPError {
-            guard case .commandNotSupported(let message) = error else {
+            guard case let .commandNotSupported(message) = error else {
                 Issue.record("Expected commandNotSupported, got \(error)")
                 return
             }
@@ -119,7 +119,7 @@ struct IMAPNamedConnectionTests {
             _ = result
             Issue.record("Expected SORT to require server support")
         } catch let error as IMAPError {
-            guard case .commandNotSupported(let message) = error else {
+            guard case let .commandNotSupported(message) = error else {
                 Issue.record("Expected commandNotSupported, got \(error)")
                 return
             }

@@ -1,11 +1,11 @@
 import Foundation
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SMTPMessageContentTests {
     @Test
-    func testConstructContentAutoGeneratesMessageId() {
+    func constructContentAutoGeneratesMessageId() {
         let email = Email(
             sender: EmailAddress(address: "sender@example.com"),
             recipients: [EmailAddress(address: "recipient@example.com")],
@@ -19,7 +19,7 @@ struct SMTPMessageContentTests {
     }
 
     @Test
-    func testConstructContentUsesPresetMessageId() {
+    func constructContentUsesPresetMessageId() {
         let preset = MessageID(localPart: "my-custom-id", domain: "example.com")
         var email = Email(
             sender: EmailAddress(address: "sender@example.com"),
@@ -38,7 +38,7 @@ struct SMTPMessageContentTests {
     }
 
     @Test
-    func testConstructContentStableMessageIdAcrossCalls() {
+    func constructContentStableMessageIdAcrossCalls() {
         let preset = MessageID(localPart: "stable-id", domain: "example.com")
         var email = Email(
             sender: EmailAddress(address: "sender@example.com"),
@@ -57,7 +57,7 @@ struct SMTPMessageContentTests {
     }
 
     @Test
-    func testMessageIdPropertyDoesNotAffectAdditionalHeaders() {
+    func messageIdPropertyDoesNotAffectAdditionalHeaders() {
         var email = Email(
             sender: EmailAddress(address: "sender@example.com"),
             recipients: [EmailAddress(address: "recipient@example.com")],
@@ -77,7 +77,7 @@ struct SMTPMessageContentTests {
     }
 
     @Test
-    func testConstructContentUsesAdditionalHeaderMessageIDExactlyOnce() {
+    func constructContentUsesAdditionalHeaderMessageIDExactlyOnce() {
         var email = Email(
             sender: EmailAddress(address: "sender@example.com"),
             recipients: [EmailAddress(address: "recipient@example.com")],
@@ -100,7 +100,7 @@ struct SMTPMessageContentTests {
     }
 
     @Test
-    func testConstructContentTreatsAdditionalHeaderMessageIDCaseInsensitively() {
+    func constructContentTreatsAdditionalHeaderMessageIDCaseInsensitively() {
         var email = Email(
             sender: EmailAddress(address: "sender@example.com"),
             recipients: [EmailAddress(address: "recipient@example.com")],
@@ -119,7 +119,7 @@ struct SMTPMessageContentTests {
     }
 
     @Test
-    func testConstructContentMessageIDPropertyWinsOverAdditionalHeaderMessageID() {
+    func constructContentMessageIDPropertyWinsOverAdditionalHeaderMessageID() {
         var email = Email(
             sender: EmailAddress(address: "sender@example.com"),
             recipients: [EmailAddress(address: "recipient@example.com")],
@@ -139,7 +139,7 @@ struct SMTPMessageContentTests {
     }
 
     @Test
-    func testConstructContentPreservesRawAdditionalHeaderMessageIDWhenUnparseable() {
+    func constructContentPreservesRawAdditionalHeaderMessageIDWhenUnparseable() {
         var email = Email(
             sender: EmailAddress(address: "sender@example.com"),
             recipients: [EmailAddress(address: "recipient@example.com")],

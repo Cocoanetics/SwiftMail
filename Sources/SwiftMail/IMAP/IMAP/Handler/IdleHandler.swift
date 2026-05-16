@@ -1,8 +1,8 @@
 import Foundation
-import NIOIMAPCore
-import NIOIMAP
-import NIO
 import Logging
+import NIO
+import NIOIMAP
+import NIOIMAPCore
 
 /// Handler managing the IMAP IDLE session
 final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
@@ -23,7 +23,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
         super.init(commandTag: commandTag, promise: promise)
     }
 
-    override init(commandTag: String, promise: EventLoopPromise<Void>) {
+    override init(commandTag _: String, promise _: EventLoopPromise<Void>) {
         fatalError("Use init(commandTag:promise:continuation:) instead")
     }
 
@@ -44,166 +44,166 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
 
     override func handleUntaggedResponse(_ response: Response) -> Bool {
         switch response {
-        case .idleStarted:
-            // IDLE confirmation does not complete the command. We must remain
-            // installed to receive untagged events and the final tagged OK after DONE.
-            lock.withLock {
-                didReceiveIdleStarted = true
-            }
-            return false
-        case .untagged(let payload):
-            return handlePayload(payload)
-        case .fetch(let fetch):
-            handleFetch(fetch)
-        case .fatal(let text):
-            continuation.yield(.bye(text.text))
-            // Server-initiated termination - complete the IDLE session
-            succeedWithResult(())
-            continuation.finish()
-            return true  // Indicate this response was fully handled
-        default:
-            idleLogger.debug("IdleHandler: unhandled Response case: \(response)")
+            case .idleStarted:
+                // IDLE confirmation does not complete the command. We must remain
+                // installed to receive untagged events and the final tagged OK after DONE.
+                lock.withLock {
+                    didReceiveIdleStarted = true
+                }
+                return false
+            case let .untagged(payload):
+                return handlePayload(payload)
+            case let .fetch(fetch):
+                handleFetch(fetch)
+            case let .fatal(text):
+                continuation.yield(.bye(text.text))
+                // Server-initiated termination - complete the IDLE session
+                succeedWithResult(())
+                continuation.finish()
+                return true // Indicate this response was fully handled
+            default:
+                idleLogger.debug("IdleHandler: unhandled Response case: \(response)")
         }
         return false
     }
 
     private func handlePayload(_ payload: ResponsePayload) -> Bool {
         switch payload {
-        case .mailboxData(let mailboxData):
-            handleMailboxData(mailboxData)
-            return false
-        case .messageData(let messageData):
-            handleMessageData(messageData)
-            return false
-        case .conditionalState(let status):
-            return handleConditionalState(status)
-        case .capabilityData(let caps):
-            continuation.yield(.capability(caps.map { String($0) }))
-            return false
-        default:
-            logIgnoredPayload(payload)
-            return false
+            case let .mailboxData(mailboxData):
+                handleMailboxData(mailboxData)
+                return false
+            case let .messageData(messageData):
+                handleMessageData(messageData)
+                return false
+            case let .conditionalState(status):
+                return handleConditionalState(status)
+            case let .capabilityData(caps):
+                continuation.yield(.capability(caps.map { String($0) }))
+                return false
+            default:
+                logIgnoredPayload(payload)
+                return false
         }
     }
 
     private func handleMailboxData(_ mailboxData: MailboxData) {
         switch mailboxData {
-        case .exists(let count):
-            continuation.yield(.exists(Int(count)))
-        case .recent(let count):
-            continuation.yield(.recent(Int(count)))
-        case .flags(let nioFlags):
-            // Permanent flags of the selected mailbox have changed
-            let flags = nioFlags.map { Flag(nio: $0) }
-            continuation.yield(.flags(flags))
-        case .status(let mailboxName, _):
-            // Unsolicited STATUS — log and ignore (not a selected-mailbox event)
-            let name = String(bytes: mailboxName.bytes, encoding: .utf8) ?? "<unknown>"
-            idleLogger.debug("IdleHandler: ignoring unsolicited STATUS for mailbox '\(name)'")
-        default:
-            logIgnoredMailboxData(mailboxData)
+            case let .exists(count):
+                continuation.yield(.exists(Int(count)))
+            case let .recent(count):
+                continuation.yield(.recent(Int(count)))
+            case let .flags(nioFlags):
+                // Permanent flags of the selected mailbox have changed
+                let flags = nioFlags.map { Flag(nio: $0) }
+                continuation.yield(.flags(flags))
+            case let .status(mailboxName, _):
+                // Unsolicited STATUS — log and ignore (not a selected-mailbox event)
+                let name = String(bytes: mailboxName.bytes, encoding: .utf8) ?? "<unknown>"
+                idleLogger.debug("IdleHandler: ignoring unsolicited STATUS for mailbox '\(name)'")
+            default:
+                logIgnoredMailboxData(mailboxData)
         }
     }
 
     private func logIgnoredMailboxData(_ mailboxData: MailboxData) {
         switch mailboxData {
-        case .search:
-            idleLogger.debug("IdleHandler: ignoring unsolicited SEARCH response during IDLE")
-        case .sort:
-            idleLogger.debug("IdleHandler: ignoring unsolicited SORT response during IDLE")
-        case .list:
-            idleLogger.debug("IdleHandler: ignoring unsolicited LIST response during IDLE")
-        case .lsub:
-            idleLogger.debug("IdleHandler: ignoring unsolicited LSUB response during IDLE")
-        case .extendedSearch:
-            idleLogger.debug("IdleHandler: ignoring unsolicited ESEARCH response during IDLE")
-        case .namespace:
-            idleLogger.debug("IdleHandler: ignoring unsolicited NAMESPACE response during IDLE")
-        case .uidBatches:
-            idleLogger.debug("IdleHandler: ignoring unsolicited UIDBATCHES response during IDLE")
-        default:
-            break
+            case .search:
+                idleLogger.debug("IdleHandler: ignoring unsolicited SEARCH response during IDLE")
+            case .sort:
+                idleLogger.debug("IdleHandler: ignoring unsolicited SORT response during IDLE")
+            case .list:
+                idleLogger.debug("IdleHandler: ignoring unsolicited LIST response during IDLE")
+            case .lsub:
+                idleLogger.debug("IdleHandler: ignoring unsolicited LSUB response during IDLE")
+            case .extendedSearch:
+                idleLogger.debug("IdleHandler: ignoring unsolicited ESEARCH response during IDLE")
+            case .namespace:
+                idleLogger.debug("IdleHandler: ignoring unsolicited NAMESPACE response during IDLE")
+            case .uidBatches:
+                idleLogger.debug("IdleHandler: ignoring unsolicited UIDBATCHES response during IDLE")
+            default:
+                break
         }
     }
 
     private func handleMessageData(_ messageData: MessageData) {
         switch messageData {
-        case .expunge(let seq):
-            continuation.yield(.expunge(SequenceNumber(seq.rawValue)))
-        case .vanished(let nioUIDSet):
-            // RFC 7162 CONDSTORE: server reports expunged UIDs directly
-            let uidSet = UIDSet(nio: nioUIDSet)
-            continuation.yield(.vanished(uidSet))
-        case .vanishedEarlier(let nioUIDSet):
-            // VANISHED (EARLIER) is a historic-sync response, not a real-time event
-            idleLogger.debug("IdleHandler: ignoring VANISHED (EARLIER) for \(nioUIDSet) UIDs")
-        case .generateAuthorizedURL:
-            idleLogger.debug("IdleHandler: ignoring unsolicited GENURLAUTH during IDLE")
-        case .urlFetch:
-            idleLogger.debug("IdleHandler: ignoring unsolicited URLFETCH during IDLE")
+            case let .expunge(seq):
+                continuation.yield(.expunge(SequenceNumber(seq.rawValue)))
+            case let .vanished(nioUIDSet):
+                // RFC 7162 CONDSTORE: server reports expunged UIDs directly
+                let uidSet = UIDSet(nio: nioUIDSet)
+                continuation.yield(.vanished(uidSet))
+            case let .vanishedEarlier(nioUIDSet):
+                // VANISHED (EARLIER) is a historic-sync response, not a real-time event
+                idleLogger.debug("IdleHandler: ignoring VANISHED (EARLIER) for \(nioUIDSet) UIDs")
+            case .generateAuthorizedURL:
+                idleLogger.debug("IdleHandler: ignoring unsolicited GENURLAUTH during IDLE")
+            case .urlFetch:
+                idleLogger.debug("IdleHandler: ignoring unsolicited URLFETCH during IDLE")
         }
     }
 
     private func handleConditionalState(_ status: UntaggedStatus) -> Bool {
         switch status {
-        case .ok(let text):
-            if text.code == .alert {
-                continuation.yield(.alert(text.text))
-            }
-            return false
-        case .bye(let text):
-            continuation.yield(.bye(text.text))
-            // Server-initiated termination - complete the IDLE session
-            succeedWithResult(())
-            continuation.finish()
-            return true  // Indicate this response was fully handled
-        default:
-            return false
+            case let .ok(text):
+                if text.code == .alert {
+                    continuation.yield(.alert(text.text))
+                }
+                return false
+            case let .bye(text):
+                continuation.yield(.bye(text.text))
+                // Server-initiated termination - complete the IDLE session
+                succeedWithResult(())
+                continuation.finish()
+                return true // Indicate this response was fully handled
+            default:
+                return false
         }
     }
 
     private func logIgnoredPayload(_ payload: ResponsePayload) {
         switch payload {
-        case .enableData(let caps):
-            idleLogger.debug("IdleHandler: ignoring ENABLED response: \(caps.map { String($0) })")
-        case .id:
-            idleLogger.debug("IdleHandler: ignoring unsolicited ID response during IDLE")
-        case .quotaRoot:
-            idleLogger.debug("IdleHandler: ignoring unsolicited QUOTAROOT during IDLE")
-        case .quota:
-            idleLogger.debug("IdleHandler: ignoring unsolicited QUOTA during IDLE")
-        case .metadata:
-            idleLogger.debug("IdleHandler: ignoring unsolicited METADATA during IDLE")
-        case .jmapAccess:
-            idleLogger.debug("IdleHandler: ignoring unsolicited JMAPACCESS during IDLE")
-        default:
-            break
+            case let .enableData(caps):
+                idleLogger.debug("IdleHandler: ignoring ENABLED response: \(caps.map { String($0) })")
+            case .id:
+                idleLogger.debug("IdleHandler: ignoring unsolicited ID response during IDLE")
+            case .quotaRoot:
+                idleLogger.debug("IdleHandler: ignoring unsolicited QUOTAROOT during IDLE")
+            case .quota:
+                idleLogger.debug("IdleHandler: ignoring unsolicited QUOTA during IDLE")
+            case .metadata:
+                idleLogger.debug("IdleHandler: ignoring unsolicited METADATA during IDLE")
+            case .jmapAccess:
+                idleLogger.debug("IdleHandler: ignoring unsolicited JMAPACCESS during IDLE")
+            default:
+                break
         }
     }
 
     private func handleFetch(_ fetch: FetchResponse) {
         switch fetch {
-        case .start(let seq):
-            currentSeq = SequenceNumber(seq.rawValue)
-            currentUID = nil
-            currentAttributes = []
-        case .startUID(let uid):
-            // UID FETCH response — record the UID and begin collecting attributes
-            currentUID = UID(uid.rawValue)
-            currentSeq = nil
-            currentAttributes = []
-        case .simpleAttribute(let attribute):
-            currentAttributes.append(attribute)
-        case .finish:
-            handleFetchFinish()
-        case .streamingBegin(let kind, let byteCount):
-            let message = "IdleHandler: ignoring streaming FETCH begin"
-                + " (kind=\(kind), bytes=\(byteCount)) during IDLE"
-            idleLogger.debug("\(message)")
-        case .streamingBytes:
-            break  // Silently skip streaming body bytes
-        case .streamingEnd:
-            idleLogger.debug("IdleHandler: streaming FETCH ended during IDLE")
+            case let .start(seq):
+                currentSeq = SequenceNumber(seq.rawValue)
+                currentUID = nil
+                currentAttributes = []
+            case let .startUID(uid):
+                // UID FETCH response — record the UID and begin collecting attributes
+                currentUID = UID(uid.rawValue)
+                currentSeq = nil
+                currentAttributes = []
+            case let .simpleAttribute(attribute):
+                currentAttributes.append(attribute)
+            case .finish:
+                handleFetchFinish()
+            case let .streamingBegin(kind, byteCount):
+                let message = "IdleHandler: ignoring streaming FETCH begin"
+                    + " (kind=\(kind), bytes=\(byteCount)) during IDLE"
+                idleLogger.debug("\(message)")
+            case .streamingBytes:
+                break // Silently skip streaming body bytes
+            case .streamingEnd:
+                idleLogger.debug("IdleHandler: streaming FETCH ended during IDLE")
         }
     }
 

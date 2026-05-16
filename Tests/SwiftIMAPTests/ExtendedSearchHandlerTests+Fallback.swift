@@ -3,19 +3,18 @@ import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
-import Testing
 @testable import SwiftMail
+import Testing
 
 private typealias UID = SwiftMail.UID
 private typealias Helpers = ExtendedSearchHandlerTestHelpers
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct ExtendedSearchHandlerFallbackTests {
-
     // MARK: - Fallback: plain SEARCH response
 
     @Test
-    func testFallbackPlainSearch() async throws {
+    func fallbackPlainSearch() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -44,7 +43,7 @@ struct ExtendedSearchHandlerFallbackTests {
     }
 
     @Test
-    func testFallbackSortPreservesServerOrder() async throws {
+    func fallbackSortPreservesServerOrder() async throws {
         let channel = NIOAsyncTestingChannel()
         let promise = channel.eventLoop.makePromise(of: ExtendedSearchResult<UID>.self)
         let handler = ExtendedSearchHandler<UID>(commandTag: "A003B", promise: promise)

@@ -1,5 +1,5 @@
-import Foundation
 import ArgumentParser
+import Foundation
 import SwiftMail
 
 struct Search: ParsableCommand {
@@ -157,7 +157,7 @@ struct Search: ParsableCommand {
             if message.uid == nil {
                 continue
             }
-            if !attachmentExts.isEmpty && !Self.hasMatchingAttachment(in: message, extensions: attachmentExts) {
+            if !attachmentExts.isEmpty, !Self.hasMatchingAttachment(in: message, extensions: attachmentExts) {
                 continue
             }
             Self.printResult(message: message, fallbackUID: uid)

@@ -4,7 +4,7 @@ import NIOIMAPCore
 
 // MARK: - Message Manipulation Commands
 
-extension IMAPServer {
+public extension IMAPServer {
     /**
      Moves messages to another mailbox.
 
@@ -23,11 +23,11 @@ extension IMAPServer {
      - `IMAPError.emptyIdentifierSet` if the identifier set is empty
      - Note: Logs move operations at info level with message count and destination
      */
-    public func move<T: MessageIdentifier>(
+    func move<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>,
         to destinationMailbox: String
     ) async throws {
-        if capabilities.contains(.move) && (T.self != UID.self || capabilities.contains(.uidPlus)) {
+        if capabilities.contains(.move), T.self != UID.self || capabilities.contains(.uidPlus) {
             try await executeMove(messages: identifierSet, to: destinationMailbox)
         } else {
             // Fall back to COPY + DELETE + targeted expunge when UIDPLUS is available.
@@ -44,7 +44,7 @@ extension IMAPServer {
      - destinationMailbox: The name of the destination mailbox
      - Throws: An error if the move operation fails
      */
-    public func move<T: MessageIdentifier>(message identifier: T, to destinationMailbox: String) async throws {
+    func move<T: MessageIdentifier>(message identifier: T, to destinationMailbox: String) async throws {
         let set = MessageIdentifierSet<T>(identifier)
         try await move(messages: set, to: destinationMailbox)
     }
@@ -56,7 +56,7 @@ extension IMAPServer {
      - destinationMailbox: The name of the destination mailbox
      - Throws: An error if the move operation fails
      */
-    public func move(header: MessageInfo, to destinationMailbox: String) async throws {
+    func move(header: MessageInfo, to destinationMailbox: String) async throws {
         // Use the UID from the header if available (non-zero), otherwise fall back to sequence number
         if let uid = header.uid {
             // Use UID for moving
@@ -79,8 +79,8 @@ extension IMAPServer {
      - `IMAPError.emptyIdentifierSet` if the identifier set is empty
      - Note: Logs copy operations at info level with message count and destination
      */
-    public func copy<T: MessageIdentifier>(
-        messages identifierSet: MessageIdentifierSet<T>,
+    func copy(
+        messages identifierSet: MessageIdentifierSet<some MessageIdentifier>,
         to destinationMailbox: String
     ) async throws {
         let command = CopyCommand(
@@ -113,9 +113,9 @@ extension IMAPServer {
      - `IMAPError.emptyIdentifierSet` if the identifier set is empty
      - Note: Logs flag updates at debug level with operation type and message count
      */
-    public func store<T: MessageIdentifier>(
+    func store(
         flags: [Flag],
-        on identifierSet: MessageIdentifierSet<T>,
+        on identifierSet: MessageIdentifierSet<some MessageIdentifier>,
         operation: StoreData.StoreType
     ) async throws {
         let storeData = StoreData.flags(flags, operation)
@@ -132,13 +132,13 @@ extension IMAPServer {
      - Throws: `IMAPError.expungeFailed` if the expunge operation fails
      - Note: Logs expunge operations at info level with number of messages removed
      */
-    public func expunge() async throws {
+    func expunge() async throws {
         let command = ExpungeCommand()
         try await executeCommand(command)
     }
 
     /// Permanently removes specific deleted messages by UID when UIDPLUS is available.
-    public func expunge(messages identifierSet: UIDSet) async throws {
+    func expunge(messages identifierSet: UIDSet) async throws {
         guard supportsUIDPlus else {
             throw IMAPError.commandNotSupported("UID EXPUNGE command not supported by server")
         }
@@ -147,10 +147,10 @@ extension IMAPServer {
         try await executeCommand(command)
     }
 
-    func expungeMoveFallback<T: MessageIdentifier>(
+    internal func expungeMoveFallback<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>
     ) async throws {
-        if T.self == UID.self && capabilities.contains(.uidPlus) {
+        if T.self == UID.self, capabilities.contains(.uidPlus) {
             let uidSet = UIDSet(identifierSet.toArray().map { UID($0.value) })
             try await expunge(messages: uidSet)
         } else {
@@ -175,8 +175,8 @@ extension IMAPServer {
      - `IMAPError.emptyIdentifierSet` if the identifier set is empty
      - Note: Logs move operations at debug level
      */
-    func executeMove<T: MessageIdentifier>(
-        messages identifierSet: MessageIdentifierSet<T>,
+    internal func executeMove(
+        messages identifierSet: MessageIdentifierSet<some MessageIdentifier>,
         to destinationMailbox: String
     ) async throws {
         let command = MoveCommand(

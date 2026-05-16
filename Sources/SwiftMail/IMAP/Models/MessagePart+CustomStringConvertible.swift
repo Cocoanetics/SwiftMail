@@ -6,7 +6,7 @@ import Foundation
 extension MessagePart: CustomStringConvertible {
     /// A string representation of the message part
     public var description: String {
-        return """
+        """
         Part #\(section)
         Content-Type: \(contentType)
         \(disposition != nil ? "Content-Disposition: \(disposition!)" : "")

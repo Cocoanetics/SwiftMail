@@ -3,38 +3,38 @@
 
 import Foundation
 import Logging
-@preconcurrency import NIOIMAP
-import NIOIMAPCore
 import NIO
 import NIOConcurrencyHelpers
+@preconcurrency import NIOIMAP
+import NIOIMAPCore
 
 /// Handler for IMAP LOGIN command
 final class LoginHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected capabilities from untagged responses
     private var capabilities: [Capability] = []
 
-    	/// Handle a tagged OK response
-	/// - Parameter response: The tagged response
-	override func handleTaggedOKResponse(_ response: TaggedResponse) {
-		// Call super to handle CLIENTBUG warnings
-		super.handleTaggedOKResponse(response)
+    /// Handle a tagged OK response
+    /// - Parameter response: The tagged response
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Call super to handle CLIENTBUG warnings
+        super.handleTaggedOKResponse(response)
 
-		// Check if we have collected capabilities from untagged responses
-		let collectedCapabilities = lock.withLock { self.capabilities }
+        // Check if we have collected capabilities from untagged responses
+        let collectedCapabilities = lock.withLock { self.capabilities }
 
-		if !collectedCapabilities.isEmpty {
-			// If we have collected capabilities from untagged responses, use those
-			succeedWithResult(collectedCapabilities)
-		} else if case .ok(let responseText) = response.state,
-				  let code = responseText.code,
-				  case .capability(let capabilities) = code {
-			// If the OK response contains capabilities, use those
-			succeedWithResult(capabilities)
-		} else {
-			// No capabilities found
-			succeedWithResult([])
-		}
-	}
+        if !collectedCapabilities.isEmpty {
+            // If we have collected capabilities from untagged responses, use those
+            succeedWithResult(collectedCapabilities)
+        } else if case let .ok(responseText) = response.state,
+                  let code = responseText.code,
+                  case let .capability(capabilities) = code {
+            // If the OK response contains capabilities, use those
+            succeedWithResult(capabilities)
+        } else {
+            // No capabilities found
+            succeedWithResult([])
+        }
+    }
 
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
@@ -46,7 +46,7 @@ final class LoginHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandl
     /// - Parameter response: The untagged response
     /// - Returns: Whether the response was handled by this handler
     override func handleUntaggedResponse(_ response: Response) -> Bool {
-        if case .untagged(.capabilityData(let capabilities)) = response {
+        if case let .untagged(.capabilityData(capabilities)) = response {
             lock.withLock {
                 self.capabilities = capabilities
             }

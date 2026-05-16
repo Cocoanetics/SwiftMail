@@ -4,19 +4,18 @@
 import Foundation
 
 extension EMLParser {
-
     // MARK: - Header Block Splitting
 
     /// Split the raw message into header block (String) and body (Data).
     static func splitHeadersAndBody(from string: String, rawData: Data) -> (String, Data) {
         // Find the blank line separator — try \r\n\r\n first, then \n\n
         if let range = string.range(of: "\r\n\r\n") {
-            let headerBlock = String(string[string.startIndex..<range.lowerBound])
+            let headerBlock = String(string[string.startIndex ..< range.lowerBound])
             let bodyStart = string.distance(from: string.startIndex, to: range.upperBound)
             let bodyData = rawData.dropFirst(bodyStart)
             return (headerBlock, Data(bodyData))
         } else if let range = string.range(of: "\n\n") {
-            let headerBlock = String(string[string.startIndex..<range.lowerBound])
+            let headerBlock = String(string[string.startIndex ..< range.lowerBound])
             let bodyStart = string.distance(from: string.startIndex, to: range.upperBound)
             let bodyData = rawData.dropFirst(bodyStart)
             return (headerBlock, Data(bodyData))
@@ -34,7 +33,7 @@ extension EMLParser {
     static func parseHeaders(_ block: String) -> [String: String] {
         var headers: [String: String] = [:]
         var currentKey: String?
-        var currentValue: String = ""
+        var currentValue = ""
 
         let lines = block.components(separatedBy: .newlines)
         for line in lines {
@@ -50,7 +49,7 @@ extension EMLParser {
                     headers[key] = currentValue.trimmingCharacters(in: .whitespaces)
                 }
 
-                let key = String(line[line.startIndex..<colonIndex]).lowercased().trimmingCharacters(in: .whitespaces)
+                let key = String(line[line.startIndex ..< colonIndex]).lowercased().trimmingCharacters(in: .whitespaces)
                 let value = String(line[line.index(after: colonIndex)...])
                 currentKey = key
                 currentValue = value
@@ -69,7 +68,7 @@ extension EMLParser {
     static func parseAllHeaders(_ block: String) -> [(key: String, value: String)] {
         var headers: [(key: String, value: String)] = []
         var currentKey: String?
-        var currentValue: String = ""
+        var currentValue = ""
 
         let lines = block.components(separatedBy: .newlines)
         for line in lines {
@@ -82,7 +81,7 @@ extension EMLParser {
                     headers.append((key: key, value: currentValue.trimmingCharacters(in: .whitespaces)))
                 }
 
-                let key = String(line[line.startIndex..<colonIndex]).lowercased().trimmingCharacters(in: .whitespaces)
+                let key = String(line[line.startIndex ..< colonIndex]).lowercased().trimmingCharacters(in: .whitespaces)
                 let value = String(line[line.index(after: colonIndex)...])
                 currentKey = key
                 currentValue = value
@@ -110,7 +109,7 @@ extension EMLParser {
         let date = headers["date"].flatMap { parseRFC2822Date($0) }
 
         // Collect additional headers (everything except standard ones)
-        let standardKeys: Set<String> = [
+        let standardKeys: Set = [
             "from", "to", "cc", "bcc", "subject", "date", "message-id",
             "content-type", "content-transfer-encoding", "mime-version"
         ]

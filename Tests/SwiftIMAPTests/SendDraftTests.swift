@@ -1,14 +1,13 @@
 import Foundation
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SendDraftTests {
-
     // MARK: - parseEmailAddresses (single address)
 
     @Test
-    func testParseEmailAddressPlain() {
+    func parseEmailAddressPlain() {
         let results = IMAPServer.parseEmailAddresses(from: "user@example.com")
         #expect(results.count == 1)
         #expect(results[0].address == "user@example.com")
@@ -16,7 +15,7 @@ struct SendDraftTests {
     }
 
     @Test
-    func testParseEmailAddressWithDisplayName() {
+    func parseEmailAddressWithDisplayName() {
         let results = IMAPServer.parseEmailAddresses(from: "John Doe <john@example.com>")
         #expect(results.count == 1)
         #expect(results[0].address == "john@example.com")
@@ -24,7 +23,7 @@ struct SendDraftTests {
     }
 
     @Test
-    func testParseEmailAddressWithQuotedDisplayName() {
+    func parseEmailAddressWithQuotedDisplayName() {
         let results = IMAPServer.parseEmailAddresses(from: "\"Doe, John\" <john@example.com>")
         #expect(results.count == 1)
         #expect(results[0].address == "john@example.com")
@@ -32,7 +31,7 @@ struct SendDraftTests {
     }
 
     @Test
-    func testParseEmailAddressAngleBracketsOnly() {
+    func parseEmailAddressAngleBracketsOnly() {
         let results = IMAPServer.parseEmailAddresses(from: "<noreply@example.com>")
         #expect(results.count == 1)
         #expect(results[0].address == "noreply@example.com")
@@ -40,7 +39,7 @@ struct SendDraftTests {
     }
 
     @Test
-    func testParseEmailAddressTrimsWhitespace() {
+    func parseEmailAddressTrimsWhitespace() {
         let results = IMAPServer.parseEmailAddresses(from: "  user@example.com  ")
         #expect(results.count == 1)
         #expect(results[0].address == "user@example.com")
@@ -50,7 +49,7 @@ struct SendDraftTests {
     // MARK: - parseEmailAddresses (RFC 2822 group syntax)
 
     @Test
-    func testParseEmailAddressesGroupSyntax() {
+    func parseEmailAddressesGroupSyntax() {
         let results = IMAPServer.parseEmailAddresses(from: "Team: alice@example.com, bob@example.com;")
         #expect(results.count == 2)
         #expect(results[0].address == "alice@example.com")
@@ -58,7 +57,7 @@ struct SendDraftTests {
     }
 
     @Test
-    func testParseEmailAddressesGroupSyntaxWithNames() {
+    func parseEmailAddressesGroupSyntaxWithNames() {
         let results = IMAPServer.parseEmailAddresses(from: "Friends: Alice <alice@example.com>, Bob <bob@example.com>;")
         #expect(results.count == 2)
         #expect(results[0].address == "alice@example.com")
@@ -68,14 +67,14 @@ struct SendDraftTests {
     }
 
     @Test
-    func testParseEmailAddressesGroupSyntaxEmpty() {
+    func parseEmailAddressesGroupSyntaxEmpty() {
         // Empty group should return no addresses
         let results = IMAPServer.parseEmailAddresses(from: "Undisclosed recipients:;")
         #expect(results.isEmpty)
     }
 
     @Test
-    func testParseEmailAddressesGroupSyntaxMixed() {
+    func parseEmailAddressesGroupSyntaxMixed() {
         let input = "Sales: plain@example.com, Named <named@example.com>, <brackets@example.com>;"
         let results = IMAPServer.parseEmailAddresses(from: input)
         #expect(results.count == 3)

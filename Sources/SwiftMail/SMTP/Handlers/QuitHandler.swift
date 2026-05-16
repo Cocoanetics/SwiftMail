@@ -1,12 +1,11 @@
 import Foundation
-import NIOCore
 import Logging
+import NIOCore
 
 /**
  Handler for SMTP QUIT command responses
  */
 final class QuitHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
-
     /**
      Process a response from the server to the QUIT command
      - Parameter response: The response to process
@@ -17,7 +16,7 @@ final class QuitHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
         // But we should log the response for debugging purposes
 
         // 2xx responses are considered successful
-        if response.code >= 200 && response.code < 300 {
+        if response.code >= 200, response.code < 300 {
             promise.succeed(true)
         } else {
             // Even non-2xx responses are logged but we still succeed the promise

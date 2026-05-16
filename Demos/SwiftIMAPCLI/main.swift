@@ -1,12 +1,12 @@
-import Foundation
 import ArgumentParser
+import Foundation
 import Logging
 import SwiftMail
 
-// Setup Logger (silence unless debug)
+/// Setup Logger (silence unless debug)
 let logger = Logger(label: "com.cocoanetics.SwiftIMAPCLI")
 
-// Helper to run async code synchronously
+/// Helper to run async code synchronously
 func runAsyncBlock(_ block: @escaping () async throws -> Void) {
     let semaphore = DispatchSemaphore(value: 0)
     Task {
@@ -21,7 +21,7 @@ func runAsyncBlock(_ block: @escaping () async throws -> Void) {
     semaphore.wait()
 }
 
-// Helper to manage server lifecycle
+/// Helper to manage server lifecycle
 func withServer<T>(_ block: (IMAPServer) async throws -> T) async throws -> T {
     let environment = try loadIMAPEnvironment()
 

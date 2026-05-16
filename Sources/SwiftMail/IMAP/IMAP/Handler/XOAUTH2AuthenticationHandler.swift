@@ -25,20 +25,20 @@ final class XOAUTH2AuthenticationHandler:
         logger: Logger
     ) {
         self.credentials = credentials
-        self.shouldSendCredentialsOnChallenge = expectsChallenge
-        self.serverLogger = logger
-        self.sentInlineInitialResponse = !expectsChallenge
+        shouldSendCredentialsOnChallenge = expectsChallenge
+        serverLogger = logger
+        sentInlineInitialResponse = !expectsChallenge
         super.init(commandTag: commandTag, promise: promise)
     }
 
-    override init(commandTag: String, promise: EventLoopPromise<[Capability]>) {
+    override init(commandTag _: String, promise _: EventLoopPromise<[Capability]>) {
         fatalError("Use init(commandTag:promise:credentials:expectsChallenge:logger:) instead")
     }
 
     override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
 
-        if case .authenticationChallenge(var challengeBuffer) = response {
+        if case var .authenticationChallenge(challengeBuffer) = response {
             handleAuthenticationChallenge(&challengeBuffer, context: context)
         }
 
@@ -57,7 +57,7 @@ final class XOAUTH2AuthenticationHandler:
 
             // Compatibility fallback: some servers advertise SASL-IR but still emit an
             // empty continuation before consuming credentials. Allow one retry.
-            if sentInlineInitialResponse && !fallbackContinuationSent && challengeIsEmpty {
+            if sentInlineInitialResponse, !fallbackContinuationSent, challengeIsEmpty {
                 fallbackContinuationSent = true
                 return true
             }
@@ -93,9 +93,9 @@ final class XOAUTH2AuthenticationHandler:
         let capabilities = lock.withLock { collectedCapabilities }
         if !capabilities.isEmpty {
             succeedWithResult(capabilities)
-        } else if case .ok(let responseText) = response.state,
+        } else if case let .ok(responseText) = response.state,
                   let code = responseText.code,
-                  case .capability(let caps) = code {
+                  case let .capability(caps) = code {
             succeedWithResult(caps)
         } else {
             succeedWithResult([])
@@ -122,10 +122,10 @@ final class XOAUTH2AuthenticationHandler:
         }
 
         switch response {
-        case .untagged(.capabilityData(let capabilities)):
-            lock.withLock { collectedCapabilities = capabilities }
-        default:
-            break
+            case let .untagged(.capabilityData(capabilities)):
+                lock.withLock { collectedCapabilities = capabilities }
+            default:
+                break
         }
 
         return false

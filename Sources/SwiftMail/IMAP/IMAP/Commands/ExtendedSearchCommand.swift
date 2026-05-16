@@ -9,7 +9,7 @@ import NIOIMAPCore
 ///
 /// The generic parameter ``T`` selects sequence numbers vs. UIDs, mirroring
 /// ``SearchCommand``.
-struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
+struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     typealias ResultType = ExtendedSearchResult<T>
     typealias HandlerType = ExtendedSearchHandler<T>
 
@@ -31,7 +31,9 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
     /// When non-nil, `PARTIAL` is requested instead of `ALL`.
     let partialRange: NIOIMAPCore.PartialRange?
 
-    var timeoutSeconds: Int { return 60 }
+    var timeoutSeconds: Int {
+        60
+    }
 
     init(
         identifierSet: MessageIdentifierSet<T>? = nil,
@@ -60,7 +62,9 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         guard !useSort || !sortCriteria.isEmpty else {
             throw IMAPError.invalidArgument("Sort criteria cannot be empty when SORT is enabled")
         }
-        for criterion in criteria { try criterion.validate() }
+        for criterion in criteria {
+            try criterion.validate()
+        }
     }
 
     func toTaggedCommand(tag: String) -> TaggedCommand {
@@ -77,16 +81,15 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
 
         let key = SearchKey.and(nioCriteria)
 
-        let returnOptions: [SearchReturnOption]
-        if useEsearch {
+        let returnOptions: [SearchReturnOption] = if useEsearch {
             if let range = partialRange {
                 // PARTIAL and ALL are mutually exclusive; use PARTIAL for paged results.
-                returnOptions = [.count, .min, .max, .partial(range)]
+                [.count, .min, .max, .partial(range)]
             } else {
-                returnOptions = [.count, .min, .max, .all]
+                [.count, .min, .max, .all]
             }
         } else {
-            returnOptions = []
+            []
         }
 
         if useSort {

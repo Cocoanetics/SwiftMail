@@ -1,9 +1,11 @@
 import Foundation
+
 // Import the FoundationNetworking module on Linux platforms
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 import SwiftMail
+
 extension Email {
     /// Creates a demo email with Swift logo embedded inline
     /// - Parameters:
@@ -18,7 +20,7 @@ extension Email {
         recipient: EmailAddress,
         ccRecipient: EmailAddress? = nil,
         bccRecipient: EmailAddress? = nil,
-        username: String
+        username _: String
     ) async throws -> Email {
         print("Downloading Swift logo...")
         let logoURL = URL(string: "https://developer.apple.com/swift/images/swift-logo.svg")!
@@ -167,7 +169,7 @@ extension Email {
     }
 }
 
-// Helper function to format the current date in a compatible way
+/// Helper function to format the current date in a compatible way
 private func formatCurrentDate() -> String {
     let dateFormatter = DateFormatter()
     dateFormatter.dateStyle = .full

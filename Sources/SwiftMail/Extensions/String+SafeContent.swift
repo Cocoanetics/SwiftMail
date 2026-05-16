@@ -1,12 +1,12 @@
 import Foundation
 
-extension String {
+public extension String {
     /// Determines if a string is safe for 8bit MIME transmission according to SMTP standards.
     /// Verifies:
     /// - No NULL bytes (which would terminate message in some implementations)
     /// - No control characters except CR, LF, and TAB
     /// - No lines exceeding 998 characters (RFC 5322 limit)
-    public func isSafe8BitContent() -> Bool {
+    func isSafe8BitContent() -> Bool {
         // Quick return if empty string
         if isEmpty { return true }
 

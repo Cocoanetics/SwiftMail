@@ -1,11 +1,11 @@
 import Foundation
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 
 extension IMAPConnection {
     /// Result of a single pipelined fetch-part command.
-    struct PipelinedFetchResult: Sendable {
+    struct PipelinedFetchResult {
         let uid: UID
         let section: Section
         let data: Data
@@ -34,7 +34,7 @@ extension IMAPConnection {
         guard !requests.isEmpty else { return [] }
 
         return try await commandQueue.run { [self] in
-            try await self.pipelinedFetchPartsBody(requests: requests, timeoutSeconds: timeoutSeconds)
+            try await pipelinedFetchPartsBody(requests: requests, timeoutSeconds: timeoutSeconds)
         }
     }
 
@@ -96,7 +96,7 @@ extension IMAPConnection {
             try await connectBody()
         }
 
-        guard let channel = self.channel, channel.isActive else {
+        guard let channel, channel.isActive else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
         return channel
@@ -138,7 +138,7 @@ extension IMAPConnection {
         // Timeout for the entire batch — fails through handlers (not raw promises)
         // to respect PipelinedFetchPartHandler's double-resolve guard.
         let capturedHandlers = handlers
-        let logger = self.logger
+        let logger = logger
         return channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
             logger.warning("Pipelined fetch timed out after \(timeoutSeconds) seconds")
             let error = IMAPError.timeout

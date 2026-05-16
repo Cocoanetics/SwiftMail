@@ -1,18 +1,18 @@
 import Foundation
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SMTPTests {
     @Test
-    func testPlaceholder() {
+    func placeholder() {
         // This is just a placeholder test to ensure the test target can compile
         // Once you implement SwiftSMTP functionality, replace with actual tests
         #expect(Bool(true))
     }
 
     @Test
-    func testSMTPServerInit() {
+    func sMTPServerInit() {
         // Test that we can initialize an SMTPServer
         _ = SMTPServer(host: "smtp.example.com", port: 587)
         // Since there's no API to check properties, just verify it's created
@@ -20,7 +20,7 @@ struct SMTPTests {
     }
 
     @Test
-    func testEmailInit() {
+    func emailInit() {
         // Test email initialization
         let sender = EmailAddress(name: "Sender", address: "sender@example.com")
         let recipient1 = EmailAddress(address: "recipient1@example.com")
@@ -40,7 +40,7 @@ struct SMTPTests {
     }
 
     @Test
-    func testEmailStringInit() {
+    func emailStringInit() {
         // Test the string-based initializer
         let email = Email(
             senderName: "Test Sender",

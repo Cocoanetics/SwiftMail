@@ -1,19 +1,19 @@
 import Foundation
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SMTPErrorHandlingTests {
     // MARK: - SMTPError LocalizedError
 
     @Test
-    func testSMTPErrorLocalizedDescriptionReturnsRealMessage() {
+    func sMTPErrorLocalizedDescriptionReturnsRealMessage() {
         let error: Error = SMTPError.connectionFailed("Connection refused")
         #expect(error.localizedDescription == "SMTP connection failed: Connection refused")
     }
 
     @Test
-    func testSMTPErrorLocalizedDescriptionForAllCases() {
+    func sMTPErrorLocalizedDescriptionForAllCases() {
         let cases: [(SMTPError, String)] = [
             (.connectionFailed("timeout"), "SMTP connection failed: timeout"),
             (.invalidResponse("garbled"), "SMTP invalid response: garbled"),

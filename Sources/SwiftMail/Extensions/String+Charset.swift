@@ -1,6 +1,6 @@
 import Foundation
 #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
-import CoreFoundation
+    import CoreFoundation
 #endif
 
 /// Map odd or ambiguous charset labels to known good IANA names.
@@ -56,7 +56,7 @@ private let charsetAliasToIANA: [String: String] = [
     "ks-c-5601_1987": "euc-kr",
     "ks-c-5601": "euc-kr",
     "ks-c-5601-1992": "euc-kr",
-    "ks_c_5601-1987": "euc-kr",   // from your list
+    "ks_c_5601-1987": "euc-kr", // from your list
 
     // Chinese encodings
     "gb2312": "gb2312",
@@ -87,10 +87,10 @@ private let charsetAliasToIANA: [String: String] = [
 private let additionalCharsetEncodings: [String: String.Encoding] = [
     // UTF variants
     "utf-8": .utf8,
-    "utf-16": .utf16,       // platform-endian with BOM
+    "utf-16": .utf16, // platform-endian with BOM
     "utf-16le": .utf16LittleEndian,
     "utf-16be": .utf16BigEndian,
-    "utf-32": .utf32,       // platform-endian with BOM
+    "utf-32": .utf32, // platform-endian with BOM
     "utf-32le": .utf32LittleEndian,
     "utf-32be": .utf32BigEndian,
 
@@ -155,12 +155,12 @@ private func canonicalizeCharsetLabel(_ label: String) -> String {
 /// Returns `nil` on Linux (no CoreFoundation) or for labels CoreFoundation does not recognize.
 private func coreFoundationEncoding(for label: String) -> String.Encoding? {
     #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
-    let cfEnc = CFStringConvertIANACharSetNameToEncoding(label as CFString)
-    guard cfEnc != kCFStringEncodingInvalidId else { return nil }
-    let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
-    return String.Encoding(rawValue: nsEnc)
+        let cfEnc = CFStringConvertIANACharSetNameToEncoding(label as CFString)
+        guard cfEnc != kCFStringEncodingInvalidId else { return nil }
+        let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
+        return String.Encoding(rawValue: nsEnc)
     #else
-    return nil
+        return nil
     #endif
 }
 
@@ -180,10 +180,10 @@ public func stringEncoding(for rawCharset: String) -> String.Encoding? {
 
     // Hard "no text" cases.
     switch label {
-    case "binary", "x-binary":
-        return nil
-    default:
-        break
+        case "binary", "x-binary":
+            return nil
+        default:
+            break
     }
 
     // CoreFoundation IANA lookup (Apple platforms only).
@@ -202,6 +202,6 @@ extension String {
     /// - Parameter charset: The charset name to convert
     /// - Returns: The corresponding String.Encoding, or .utf8 if not recognized
     static func encodingFromCharset(_ charset: String) -> String.Encoding {
-        return stringEncoding(for: charset) ?? .utf8
+        stringEncoding(for: charset) ?? .utf8
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
-import NIOCore
 import Logging
+import NIOCore
 
 /**
  A protocol representing an SMTP command
@@ -24,8 +24,8 @@ protocol SMTPCommand where ResultType: Sendable {
     /// - Throws: An error if the command is invalid
     func validate() throws
 
-	/// Custom timeout for this operation
-	var timeoutSeconds: Int { get }
+    /// Custom timeout for this operation
+    var timeoutSeconds: Int { get }
 }
 
 /// Default implementation for common command behaviors
@@ -37,7 +37,7 @@ extension SMTPCommand {
 
     /// Default implementation encodes the command string as UTF-8 data
     func toCommandData() -> Data {
-        return Data(toCommandString().utf8)
+        Data(toCommandString().utf8)
     }
 
     /// Default implementation that calls toString with the hostname

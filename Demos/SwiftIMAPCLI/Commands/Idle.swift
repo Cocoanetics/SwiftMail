@@ -1,5 +1,5 @@
-import Foundation
 import ArgumentParser
+import Foundation
 import SwiftMail
 
 struct Idle: ParsableCommand {
@@ -45,44 +45,44 @@ struct Idle: ParsableCommand {
 
     private static func printEvent(_ event: IMAPServerEvent, timestamp: String) {
         switch event {
-        case .exists(let count):
-            print("[\(timestamp)] 📩 EXISTS count=\(count)")
-        case .expunge(let seq):
-            print("[\(timestamp)] 🗑️  EXPUNGE seq=\(seq.value)")
-        case .recent(let count):
-            print("[\(timestamp)] 🆕 RECENT count=\(count)")
-        case .vanished(let uids):
-            print("[\(timestamp)] 💨 VANISHED \(uids.count) UID(s)")
-        case .flags(let flags):
-            let flagList = flags.map(\.description).joined(separator: ", ")
-            print("[\(timestamp)] 🏷️  FLAGS [\(flagList)]")
-        default:
-            printSecondaryEvent(event, timestamp: timestamp)
+            case let .exists(count):
+                print("[\(timestamp)] 📩 EXISTS count=\(count)")
+            case let .expunge(seq):
+                print("[\(timestamp)] 🗑️  EXPUNGE seq=\(seq.value)")
+            case let .recent(count):
+                print("[\(timestamp)] 🆕 RECENT count=\(count)")
+            case let .vanished(uids):
+                print("[\(timestamp)] 💨 VANISHED \(uids.count) UID(s)")
+            case let .flags(flags):
+                let flagList = flags.map(\.description).joined(separator: ", ")
+                print("[\(timestamp)] 🏷️  FLAGS [\(flagList)]")
+            default:
+                printSecondaryEvent(event, timestamp: timestamp)
         }
     }
 
     private static func printSecondaryEvent(_ event: IMAPServerEvent, timestamp: String) {
         switch event {
-        case .fetch(let seq, let attrs):
-            let flags = attrs.compactMap { attr -> String? in
-                if case .flags(let flagList) = attr { return flagList.map(String.init).joined(separator: ", ") }
-                return nil
-            }.first ?? ""
-            print("[\(timestamp)] 📋 FETCH seq=\(seq.value) flags=[\(flags)]")
-        case .fetchUID(let uid, let attrs):
-            let flags = attrs.compactMap { attr -> String? in
-                if case .flags(let flagList) = attr { return flagList.map(String.init).joined(separator: ", ") }
-                return nil
-            }.first ?? ""
-            print("[\(timestamp)] 📋 FETCH uid=\(uid.value) flags=[\(flags)]")
-        case .bye(let text):
-            print("[\(timestamp)] 👋 BYE: \(text ?? "")")
-        case .alert(let text):
-            print("[\(timestamp)] ⚠️  ALERT: \(text)")
-        case .capability(let caps):
-            print("[\(timestamp)] 🔧 CAPABILITY: \(caps.joined(separator: " "))")
-        default:
-            break
+            case let .fetch(seq, attrs):
+                let flags = attrs.compactMap { attr -> String? in
+                    if case let .flags(flagList) = attr { return flagList.map(String.init).joined(separator: ", ") }
+                    return nil
+                }.first ?? ""
+                print("[\(timestamp)] 📋 FETCH seq=\(seq.value) flags=[\(flags)]")
+            case let .fetchUID(uid, attrs):
+                let flags = attrs.compactMap { attr -> String? in
+                    if case let .flags(flagList) = attr { return flagList.map(String.init).joined(separator: ", ") }
+                    return nil
+                }.first ?? ""
+                print("[\(timestamp)] 📋 FETCH uid=\(uid.value) flags=[\(flags)]")
+            case let .bye(text):
+                print("[\(timestamp)] 👋 BYE: \(text ?? "")")
+            case let .alert(text):
+                print("[\(timestamp)] ⚠️  ALERT: \(text)")
+            case let .capability(caps):
+                print("[\(timestamp)] 🔧 CAPABILITY: \(caps.joined(separator: " "))")
+            default:
+                break
         }
     }
 }

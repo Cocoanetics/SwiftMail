@@ -1,8 +1,8 @@
 import Foundation
-import Testing
 @testable import SwiftMail
+import Testing
 
-// Use existing tag definitions and add new ones
+/// Use existing tag definitions and add new ones
 extension Tag {
     @Tag static var encoding: Self
     @Tag static var decoding: Self
@@ -15,11 +15,10 @@ extension Tag {
 
 @Suite("Quoted-Printable Encoding Tests", .serialized, .tags(.imap, .encoding, .decoding), .timeLimit(.minutes(1)))
 struct QuotedPrintableTests {
-
     // MARK: - Test Resources
 
     func getResourceURL(for name: String, withExtension ext: String) -> URL? {
-        return Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Resources")
+        Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Resources")
     }
 
     func loadResourceContent(name: String, withExtension ext: String) throws -> String {
@@ -35,7 +34,7 @@ struct QuotedPrintableTests {
     }
 
     func normalizedLF(_ value: String) -> String {
-        return value
+        value
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
     }
@@ -261,7 +260,7 @@ struct QuotedPrintableTests {
         #expect("Plain text".decodeQuotedPrintable() == "Plain text")
 
         // Test malformed encoding (incomplete hex) - should return nil for invalid input
-        let malformed = "Hello=2World"  // Missing second hex digit
+        let malformed = "Hello=2World" // Missing second hex digit
         let result = malformed.decodeQuotedPrintable()
         #expect(result == nil, "Should return nil for malformed input")
 
@@ -323,7 +322,7 @@ struct QuotedPrintableTests {
     }
 }
 
-// Custom error type for test failures
+/// Custom error type for test failures
 struct TestFailure: Error, CustomStringConvertible {
     let description: String
 

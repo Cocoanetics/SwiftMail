@@ -4,16 +4,15 @@ import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
-import Testing
 @testable import SwiftMail
+import Testing
 
 private typealias Fixtures = XOAUTH2TestFixtures
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct XOAUTH2AuthenticationHandlerFailureTests {
-
     @Test
-    func testServerErrorBlobTriggersAuthFailure() async throws {
+    func serverErrorBlobTriggersAuthFailure() async throws {
         let setup = try await Fixtures.setUpChannel(tag: "A003", expectsChallenge: false)
         let channel = setup.channel
         let promise = setup.promise
@@ -50,10 +49,10 @@ struct XOAUTH2AuthenticationHandlerFailureTests {
             Issue.record("Expected authentication failure")
         } catch let error as IMAPError {
             switch error {
-            case .authFailed(let message):
-                #expect(message.contains("AUTHENTICATE failed"))
-            default:
-                Issue.record("Unexpected IMAPError: \(error)")
+                case let .authFailed(message):
+                    #expect(message.contains("AUTHENTICATE failed"))
+                default:
+                    Issue.record("Unexpected IMAPError: \(error)")
             }
         } catch {
             Issue.record("Unexpected error type: \(error)")
@@ -61,7 +60,7 @@ struct XOAUTH2AuthenticationHandlerFailureTests {
     }
 
     @Test
-    func testDirectNOFailsAuthentication() async throws {
+    func directNOFailsAuthentication() async throws {
         let setup = try await Fixtures.setUpChannel(tag: "A004", expectsChallenge: false)
         let channel = setup.channel
         let promise = setup.promise
@@ -96,7 +95,7 @@ struct XOAUTH2AuthenticationHandlerFailureTests {
     }
 
     @Test
-    func testChannelCloseFailsPendingAuthentication() async throws {
+    func channelCloseFailsPendingAuthentication() async throws {
         let setup = try await Fixtures.setUpChannel(tag: "A005", expectsChallenge: false)
         let channel = setup.channel
         let promise = setup.promise
@@ -118,7 +117,7 @@ struct XOAUTH2AuthenticationHandlerFailureTests {
             _ = try await promise.futureResult.get()
             Issue.record("Expected connection failure when channel closes")
         } catch let error as IMAPError {
-            if case .connectionFailed(let message) = error {
+            if case let .connectionFailed(message) = error {
                 #expect(message.contains("Connection closed before command completed"))
             } else {
                 Issue.record("Unexpected IMAPError: \(error)")
@@ -129,7 +128,7 @@ struct XOAUTH2AuthenticationHandlerFailureTests {
     }
 
     @Test
-    func testInactiveChannelDuringContinuationSendFailsPromptly() async throws {
+    func inactiveChannelDuringContinuationSendFailsPromptly() async throws {
         let setup = try await Fixtures.setUpChannel(
             tag: "A006",
             expectsChallenge: true,

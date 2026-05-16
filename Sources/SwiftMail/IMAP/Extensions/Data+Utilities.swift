@@ -11,8 +11,8 @@ extension Data {
         if let text = String(data: self, encoding: .utf8) {
             let truncated = text.prefix(maxLength)
             return String(truncated)
-        } else if self.count > 0 {
-            return "<Binary data: \(self.count.formattedFileSize())>"
+        } else if count > 0 {
+            return "<Binary data: \(count.formattedFileSize())>"
         } else {
             return "<Empty data>"
         }
@@ -27,8 +27,8 @@ extension Data {
         }
 
         // Check for common binary file signatures
-        if self.count >= 4 {
-            let bytes = [UInt8](self.prefix(4))
+        if count >= 4 {
+            let bytes = [UInt8](prefix(4))
 
             // Check for common binary file signatures
             if bytes.starts(with: [0xFF, 0xD8, 0xFF]) { // JPEG

@@ -34,17 +34,17 @@ enum MailTLSConfiguration {
     ) -> TLSConfiguration {
         var configuration = TLSConfiguration.makeClientConfiguration()
         switch certificateVerificationPolicy {
-        case .fullVerification:
-            configuration.certificateVerification = .fullVerification
-            configuration.trustRoots = .default
-        case .noVerification:
-            configuration.certificateVerification = .none
+            case .fullVerification:
+                configuration.certificateVerification = .fullVerification
+                configuration.trustRoots = .default
+            case .noVerification:
+                configuration.certificateVerification = .none
         }
         return configuration
     }
 
     static func serverHostnameForTLSHandler(host: String) -> String? {
-        let normalizedHost = if host.hasPrefix("[") && host.hasSuffix("]") {
+        let normalizedHost = if host.hasPrefix("["), host.hasSuffix("]") {
             String(host.dropFirst().dropLast())
         } else {
             host

@@ -1,12 +1,12 @@
 import Foundation
 import Logging
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 
 // MARK: - Idle
 
-extension IMAPServer {
+public extension IMAPServer {
     /// Begin an IDLE session and receive server events
     ///
     /// **Manual Cleanup**: When cancelling IDLE tasks, call `done()` in your cancellation
@@ -23,7 +23,7 @@ extension IMAPServer {
     ///
     /// - Returns: An AsyncStream of server events during the IDLE session
     /// - Throws: IMAPError if IDLE is not supported or already active
-    public func idle() async throws -> AsyncStream<IMAPServerEvent> {
+    func idle() async throws -> AsyncStream<IMAPServerEvent> {
         try await primaryConnection.idle()
     }
 
@@ -42,13 +42,13 @@ extension IMAPServer {
     ///   counts and sequence numbers accurate across connections.
     /// - Parameter mailbox: The mailbox to watch for changes.
     /// - Parameter configuration: Reliability tuning for IDLE renewal/heartbeat/reconnect.
-    public func idle(
+    func idle(
         on mailbox: String,
         configuration: IMAPIdleConfiguration = .default
     ) async throws -> IMAPIdleSession {
         let idleConfiguration = try configuration.validated()
 
-        guard let authentication = authentication else {
+        guard let authentication else {
             throw IMAPError.commandFailed("Authentication required before starting IDLE on a mailbox")
         }
 
@@ -90,7 +90,7 @@ extension IMAPServer {
     /// Renewal remains at the default strategy interval unless overridden via
     /// `idle(on:configuration:)`.
     @available(*, deprecated, message: "Use idle(on:configuration:) for full reliability configuration.")
-    public func idle(on mailbox: String, cycleInterval: TimeInterval) async throws -> IMAPIdleSession {
+    func idle(on mailbox: String, cycleInterval: TimeInterval) async throws -> IMAPIdleSession {
         var configuration = IMAPIdleConfiguration.default
         configuration.noopInterval = cycleInterval
         configuration.postIdleNoopEnabled = true
@@ -104,17 +104,17 @@ extension IMAPServer {
     ///
     /// This method is safe to call even if the server has already terminated the IDLE session
     /// (e.g., by sending a BYE response) or if automatic cleanup has already occurred.
-    public func done() async throws {
+    func done() async throws {
         try await primaryConnection.done()
     }
 
     /// Send a NOOP command and collect unsolicited responses.
-    public func noop() async throws -> [IMAPServerEvent] {
+    func noop() async throws -> [IMAPServerEvent] {
         try await primaryConnection.noop()
     }
 
     /// Wire up the AsyncStream + detached cycle task for a resilient IDLE session.
-    func startResilientIdleSession(request: IdleSessionRequest) -> IMAPIdleSession {
+    internal func startResilientIdleSession(request: IdleSessionRequest) -> IMAPIdleSession {
         var continuationRef: AsyncStream<IMAPServerEvent>.Continuation!
         let wrappedEvents = AsyncStream<IMAPServerEvent> { continuation in
             continuationRef = continuation
@@ -124,8 +124,8 @@ extension IMAPServer {
 
         let cycleLogger = IMAPResilientIdleRunner.makeCycleLogger(
             connection: request.connection,
-            host: self.host,
-            port: self.port,
+            host: host,
+            port: port,
             mailbox: request.resolvedMailbox
         )
 
@@ -150,7 +150,7 @@ extension IMAPServer {
         return IMAPIdleSession(events: wrappedEvents) { [weak self] in
             cycleTask.cancel()
             guard let self else { return }
-            try await self.endIdleSession(id: sessionID)
+            try await endIdleSession(id: sessionID)
         }
     }
 }

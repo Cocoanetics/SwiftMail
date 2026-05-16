@@ -4,16 +4,15 @@ import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
-import Testing
 @testable import SwiftMail
+import Testing
 
 private typealias Fixtures = XOAUTH2TestFixtures
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct XOAUTH2AuthenticationHandlerSuccessTests {
-
     @Test
-    func testSASLIRSuccess() async throws {
+    func sASLIRSuccess() async throws {
         let setup = try await Fixtures.setUpChannel(tag: "A001", expectsChallenge: false)
         let channel = setup.channel
         let promise = setup.promise
@@ -45,7 +44,7 @@ struct XOAUTH2AuthenticationHandlerSuccessTests {
     }
 
     @Test
-    func testFallbackWithoutSASLIR() async throws {
+    func fallbackWithoutSASLIR() async throws {
         let setup = try await Fixtures.setUpChannel(tag: "A002", expectsChallenge: true)
         let channel = setup.channel
         let promise = setup.promise
@@ -88,7 +87,7 @@ struct XOAUTH2AuthenticationHandlerSuccessTests {
     }
 
     @Test
-    func testSASLIRServerSendsEmptyChallengeRetriesCredentials() async throws {
+    func sASLIRServerSendsEmptyChallengeRetriesCredentials() async throws {
         let setup = try await Fixtures.setUpChannel(tag: "A002A", expectsChallenge: false)
         let channel = setup.channel
         let promise = setup.promise

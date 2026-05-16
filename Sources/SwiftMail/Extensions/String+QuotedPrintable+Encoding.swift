@@ -7,8 +7,7 @@ import Foundation
 extension String {
     /// Encodes the string using quoted-printable encoding
     public func quotedPrintableEncoded() -> String {
-        let normalizedLineEndings = self
-            .replacingOccurrences(of: "\r\n", with: "\n")
+        let normalizedLineEndings = replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
         let logicalLines = normalizedLineEndings.split(separator: "\n", omittingEmptySubsequences: false)
         return logicalLines.map(String.encodeQuotedPrintableLogicalLine).joined(separator: "\r\n")
@@ -22,28 +21,30 @@ extension String {
 
     /// Quoted-printable line limits.
     fileprivate static let qpMaxLineLength = 76
-    fileprivate static var qpMaxContentLengthForSoftBreak: Int { qpMaxLineLength - 1 }
+    fileprivate static var qpMaxContentLengthForSoftBreak: Int {
+        qpMaxLineLength - 1
+    }
 
     /// Encode a single source byte into a quoted-printable token, honouring the
     /// special end-of-line rules for SP/TAB characters.
     fileprivate static func qpToken(for byte: UInt8, isEndOfLogicalLine: Bool) -> QPToken {
         switch byte {
-        case UInt8(ascii: "="):
-            return QPToken(value: "=3D", isLiteralWhitespace: false)
-        case UInt8(ascii: " "):
-            if isEndOfLogicalLine {
-                return QPToken(value: "=20", isLiteralWhitespace: false)
-            }
-            return QPToken(value: " ", isLiteralWhitespace: true)
-        case UInt8(ascii: "\t"):
-            if isEndOfLogicalLine {
-                return QPToken(value: "=09", isLiteralWhitespace: false)
-            }
-            return QPToken(value: "\t", isLiteralWhitespace: true)
-        case 33...60, 62...126:
-            return QPToken(value: String(UnicodeScalar(byte)), isLiteralWhitespace: false)
-        default:
-            return QPToken(value: String(format: "=%02X", byte), isLiteralWhitespace: false)
+            case UInt8(ascii: "="):
+                return QPToken(value: "=3D", isLiteralWhitespace: false)
+            case UInt8(ascii: " "):
+                if isEndOfLogicalLine {
+                    return QPToken(value: "=20", isLiteralWhitespace: false)
+                }
+                return QPToken(value: " ", isLiteralWhitespace: true)
+            case UInt8(ascii: "\t"):
+                if isEndOfLogicalLine {
+                    return QPToken(value: "=09", isLiteralWhitespace: false)
+                }
+                return QPToken(value: "\t", isLiteralWhitespace: true)
+            case 33 ... 60, 62 ... 126:
+                return QPToken(value: String(UnicodeScalar(byte)), isLiteralWhitespace: false)
+            default:
+                return QPToken(value: String(format: "=%02X", byte), isLiteralWhitespace: false)
         }
     }
 

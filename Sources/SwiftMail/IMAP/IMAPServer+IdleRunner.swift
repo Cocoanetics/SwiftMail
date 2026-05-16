@@ -1,8 +1,8 @@
 import Foundation
 import Logging
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 
 // MARK: - Resilient IDLE Cycle Runner
 
@@ -15,10 +15,10 @@ struct IdleCycleState {
 
     init(configuration: IMAPIdleConfiguration) {
         let now = Date()
-        self.nextNoopAt = configuration.postIdleNoopEnabled
+        nextNoopAt = configuration.postIdleNoopEnabled
             ? now.addingTimeInterval(configuration.noopInterval)
             : nil
-        self.nextRenewalAt = now.addingTimeInterval(configuration.renewalInterval)
+        nextRenewalAt = now.addingTimeInterval(configuration.renewalInterval)
     }
 
     mutating func resetAfterReconnect(configuration: IMAPIdleConfiguration) {
@@ -110,7 +110,7 @@ enum IMAPResilientIdleRunner {
         )
         let jitterFactor = configuration.reconnectJitterFactor
         guard jitterFactor > 0 else { return baseDelay }
-        let jittered = baseDelay * (1 + Double.random(in: -jitterFactor...jitterFactor))
+        let jittered = baseDelay * (1 + Double.random(in: -jitterFactor ... jitterFactor))
         return max(0, jittered)
     }
 }

@@ -3,13 +3,13 @@ import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct FetchMessageInfoHandlerTests {
     @Test
-    func testSingleFetchPopulatesThreadingProperties() async throws {
+    func singleFetchPopulatesThreadingProperties() async throws {
         let headerBlock = """
         In-Reply-To: <root@example.com>\r
         References: <root@example.com> <child@example.com>\r
@@ -32,11 +32,14 @@ struct FetchMessageInfoHandlerTests {
 
         #expect(infos.count == 1)
         #expect(infos[0].inReplyTo == MessageID("root@example.com"))
-        #expect(infos[0].references == [MessageID("<root@example.com>")!, MessageID("<child@example.com>")!])
+        #expect(try infos[0].references == [
+            #require(MessageID("<root@example.com>")),
+            #require(MessageID("<child@example.com>"))
+        ])
     }
 
     @Test
-    func testBulkFetchPopulatesThreadingPropertiesForEachMessage() async throws {
+    func bulkFetchPopulatesThreadingPropertiesForEachMessage() async throws {
         let firstHeader = """
         In-Reply-To: <root-a@example.com>\r
         References: <root-a@example.com>\r
@@ -68,13 +71,16 @@ struct FetchMessageInfoHandlerTests {
 
         #expect(infos.count == 2)
         #expect(infos[0].inReplyTo == MessageID("root-a@example.com"))
-        #expect(infos[0].references == [MessageID("<root-a@example.com>")!])
+        #expect(try infos[0].references == [#require(MessageID("<root-a@example.com>"))])
         #expect(infos[1].inReplyTo == nil)
-        #expect(infos[1].references == [MessageID("<root-b@example.com>")!, MessageID("<child-b@example.com>")!])
+        #expect(try infos[1].references == [
+            #require(MessageID("<root-b@example.com>")),
+            #require(MessageID("<child-b@example.com>"))
+        ])
     }
 
     @Test
-    func testMissingThreadingHeadersStayAbsent() async throws {
+    func missingThreadingHeadersStayAbsent() async throws {
         let headerBlock = """
         Subject: No thread headers here\r
         X-Test: value\r
@@ -100,7 +106,7 @@ struct FetchMessageInfoHandlerTests {
     }
 
     @Test
-    func testAdditionalFieldsArePopulated() async throws {
+    func additionalFieldsArePopulated() async throws {
         let headerBlock = """
         List-ID: <announcements.example.com>\r
         List-Unsubscribe: <https://example.com/unsubscribe>\r
@@ -126,7 +132,7 @@ struct FetchMessageInfoHandlerTests {
 
         #expect(infos.count == 1)
         #expect(infos[0].inReplyTo == MessageID("root@example.com"))
-        #expect(infos[0].references == [MessageID("<root@example.com>")!])
+        #expect(try infos[0].references == [#require(MessageID("<root@example.com>"))])
         #expect(infos[0].additionalFields?["list-id"] == "<announcements.example.com>")
         #expect(infos[0].additionalFields?["list-unsubscribe"] == "<https://example.com/unsubscribe>")
         #expect(infos[0].additionalFields?["x-newsletter-id"] == "12345")
@@ -135,13 +141,13 @@ struct FetchMessageInfoHandlerTests {
     }
 
     @Test
-    func testParseEnvelopeDateAcceptsRFC5322() {
+    func parseEnvelopeDateAcceptsRFC5322() {
         let date = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 29 Apr 2026 02:14:25 +0000")
         #expect(date != nil)
     }
 
     @Test
-    func testParseEnvelopeDateAcceptsLowercaseMonth() {
+    func parseEnvelopeDateAcceptsLowercaseMonth() {
         // Issue #157: senders sometimes emit lowercase month names.
         let date = FetchMessageInfoHandler.parseEnvelopeDate("29 apr 2026 02:14:25")
         let expected = Self.makeDate(year: 2026, month: 4, day: 29, hour: 2, minute: 14, second: 25)
@@ -149,26 +155,26 @@ struct FetchMessageInfoHandlerTests {
     }
 
     @Test
-    func testParseEnvelopeDateAcceptsLowercaseWeekday() {
+    func parseEnvelopeDateAcceptsLowercaseWeekday() {
         let date = FetchMessageInfoHandler.parseEnvelopeDate("wed, 29 Apr 2026 02:14:25 +0000")
         let expected = Self.makeDate(year: 2026, month: 4, day: 29, hour: 2, minute: 14, second: 25)
         #expect(date == expected)
     }
 
     @Test
-    func testParseEnvelopeDateStripsTrailingComment() {
+    func parseEnvelopeDateStripsTrailingComment() {
         let date = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 29 Apr 2026 02:14:25 +0000 (UTC)")
         #expect(date != nil)
     }
 
     @Test
-    func testParseEnvelopeDateRejectsGarbage() {
+    func parseEnvelopeDateRejectsGarbage() {
         let date = FetchMessageInfoHandler.parseEnvelopeDate("not a date")
         #expect(date == nil)
     }
 
     @Test
-    func testParseEnvelopeDateRejectsOutOfRangeDay() {
+    func parseEnvelopeDateRejectsOutOfRangeDay() {
         // Strict parsing must reject impossible day numbers rather than rolling
         // them forward into a different valid date.
         let date = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 99 Apr 2026 02:14:25 +0000")

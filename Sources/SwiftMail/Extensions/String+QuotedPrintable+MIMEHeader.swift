@@ -12,10 +12,10 @@ extension String {
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
             return self
         }
-        let matches = regex.matches(in: self, options: [], range: NSRange(self.startIndex..., in: self))
+        let matches = regex.matches(in: self, options: [], range: NSRange(startIndex..., in: self))
 
         var state = MIMEHeaderDecodeState(
-            lastIndex: self.startIndex,
+            lastIndex: startIndex,
             hasPreviousEncodedWord: false,
             pendingRun: nil,
             result: ""
@@ -86,7 +86,7 @@ extension String {
         let isAdjacentEncodedWordWhitespace = state.hasPreviousEncodedWord &&
             parts.between.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        if !parts.between.isEmpty && !isAdjacentEncodedWordWhitespace {
+        if !parts.between.isEmpty, !isAdjacentEncodedWordWhitespace {
             flushMIMEEncodedWordRun(&state.pendingRun, into: &state.result)
             state.pendingRun = nil
             state.result += String(parts.between)
@@ -131,7 +131,7 @@ extension String {
             encodedText: String(source[textRange]),
             originalWord: String(source[range]),
             upperBound: range.upperBound,
-            between: source[state.lastIndex..<range.lowerBound]
+            between: source[state.lastIndex ..< range.lowerBound]
         )
     }
 
@@ -168,7 +168,7 @@ extension String {
     public func detectCharsetEncoding() -> String.Encoding {
         // Look for Content-Type header with charset
         let contentTypePattern = "Content-Type:.*?charset=([^\\s;\"']+)"
-        if let range = self.range(of: contentTypePattern, options: .regularExpression, range: nil, locale: nil),
+        if let range = range(of: contentTypePattern, options: .regularExpression, range: nil, locale: nil),
            let charsetRange = self[range].range(of: "charset=([^\\s;\"']+)", options: .regularExpression) {
             let charsetString = self[charsetRange].replacingOccurrences(of: "charset=", with: "")
             return String.encodingFromCharset(charsetString)
@@ -176,7 +176,7 @@ extension String {
 
         // Look for meta tag with charset
         let metaPattern = "<meta[^>]*charset=([^\\s;\"'/>]+)"
-        if let range = self.range(of: metaPattern, options: .regularExpression, range: nil, locale: nil),
+        if let range = range(of: metaPattern, options: .regularExpression, range: nil, locale: nil),
            let charsetRange = self[range].range(of: "charset=([^\\s;\"'/>]+)", options: .regularExpression) {
             let charsetString = self[charsetRange].replacingOccurrences(of: "charset=", with: "")
             return String.encodingFromCharset(charsetString)
@@ -190,7 +190,7 @@ extension String {
     /// - Returns: The decoded content
     public func decodeQuotedPrintableContent() -> String {
         // Split the content into lines
-        let lines = self.components(separatedBy: .newlines)
+        let lines = components(separatedBy: .newlines)
         var inBody = false
         var bodyContent = ""
         var headerContent = ""
@@ -210,7 +210,7 @@ extension String {
                 headerContent += line + "\n"
 
                 // Check for Content-Type header with charset
-                if line.lowercased().contains("content-type:") && line.lowercased().contains("charset=") {
+                if line.lowercased().contains("content-type:"), line.lowercased().contains("charset=") {
                     if let range = line.range(of: "charset=([^\\s;\"']+)", options: .regularExpression) {
                         let charsetString = line[range].replacingOccurrences(of: "charset=", with: "")
                             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -221,7 +221,7 @@ extension String {
                 }
 
                 // Check if this is a Content-Transfer-Encoding header
-                if line.lowercased().contains("content-transfer-encoding:") &&
+                if line.lowercased().contains("content-transfer-encoding:"),
                    line.lowercased().contains("quoted-printable") {
                     // Found quoted-printable encoding
                     inBody = false
@@ -245,24 +245,24 @@ extension String {
 
         // If we didn't find quoted-printable encoding or no body content,
         // try to decode the entire content with the detected charset
-        if let decodedContent = self.decodeQuotedPrintable(encoding: contentEncoding) {
+        if let decodedContent = decodeQuotedPrintable(encoding: contentEncoding) {
             return decodedContent
         }
 
         // Last resort: try with UTF-8
-        return self.decodeQuotedPrintable() ?? self
+        return decodeQuotedPrintable() ?? self
     }
 
     fileprivate static func decodeMIMEEncodedWordBytes(_ encodedText: String, encoding: String) -> Data? {
         switch encoding {
-        case "B":
-            return Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters)
-        case "Q":
-            return decodeMIMEHeaderQuotedPrintableBytes(
-                encodedText.replacingOccurrences(of: "_", with: " ")
-            )
-        default:
-            return nil
+            case "B":
+                Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters)
+            case "Q":
+                decodeMIMEHeaderQuotedPrintableBytes(
+                    encodedText.replacingOccurrences(of: "_", with: " ")
+                )
+            default:
+                nil
         }
     }
 
@@ -308,7 +308,7 @@ extension String {
                     return nil
                 }
 
-                let hex = String(withoutSoftBreaks[nextIndex...nextNextIndex])
+                let hex = String(withoutSoftBreaks[nextIndex ... nextNextIndex])
                 guard let byte = UInt8(hex, radix: 16) else {
                     return nil
                 }

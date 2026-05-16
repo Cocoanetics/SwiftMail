@@ -4,14 +4,14 @@ import NIOIMAPCore
 
 // MARK: - Special Folder Accessors
 
-extension IMAPServer {
+public extension IMAPServer {
     /**
      Get the inbox folder or throw if not found
 
      - Returns: The inbox folder information
      - Throws: `UndefinedFolderError.inbox` if the inbox folder is not found
      */
-    public var inboxFolder: Mailbox.Info {
+    var inboxFolder: Mailbox.Info {
         get throws {
             guard let inbox = specialMailboxes.inbox ?? mailboxes.inbox else {
                 throw UndefinedFolderError.inbox
@@ -29,7 +29,7 @@ extension IMAPServer {
      - Returns: The trash folder information
      - Throws: `UndefinedFolderError.trash` if the trash folder is not found
      */
-    public var trashFolder: Mailbox.Info {
+    var trashFolder: Mailbox.Info {
         get throws {
             if let trash = specialMailboxes.trash ?? mailboxes.trash {
                 return trash
@@ -47,7 +47,7 @@ extension IMAPServer {
      - Returns: The archive folder information
      - Throws: `UndefinedFolderError.archive` if the archive folder is not found
      */
-    public var archiveFolder: Mailbox.Info {
+    var archiveFolder: Mailbox.Info {
         get throws {
             if let archive = specialMailboxes.archive ?? mailboxes.archive {
                 return archive
@@ -65,7 +65,7 @@ extension IMAPServer {
      - Returns: The sent folder information
      - Throws: `UndefinedFolderError.sent` if the sent folder is not found
      */
-    public var sentFolder: Mailbox.Info {
+    var sentFolder: Mailbox.Info {
         get throws {
             if let sent = specialMailboxes.sent ?? mailboxes.sent {
                 return sent
@@ -83,7 +83,7 @@ extension IMAPServer {
      - Returns: The drafts folder information
      - Throws: `UndefinedFolderError.drafts` if the drafts folder is not found
      */
-    public var draftsFolder: Mailbox.Info {
+    var draftsFolder: Mailbox.Info {
         get throws {
             if let drafts = specialMailboxes.drafts ?? mailboxes.drafts {
                 return drafts
@@ -101,7 +101,7 @@ extension IMAPServer {
      - Returns: The junk folder information
      - Throws: `UndefinedFolderError.junk` if the junk folder is not found
      */
-    public var junkFolder: Mailbox.Info {
+    var junkFolder: Mailbox.Info {
         get throws {
             if let junk = specialMailboxes.junk ?? mailboxes.junk {
                 return junk

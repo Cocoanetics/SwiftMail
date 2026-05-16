@@ -3,8 +3,8 @@ import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
-import Testing
 @testable import SwiftMail
+import Testing
 
 private typealias UID = SwiftMail.UID
 private typealias SequenceNumber = SwiftMail.SequenceNumber
@@ -12,11 +12,10 @@ private typealias Helpers = ExtendedSearchHandlerTestHelpers
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct ExtendedSearchHandlerResponseTests {
-
     // MARK: - ESEARCH response (UID search)
 
     @Test
-    func testEsearchResponseUID() async throws {
+    func esearchResponseUID() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -42,7 +41,7 @@ struct ExtendedSearchHandlerResponseTests {
         #expect(result.max?.value == 10)
 
         if let all = result.all {
-            let values = Set(all.toArray().map { $0.value })
+            let values = Set(all.toArray().map(\.value))
             #expect(values == Set([UInt32(4), UInt32(7), UInt32(10)]))
         } else {
             Issue.record("Expected non-nil 'all' in ESEARCH result")
@@ -52,7 +51,7 @@ struct ExtendedSearchHandlerResponseTests {
     // MARK: - ESEARCH response (sequence number search)
 
     @Test
-    func testEsearchResponseSequenceNumber() async throws {
+    func esearchResponseSequenceNumber() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -82,7 +81,7 @@ struct ExtendedSearchHandlerResponseTests {
     // MARK: - Empty ESEARCH result
 
     @Test
-    func testEsearchEmptyResult() async throws {
+    func esearchEmptyResult() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -112,7 +111,7 @@ struct ExtendedSearchHandlerResponseTests {
     // MARK: - PARTIAL response parsing
 
     @Test
-    func testEsearchPartialResponse() async throws {
+    func esearchPartialResponse() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -121,7 +120,7 @@ struct ExtendedSearchHandlerResponseTests {
         let handler = ExtendedSearchHandler<UID>(commandTag: "A007", promise: promise)
         try await channel.pipeline.addHandler(handler)
 
-        let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1...100))
+        let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1 ... 100))
         try await Helpers.sendSearchCommand(
             on: channel,
             tag: "A007",
@@ -144,9 +143,9 @@ struct ExtendedSearchHandlerResponseTests {
         #expect(result.all == nil)
 
         if let partial = result.partial {
-            let values = Set(partial.results.toArray().map { $0.value })
+            let values = Set(partial.results.toArray().map(\.value))
             #expect(values == Set([UInt32(4), UInt32(7), UInt32(10)]))
-            if case .first(let range) = partial.range {
+            if case let .first(range) = partial.range {
                 #expect(range.range.lowerBound == NIOIMAPCore.SequenceNumber(1))
                 #expect(range.range.upperBound == NIOIMAPCore.SequenceNumber(100))
             } else {

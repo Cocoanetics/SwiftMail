@@ -1,6 +1,6 @@
 import Foundation
 #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
-import CoreFoundation
+    import CoreFoundation
 #endif
 
 /// Internal helper describing a contiguous run of MIME encoded-word matches that

@@ -1,7 +1,6 @@
 import Foundation
 
 extension IMAPTestServer {
-
     // MARK: - Maildir Loading
 
     static func loadMaildir(_ url: URL) throws -> [Message] {
@@ -64,15 +63,15 @@ extension IMAPTestServer {
 
     private static func splitHeadersAndBody(raw: Data) -> HeadersBodySplit {
         if let range = raw.range(of: Data("\r\n\r\n".utf8)) {
-            let headerString = String(data: raw[raw.startIndex..<range.upperBound], encoding: .utf8) ?? ""
+            let headerString = String(data: raw[raw.startIndex ..< range.upperBound], encoding: .utf8) ?? ""
             let bodyData = Data(raw[range.upperBound...])
-            let headerData = Data(raw[raw.startIndex..<range.upperBound])
+            let headerData = Data(raw[raw.startIndex ..< range.upperBound])
             return HeadersBodySplit(headerString: headerString, body: bodyData, headerData: headerData)
         }
         if let range = raw.range(of: Data("\n\n".utf8)) {
-            let headerString = String(data: raw[raw.startIndex..<range.upperBound], encoding: .utf8) ?? ""
+            let headerString = String(data: raw[raw.startIndex ..< range.upperBound], encoding: .utf8) ?? ""
             let bodyData = Data(raw[range.upperBound...])
-            let headerData = Data(raw[raw.startIndex..<range.upperBound])
+            let headerData = Data(raw[raw.startIndex ..< range.upperBound])
             return HeadersBodySplit(headerString: headerString, body: bodyData, headerData: headerData)
         }
         let text = String(data: raw, encoding: .utf8) ?? ""
@@ -95,11 +94,10 @@ extension IMAPTestServer {
         }
         let ctParts = contentType.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
         let mediaType = ctParts[0]
-        let charset: String
-        if let charsetPart = ctParts.first(where: { $0.lowercased().hasPrefix("charset=") }) {
-            charset = String(charsetPart.dropFirst("charset=".count))
+        let charset = if let charsetPart = ctParts.first(where: { $0.lowercased().hasPrefix("charset=") }) {
+            String(charsetPart.dropFirst("charset=".count))
         } else {
-            charset = "utf-8"
+            "utf-8"
         }
         return (mediaType, charset)
     }

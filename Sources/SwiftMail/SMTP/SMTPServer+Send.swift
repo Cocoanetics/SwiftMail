@@ -3,7 +3,7 @@
 
 import Foundation
 
-extension SMTPServer {
+public extension SMTPServer {
     /**
      Send an email with the server
 
@@ -24,7 +24,7 @@ extension SMTPServer {
        - Logs attachment details at debug level
        - Redacts sensitive content in logs
      */
-    public func sendEmail(_ email: Email) async throws {
+    func sendEmail(_ email: Email) async throws {
         // Check if we have a valid channel (meaning we're connected)
         guard channel != nil else {
             logger.error("Attempting to send email without an active connection")
@@ -48,7 +48,7 @@ extension SMTPServer {
         let preparedEmail = try Self.prepareEmailForSend(email, capabilities: capabilities)
 
         if preparedEmail.use8BitMIME {
-            self.logger.debug("Server supports 8BITMIME, using it for this email")
+            logger.debug("Server supports 8BITMIME, using it for this email")
         }
 
         do {
@@ -74,9 +74,9 @@ extension SMTPServer {
             let sendContent = SendContentCommand(data: preparedEmail.contentData)
             try await executeCommand(sendContent)
 
-            self.logger.debug("Email sent successfully")
+            logger.debug("Email sent successfully")
         } catch {
-            self.logger.error("Failed to send email: \(error)")
+            logger.error("Failed to send email: \(error)")
             throw error
         }
     }
@@ -93,7 +93,7 @@ extension SMTPServer {
     /// - Throws:
     ///   - `SMTPError.connectionFailed` if not connected.
     ///   - `SMTPError.sendFailed` if the server rejects the message.
-    public func sendRawMessage(
+    func sendRawMessage(
         _ rawMessage: Data,
         from sender: EmailAddress,
         to recipients: [EmailAddress]
@@ -109,7 +109,7 @@ extension SMTPServer {
         let use8BitMIME = supports8BitMIME
 
         // Check for 8-bit content if server doesn't support 8BITMIME
-        if !use8BitMIME && rawMessage.contains(where: { $0 > 127 }) {
+        if !use8BitMIME, rawMessage.contains(where: { $0 > 127 }) {
             throw SMTPError.sendFailed("Message contains 8-bit content but server does not support 8BITMIME")
         }
 
@@ -139,7 +139,7 @@ extension SMTPServer {
         }
     }
 
-    static func prepareEmailForSend(_ email: Email, capabilities: [String]) throws -> PreparedEmailForSend {
+    internal static func prepareEmailForSend(_ email: Email, capabilities: [String]) throws -> PreparedEmailForSend {
         let use8BitMIME = capabilities.contains("8BITMIME")
         let preparedContent = email.preparedContent(use8BitMIME: use8BitMIME)
         let maximumMessageSizeOctets = maximumMessageSizeOctets(from: capabilities)

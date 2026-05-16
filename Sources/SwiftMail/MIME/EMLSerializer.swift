@@ -10,17 +10,16 @@ public enum EMLSerializerError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .missingPartData(let section):
-            return "Missing data for message part \(section.description)"
-        case .encodingFailed:
-            return "Failed to encode the message as UTF-8"
+            case let .missingPartData(section):
+                "Missing data for message part \(section.description)"
+            case .encodingFailed:
+                "Failed to encode the message as UTF-8"
         }
     }
 }
 
 /// Serializes a ``Message`` to raw RFC 822 / EML bytes.
-public struct EMLSerializer {
-
+public enum EMLSerializer {
     // MARK: - Public API
 
     /// Serialize a ``Message`` to RFC 822 / EML data.
@@ -191,19 +190,19 @@ public struct EMLSerializer {
 
     /// Capitalize a header name (e.g. "x-mailer" → "X-Mailer").
     private static func capitalizeHeaderName(_ name: String) -> String {
-        return name.split(separator: "-")
+        name.split(separator: "-")
             .map { $0.prefix(1).uppercased() + $0.dropFirst().lowercased() }
             .joined(separator: "-")
     }
 
     /// Generate a unique MIME boundary string.
     private static func generateBoundary() -> String {
-        return "SwiftMail-Boundary-\(UUID().uuidString)"
+        "SwiftMail-Boundary-\(UUID().uuidString)"
     }
 
     /// Convert Data to a string, preferring UTF-8 then ASCII.
     private static func stringFromData(_ data: Data) -> String {
-        return String(data: data, encoding: .utf8)
+        String(data: data, encoding: .utf8)
             ?? String(data: data, encoding: .ascii)
             ?? String(data: data, encoding: .isoLatin1)
             ?? ""
@@ -220,6 +219,6 @@ public extension Message {
     /// - Returns: Raw RFC 822 bytes.
     /// - Throws: ``EMLSerializerError`` if serialization fails.
     func emlData() throws -> Data {
-        return try EMLSerializer.serialize(self)
+        try EMLSerializer.serialize(self)
     }
 }

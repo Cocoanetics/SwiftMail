@@ -1,7 +1,7 @@
 import Foundation
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 
 extension IMAPConnection {
     func login(username: String, password: String) async throws {
@@ -19,13 +19,13 @@ extension IMAPConnection {
     /// continuation-based exchange.
     func authenticatePlain(username: String, password: String) async throws {
         try await commandQueue.run { [self] in
-            try await self.authenticatePlainBody(username: username, password: password)
+            try await authenticatePlainBody(username: username, password: password)
         }
     }
 
     func authenticateXOAUTH2(email: String, accessToken: String) async throws {
         try await commandQueue.run { [self] in
-            try await self.authenticateXOAUTH2Body(email: email, accessToken: accessToken)
+            try await authenticateXOAUTH2Body(email: email, accessToken: accessToken)
         }
     }
 
@@ -125,7 +125,7 @@ extension IMAPConnection {
         promise: EventLoopPromise<[Capability]>
     ) -> Scheduled<Void> {
         let authenticationTimeoutSeconds = 10
-        let logger = self.logger
+        let logger = logger
         return channel.eventLoop.scheduleTask(in: .seconds(Int64(authenticationTimeoutSeconds))) {
             logger.warning("PLAIN authentication timed out after \(authenticationTimeoutSeconds) seconds")
             promise.fail(IMAPError.timeout)
@@ -157,7 +157,7 @@ extension IMAPConnection {
             try await connectBody()
         }
 
-        guard let channel = self.channel, channel.isActive else {
+        guard let channel, channel.isActive else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
         return channel
@@ -200,7 +200,7 @@ extension IMAPConnection {
         // PLAIN format: [authzid] NUL authcid NUL passwd
         // authzid is empty (same as authcid)
         var buffer = ByteBufferAllocator().buffer(capacity: username.utf8.count + password.utf8.count + 2)
-        buffer.writeInteger(UInt8(0x00))  // empty authzid
+        buffer.writeInteger(UInt8(0x00)) // empty authzid
         buffer.writeString(username)
         buffer.writeInteger(UInt8(0x00))
         buffer.writeString(password)
@@ -297,7 +297,7 @@ extension IMAPConnection {
         promise: EventLoopPromise<[Capability]>
     ) -> Scheduled<Void> {
         let authenticationTimeoutSeconds = 10
-        let logger = self.logger
+        let logger = logger
         // Schedule on the channel event loop to avoid cross-loop promise completion.
         return channel.eventLoop.scheduleTask(in: .seconds(Int64(authenticationTimeoutSeconds))) {
             logger.warning("XOAUTH2 authentication timed out after \(authenticationTimeoutSeconds) seconds")
@@ -322,7 +322,7 @@ extension IMAPConnection {
     private func applyXOAUTH2Capabilities(_ refreshedCapabilities: [Capability]) {
         isSessionAuthenticated = true
         if !refreshedCapabilities.isEmpty {
-            self.capabilities = Set(refreshedCapabilities)
+            capabilities = Set(refreshedCapabilities)
         } else {
             // AUTHENTICATE often returns an OK without CAPABILITY data.
             // Avoid issuing a follow-up CAPABILITY command here because we're already

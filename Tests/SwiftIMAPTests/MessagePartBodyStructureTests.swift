@@ -1,13 +1,12 @@
 import Foundation
-import Testing
-@testable import SwiftMail
-import NIOIMAPCore
 import NIO
+import NIOIMAPCore
+@testable import SwiftMail
+import Testing
 
 /// Tests for Array<MessagePart> init from BodyStructure — rfc822 recursion and embedded MessageInfo.
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct MessagePartBodyStructureTests {
-
     // MARK: - Helpers
 
     /// Minimal Fields with no parameters, no ID, no encoding.
@@ -246,7 +245,7 @@ struct MessagePartBodyStructureTests {
     }
 
     @Test
-    func embeddedMessageInfoEnvelopeDate() {
+    func embeddedMessageInfoEnvelopeDate() throws {
         // Test that envelope date is parsed correctly
         let env = envelope(date: "Tue, 15 Oct 2024 09:30:00 +0000")
         let structure = rfc822Singlepart(envelope: env, nestedBody: textPlainBody())
@@ -257,7 +256,10 @@ struct MessagePartBodyStructureTests {
 
         // Verify the parsed date components
         let calendar = Calendar(identifier: .gregorian)
-        let components = calendar.dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: info!.date!)
+        let components = try calendar.dateComponents(
+            in: #require(TimeZone(secondsFromGMT: 0)),
+            from: #require(info?.date)
+        )
         #expect(components.year == 2024)
         #expect(components.month == 10)
         #expect(components.day == 15)

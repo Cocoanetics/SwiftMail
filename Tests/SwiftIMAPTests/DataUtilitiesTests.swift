@@ -1,10 +1,9 @@
 import Foundation
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct DataUtilitiesTests {
-
     // MARK: - Preview Tests
 
     @Test

@@ -1,8 +1,8 @@
 import Foundation
 import Logging
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 import NIOSSL
 
 /// Internal connection wrapper used by IMAPServer to manage per-connection state.
@@ -55,7 +55,7 @@ final class IMAPConnection {
         self.group = group
         self.connectionID = connectionID
         self.connectionRole = connectionRole
-        self.connectionContext = "[imap \(host):\(port) role=\(connectionRole) conn=\(connectionID)]"
+        connectionContext = "[imap \(host):\(port) role=\(connectionRole) conn=\(connectionID)]"
 
         var logger = Logging.Logger(label: loggerLabel)
         logger[metadataKey: "imap.host"] = .string(host)
@@ -75,7 +75,7 @@ final class IMAPConnection {
         inboundLogger[metadataKey: "imap.port"] = .stringConvertible(port)
         inboundLogger[metadataKey: "imap.connection_id"] = .string(connectionID)
         inboundLogger[metadataKey: "imap.connection_role"] = .string(connectionRole)
-        self.duplexLogger = IMAPLogger(
+        duplexLogger = IMAPLogger(
             outboundLogger: outboundLogger,
             inboundLogger: inboundLogger,
             contextPrefix: connectionContext
@@ -124,23 +124,23 @@ final class IMAPConnection {
         transportSecurity: MailTransportSecurity
     ) throws -> TLSTransportMode {
         switch transportSecurity {
-        case .automatic:
-            switch port {
-            case 993:
+            case .automatic:
+                switch port {
+                    case 993:
+                        return .implicitTLS
+                    case 143:
+                        return .startTLSIfAvailable
+                    default:
+                        throw IMAPError.invalidArgument(
+                            "Port \(port) requires explicit transportSecurity because TLS mode cannot be inferred"
+                        )
+                }
+            case .implicitTLS:
                 return .implicitTLS
-            case 143:
-                return .startTLSIfAvailable
-            default:
-                throw IMAPError.invalidArgument(
-                    "Port \(port) requires explicit transportSecurity because TLS mode cannot be inferred"
-                )
-            }
-        case .implicitTLS:
-            return .implicitTLS
-        case .startTLS:
-            return .startTLSRequired
-        case .plainText:
-            return .plainText
+            case .startTLS:
+                return .startTLSRequired
+            case .plainText:
+                return .plainText
         }
     }
 
@@ -149,10 +149,10 @@ final class IMAPConnection {
         capabilities: [Capability]
     ) -> Bool {
         switch tlsTransportMode {
-        case .startTLSIfAvailable, .startTLSRequired:
-            return capabilities.contains(.startTLS)
-        case .implicitTLS, .plainText:
-            return false
+            case .startTLSIfAvailable, .startTLSRequired:
+                capabilities.contains(.startTLS)
+            case .implicitTLS, .plainText:
+                false
         }
     }
 
@@ -164,7 +164,7 @@ final class IMAPConnection {
     }
 
     var isConnected: Bool {
-        guard let channel = self.channel else {
+        guard let channel else {
             return false
         }
         return channel.isActive
@@ -207,24 +207,24 @@ final class IMAPConnection {
     }
 
     func replaceStartTLSUpgradeForTesting(_ upgrade: (() async throws -> Void)?) {
-        self.startTLSUpgradeOverrideForTesting = upgrade
+        startTLSUpgradeOverrideForTesting = upgrade
     }
 
     func connect() async throws {
         try await commandQueue.run { [self] in
-            try await self.connectBody()
+            try await connectBody()
         }
     }
 
     func done(timeoutSeconds: TimeInterval = 15) async throws {
         try await commandQueue.run { [self] in
-            try await self.doneBody(timeoutSeconds: timeoutSeconds)
+            try await doneBody(timeoutSeconds: timeoutSeconds)
         }
     }
 
     func disconnect() async throws {
         try await commandQueue.run { [self] in
-            try await self.disconnectBody()
+            try await disconnectBody()
         }
     }
 }

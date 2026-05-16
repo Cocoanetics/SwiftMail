@@ -12,10 +12,10 @@ public enum ConversionError: Error, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .missingSender:
-            return "Message has no sender (from field is nil)"
-        case .unparsableSender(let raw):
-            return "Could not parse sender address: \(raw)"
+            case .missingSender:
+                "Message has no sender (from field is nil)"
+            case let .unparsableSender(raw):
+                "Could not parse sender address: \(raw)"
         }
     }
 }
@@ -41,7 +41,7 @@ extension Email {
         let allAttachments = Self.collectAttachments(from: message)
 
         // Skip standard headers already captured via dedicated fields
-        let standardHeaders: Set<String> = [
+        let standardHeaders: Set = [
             "Subject", "From", "To", "Cc", "Bcc",
             "Message-ID", "References", "In-Reply-To", "Date"
         ]
@@ -58,7 +58,7 @@ extension Email {
             htmlBody: message.htmlBody,
             attachments: allAttachments.isEmpty ? nil : allAttachments
         )
-        self.messageID = message.header.messageId
+        messageID = message.header.messageId
         self.additionalHeaders = (additionalHeaders?.isEmpty == false) ? additionalHeaders : nil
     }
 
@@ -66,7 +66,7 @@ extension Email {
     /// inline parts not already represented in the attachment list.
     private static func collectAttachments(from message: Message) -> [Attachment] {
         let attachmentParts = message.attachments
-        let attachmentSections = Set(attachmentParts.map { $0.section })
+        let attachmentSections = Set(attachmentParts.map(\.section))
         let cidParts = message.cids.filter { !attachmentSections.contains($0.section) }
 
         var allAttachments: [Attachment] = []

@@ -1,258 +1,258 @@
-import Testing
 import Foundation
-import SwiftMail
 import NIOIMAP
 import NIOIMAPCore
 import OrderedCollections
+import SwiftMail
+import Testing
 
 @Test
-func testFindHtmlBodyWithCharset() throws {
-        // Create a message with HTML content type that includes charset
-        let header = MessageInfo(
-            sequenceNumber: SequenceNumber(1),
-            uid: UID(1),
-            subject: "Test Email",
-            from: "test@example.com",
-            to: ["recipient@example.com"],
-            cc: [],
-            bcc: ["hidden@example.com"],
-            date: Date(),
-            flags: []
-        )
+func findHtmlBodyWithCharset() {
+    // Create a message with HTML content type that includes charset
+    let header = MessageInfo(
+        sequenceNumber: SequenceNumber(1),
+        uid: UID(1),
+        subject: "Test Email",
+        from: "test@example.com",
+        to: ["recipient@example.com"],
+        cc: [],
+        bcc: ["hidden@example.com"],
+        date: Date(),
+        flags: []
+    )
 
-        let htmlPart = MessagePart(
-            section: Section([1]),
-            contentType: "text/html; charset=utf-8",
-            disposition: nil,
-            encoding: "quoted-printable",
-            filename: nil,
-            contentId: nil,
-            data: Data("<html><body>Test HTML content</body></html>".utf8)
-        )
+    let htmlPart = MessagePart(
+        section: Section([1]),
+        contentType: "text/html; charset=utf-8",
+        disposition: nil,
+        encoding: "quoted-printable",
+        filename: nil,
+        contentId: nil,
+        data: Data("<html><body>Test HTML content</body></html>".utf8)
+    )
 
-        let textPart = MessagePart(
-            section: Section([2]),
-            contentType: "text/plain; charset=utf-8",
-            disposition: nil,
-            encoding: "quoted-printable",
-            filename: nil,
-            contentId: nil,
-            data: Data("Test plain text content".utf8)
-        )
+    let textPart = MessagePart(
+        section: Section([2]),
+        contentType: "text/plain; charset=utf-8",
+        disposition: nil,
+        encoding: "quoted-printable",
+        filename: nil,
+        contentId: nil,
+        data: Data("Test plain text content".utf8)
+    )
 
-        let message = Message(header: header, parts: [htmlPart, textPart])
+    let message = Message(header: header, parts: [htmlPart, textPart])
 
-        // Test the new unified API
-        let bodies = message.bodies
-        #expect(bodies.count == 2)
+    // Test the new unified API
+    let bodies = message.bodies
+    #expect(bodies.count == 2)
 
-        let htmlBodyPart = message.findHtmlBodyPart()
-        #expect(htmlBodyPart != nil)
-        #expect(htmlBodyPart?.contentType == "text/html; charset=utf-8")
+    let htmlBodyPart = message.findHtmlBodyPart()
+    #expect(htmlBodyPart != nil)
+    #expect(htmlBodyPart?.contentType == "text/html; charset=utf-8")
 
-        let textBodyPart = message.findTextBodyPart()
-        #expect(textBodyPart != nil)
-        #expect(textBodyPart?.contentType == "text/plain; charset=utf-8")
+    let textBodyPart = message.findTextBodyPart()
+    #expect(textBodyPart != nil)
+    #expect(textBodyPart?.contentType == "text/plain; charset=utf-8")
 
-        // Test the legacy API (now fixed)
-        let htmlBody = message.htmlBody
-        #expect(htmlBody != nil)
-        #expect(htmlBody?.contains("Test HTML content") == true)
+    // Test the legacy API (now fixed)
+    let htmlBody = message.htmlBody
+    #expect(htmlBody != nil)
+    #expect(htmlBody?.contains("Test HTML content") == true)
 
-        let textBody = message.textBody
-        #expect(textBody != nil)
-        #expect(textBody?.contains("Test plain text content") == true)
+    let textBody = message.textBody
+    #expect(textBody != nil)
+    #expect(textBody?.contains("Test plain text content") == true)
 
-        // Verify BCC recipients are exposed
-        #expect(message.bcc == ["hidden@example.com"])
+    // Verify BCC recipients are exposed
+    #expect(message.bcc == ["hidden@example.com"])
 }
 
 @Test
-func testFindBodiesExcludesAttachments() throws {
-        let header = MessageInfo(
-            sequenceNumber: SequenceNumber(1),
-            uid: UID(1),
-            subject: "Test Email",
-            from: "test@example.com",
-            to: ["recipient@example.com"],
-            cc: [],
-            date: Date(),
-            flags: []
-        )
+func findBodiesExcludesAttachments() {
+    let header = MessageInfo(
+        sequenceNumber: SequenceNumber(1),
+        uid: UID(1),
+        subject: "Test Email",
+        from: "test@example.com",
+        to: ["recipient@example.com"],
+        cc: [],
+        date: Date(),
+        flags: []
+    )
 
-        let htmlPart = MessagePart(
-            section: Section([1]),
-            contentType: "text/html; charset=utf-8",
-            disposition: nil,
-            encoding: "quoted-printable",
-            filename: nil,
-            contentId: nil,
-            data: Data("<html><body>Test HTML content</body></html>".utf8)
-        )
+    let htmlPart = MessagePart(
+        section: Section([1]),
+        contentType: "text/html; charset=utf-8",
+        disposition: nil,
+        encoding: "quoted-printable",
+        filename: nil,
+        contentId: nil,
+        data: Data("<html><body>Test HTML content</body></html>".utf8)
+    )
 
-        let attachmentPart = MessagePart(
-            section: Section([2]),
-            contentType: "text/plain; charset=utf-8",
-            disposition: "attachment",
-            encoding: "base64",
-            filename: "test.txt",
-            contentId: nil,
-            data: Data("Test attachment content".utf8)
-        )
+    let attachmentPart = MessagePart(
+        section: Section([2]),
+        contentType: "text/plain; charset=utf-8",
+        disposition: "attachment",
+        encoding: "base64",
+        filename: "test.txt",
+        contentId: nil,
+        data: Data("Test attachment content".utf8)
+    )
 
-        let message = Message(header: header, parts: [htmlPart, attachmentPart])
+    let message = Message(header: header, parts: [htmlPart, attachmentPart])
 
-        // Test that attachments are excluded from bodies
-        let bodies = message.bodies
-        #expect(bodies.count == 1)
-        #expect(bodies.first?.contentType == "text/html; charset=utf-8")
+    // Test that attachments are excluded from bodies
+    let bodies = message.bodies
+    #expect(bodies.count == 1)
+    #expect(bodies.first?.contentType == "text/html; charset=utf-8")
 
-        // Test that attachments are still found
-        let attachments = message.attachments
-        #expect(attachments.count == 1)
-        #expect(attachments.first?.filename == "test.txt")
+    // Test that attachments are still found
+    let attachments = message.attachments
+    #expect(attachments.count == 1)
+    #expect(attachments.first?.filename == "test.txt")
 }
 
 @Test
-func testPartsWithContentIDAreCategorized() throws {
-        let header = MessageInfo(
-            sequenceNumber: SequenceNumber(1),
-            uid: UID(1),
-            subject: "Test Email",
-            from: "test@example.com",
-            to: ["recipient@example.com"],
-            cc: [],
-            date: Date(),
-            flags: []
-        )
+func partsWithContentIDAreCategorized() {
+    let header = MessageInfo(
+        sequenceNumber: SequenceNumber(1),
+        uid: UID(1),
+        subject: "Test Email",
+        from: "test@example.com",
+        to: ["recipient@example.com"],
+        cc: [],
+        date: Date(),
+        flags: []
+    )
 
-        let cidPart = MessagePart(
-            section: Section([1]),
-            contentType: "image/jpeg",
-            disposition: nil,
-            encoding: "base64",
-            filename: "image001.jpg",
-            contentId: "image001.jpg@01DC23D1.C00BAD40",
-            data: Data()
-        )
+    let cidPart = MessagePart(
+        section: Section([1]),
+        contentType: "image/jpeg",
+        disposition: nil,
+        encoding: "base64",
+        filename: "image001.jpg",
+        contentId: "image001.jpg@01DC23D1.C00BAD40",
+        data: Data()
+    )
 
-        let attachmentPart = MessagePart(
-            section: Section([2]),
-            contentType: "text/plain",
-            disposition: "attachment",
-            encoding: "base64",
-            filename: "file.txt",
-            contentId: nil,
-            data: Data()
-        )
+    let attachmentPart = MessagePart(
+        section: Section([2]),
+        contentType: "text/plain",
+        disposition: "attachment",
+        encoding: "base64",
+        filename: "file.txt",
+        contentId: nil,
+        data: Data()
+    )
 
-        let message = Message(header: header, parts: [cidPart, attachmentPart])
+    let message = Message(header: header, parts: [cidPart, attachmentPart])
 
-        let attachments = message.attachments
-        #expect(attachments.count == 1)
-        #expect(attachments.first?.filename == "file.txt")
+    let attachments = message.attachments
+    #expect(attachments.count == 1)
+    #expect(attachments.first?.filename == "file.txt")
 
-        let cids = message.cids
-        #expect(cids.count == 1)
-        #expect(cids.first?.contentId == "image001.jpg@01DC23D1.C00BAD40")
+    let cids = message.cids
+    #expect(cids.count == 1)
+    #expect(cids.first?.contentId == "image001.jpg@01DC23D1.C00BAD40")
 }
 
 @Test
-func testGetTextContentFromPart() throws {
-        let htmlPart = MessagePart(
-            section: Section([1]),
-            contentType: "text/html; charset=utf-8",
-            disposition: nil,
-            encoding: "quoted-printable",
-            filename: nil,
-            contentId: nil,
-            data: Data("<html><body>Test HTML content</body></html>".utf8)
-        )
+func getTextContentFromPart() {
+    let htmlPart = MessagePart(
+        section: Section([1]),
+        contentType: "text/html; charset=utf-8",
+        disposition: nil,
+        encoding: "quoted-printable",
+        filename: nil,
+        contentId: nil,
+        data: Data("<html><body>Test HTML content</body></html>".utf8)
+    )
 
-        // Test the new textContent property
-        let content = htmlPart.textContent
-        #expect(content != nil)
-        #expect(content?.contains("Test HTML content") == true)
+    // Test the new textContent property
+    let content = htmlPart.textContent
+    #expect(content != nil)
+    #expect(content?.contains("Test HTML content") == true)
 }
 
 @Test
-func testIso88591QuotedPrintableDecodesUmlauts() throws {
-        // Body bytes are transfer-encoded quoted-printable text in ISO-8859-1.
-        // The ä/ö/ü bytes (E4/F6/FC) must survive transfer decoding before charset decoding.
-        let qpHTML = "<html><head><meta charset=\"iso-8859-1\"></head><body>"
-            + "<p>Gr=FC=DFe aus K=F6ln: =E4=F6=FC</p></body></html>"
-        let htmlPart = MessagePart(
-            section: Section([1]),
-            contentType: "text/html; charset=iso-8859-1",
-            disposition: nil,
-            encoding: "quoted-printable",
-            filename: nil,
-            contentId: nil,
-            data: qpHTML.data(using: .ascii)
-        )
+func iso88591QuotedPrintableDecodesUmlauts() throws {
+    // Body bytes are transfer-encoded quoted-printable text in ISO-8859-1.
+    // The ä/ö/ü bytes (E4/F6/FC) must survive transfer decoding before charset decoding.
+    let qpHTML = "<html><head><meta charset=\"iso-8859-1\"></head><body>"
+        + "<p>Gr=FC=DFe aus K=F6ln: =E4=F6=FC</p></body></html>"
+    let htmlPart = MessagePart(
+        section: Section([1]),
+        contentType: "text/html; charset=iso-8859-1",
+        disposition: nil,
+        encoding: "quoted-printable",
+        filename: nil,
+        contentId: nil,
+        data: qpHTML.data(using: .ascii)
+    )
 
-        guard let transferDecoded = htmlPart.decodedData() else {
-            throw TestFailure("Expected transfer-decoded bytes")
-        }
+    guard let transferDecoded = htmlPart.decodedData() else {
+        throw TestFailure("Expected transfer-decoded bytes")
+    }
 
-        // Ensure bytes are still ISO-8859-1 bytes (not UTF-8 re-encoded).
-        #expect(transferDecoded.contains(0xFC), "Expected ISO-8859-1 byte 0xFC (ü)")
-        #expect(!transferDecoded.contains(0xC3), "Unexpected UTF-8 lead byte 0xC3 found before charset decode")
+    // Ensure bytes are still ISO-8859-1 bytes (not UTF-8 re-encoded).
+    #expect(transferDecoded.contains(0xFC), "Expected ISO-8859-1 byte 0xFC (ü)")
+    #expect(!transferDecoded.contains(0xC3), "Unexpected UTF-8 lead byte 0xC3 found before charset decode")
 
-        guard let html = htmlPart.textContent else {
-            throw TestFailure("Expected textContent after charset decode")
-        }
+    guard let html = htmlPart.textContent else {
+        throw TestFailure("Expected textContent after charset decode")
+    }
 
-        #expect(html.contains("Grüße aus Köln: äöü"))
+    #expect(html.contains("Grüße aus Köln: äöü"))
 }
 
 @Test
-func testDecodesMIMEEncodedAttachmentFilename() throws {
-        let encodedName = "=?utf-8?Q?HC=5F1161254447.pdf?="
-        var params = OrderedDictionary<String, String>()
-        params["filename"] = encodedName
-        let fields = BodyStructure.Fields(
-            parameters: params,
-            id: nil,
-            contentDescription: nil,
-            encoding: .base64,
-            octetCount: 0
-        )
-        let single = BodyStructure.Singlepart(
-            kind: .basic(.init(topLevel: "application", sub: "pdf")),
-            fields: fields,
-            extension: nil
-        )
-        let structure = BodyStructure.singlepart(single)
+func decodesMIMEEncodedAttachmentFilename() {
+    let encodedName = "=?utf-8?Q?HC=5F1161254447.pdf?="
+    var params = OrderedDictionary<String, String>()
+    params["filename"] = encodedName
+    let fields = BodyStructure.Fields(
+        parameters: params,
+        id: nil,
+        contentDescription: nil,
+        encoding: .base64,
+        octetCount: 0
+    )
+    let single = BodyStructure.Singlepart(
+        kind: .basic(.init(topLevel: "application", sub: "pdf")),
+        fields: fields,
+        extension: nil
+    )
+    let structure = BodyStructure.singlepart(single)
 
-        let parts = [MessagePart](structure)
-        #expect(parts.count == 1)
-        #expect(parts.first?.filename == "HC_1161254447.pdf")
-        #expect(parts.first?.suggestedFilename == "HC_1161254447.pdf")
+    let parts = [MessagePart](structure)
+    #expect(parts.count == 1)
+    #expect(parts.first?.filename == "HC_1161254447.pdf")
+    #expect(parts.first?.suggestedFilename == "HC_1161254447.pdf")
 }
 
 @Test
-func testUsesNameParameterForFilename() throws {
-        var params = OrderedDictionary<String, String>()
-        params["name"] = "image001.jpg"
-        let fields = BodyStructure.Fields(
-            parameters: params,
-            id: "image001.jpg@cid",
-            contentDescription: nil,
-            encoding: .base64,
-            octetCount: 0
-        )
-        let single = BodyStructure.Singlepart(
-            kind: .basic(.init(topLevel: "image", sub: "jpeg")),
-            fields: fields,
-            extension: nil
-        )
-        let structure = BodyStructure.singlepart(single)
+func usesNameParameterForFilename() {
+    var params = OrderedDictionary<String, String>()
+    params["name"] = "image001.jpg"
+    let fields = BodyStructure.Fields(
+        parameters: params,
+        id: "image001.jpg@cid",
+        contentDescription: nil,
+        encoding: .base64,
+        octetCount: 0
+    )
+    let single = BodyStructure.Singlepart(
+        kind: .basic(.init(topLevel: "image", sub: "jpeg")),
+        fields: fields,
+        extension: nil
+    )
+    let structure = BodyStructure.singlepart(single)
 
-        let parts = [MessagePart](structure)
-        #expect(parts.count == 1)
-        #expect(parts.first?.filename == "image001.jpg")
-        #expect(parts.first?.contentId == "image001.jpg@cid")
+    let parts = [MessagePart](structure)
+    #expect(parts.count == 1)
+    #expect(parts.first?.filename == "image001.jpg")
+    #expect(parts.first?.contentId == "image001.jpg@cid")
 }
 
 /// Fake IMAP server used by ``testFetchMessagesSequentialOrder`` to verify that the message-fetching
@@ -260,7 +260,7 @@ func testUsesNameParameterForFilename() throws {
 private final class FetchSequentialOrderFakeServer {
     var callOrder: [String] = []
 
-    func fetchMessageInfo<T: SwiftMail.MessageIdentifier>(for identifier: T) async throws -> MessageInfo? {
+    func fetchMessageInfo(for _: some SwiftMail.MessageIdentifier) async throws -> MessageInfo? {
         callOrder.append("info")
         return MessageInfo(
             sequenceNumber: SwiftMail.SequenceNumber(1),
@@ -279,8 +279,8 @@ private final class FetchSequentialOrderFakeServer {
         return Message(header: header, parts: [])
     }
 
-    nonisolated func fetchMessages<T: SwiftMail.MessageIdentifier>(
-        using identifierSet: SwiftMail.MessageIdentifierSet<T>
+    nonisolated func fetchMessages(
+        using identifierSet: SwiftMail.MessageIdentifierSet<some SwiftMail.MessageIdentifier>
     ) -> AsyncThrowingStream<Message, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -311,7 +311,7 @@ private final class FetchSequentialOrderFakeServer {
 }
 
 @Test
-func testFetchMessagesSequentialOrder() async throws {
+func fetchMessagesSequentialOrder() async throws {
     let server = FetchSequentialOrderFakeServer()
     let set = SwiftMail.MessageIdentifierSet<SwiftMail.SequenceNumber>(
         [SwiftMail.SequenceNumber(1), SwiftMail.SequenceNumber(2)]

@@ -1,14 +1,14 @@
 // EmailMessageConversionTests.swift
 // Tests for converting a parsed `Message` (IMAP fetch result) into an `Email`.
 
-import Testing
 import Foundation
 import SwiftMail
+import Testing
 
 private typealias Fixtures = EmailMessageConversionFixtures
 
 @Test
-func testEmailFromMessage_simpleTextRoundTrip() throws {
+func emailFromMessage_simpleTextRoundTrip() throws {
     let message = Fixtures.makeMessage(
         from: "Alice <alice@example.com>",
         to: ["Bob <bob@example.com>"],
@@ -35,7 +35,7 @@ func testEmailFromMessage_simpleTextRoundTrip() throws {
 }
 
 @Test
-func testEmailFromMessage_withAttachments() throws {
+func emailFromMessage_withAttachments() throws {
     let rawData = Data([0x01, 0x02, 0x03, 0x04, 0x05])
     let base64Encoded = rawData.base64EncodedData()
 
@@ -66,7 +66,7 @@ func testEmailFromMessage_withAttachments() throws {
 }
 
 @Test
-func testEmailFromMessage_withCIDInlineImages() throws {
+func emailFromMessage_withCIDInlineImages() throws {
     let imageData = Data([0xFF, 0xD8, 0xFF, 0xE0])
     let base64Encoded = imageData.base64EncodedData()
 
@@ -94,7 +94,7 @@ func testEmailFromMessage_withCIDInlineImages() throws {
 }
 
 @Test
-func testEmailFromMessage_throwsWhenFromIsNil() {
+func emailFromMessage_throwsWhenFromIsNil() {
     let message = Fixtures.makeMessage(from: nil)
 
     #expect(throws: ConversionError.missingSender) {
@@ -103,7 +103,7 @@ func testEmailFromMessage_throwsWhenFromIsNil() {
 }
 
 @Test
-func testEmailFromMessage_throwsWhenFromIsUnparseable() {
+func emailFromMessage_throwsWhenFromIsUnparseable() {
     let message = Fixtures.makeMessage(from: "not-a-valid-email-address")
 
     #expect(throws: (any Error).self) {
@@ -112,7 +112,7 @@ func testEmailFromMessage_throwsWhenFromIsUnparseable() {
 }
 
 @Test
-func testEmailFromMessage_preservesAdditionalHeaders() throws {
+func emailFromMessage_preservesAdditionalHeaders() throws {
     let fields: [String: String] = [
         "X-Custom-Header": "custom-value",
         "X-Priority": "1",
@@ -146,7 +146,7 @@ func testEmailFromMessage_preservesAdditionalHeaders() throws {
 }
 
 @Test
-func testEmailFromMessage_preservesMessageID() throws {
+func emailFromMessage_preservesMessageID() throws {
     let msgId = MessageID(localPart: "abc123", domain: "example.com")
     let message = Fixtures.makeMessage(
         messageId: msgId,
@@ -158,7 +158,7 @@ func testEmailFromMessage_preservesMessageID() throws {
 }
 
 @Test
-func testEmailFromMessage_bothBodyParts() throws {
+func emailFromMessage_bothBodyParts() throws {
     let message = Fixtures.makeMessage(
         parts: [
             Fixtures.textPart("Plain text body", section: "1"),

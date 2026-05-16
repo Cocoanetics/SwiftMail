@@ -3,13 +3,13 @@ import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct WithinSearchTests {
     @Test
-    func testYoungerSearchKeyWireFormat() async throws {
+    func youngerSearchKeyWireFormat() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -30,7 +30,7 @@ struct WithinSearchTests {
     }
 
     @Test
-    func testOlderSearchKeyWireFormat() async throws {
+    func olderSearchKeyWireFormat() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -51,7 +51,7 @@ struct WithinSearchTests {
     }
 
     @Test
-    func testWithinCriteriaWithExtendedSearch() async throws {
+    func withinCriteriaWithExtendedSearch() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -76,7 +76,7 @@ struct WithinSearchTests {
     }
 
     @Test
-    func testCombinedWithinAndOtherCriteria() async throws {
+    func combinedWithinAndOtherCriteria() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -100,7 +100,7 @@ struct WithinSearchTests {
     }
 
     @Test
-    func testZeroIntervalThrows() async throws {
+    func zeroIntervalThrows() throws {
         #expect(throws: (any Error).self) {
             try SearchCriteria.younger(seconds: 0).validate()
         }
@@ -110,7 +110,7 @@ struct WithinSearchTests {
     }
 
     @Test
-    func testNegativeIntervalThrows() async throws {
+    func negativeIntervalThrows() throws {
         #expect(throws: (any Error).self) {
             try SearchCriteria.younger(seconds: -100).validate()
         }

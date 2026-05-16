@@ -140,7 +140,7 @@ extension IMAPServer {
             let beforeSemicolon = trimmed.index(trimmed.endIndex, offsetBy: -1)
             guard afterColon < beforeSemicolon else { return [] }
 
-            let addressList = String(trimmed[afterColon..<beforeSemicolon])
+            let addressList = String(trimmed[afterColon ..< beforeSemicolon])
             // Split by comma and parse each address
             return addressList
                 .split(separator: ",")
@@ -162,9 +162,9 @@ extension IMAPServer {
         if let angleBracketStart = trimmed.lastIndex(of: "<"),
            let angleBracketEnd = trimmed.lastIndex(of: ">"),
            angleBracketStart < angleBracketEnd {
-            let address = String(trimmed[trimmed.index(after: angleBracketStart)..<angleBracketEnd])
+            let address = String(trimmed[trimmed.index(after: angleBracketStart) ..< angleBracketEnd])
                 .trimmingCharacters(in: .whitespaces)
-            let namePart = String(trimmed[trimmed.startIndex..<angleBracketStart])
+            let namePart = String(trimmed[trimmed.startIndex ..< angleBracketStart])
                 .trimmingCharacters(in: .whitespaces)
                 .trimmingCharacters(in: CharacterSet(charactersIn: "\""))
 

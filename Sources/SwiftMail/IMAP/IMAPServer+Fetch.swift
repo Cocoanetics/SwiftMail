@@ -4,7 +4,7 @@ import NIOIMAPCore
 
 // MARK: - Message Fetch Commands
 
-extension IMAPServer {
+public extension IMAPServer {
     /**
      Fetches the structure of a message.
 
@@ -21,7 +21,7 @@ extension IMAPServer {
      - Throws: `IMAPError.fetchFailed` if the fetch operation fails
      - Note: Logs structure fetch at debug level
      */
-    public func fetchStructure<T: MessageIdentifier>(_ identifier: T) async throws -> [MessagePart] {
+    func fetchStructure(_ identifier: some MessageIdentifier) async throws -> [MessagePart] {
         let command = FetchStructureCommand(identifier: identifier)
         return try await executeCommand(command)
     }
@@ -43,7 +43,7 @@ extension IMAPServer {
      - Throws: `IMAPError.fetchFailed` if the fetch operation fails
      - Note: Logs part fetch at debug level with part number
      */
-    public func fetchPart<T: MessageIdentifier>(section: Section, of identifier: T) async throws -> Data {
+    func fetchPart(section: Section, of identifier: some MessageIdentifier) async throws -> Data {
         let command = FetchMessagePartCommand(identifier: identifier, section: section)
         return try await executeCommand(command)
     }
@@ -59,7 +59,7 @@ extension IMAPServer {
      - Returns: Dictionary mapping UID to array of (section, data) results.
      - Throws: If the connection is unavailable.
      */
-    public func fetchPartsPipelined(
+    func fetchPartsPipelined(
         parts: [(uid: UID, section: Section)]
     ) async throws -> [UID: [(section: Section, data: Data)]] {
         if let authentication, !primaryConnection.isAuthenticated {
@@ -81,7 +81,7 @@ extension IMAPServer {
      - Returns: The complete raw message data
      - Throws: `IMAPError.fetchFailed` if the fetch operation fails
      */
-    public func fetchRawMessage<T: MessageIdentifier>(identifier: T) async throws -> Data {
+    func fetchRawMessage(identifier: some MessageIdentifier) async throws -> Data {
         let command = FetchRawMessageCommand(identifier: identifier)
         return try await executeCommand(command)
     }
@@ -92,12 +92,11 @@ extension IMAPServer {
      - Returns: An array of message parts with their data populated
      - Throws: IMAPError if any fetch operation fails
      */
-    public func fetchAllMessageParts<T: MessageIdentifier>(identifier: T) async throws -> [MessagePart] {
-
+    func fetchAllMessageParts(identifier: some MessageIdentifier) async throws -> [MessagePart] {
         var parts = try await fetchStructure(identifier)
 
         for (index, part) in parts.enumerated() {
-            parts[index].data = try await self.fetchPart(section: part.section, of: identifier)
+            parts[index].data = try await fetchPart(section: part.section, of: identifier)
         }
 
         return parts
@@ -119,7 +118,7 @@ extension IMAPServer {
      - `IMAPError.fetchFailed` if the fetch operation fails
      - Decoding errors if the part's encoding cannot be processed
      */
-    public func fetchAndDecodeMessagePartData(messageInfo: MessageInfo, part: MessagePart) async throws -> Data {
+    func fetchAndDecodeMessagePartData(messageInfo: MessageInfo, part: MessagePart) async throws -> Data {
         // Use the UID from the header if available (non-zero), otherwise fall back to sequence number
         if let uid = messageInfo.uid {
             // Use UID for fetching
@@ -139,7 +138,7 @@ extension IMAPServer {
      - Throws: An error if the fetch operation fails
      - Note: This method will use UID if available in the header, falling back to sequence number if not
      */
-    public func fetchMessage(from header: MessageInfo) async throws -> Message {
+    func fetchMessage(from header: MessageInfo) async throws -> Message {
         // Use the UID from the header if available (non-zero), otherwise fall back to sequence number
         if let uid = header.uid {
             // Use UID for fetching
@@ -156,7 +155,7 @@ extension IMAPServer {
     /// Fetch message info for a single identifier
     /// - Parameter identifier: The message identifier to fetch
     /// - Returns: The message info if available
-    public func fetchMessageInfo<T: MessageIdentifier>(for identifier: T) async throws -> MessageInfo? {
+    func fetchMessageInfo<T: MessageIdentifier>(for identifier: T) async throws -> MessageInfo? {
         let singleSet = MessageIdentifierSet<T>(identifier)
         let command = FetchMessageInfoCommand(identifierSet: singleSet)
         return try await executeCommand(command).first
@@ -164,8 +163,8 @@ extension IMAPServer {
 
     /// Fetch message infos for an identifier set in a **single IMAP FETCH**.
     /// This is important for UID ranges like `123:*` which must not be expanded into individual UIDs.
-    public func fetchMessageInfosBulk<T: MessageIdentifier>(
-        using identifierSet: MessageIdentifierSet<T>
+    func fetchMessageInfosBulk(
+        using identifierSet: MessageIdentifierSet<some MessageIdentifier>
     ) async throws -> [MessageInfo] {
         let command = FetchMessageInfoCommand(identifierSet: identifierSet)
         return try await executeCommand(command)
@@ -174,22 +173,22 @@ extension IMAPServer {
     // MARK: - Convenience overloads for ranges
 
     /// Fetch message infos for a UID range in a **single UID FETCH** (e.g. `11971:*`).
-    public func fetchMessageInfos(uidRange: PartialRangeFrom<UID>) async throws -> [MessageInfo] {
+    func fetchMessageInfos(uidRange: PartialRangeFrom<UID>) async throws -> [MessageInfo] {
         try await fetchMessageInfosBulk(using: UIDSet(uidRange))
     }
 
     /// Fetch message infos for a UID range in a **single UID FETCH**.
-    public func fetchMessageInfos(uidRange: ClosedRange<UID>) async throws -> [MessageInfo] {
+    func fetchMessageInfos(uidRange: ClosedRange<UID>) async throws -> [MessageInfo] {
         try await fetchMessageInfosBulk(using: UIDSet(uidRange))
     }
 
     /// Fetch message infos for a sequence number range in a single FETCH.
-    public func fetchMessageInfos(sequenceRange: PartialRangeFrom<SequenceNumber>) async throws -> [MessageInfo] {
+    func fetchMessageInfos(sequenceRange: PartialRangeFrom<SequenceNumber>) async throws -> [MessageInfo] {
         try await fetchMessageInfosBulk(using: SequenceNumberSet(sequenceRange))
     }
 
     /// Fetch message infos for a sequence number range in a single FETCH.
-    public func fetchMessageInfos(sequenceRange: ClosedRange<SequenceNumber>) async throws -> [MessageInfo] {
+    func fetchMessageInfos(sequenceRange: ClosedRange<SequenceNumber>) async throws -> [MessageInfo] {
         try await fetchMessageInfosBulk(using: SequenceNumberSet(sequenceRange))
     }
 
@@ -201,10 +200,9 @@ extension IMAPServer {
     ///
     /// - Parameter identifierSet: The set of message identifiers to fetch
     /// - Returns: An AsyncThrowingStream yielding MessageInfo one at a time
-    public nonisolated func fetchMessageInfos<T: MessageIdentifier>(
-        using identifierSet: MessageIdentifierSet<T>
+    nonisolated func fetchMessageInfos(
+        using identifierSet: MessageIdentifierSet<some MessageIdentifier>
     ) -> AsyncThrowingStream<MessageInfo, Error> {
-
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -245,8 +243,8 @@ extension IMAPServer {
     ///
     /// - Parameter identifierSet: The set of message identifiers to fetch
     /// - Returns: An `AsyncThrowingStream` yielding `Message` instances with all parts
-    public nonisolated func fetchMessages<T: MessageIdentifier>(
-        using identifierSet: MessageIdentifierSet<T>
+    nonisolated func fetchMessages(
+        using identifierSet: MessageIdentifierSet<some MessageIdentifier>
     ) -> AsyncThrowingStream<Message, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -294,25 +292,25 @@ extension IMAPServer {
      - Returns: An array of message parts
      - Throws: An error if the fetch operation fails
      */
-    func recursivelyFetchParts<T: MessageIdentifier>(
+    func recursivelyFetchParts(
         _ structure: BodyStructure,
         section: Section,
-        identifier: T
+        identifier: some MessageIdentifier
     ) async throws -> [MessagePart] {
         switch structure {
-        case .singlepart(let part):
-            return [try await fetchSinglepart(part, section: section, identifier: identifier)]
+            case let .singlepart(part):
+                try await [fetchSinglepart(part, section: section, identifier: identifier)]
 
-        case .multipart(let multipart):
-            return try await fetchMultipart(multipart, section: section, identifier: identifier)
+            case let .multipart(multipart):
+                try await fetchMultipart(multipart, section: section, identifier: identifier)
         }
     }
 
     /// Fetch and convert a singlepart body structure.
-    private func fetchSinglepart<T: MessageIdentifier>(
+    private func fetchSinglepart(
         _ part: BodyStructure.Singlepart,
         section: Section,
-        identifier: T
+        identifier: some MessageIdentifier
     ) async throws -> MessagePart {
         // Fetch the part content
         let partData = try await fetchPart(section: section, of: identifier)
@@ -334,10 +332,10 @@ extension IMAPServer {
     }
 
     /// Recursively fetch each part of a multipart body structure.
-    private func fetchMultipart<T: MessageIdentifier>(
+    private func fetchMultipart(
         _ multipart: BodyStructure.Multipart,
         section: Section,
-        identifier: T
+        identifier: some MessageIdentifier
     ) async throws -> [MessagePart] {
         var allParts: [MessagePart] = []
 
@@ -355,14 +353,13 @@ extension IMAPServer {
 
     /// Build the `Content-Type` string for a singlepart structure.
     private func singlepartContentType(_ part: BodyStructure.Singlepart) -> String {
-        var contentType: String
-        switch part.kind {
-        case .basic(let mediaType):
-            contentType = "\(String(mediaType.topLevel))/\(String(mediaType.sub))"
-        case .text(let text):
-            contentType = "text/\(String(text.mediaSubtype))"
-        case .message(let message):
-            contentType = "message/\(String(message.message))"
+        var contentType = switch part.kind {
+            case let .basic(mediaType):
+                "\(String(mediaType.topLevel))/\(String(mediaType.sub))"
+            case let .text(text):
+                "text/\(String(text.mediaSubtype))"
+            case let .message(message):
+                "message/\(String(message.message))"
         }
 
         if let charset = part.fields.parameters.first(where: { $0.key.lowercased() == "charset" })?.value {

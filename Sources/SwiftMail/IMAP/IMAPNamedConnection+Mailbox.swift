@@ -1,10 +1,10 @@
 import Foundation
 @preconcurrency import NIOIMAPCore
 
-extension IMAPNamedConnection {
+public extension IMAPNamedConnection {
     /// Fetch server capabilities.
     @discardableResult
-    public func fetchCapabilities() async throws -> [Capability] {
+    func fetchCapabilities() async throws -> [Capability] {
         let result = try await connection.fetchCapabilities()
         recordActivity()
         return result
@@ -12,7 +12,7 @@ extension IMAPNamedConnection {
 
     /// Select a mailbox for subsequent commands.
     @discardableResult
-    public func select(mailbox mailboxName: String) async throws -> Mailbox.Selection {
+    func select(mailbox mailboxName: String) async throws -> Mailbox.Selection {
         // Authenticate first so namespacesSnapshot is populated (or repopulated
         // after a reconnect) before we resolve the mailbox path.
         try await ensureAuthenticated()
@@ -22,18 +22,18 @@ extension IMAPNamedConnection {
 
     /// Compatibility alias for selecting a mailbox.
     @discardableResult
-    public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
+    func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
         try await select(mailbox: mailboxName)
     }
 
     /// Close the currently selected mailbox (expunges `\Deleted` messages).
-    public func closeMailbox() async throws {
+    func closeMailbox() async throws {
         let command = CloseCommand()
         try await executeCommand(command)
     }
 
     /// Unselect the currently selected mailbox without expunging.
-    public func unselectMailbox() async throws {
+    func unselectMailbox() async throws {
         if !capabilities.contains(.unselect) {
             throw IMAPError.commandNotSupported("UNSELECT command not supported by server")
         }
@@ -43,7 +43,7 @@ extension IMAPNamedConnection {
     }
 
     /// Retrieve mailbox status without selecting the mailbox.
-    public func mailboxStatus(_ mailboxName: String) async throws -> Mailbox.Status {
+    func mailboxStatus(_ mailboxName: String) async throws -> Mailbox.Status {
         let attributes = mailboxStatusAttributes()
         let command = StatusCommand(mailboxName: resolveMailboxPath(mailboxName), attributes: attributes)
         let status: NIOIMAPCore.MailboxStatus = try await executeCommand(command)
@@ -80,7 +80,7 @@ extension IMAPNamedConnection {
     }
 
     /// List mailboxes.
-    public func listMailboxes(wildcard: String = "*") async throws -> [Mailbox.Info] {
+    func listMailboxes(wildcard: String = "*") async throws -> [Mailbox.Info] {
         if let namespaces = connection.namespacesSnapshot {
             let patterns = namespaces.listingPatterns(for: wildcard)
             var allMailboxes: [Mailbox.Info] = []
@@ -104,7 +104,7 @@ extension IMAPNamedConnection {
     }
 
     /// Fetch server namespace information.
-    public func fetchNamespaces() async throws -> NamespaceResponse {
+    func fetchNamespaces() async throws -> NamespaceResponse {
         try await ensureAuthenticated()
         return try await connection.fetchNamespaces()
     }

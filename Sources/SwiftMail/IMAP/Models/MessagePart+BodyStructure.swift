@@ -5,7 +5,7 @@ import Foundation
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
 
-extension Array where Element == MessagePart {
+extension [MessagePart] {
     /**
      Initialize an array of message parts from a BodyStructure
 
@@ -22,21 +22,21 @@ extension Array where Element == MessagePart {
         self = []
 
         switch structure {
-        case .singlepart(let part):
-            appendSinglepart(part, sectionPath: sectionPath)
+            case let .singlepart(part):
+                appendSinglepart(part, sectionPath: sectionPath)
 
-        case .multipart(let multipart):
-            // For multipart messages, process each child part and collect results
-            for (index, childPart) in multipart.parts.enumerated() {
-                // Create a new section path array by appending the current index + 1
-                let childSectionPath = sectionPath.isEmpty ? [index + 1] : sectionPath + [index + 1]
+            case let .multipart(multipart):
+                // For multipart messages, process each child part and collect results
+                for (index, childPart) in multipart.parts.enumerated() {
+                    // Create a new section path array by appending the current index + 1
+                    let childSectionPath = sectionPath.isEmpty ? [index + 1] : sectionPath + [index + 1]
 
-                // Recursively process child parts
-                let childParts = [MessagePart](childPart, sectionPath: childSectionPath)
+                    // Recursively process child parts
+                    let childParts = [MessagePart](childPart, sectionPath: childSectionPath)
 
-                // Append all child parts to our result
-                self.append(contentsOf: childParts)
-            }
+                    // Append all child parts to our result
+                    append(contentsOf: childParts)
+                }
         }
     }
 
@@ -77,7 +77,7 @@ extension Array where Element == MessagePart {
         let contentId = Self.contentID(from: part.fields.id)
 
         var embeddedMessageInfo: MessageInfo?
-        if case .message(let message) = part.kind {
+        if case let .message(message) = part.kind {
             embeddedMessageInfo = Self.makeEmbeddedMessageInfo(from: message, filename: &filename)
         }
 
@@ -91,36 +91,35 @@ extension Array where Element == MessagePart {
             data: nil,
             embeddedMessageInfo: embeddedMessageInfo
         )
-        self.append(messagePart)
+        append(messagePart)
 
         // For message/rfc822, recurse into the nested body structure to extract
         // inner parts (text/html, text/plain, nested attachments).
         // Section numbering per RFC 3501: parts within a message/rfc822 at section N
         // are addressed as N.1, N.2, etc. — regardless of whether the nested body
         // is multipart or singlepart (singlepart content is part 1).
-        if case .message(let message) = part.kind {
+        if case let .message(message) = part.kind {
             let parentPath = sectionPath.isEmpty ? [1] : sectionPath
             switch message.body {
-            case .multipart:
-                let nestedParts = [MessagePart](message.body, sectionPath: parentPath)
-                self.append(contentsOf: nestedParts)
-            case .singlepart:
-                let nestedParts = [MessagePart](message.body, sectionPath: parentPath + [1])
-                self.append(contentsOf: nestedParts)
+                case .multipart:
+                    let nestedParts = [MessagePart](message.body, sectionPath: parentPath)
+                    append(contentsOf: nestedParts)
+                case .singlepart:
+                    let nestedParts = [MessagePart](message.body, sectionPath: parentPath + [1])
+                    append(contentsOf: nestedParts)
             }
         }
     }
 
     /// Build the Content-Type string (including charset parameter, if present) for a singlepart.
     private static func contentType(for part: BodyStructure.Singlepart) -> String {
-        var contentType: String
-        switch part.kind {
-        case .basic(let mediaType):
-            contentType = "\(String(mediaType.topLevel))/\(String(mediaType.sub))"
-        case .text(let text):
-            contentType = "text/\(String(text.mediaSubtype))"
-        case .message(let message):
-            contentType = "message/\(String(message.message))"
+        var contentType = switch part.kind {
+            case let .basic(mediaType):
+                "\(String(mediaType.topLevel))/\(String(mediaType.sub))"
+            case let .text(text):
+                "text/\(String(text.mediaSubtype))"
+            case let .message(message):
+                "message/\(String(message.message))"
         }
         if let charset = part.fields.parameters.first(where: { $0.key.lowercased() == "charset" })?.value {
             contentType += "; charset=\(charset)"
@@ -225,25 +224,25 @@ extension Array where Element == MessagePart {
 
     private static func formatEnvelopeAddress(_ address: EmailAddressListElement) -> String {
         switch address {
-        case .singleAddress(let emailAddress):
-            let name: String = {
-                guard let buf = emailAddress.personName else { return "" }
-                let raw = buf.stringValue
-                guard !raw.isEmpty else { return "" }
-                let decoded = raw.decodeMIMEHeader()
-                return decoded.isEmpty ? raw : decoded
-            }()
-            let mailbox = emailAddress.mailbox.map { $0.stringValue } ?? ""
-            let host = emailAddress.host.map { $0.stringValue } ?? ""
-            if !name.isEmpty {
-                return "\"\(name)\" <\(mailbox)@\(host)>"
-            } else {
-                return "\(mailbox)@\(host)"
-            }
-        case .group(let group):
-            let groupName = group.groupName.stringValue.decodeMIMEHeader()
-            let members = group.children.map { formatEnvelopeAddress($0) }.joined(separator: ", ")
-            return "\(groupName): \(members);"
+            case let .singleAddress(emailAddress):
+                let name: String = {
+                    guard let buf = emailAddress.personName else { return "" }
+                    let raw = buf.stringValue
+                    guard !raw.isEmpty else { return "" }
+                    let decoded = raw.decodeMIMEHeader()
+                    return decoded.isEmpty ? raw : decoded
+                }()
+                let mailbox = emailAddress.mailbox.map(\.stringValue) ?? ""
+                let host = emailAddress.host.map(\.stringValue) ?? ""
+                if !name.isEmpty {
+                    return "\"\(name)\" <\(mailbox)@\(host)>"
+                } else {
+                    return "\(mailbox)@\(host)"
+                }
+            case let .group(group):
+                let groupName = group.groupName.stringValue.decodeMIMEHeader()
+                let members = group.children.map { formatEnvelopeAddress($0) }.joined(separator: ", ")
+                return "\(groupName): \(members);"
         }
     }
 

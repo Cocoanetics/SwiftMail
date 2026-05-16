@@ -1,19 +1,19 @@
-// FetchHeadersHandler.swift
+// FetchMessageInfoHandler.swift
 // A specialized handler for IMAP fetch headers operations
 
 import Foundation
-@preconcurrency import NIOIMAP
-import NIOIMAPCore
 import NIO
 import NIOConcurrencyHelpers
+@preconcurrency import NIOIMAP
+import NIOIMAPCore
 
 /// Handler for IMAP FETCH HEADERS command
 final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected email headers
-    internal var messageInfos: [MessageInfo] = []
-    internal var currentSequenceNumber: SequenceNumber?
-    internal var currentHeaderLiteral = Data()
-    internal var collectingThreadingHeaders = false
+    var messageInfos: [MessageInfo] = []
+    var currentSequenceNumber: SequenceNumber?
+    var currentHeaderLiteral = Data()
+    var collectingThreadingHeaders = false
 
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
@@ -40,7 +40,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         let handled = super.processResponse(response)
 
         // Process fetch responses
-        if case .fetch(let fetchResponse) = response {
+        if case let .fetch(fetchResponse) = response {
             processFetchResponse(fetchResponse)
         }
 

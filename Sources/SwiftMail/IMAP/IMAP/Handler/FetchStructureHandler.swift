@@ -2,31 +2,31 @@
 // A specialized handler for IMAP fetch structure operations
 
 import Foundation
-@preconcurrency import NIOIMAP
-import NIOIMAPCore
 import NIO
 import NIOConcurrencyHelpers
+@preconcurrency import NIOIMAP
+import NIOIMAPCore
 
 /// Handler for IMAP FETCH STRUCTURE command
 final class FetchStructureHandler: BaseIMAPCommandHandler<[MessagePart]>, IMAPCommandHandler, @unchecked Sendable {
     /// The body structure from the response
     private var bodyStructure: BodyStructure?
 
-    	/// Handle a tagged OK response by succeeding the promise with the message parts
-	/// - Parameter response: The tagged response
-	override func handleTaggedOKResponse(_ response: TaggedResponse) {
-		// Call super to handle CLIENTBUG warnings
-		super.handleTaggedOKResponse(response)
+    /// Handle a tagged OK response by succeeding the promise with the message parts
+    /// - Parameter response: The tagged response
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Call super to handle CLIENTBUG warnings
+        super.handleTaggedOKResponse(response)
 
-		lock.withLock {
-			if let structure = self.bodyStructure {
-				let parts = [MessagePart](structure)
-				succeedWithResult(parts)
-			} else {
-				failWithError(IMAPError.fetchFailed("No body structure received"))
-			}
-		}
-	}
+        lock.withLock {
+            if let structure = self.bodyStructure {
+                let parts = [MessagePart](structure)
+                succeedWithResult(parts)
+            } else {
+                failWithError(IMAPError.fetchFailed("No body structure received"))
+            }
+        }
+    }
 
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
@@ -42,7 +42,7 @@ final class FetchStructureHandler: BaseIMAPCommandHandler<[MessagePart]>, IMAPCo
         let handled = super.processResponse(response)
 
         // Process fetch responses
-        if case .fetch(let fetchResponse) = response {
+        if case let .fetch(fetchResponse) = response {
             processFetchResponse(fetchResponse)
         }
 
@@ -54,12 +54,12 @@ final class FetchStructureHandler: BaseIMAPCommandHandler<[MessagePart]>, IMAPCo
     /// - Parameter fetchResponse: The fetch response to process
     private func processFetchResponse(_ fetchResponse: FetchResponse) {
         switch fetchResponse {
-        case .simpleAttribute(let attribute):
-            // Process simple attributes
-            processMessageAttribute(attribute)
+            case let .simpleAttribute(attribute):
+                // Process simple attributes
+                processMessageAttribute(attribute)
 
-        default:
-            break
+            default:
+                break
         }
     }
 
@@ -67,15 +67,15 @@ final class FetchStructureHandler: BaseIMAPCommandHandler<[MessagePart]>, IMAPCo
     /// - Parameter attribute: The attribute to process
     private func processMessageAttribute(_ attribute: MessageAttribute) {
         switch attribute {
-        case .body(let bodyStructure, _):
-            if case .valid(let structure) = bodyStructure {
-                lock.withLock {
-                    self.bodyStructure = structure
+            case let .body(bodyStructure, _):
+                if case let .valid(structure) = bodyStructure {
+                    lock.withLock {
+                        self.bodyStructure = structure
+                    }
                 }
-            }
 
-        default:
-            break
+            default:
+                break
         }
     }
 }

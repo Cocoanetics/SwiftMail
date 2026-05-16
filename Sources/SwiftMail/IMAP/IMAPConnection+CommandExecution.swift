@@ -1,19 +1,19 @@
 import Foundation
+import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
-import NIO
 
 extension IMAPConnection {
     @discardableResult func fetchCapabilities() async throws -> [Capability] {
         let command = CapabilityCommand()
         let serverCapabilities = try await executeCommand(command)
-        self.capabilities = Set(serverCapabilities)
+        capabilities = Set(serverCapabilities)
         return serverCapabilities
     }
 
     func refreshCapabilities(using reportedCapabilities: [Capability]) async throws {
         if !reportedCapabilities.isEmpty {
-            self.capabilities = Set(reportedCapabilities)
+            capabilities = Set(reportedCapabilities)
             return
         }
 
@@ -46,7 +46,7 @@ extension IMAPConnection {
 
     func executeCommand<CommandType: IMAPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
         try await commandQueue.run { [self] in
-            try await self.executeCommandBody(command)
+            try await executeCommandBody(command)
         }
     }
 
@@ -64,13 +64,13 @@ extension IMAPConnection {
             try await connectBody()
         }
 
-        guard let channel = self.channel, channel.isActive else {
+        guard let channel, channel.isActive else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
 
         let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
         let tag = generateCommandTag()
-        let handler = CommandType.HandlerType.init(commandTag: tag, promise: resultPromise)
+        let handler = CommandType.HandlerType(commandTag: tag, promise: resultPromise)
         let scheduledTask = scheduleCommandTimeout(
             channel: channel,
             timeoutSeconds: command.timeoutSeconds,
@@ -98,12 +98,12 @@ extension IMAPConnection {
         let scheduledTask: Scheduled<Void>
     }
 
-    private func scheduleCommandTimeout<ResultType: Sendable>(
+    private func scheduleCommandTimeout(
         channel: Channel,
         timeoutSeconds: Int,
-        promise: EventLoopPromise<ResultType>
+        promise: EventLoopPromise<some Sendable>
     ) -> Scheduled<Void> {
-        let logger = self.logger
+        let logger = logger
         return channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
             logger.warning("Command timed out after \(timeoutSeconds) seconds")
             promise.fail(IMAPError.timeout)
@@ -154,7 +154,7 @@ extension IMAPConnection {
     }
 
     func executeHandlerOnly<T: Sendable, HandlerType: IMAPCommandHandler>(
-        handlerType: HandlerType.Type,
+        handlerType _: HandlerType.Type,
         timeoutSeconds: Int = 5
     ) async throws -> T where HandlerType.ResultType == T {
         try await recycleConnectionIfBufferedTerminationIfNeeded(operation: String(describing: HandlerType.self))
@@ -165,12 +165,12 @@ extension IMAPConnection {
             try await connectBody()
         }
 
-        guard let channel = self.channel, channel.isActive else {
+        guard let channel, channel.isActive else {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
 
         let resultPromise = channel.eventLoop.makePromise(of: T.self)
-        let handler = HandlerType.init(commandTag: "", promise: resultPromise)
+        let handler = HandlerType(commandTag: "", promise: resultPromise)
         let scheduledTask = scheduleHandlerTimeout(
             channel: channel,
             timeoutSeconds: timeoutSeconds,
@@ -185,12 +185,12 @@ extension IMAPConnection {
         )
     }
 
-    private func scheduleHandlerTimeout<ResultType: Sendable>(
+    private func scheduleHandlerTimeout(
         channel: Channel,
         timeoutSeconds: Int,
-        promise: EventLoopPromise<ResultType>
+        promise: EventLoopPromise<some Sendable>
     ) -> Scheduled<Void> {
-        let logger = self.logger
+        let logger = logger
         return channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
             logger.warning("Handler execution timed out after \(timeoutSeconds) seconds")
             promise.fail(IMAPError.timeout)

@@ -4,7 +4,6 @@
 import Foundation
 
 extension EMLParser {
-
     // MARK: - Header Parameter Extraction
 
     /// Extract the MIME type (e.g. "text/html") from a full Content-Type value.
@@ -20,7 +19,7 @@ extension EMLParser {
         guard let mimeType = components.first else { return contentType }
 
         var result = String(mimeType).trimmingCharacters(in: .whitespaces)
-        let skipParams: Set<String> = ["name", "filename", "boundary"]
+        let skipParams: Set = ["name", "filename", "boundary"]
 
         for component in components.dropFirst() {
             let trimmed = String(component).trimmingCharacters(in: .whitespaces)
@@ -36,7 +35,7 @@ extension EMLParser {
 
     /// Extract the boundary parameter from a Content-Type header.
     static func extractBoundary(from contentType: String) -> String? {
-        return extractHeaderParam(from: contentType, named: "boundary")
+        extractHeaderParam(from: contentType, named: "boundary")
     }
 
     /// Extract a named parameter from a header value (e.g. `boundary="abc"` → `abc`).
@@ -53,12 +52,12 @@ extension EMLParser {
         if value.hasPrefix("\"") {
             value.removeFirst()
             if let endQuote = value.firstIndex(of: "\"") {
-                value = String(value[value.startIndex..<endQuote])
+                value = String(value[value.startIndex ..< endQuote])
             }
         } else {
             // Unquoted — take until semicolon or end
             if let semi = value.firstIndex(of: ";") {
-                value = String(value[value.startIndex..<semi])
+                value = String(value[value.startIndex ..< semi])
             }
             value = value.trimmingCharacters(in: .whitespaces)
         }

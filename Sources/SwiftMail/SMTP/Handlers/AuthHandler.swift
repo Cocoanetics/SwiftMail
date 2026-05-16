@@ -1,6 +1,6 @@
 import Foundation
-import NIOCore
 import Logging
+import NIOCore
 
 /// Handler for SMTP authentication
 final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
@@ -30,7 +30,7 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// - Parameters:
     ///   - commandTag: Optional tag for the command
     ///   - promise: The promise to fulfill when the command completes
-   required convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
+    required convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
         // These will be set in the designated initializer
         self.init(commandTag: commandTag, promise: promise, method: .plain, username: "", password: "", channel: nil)
     }
@@ -50,16 +50,16 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// - Returns: Whether the handler is complete
     override func processResponse(_ response: SMTPResponse) -> Bool {
         switch method {
-        case .plain, .xoauth2:
-            return processImmediateResponse(response)
-        case .login:
-            return processLoginResponse(response)
+            case .plain, .xoauth2:
+                processImmediateResponse(response)
+            case .login:
+                processLoginResponse(response)
         }
     }
 
     /// Handle the single-shot response for methods (PLAIN, XOAUTH2) that complete in one round-trip.
     private func processImmediateResponse(_ response: SMTPResponse) -> Bool {
-        if response.code >= 200 && response.code < 300 {
+        if response.code >= 200, response.code < 300 {
             promise.succeed(AuthResult(method: method, success: true))
             return true
         } else if response.code >= 400 {
@@ -72,12 +72,12 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// Handle a response for the LOGIN auth flow, advancing the state machine and sending credentials as needed.
     private func processLoginResponse(_ response: SMTPResponse) -> Bool {
         switch state {
-        case .initial:
-            return advanceLoginState(response, sending: username, nextState: .usernameProvided)
-        case .usernameProvided:
-            return advanceLoginState(response, sending: password, nextState: .completed)
-        case .completed:
-            return finalizeLogin(response)
+            case .initial:
+                advanceLoginState(response, sending: username, nextState: .usernameProvided)
+            case .usernameProvided:
+                advanceLoginState(response, sending: password, nextState: .completed)
+            case .completed:
+                finalizeLogin(response)
         }
     }
 
@@ -100,7 +100,7 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
 
     /// Resolve the LOGIN flow after the password has been sent: success on 2xx, failure otherwise.
     private func finalizeLogin(_ response: SMTPResponse) -> Bool {
-        if response.code >= 200 && response.code < 300 {
+        if response.code >= 200, response.code < 300 {
             promise.succeed(AuthResult(method: method, success: true))
         } else {
             promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
@@ -111,7 +111,7 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// Send a credential for LOGIN authentication
     /// - Parameter credential: The credential to send (username or password)
     private func sendLoginCredential(_ credential: String) {
-        guard let channel = channel else {
+        guard let channel else {
             promise.fail(SMTPError.connectionFailed("Channel is nil"))
             return
         }

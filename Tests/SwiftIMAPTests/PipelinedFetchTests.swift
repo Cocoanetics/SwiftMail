@@ -1,16 +1,15 @@
 import Foundation
-import Testing
 import NIO
 import NIOConcurrencyHelpers
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
 @testable import SwiftMail
+import Testing
 
 // MARK: - PipelinedFetchPartHandler Tests
 
 @Suite("PipelinedFetchPartHandler")
 struct PipelinedFetchPartHandlerTests {
-
     private func makeEventLoop() -> EventLoop {
         MultiThreadedEventLoopGroup(numberOfThreads: 1).next()
     }
@@ -112,7 +111,6 @@ struct PipelinedFetchPartHandlerTests {
 
 @Suite("PipelinedCommandDispatcher")
 struct PipelinedCommandDispatcherTests {
-
     private func makeEventLoop() -> EventLoop {
         MultiThreadedEventLoopGroup(numberOfThreads: 1).next()
     }

@@ -3,13 +3,13 @@ import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
-import Testing
 @testable import SwiftMail
+import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IdleHandlerTests {
     @Test
-    func testIdleStartedKeepsHandlerActiveUntilTaggedOK() async throws {
+    func idleStartedKeepsHandlerActiveUntilTaggedOK() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -61,7 +61,7 @@ struct IdleHandlerTests {
     }
 
     @Test
-    func testByeDuringIdleCompletesWithoutDoneOrTaggedOK() async throws {
+    func byeDuringIdleCompletesWithoutDoneOrTaggedOK() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -103,7 +103,7 @@ struct IdleHandlerTests {
         #expect(handler.isCompleted)
 
         let firstEvent = await iterator.next()
-        if case .some(.bye(let text)) = firstEvent {
+        if case let .some(.bye(text)) = firstEvent {
             #expect(text == "Disconnected for inactivity.")
         } else {
             Issue.record("Expected BYE event during IDLE")

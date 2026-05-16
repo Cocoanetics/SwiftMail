@@ -4,7 +4,6 @@
 import Foundation
 
 extension EMLParser {
-
     // MARK: - MIME Body Parsing
 
     /// Parse the body into MessagePart(s) based on Content-Type.
@@ -69,7 +68,7 @@ extension EMLParser {
         var searchStart = bodyString.startIndex
 
         while searchStart < bodyString.endIndex {
-            guard let delimRange = bodyString.range(of: delimiter, range: searchStart..<bodyString.endIndex) else {
+            guard let delimRange = bodyString.range(of: delimiter, range: searchStart ..< bodyString.endIndex) else {
                 break
             }
 
@@ -85,13 +84,13 @@ extension EMLParser {
             )
 
             // Find the next boundary to determine the end of this part
-            if let nextDelimRange = bodyString.range(of: delimiter, range: contentStart..<bodyString.endIndex) {
+            if let nextDelimRange = bodyString.range(of: delimiter, range: contentStart ..< bodyString.endIndex) {
                 let contentEnd = trimmedPartEnd(
                     bodyString: bodyString,
                     contentStart: contentStart,
                     delimiterStart: nextDelimRange.lowerBound
                 )
-                rawParts.append(String(bodyString[contentStart..<contentEnd]))
+                rawParts.append(String(bodyString[contentStart ..< contentEnd]))
                 searchStart = nextDelimRange.lowerBound
             } else {
                 // No more boundaries — take the rest
@@ -118,10 +117,10 @@ extension EMLParser {
         from start: String.Index
     ) -> String.Index {
         var contentStart = start
-        if contentStart < bodyString.endIndex && bodyString[contentStart] == "\r" {
+        if contentStart < bodyString.endIndex, bodyString[contentStart] == "\r" {
             contentStart = bodyString.index(after: contentStart)
         }
-        if contentStart < bodyString.endIndex && bodyString[contentStart] == "\n" {
+        if contentStart < bodyString.endIndex, bodyString[contentStart] == "\n" {
             contentStart = bodyString.index(after: contentStart)
         }
         return contentStart
