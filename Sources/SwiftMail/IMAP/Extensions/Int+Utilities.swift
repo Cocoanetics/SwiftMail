@@ -16,7 +16,7 @@ extension Int {
         formatter.unitOptions = .providedUnit
         formatter.numberFormatter.maximumFractionDigits = 1
         formatter.locale = locale
-        
+
         // Format sizes in the appropriate unit
         if self < 1_000 {
             return formatter.string(from: byteCount)
@@ -33,21 +33,21 @@ extension Int {
         let numberFormatter = NumberFormatter()
         numberFormatter.maximumFractionDigits = 1
         numberFormatter.locale = locale
-        
+
         if byteCount < 1_000 {
             // Use "byte" (singular) for all byte values - matches test expectations
             return "\(Int(byteCount)) byte"
         } else if byteCount < 1_000_000 {
-            let kb = byteCount / 1_000
+            let kilobytes = byteCount / 1_000
             // Use lowercase "kB" - matches test expectations
-            return "\(numberFormatter.string(from: NSNumber(value: kb)) ?? String(format: "%.1f", kb)) kB"
+            return "\(numberFormatter.string(from: NSNumber(value: kilobytes)) ?? String(format: "%.1f", kilobytes)) kB"
         } else if byteCount < 1_000_000_000 {
-            let mb = byteCount / 1_000_000
-            return "\(numberFormatter.string(from: NSNumber(value: mb)) ?? String(format: "%.1f", mb)) MB"
+            let megabytes = byteCount / 1_000_000
+            return "\(numberFormatter.string(from: NSNumber(value: megabytes)) ?? String(format: "%.1f", megabytes)) MB"
         } else {
-            let gb = byteCount / 1_000_000_000
-            return "\(numberFormatter.string(from: NSNumber(value: gb)) ?? String(format: "%.1f", gb)) GB"
+            let gigabytes = byteCount / 1_000_000_000
+            return "\(numberFormatter.string(from: NSNumber(value: gigabytes)) ?? String(format: "%.1f", gigabytes)) GB"
         }
         #endif
     }
-} 
+}

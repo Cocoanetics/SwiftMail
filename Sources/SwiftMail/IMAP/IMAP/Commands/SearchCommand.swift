@@ -87,7 +87,10 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
 
         if useSort {
             if T.self == UID.self {
-                return TaggedCommand(tag: tag, command: .uidSort(criteria: sortCriteria, charset: sortCharset, key: key))
+                return TaggedCommand(
+                    tag: tag,
+                    command: .uidSort(criteria: sortCriteria, charset: sortCharset, key: key)
+                )
             } else {
                 return TaggedCommand(tag: tag, command: .sort(criteria: sortCriteria, charset: sortCharset, key: key))
             }

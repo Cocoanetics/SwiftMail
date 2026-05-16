@@ -11,18 +11,18 @@ public enum SMTPResponseCode: Int {
     case authSuccessful = 235         // Authentication successful
     case userNotLocal = 251           // User not local; will forward
     case cannotVerify = 252          // Cannot verify user, but will accept message and attempt delivery
-    
+
     // 3xx - Positive Intermediate
     case startMailInput = 354         // Start mail input; end with <CRLF>.<CRLF>
     case authChallenge = 334          // Server challenge (AUTH)
-    
+
     // 4xx - Transient Negative Completion
     case serviceNotAvailable = 421    // Service not available, closing transmission channel
     case mailboxBusy = 450           // Requested mail action not taken: mailbox unavailable
     case localError = 451            // Requested action aborted: local error in processing
     case insufficientStorage = 452   // Requested action not taken: insufficient system storage
     case tempAuthFailure = 454       // Temporary authentication failure
-    
+
     // 5xx - Permanent Negative Completion
     case syntaxError = 500           // Syntax error, command unrecognized
     case syntaxErrorParams = 501     // Syntax error in parameters or arguments
@@ -36,22 +36,22 @@ public enum SMTPResponseCode: Int {
     case exceededStorage = 552     // Requested mail action aborted: exceeded storage allocation
     case mailboxNameNotAllowed = 553 // Requested action not taken: mailbox name not allowed
     case transactionFailed = 554   // Transaction failed
-    
+
     /// Whether this response code indicates success (2xx)
     public var isSuccess: Bool {
         return (200...299).contains(rawValue)
     }
-    
+
     /// Whether this response code indicates an intermediate state (3xx)
     public var isIntermediate: Bool {
         return (300...399).contains(rawValue)
     }
-    
+
     /// Whether this response code indicates a temporary failure (4xx)
     public var isTemporaryFailure: Bool {
         return (400...499).contains(rawValue)
     }
-    
+
     /// Whether this response code indicates a permanent failure (5xx)
     public var isPermanentFailure: Bool {
         return (500...599).contains(rawValue)
@@ -92,4 +92,4 @@ extension SMTPResponseCode: CustomStringConvertible {
         }
         return "\(rawValue) - \(detail)"
     }
-} 
+}

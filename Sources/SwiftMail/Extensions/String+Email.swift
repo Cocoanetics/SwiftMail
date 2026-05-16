@@ -13,7 +13,7 @@ extension String {
         (?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*
         \.[a-zA-Z]{2,})$
         """#
-        
+
         do {
             let regex = try NSRegularExpression(pattern: pattern, options: [.allowCommentsAndWhitespace])
             let range = NSRange(location: 0, length: self.utf16.count)
@@ -27,4 +27,4 @@ extension String {
                    !self.hasSuffix("@")
         }
     }
-} 
+}

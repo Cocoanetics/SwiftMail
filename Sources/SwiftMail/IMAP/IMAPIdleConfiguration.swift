@@ -66,7 +66,9 @@ extension IMAPIdleConfiguration {
             throw IMAPError.invalidArgument("IDLE postIdleNoopDelay cannot be negative")
         }
         if postIdleNoopEnabled, postIdleNoopDelay > noopInterval {
-            throw IMAPError.invalidArgument("IDLE postIdleNoopDelay must be <= noopInterval when NOOP probing is enabled")
+            throw IMAPError.invalidArgument(
+                "IDLE postIdleNoopDelay must be <= noopInterval when NOOP probing is enabled"
+            )
         }
         guard doneTimeout > 0 else {
             throw IMAPError.invalidArgument("IDLE doneTimeout must be greater than 0 seconds")

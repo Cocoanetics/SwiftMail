@@ -91,9 +91,25 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
 
         if useSort {
             if T.self == UID.self {
-                return TaggedCommand(tag: tag, command: .uidSort(criteria: sortCriteria, charset: sortCharset, key: key, returnOptions: returnOptions))
+                return TaggedCommand(
+                    tag: tag,
+                    command: .uidSort(
+                        criteria: sortCriteria,
+                        charset: sortCharset,
+                        key: key,
+                        returnOptions: returnOptions
+                    )
+                )
             } else {
-                return TaggedCommand(tag: tag, command: .sort(criteria: sortCriteria, charset: sortCharset, key: key, returnOptions: returnOptions))
+                return TaggedCommand(
+                    tag: tag,
+                    command: .sort(
+                        criteria: sortCriteria,
+                        charset: sortCharset,
+                        key: key,
+                        returnOptions: returnOptions
+                    )
+                )
             }
         } else if T.self == UID.self {
             return TaggedCommand(tag: tag, command: .uidSearch(key: key, returnOptions: returnOptions))

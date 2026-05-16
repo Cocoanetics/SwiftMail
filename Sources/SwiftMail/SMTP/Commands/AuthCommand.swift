@@ -7,22 +7,22 @@ import NIO
 struct AuthCommand: SMTPCommand {
     /// The result type for this command
     typealias ResultType = AuthResult
-    
+
     /// The handler type for this command
     typealias HandlerType = AuthHandler
-    
+
     /// Username for authentication
     let username: String
-    
+
     /// Password for authentication
     let password: String
-    
+
     /// Authentication method to use
     let method: AuthMethod
-    
+
     /// Default timeout in seconds
     let timeoutSeconds: Int = 30
-    
+
     /**
      Initialize a new authentication command
      - Parameters:
@@ -35,7 +35,7 @@ struct AuthCommand: SMTPCommand {
         self.password = password
         self.method = method
     }
-    
+
     /**
      Convert the command to a string to send to the server
      - Returns: The command string
@@ -63,7 +63,7 @@ struct AuthCommand: SMTPCommand {
             return "AUTH XOAUTH2 \(data.base64EncodedString())"
         }
     }
-    
+
     /**
      Validate that the command parameters are valid
      - Throws: SMTPError if validation fails
@@ -72,9 +72,9 @@ struct AuthCommand: SMTPCommand {
         guard !username.isEmpty else {
             throw SMTPError.authenticationFailed("Username cannot be empty")
         }
-        
+
         guard !password.isEmpty else {
             throw SMTPError.authenticationFailed("Password cannot be empty")
         }
     }
-} 
+}

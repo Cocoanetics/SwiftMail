@@ -17,17 +17,17 @@ public enum Flag: Sendable {
     case draft
     // Note: Recent flag is not allowed in STORE commands
     case custom(String)
-    
+
     /// Convert from a NIOIMAPCore Flag
     internal init(nio: NIOIMAPCore.Flag) {
-        let s = String(nio)
-        switch s.uppercased() {
+        let raw = String(nio)
+        switch raw.uppercased() {
         case "\\SEEN":      self = .seen
         case "\\ANSWERED":  self = .answered
         case "\\FLAGGED":   self = .flagged
         case "\\DELETED":   self = .deleted
         case "\\DRAFT":     self = .draft
-        default:            self = .custom(s)
+        default:            self = .custom(raw)
         }
     }
 
@@ -59,12 +59,12 @@ public enum Flag: Sendable {
 extension Flag: CustomStringConvertible {
     public var description: String {
         switch self {
-            case .seen: return "seen"
-            case .answered: return "answered"
-            case .flagged: return "flagged"
-            case .deleted: return "deleted"
-            case .draft: return "draft"
-            case .custom(let value): return value
+        case .seen: return "seen"
+        case .answered: return "answered"
+        case .flagged: return "flagged"
+        case .deleted: return "deleted"
+        case .draft: return "draft"
+        case .custom(let value): return value
         }
     }
 }
@@ -72,12 +72,12 @@ extension Flag: CustomStringConvertible {
 extension Flag: CustomDebugStringConvertible {
     public var debugDescription: String {
         switch self {
-            case .seen: return "👁️"
-            case .answered: return "↩️ "
-            case .flagged: return "🚩"
-            case .deleted: return "🗑️ "
-            case .draft: return "📝"
-            case .custom(let value): return value
+        case .seen: return "👁️"
+        case .answered: return "↩️ "
+        case .flagged: return "🚩"
+        case .deleted: return "🗑️ "
+        case .draft: return "📝"
+        case .custom(let value): return value
         }
     }
 }
@@ -89,12 +89,12 @@ extension Flag: Codable {
         var container = encoder.singleValueContainer()
         try container.encode(self.description)
     }
-    
+
     // Decoding from a string
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let value = try container.decode(String.self)
-        
+
         switch value.lowercased() {
         case "seen": self = .seen
         case "answered": self = .answered

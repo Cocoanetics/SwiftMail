@@ -10,7 +10,10 @@ import NIOIMAPCore
 /// ``ExtendedSearchResult``.
 ///
 /// The generic parameter T specifies the MessageIdentifier type (UID or SequenceNumber).
-final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<ExtendedSearchResult<T>>, IMAPCommandHandler, @unchecked Sendable {
+final class ExtendedSearchHandler<T: MessageIdentifier>:
+    BaseIMAPCommandHandler<ExtendedSearchResult<T>>,
+    IMAPCommandHandler,
+    @unchecked Sendable {
     typealias ResultType = ExtendedSearchResult<T>
     typealias InboundIn = Response
     typealias InboundOut = Never
@@ -30,66 +33,76 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
     override func processResponse(_ response: Response) -> Bool {
         let handled = super.processResponse(response)
 
-        // Check for untagged BAD/NO
-        if case let .untagged(untagged) = response,
-           case let .conditionalState(status) = untagged {
-            switch status {
-            case .bad(let responseText):
-                failWithError(IMAPError.commandFailed("Extended search failed: BAD \(responseText.text)"))
-                return true
-            case .no(let responseText):
-                failWithError(IMAPError.commandFailed("Extended search failed: NO \(responseText.text)"))
-                return true
-            default:
-                break
-            }
+        guard case let .untagged(untagged) = response else {
+            return handled
         }
 
-        // ESEARCH response (RFC 4731)
-        if case let .untagged(untagged) = response,
-           case let .mailboxData(mailboxData) = untagged,
-           case let .extendedSearch(esearchResponse) = mailboxData {
-            receivedEsearch = true
-
-            for datum in esearchResponse.returnData {
-                switch datum {
-                case .min(let nioId):
-                    esearchMin = T(UInt32(nioId))
-                case .max(let nioId):
-                    esearchMax = T(UInt32(nioId))
-                case .all(let lastCommandSet):
-                    if case .set(let nioSet) = lastCommandSet {
-                        esearchAll = convertNIOSet(nioSet.set)
-                    }
-                case .count(let c):
-                    esearchCount = c
-                case .partial(let range, let nioSet):
-                    let ids = convertNIOSet(nioSet)
-                    esearchPartial = ExtendedSearchResult<T>.PartialResult(range: range, results: ids)
-                default:
-                    break
-                }
-            }
+        if case let .conditionalState(status) = untagged,
+           let failure = checkUntaggedFailure(status) {
+            failWithError(failure)
+            return true
         }
 
-        // Plain SEARCH response (fallback when ESEARCH is not used)
-        if case let .untagged(untagged) = response,
-           case let .mailboxData(mailboxData) = untagged,
-           case let .search(ids, _) = mailboxData {
-            let converted = ids.map { T(UInt32($0)) }
-            fallbackIdentifiers.append(contentsOf: converted)
-            fallbackOrderedIdentifiers.append(contentsOf: converted)
-        }
-
-        if case let .untagged(untagged) = response,
-           case let .mailboxData(mailboxData) = untagged,
-           case let .sort(ids, _) = mailboxData {
-            let converted = ids.map { T(UInt32($0)) }
-            fallbackIdentifiers.append(contentsOf: converted)
-            fallbackOrderedIdentifiers.append(contentsOf: converted)
+        if case let .mailboxData(mailboxData) = untagged {
+            processMailboxData(mailboxData)
         }
 
         return handled
+    }
+
+    private func checkUntaggedFailure(_ status: UntaggedStatus) -> IMAPError? {
+        switch status {
+        case .bad(let responseText):
+            return IMAPError.commandFailed("Extended search failed: BAD \(responseText.text)")
+        case .no(let responseText):
+            return IMAPError.commandFailed("Extended search failed: NO \(responseText.text)")
+        default:
+            return nil
+        }
+    }
+
+    private func processMailboxData(_ mailboxData: MailboxData) {
+        switch mailboxData {
+        case .extendedSearch(let esearchResponse):
+            // ESEARCH response (RFC 4731)
+            receivedEsearch = true
+            for datum in esearchResponse.returnData {
+                processESearchDatum(datum)
+            }
+        case .search(let ids, _):
+            // Plain SEARCH response (fallback when ESEARCH is not used)
+            appendFallback(ids: ids)
+        case .sort(let ids, _):
+            appendFallback(ids: ids)
+        default:
+            break
+        }
+    }
+
+    private func processESearchDatum(_ datum: SearchReturnData) {
+        switch datum {
+        case .min(let nioId):
+            esearchMin = T(UInt32(nioId))
+        case .max(let nioId):
+            esearchMax = T(UInt32(nioId))
+        case .all(let lastCommandSet):
+            if case .set(let nioSet) = lastCommandSet {
+                esearchAll = convertNIOSet(nioSet.set)
+            }
+        case .count(let count):
+            esearchCount = count
+        case .partial(let range, let nioSet):
+            let ids = convertNIOSet(nioSet)
+            esearchPartial = ExtendedSearchResult<T>.PartialResult(range: range, results: ids)
+        default:
+            break
+        }
+    }
+
+    private func appendFallback(ids: [NIOIMAPCore.UnknownMessageIdentifier]) {
+        let converted = ids.map { T(UInt32($0)) }
+        fallbackIdentifiers.append(contentsOf: converted)
+        fallbackOrderedIdentifiers.append(contentsOf: converted)
     }
 
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
@@ -137,8 +150,11 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
 
     // MARK: - Private helpers
 
-    /// Convert a NIOIMAPCore ``MessageIdentifierSet<UnknownMessageIdentifier>`` to a SwiftMail ``MessageIdentifierSet<T>``.
-    private func convertNIOSet(_ source: NIOIMAPCore.MessageIdentifierSet<NIOIMAPCore.UnknownMessageIdentifier>) -> MessageIdentifierSet<T> {
+    /// Convert a NIOIMAPCore ``MessageIdentifierSet<UnknownMessageIdentifier>`` to a SwiftMail
+    /// ``MessageIdentifierSet<T>``.
+    private func convertNIOSet(
+        _ source: NIOIMAPCore.MessageIdentifierSet<NIOIMAPCore.UnknownMessageIdentifier>
+    ) -> MessageIdentifierSet<T> {
         var result = MessageIdentifierSet<T>()
         for nioRange in source.ranges {
             let lower = T(UInt32(nioRange.range.lowerBound))

@@ -15,12 +15,12 @@ final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, IMAPComm
 	typealias ResultType = [Mailbox.Info]
 	typealias InboundIn = Response
 	typealias InboundOut = Never
-    
+
     private var mailboxes: [NIOIMAPCore.MailboxInfo] = []
-    
+
 	override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = self.unwrapInboundIn(data)
-        
+
         switch response {
         case .tagged(let tagged) where tagged.tag == commandTag:
             handleTaggedResponse(tagged)
@@ -34,12 +34,12 @@ final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, IMAPComm
             context.fireChannelRead(data)
         }
     }
-    
+
 	override func errorCaught(context: ChannelHandlerContext, error: Error) {
         promise.fail(error)
         context.fireErrorCaught(error)
     }
-    
+
     private func handleTaggedResponse(_ response: TaggedResponse) {
         switch response.state {
         case .ok:
@@ -50,4 +50,4 @@ final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, IMAPComm
             promise.fail(IMAPError.commandFailed("List command failed"))
         }
     }
-} 
+}

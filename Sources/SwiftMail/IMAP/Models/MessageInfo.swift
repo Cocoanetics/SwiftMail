@@ -7,16 +7,16 @@ import Foundation
 public struct MessageInfo: Codable, Sendable {
     /// The sequence number of the message
     public var sequenceNumber: SequenceNumber
-    
+
     /// The UID of the message (if available)
     public var uid: SwiftMail.UID?
-    
+
     /// The subject of the message
     public var subject: String?
-    
+
     /// The sender of the message
     public var from: String?
-    
+
     /// The recipients of the message
     public var to: [String] = []
 
@@ -25,7 +25,7 @@ public struct MessageInfo: Codable, Sendable {
 
     /// The BCC recipients of the message
     public var bcc: [String] = []
-    
+
     /// The date of the message (from the ENVELOPE Date: header — set by the sender)
     public var date: Date?
 
@@ -40,13 +40,13 @@ public struct MessageInfo: Codable, Sendable {
 
     /// The message IDs referenced by this message (from the References header)
     public var references: [MessageID]?
-    
+
     /// The flags of the message
     public var flags: [Flag]
-    
+
     /// The message parts
     public var parts: [MessagePart]
-    
+
     /// Additional header fields
     public var additionalFields: [String: String]?
 
@@ -67,7 +67,7 @@ public struct MessageInfo: Codable, Sendable {
         case parts
         case additionalFields
     }
-    
+
     /// Initialize a new email header
     /// - Parameters:
     ///   - sequenceNumber: The sequence number of the message
@@ -130,38 +130,9 @@ public extension MessageInfo {
         let bcc = try container.decodeIfPresent([String].self, forKey: .bcc) ?? []
         let date = try container.decodeIfPresent(Date.self, forKey: .date)
         let internalDate = try container.decodeIfPresent(Date.self, forKey: .internalDate)
-        // Decode messageId: try MessageID first, fall back to legacy String
-        let messageId: MessageID?
-        if let mid = try? container.decodeIfPresent(MessageID.self, forKey: .messageId) {
-            messageId = mid
-        } else if let midString = try container.decodeIfPresent(String.self, forKey: .messageId) {
-            messageId = MessageID(midString)
-        } else {
-            messageId = nil
-        }
-
-        // Decode inReplyTo: try MessageID first, fall back to legacy String
-        let inReplyTo: MessageID?
-        if let irt = try? container.decodeIfPresent(MessageID.self, forKey: .inReplyTo) {
-            inReplyTo = irt
-        } else if let irtString = try container.decodeIfPresent(String.self, forKey: .inReplyTo) {
-            inReplyTo = MessageID(irtString)
-        } else {
-            inReplyTo = nil
-        }
-
-        // Decode references: try [MessageID] first, then [String], then legacy space-separated String
-        let references: [MessageID]?
-        if let refs = try? container.decodeIfPresent([MessageID].self, forKey: .references) {
-            references = refs
-        } else if let refStrings = try? container.decodeIfPresent([String].self, forKey: .references) {
-            references = refStrings.compactMap { MessageID($0) }
-        } else if let refString = try container.decodeIfPresent(String.self, forKey: .references) {
-            let parsed = FetchMessageInfoHandler.parseMessageIDs(from: refString)
-            references = parsed.isEmpty ? nil : parsed
-        } else {
-            references = nil
-        }
+        let messageId = try Self.decodeMessageID(from: container, forKey: .messageId)
+        let inReplyTo = try Self.decodeMessageID(from: container, forKey: .inReplyTo)
+        let references = try Self.decodeReferences(from: container)
         let flags = try container.decodeIfPresent([Flag].self, forKey: .flags) ?? []
         let parts = try container.decodeIfPresent([MessagePart].self, forKey: .parts) ?? []
         let additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
@@ -183,5 +154,38 @@ public extension MessageInfo {
             parts: parts,
             additionalFields: additionalFields
         )
+    }
+
+    /// Decode a single `MessageID` field, accepting either the modern `MessageID` representation
+    /// or a legacy plain-`String` value for backward compatibility.
+    private static func decodeMessageID(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> MessageID? {
+        if let mid = try? container.decodeIfPresent(MessageID.self, forKey: key) {
+            return mid
+        }
+        if let midString = try container.decodeIfPresent(String.self, forKey: key) {
+            return MessageID(midString)
+        }
+        return nil
+    }
+
+    /// Decode the `references` field, accepting `[MessageID]`, `[String]`, or a legacy
+    /// space-separated `String` for backward compatibility.
+    private static func decodeReferences(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) throws -> [MessageID]? {
+        if let refs = try? container.decodeIfPresent([MessageID].self, forKey: .references) {
+            return refs
+        }
+        if let refStrings = try? container.decodeIfPresent([String].self, forKey: .references) {
+            return refStrings.compactMap { MessageID($0) }
+        }
+        if let refString = try container.decodeIfPresent(String.self, forKey: .references) {
+            let parsed = FetchMessageInfoHandler.parseMessageIDs(from: refString)
+            return parsed.isEmpty ? nil : parsed
+        }
+        return nil
     }
 }

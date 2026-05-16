@@ -1,0 +1,25 @@
+included:
+  - Sources
+  - Tests
+  - Demos
+
+excluded:
+  - .build
+  - .swiftpm
+  - "**/.build"
+  - "**/.swiftpm"
+  - Sources/SwiftMail/SwiftMail.docc
+
+identifier_name:
+  # Domain-specific names allowed because renaming would either break public
+  # API or lose protocol-level meaning:
+  #   - `to` / `cc`: RFC 5322 header field names on Message / MessageInfo / SearchCriteria
+  #   - `os`: RFC 2971 IMAP ID parameter name on Identification
+  #   - `on` / `or`: RFC 3501 IMAP SEARCH keyword enum cases on SearchCriteria
+  excluded:
+    - id
+    - to
+    - cc
+    - os
+    - on
+    - or

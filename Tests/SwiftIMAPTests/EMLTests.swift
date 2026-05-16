@@ -97,7 +97,9 @@ struct EMLParserTests {
         let data = Data(eml.utf8)
         let message = try Message(emlData: data)
 
-        try #require(message.parts.count == 2, "Expected 2 parts, got \(message.parts.count): \(message.parts.map { "\($0.section): \($0.contentType)" })")
+        let partsDescription = message.parts.map { "\($0.section): \($0.contentType)" }
+        let requireMessage = "Expected 2 parts, got \(message.parts.count): \(partsDescription)"
+        try #require(message.parts.count == 2, Comment(rawValue: requireMessage))
         #expect(message.parts[1].filename == "report.pdf")
         #expect(message.parts[1].disposition == "attachment")
         #expect(message.parts[1].encoding == "base64")
@@ -150,7 +152,7 @@ struct EMLParserTests {
         let formats = [
             "Mon, 16 Feb 2026 10:30:00 +0100",
             "16 Feb 2026 10:30:00 +0100",
-            "Mon, 6 Feb 2026 10:30:00 +0100",
+            "Mon, 6 Feb 2026 10:30:00 +0100"
         ]
 
         for format in formats {

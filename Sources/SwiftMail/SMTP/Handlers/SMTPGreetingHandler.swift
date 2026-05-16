@@ -16,12 +16,12 @@ final class SMTPGreetingHandler: BaseSMTPHandler<SMTPGreeting>, @unchecked Senda
 struct SMTPGreeting {
     /// The response code (usually 220)
 	let code: Int
-    
+
     /// The greeting message from the server
 	let message: String
-    
+
     /// Whether the server advertises ESMTP support in the greeting
 	var supportsESMTP: Bool {
         return message.contains("ESMTP")
     }
-} 
+}

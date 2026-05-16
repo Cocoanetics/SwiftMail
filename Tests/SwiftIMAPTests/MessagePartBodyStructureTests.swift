@@ -35,7 +35,13 @@ struct MessagePartBodyStructureTests {
     }
 
     /// Create a minimal Envelope with subject and from address.
-    private func envelope(subject: String? = nil, fromName: String? = nil, fromMailbox: String = "user", fromHost: String = "example.com", date: String? = nil) -> Envelope {
+    private func envelope(
+        subject: String? = nil,
+        fromName: String? = nil,
+        fromMailbox: String = "user",
+        fromHost: String = "example.com",
+        date: String? = nil
+    ) -> Envelope {
         let subjectBuf: ByteBuffer? = subject.map { buffer($0) }
         let fromAddr = EmailAddress(
             personName: fromName.map { buffer($0) },
@@ -81,7 +87,7 @@ struct MessagePartBodyStructureTests {
         let env = envelope(subject: "Forwarded email")
         let structure = rfc822Singlepart(envelope: env, nestedBody: nested)
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
 
         // Should produce 3 parts: the rfc822 part itself + 2 inner parts
         #expect(parts.count == 3)
@@ -107,7 +113,7 @@ struct MessagePartBodyStructureTests {
         let env = envelope(subject: "Simple forward")
         let structure = rfc822Singlepart(envelope: env, nestedBody: textPlainBody())
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
 
         // Should produce 2 parts: the rfc822 part + the inner text/plain
         #expect(parts.count == 2)
@@ -132,7 +138,7 @@ struct MessagePartBodyStructureTests {
         )
         let structure = rfc822Singlepart(envelope: env, nestedBody: textPlainBody())
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
 
         let info = parts[0].embeddedMessageInfo
         #expect(info != nil)
@@ -146,7 +152,7 @@ struct MessagePartBodyStructureTests {
         let env = envelope(subject: "Important: Meeting Notes")
         let structure = rfc822Singlepart(envelope: env, nestedBody: textPlainBody())
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
 
         // Filename should be sanitized subject + .eml
         #expect(parts[0].filename == "Important- Meeting Notes.eml")
@@ -158,7 +164,7 @@ struct MessagePartBodyStructureTests {
         let env = envelope()
         let structure = rfc822Singlepart(envelope: env, nestedBody: textPlainBody())
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
         #expect(parts[0].filename == "message.eml")
     }
 
@@ -176,7 +182,7 @@ struct MessagePartBodyStructureTests {
         let part = BodyStructure.Singlepart(kind: .message(message), fields: fields)
         let structure = BodyStructure.singlepart(part)
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
 
         // Filename should come from subject, NOT from CID
         #expect(parts[0].filename == "With CID.eml")
@@ -191,7 +197,7 @@ struct MessagePartBodyStructureTests {
         let part = BodyStructure.Singlepart(kind: .basic(mediaType), fields: fields)
         let structure = BodyStructure.singlepart(part)
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
 
         #expect(parts[0].filename == "image123@example.com")
     }
@@ -209,7 +215,7 @@ struct MessagePartBodyStructureTests {
             BodyStructure.Multipart(parts: [outerBody, rfc822], mediaSubtype: .mixed)
         )
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
 
         // Should have: text/plain(1), message/rfc822(2), text/plain(2.1), text/html(2.2)
         #expect(parts.count == 4)
@@ -227,8 +233,12 @@ struct MessagePartBodyStructureTests {
     func bodyContentReturnsFirstMatch() {
         // Message with two text/plain parts (e.g., from nested rfc822)
         let header = MessageInfo(sequenceNumber: SequenceNumber(1))
-        let part1 = MessagePart(section: Section([1]), contentType: "text/plain", data: "First body".data(using: .utf8))
-        let part2 = MessagePart(section: Section([2]), contentType: "text/plain", data: "Second body".data(using: .utf8))
+        let part1 = MessagePart(section: Section([1]), contentType: "text/plain", data: Data("First body".utf8))
+        let part2 = MessagePart(
+            section: Section([2]),
+            contentType: "text/plain",
+            data: Data("Second body".utf8)
+        )
         let message = Message(header: header, parts: [part1, part2])
 
         // textBody should return only the first match, not concatenation
@@ -240,7 +250,7 @@ struct MessagePartBodyStructureTests {
         // Test that envelope date is parsed correctly
         let env = envelope(date: "Tue, 15 Oct 2024 09:30:00 +0000")
         let structure = rfc822Singlepart(envelope: env, nestedBody: textPlainBody())
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
 
         let info = parts[0].embeddedMessageInfo
         #expect(info?.date != nil)

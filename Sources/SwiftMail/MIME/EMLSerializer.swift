@@ -31,74 +31,52 @@ public struct EMLSerializer {
     /// - Parameter message: The message to serialize.
     /// - Returns: Raw RFC 822 bytes ready to be written to a `.eml` file or appended to IMAP.
     public static func serialize(_ message: Message) throws -> Data {
+        var output = renderMessageHeaders(message.header)
+        try appendMessageBody(parts: message.parts, output: &output)
+
+        guard let data = output.data(using: .utf8) else {
+            throw EMLSerializerError.encodingFailed
+        }
+        return data
+    }
+
+    /// Render all standard plus additional header lines for the message's header info.
+    private static func renderMessageHeaders(_ header: MessageInfo) -> String {
         var output = ""
 
-        // Write standard headers
-        let header = message.header
-
-        if let from = header.from {
-            output += "From: \(from)\r\n"
-        }
-
-        if !header.to.isEmpty {
-            output += "To: \(header.to.joined(separator: ", "))\r\n"
-        }
-
-        if !header.cc.isEmpty {
-            output += "Cc: \(header.cc.joined(separator: ", "))\r\n"
-        }
-
-        if !header.bcc.isEmpty {
-            output += "Bcc: \(header.bcc.joined(separator: ", "))\r\n"
-        }
-
-        if let subject = header.subject {
-            output += "Subject: \(subject)\r\n"
-        }
-
-        if let date = header.date {
-            output += "Date: \(formatRFC2822Date(date))\r\n"
-        }
-
-        if let messageId = header.messageId {
-            output += "Message-ID: \(messageId.description)\r\n"
-        }
+        if let from = header.from { output += "From: \(from)\r\n" }
+        if !header.to.isEmpty { output += "To: \(header.to.joined(separator: ", "))\r\n" }
+        if !header.cc.isEmpty { output += "Cc: \(header.cc.joined(separator: ", "))\r\n" }
+        if !header.bcc.isEmpty { output += "Bcc: \(header.bcc.joined(separator: ", "))\r\n" }
+        if let subject = header.subject { output += "Subject: \(subject)\r\n" }
+        if let date = header.date { output += "Date: \(formatRFC2822Date(date))\r\n" }
+        if let messageId = header.messageId { output += "Message-ID: \(messageId.description)\r\n" }
 
         output += "MIME-Version: 1.0\r\n"
 
-        // Write additional headers
         if let additional = header.additionalFields {
             for (key, value) in additional.sorted(by: { $0.key < $1.key }) {
-                // Capitalize the header name
-                let headerName = capitalizeHeaderName(key)
-                output += "\(headerName): \(value)\r\n"
+                output += "\(capitalizeHeaderName(key)): \(value)\r\n"
             }
         }
+        return output
+    }
 
-        // Determine structure from parts
-        let parts = message.parts
-
+    /// Append the body (single-part, empty, or multipart) for the supplied parts to `output`.
+    private static func appendMessageBody(parts: [MessagePart], output: inout String) throws {
         if parts.isEmpty {
             // No parts — write an empty body
             output += "Content-Type: text/plain; charset=UTF-8\r\n"
             output += "\r\n"
         } else if parts.count == 1, let part = parts.first {
-            // Single part message
             output += serializePartHeaders(part)
             output += "\r\n"
             if let data = part.data {
                 output += stringFromData(data)
             }
         } else {
-            // Multipart message — determine the structure
             try serializeMultipart(parts: parts, output: &output)
         }
-
-        guard let data = output.data(using: .utf8) else {
-            throw EMLSerializerError.encodingFailed
-        }
-
-        return data
     }
 
     // MARK: - Multipart Serialization
@@ -139,11 +117,11 @@ public struct EMLSerializer {
     private static func serializePartHeaders(_ part: MessagePart) -> String {
         var headers = ""
 
-        var ct = part.contentType
+        var contentTypeHeader = part.contentType
         if let filename = part.filename {
-            ct += "; name=\"\(filename)\""
+            contentTypeHeader += "; name=\"\(filename)\""
         }
-        headers += "Content-Type: \(ct)\r\n"
+        headers += "Content-Type: \(contentTypeHeader)\r\n"
 
         if let encoding = part.encoding {
             headers += "Content-Transfer-Encoding: \(encoding)\r\n"

@@ -9,10 +9,10 @@ import NIOSSL
 public struct EmailAddress: Hashable, Codable, Sendable {
     /// The name part of the address (optional)
     public let name: String?
-    
+
     /// The email address
     public let address: String
-    
+
     /// Initialize a new email address
     /// - Parameters:
     ///   - name: Optional display name

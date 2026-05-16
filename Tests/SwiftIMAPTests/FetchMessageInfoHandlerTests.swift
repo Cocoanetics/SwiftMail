@@ -26,7 +26,7 @@ struct FetchMessageInfoHandlerTests {
                     ),
                     headerBlock: headerBlock
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -62,7 +62,7 @@ struct FetchMessageInfoHandlerTests {
                     envelope: envelopeAttribute(messageId: "<reply-b@example.com>"),
                     headerBlock: secondHeader
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -88,7 +88,7 @@ struct FetchMessageInfoHandlerTests {
                     envelope: envelopeAttribute(messageId: "<loner@example.com>"),
                     headerBlock: headerBlock
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -120,7 +120,7 @@ struct FetchMessageInfoHandlerTests {
                     ),
                     headerBlock: headerBlock
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -175,6 +175,7 @@ struct FetchMessageInfoHandlerTests {
         #expect(date == nil)
     }
 
+    // swiftlint:disable:next function_parameter_count
     private static func makeDate(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Date? {
         var components = DateComponents()
         components.year = year
@@ -210,7 +211,8 @@ struct FetchMessageInfoHandlerTests {
     }
 
     private func fetchResponse(sequenceNumber: Int, envelope: String, headerBlock: String) -> String {
-        "* \(sequenceNumber) FETCH (ENVELOPE \(envelope) BODY[HEADER] {\(headerBlock.utf8.count)}\r\n\(headerBlock))\r\n"
+        let prefix = "* \(sequenceNumber) FETCH (ENVELOPE \(envelope) BODY[HEADER]"
+        return "\(prefix) {\(headerBlock.utf8.count)}\r\n\(headerBlock))\r\n"
     }
 
     private func envelopeAttribute(messageId: String, inReplyTo: String? = nil) -> String {

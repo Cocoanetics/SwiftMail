@@ -121,27 +121,27 @@ struct MessageIDTests {
 
     @Test("Equatable: same parts are equal")
     func testEquatable() {
-        let a = MessageID(localPart: "abc", domain: "example.com")
-        let b = MessageID(localPart: "abc", domain: "example.com")
-        #expect(a == b)
+        let lhs = MessageID(localPart: "abc", domain: "example.com")
+        let rhs = MessageID(localPart: "abc", domain: "example.com")
+        #expect(lhs == rhs)
     }
 
     @Test("Equatable: different parts are not equal")
     func testNotEqual() {
-        let a = MessageID(localPart: "abc", domain: "example.com")
-        let b = MessageID(localPart: "xyz", domain: "example.com")
-        #expect(a != b)
+        let lhs = MessageID(localPart: "abc", domain: "example.com")
+        let rhs = MessageID(localPart: "xyz", domain: "example.com")
+        #expect(lhs != rhs)
     }
 
     @Test("Hashable: equal values have same hash")
     func testHashable() {
-        let a = MessageID(localPart: "abc", domain: "example.com")
-        let b = MessageID(localPart: "abc", domain: "example.com")
-        #expect(a.hashValue == b.hashValue)
+        let lhs = MessageID(localPart: "abc", domain: "example.com")
+        let rhs = MessageID(localPart: "abc", domain: "example.com")
+        #expect(lhs.hashValue == rhs.hashValue)
 
         var set = Set<MessageID>()
-        set.insert(a)
-        set.insert(b)
+        set.insert(lhs)
+        set.insert(rhs)
         #expect(set.count == 1)
     }
 

@@ -10,371 +10,41 @@ import NIOConcurrencyHelpers
 /// Handler for IMAP FETCH HEADERS command
 final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected email headers
-    private var messageInfos: [MessageInfo] = []
-    private var currentSequenceNumber: SequenceNumber?
-    private var currentHeaderLiteral = Data()
-    private var collectingThreadingHeaders = false
-    
+    internal var messageInfos: [MessageInfo] = []
+    internal var currentSequenceNumber: SequenceNumber?
+    internal var currentHeaderLiteral = Data()
+    internal var collectingThreadingHeaders = false
+
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
         // Call super to handle CLIENTBUG warnings
         super.handleTaggedOKResponse(response)
-        
+
         // Succeed with the collected headers
         let collectedInfos = lock.withLock { self.messageInfos }
         succeedWithResult(collectedInfos)
     }
-    
+
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.fetchFailed(String(describing: response.state)))
     }
-    
+
     /// Process an incoming response
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override func processResponse(_ response: Response) -> Bool {
         // Call the base class implementation to buffer the response
         let handled = super.processResponse(response)
-        
+
         // Process fetch responses
         if case .fetch(let fetchResponse) = response {
             processFetchResponse(fetchResponse)
         }
-        
+
         // Return the result from the base class
         return handled
     }
-    
-    /// Process a fetch response
-    /// - Parameter fetchResponse: The fetch response to process
-    private func processFetchResponse(_ fetchResponse: FetchResponse) {
-        switch fetchResponse {
-            case .simpleAttribute(let attribute):
-                // Process simple attributes (no sequence number)
-                processMessageAttribute(attribute, sequenceNumber: nil)
-                
-            case .start(let sequenceNumber):
-                // Create a new header for this sequence number
-                currentSequenceNumber = SequenceNumber(sequenceNumber.rawValue)
-                currentHeaderLiteral.removeAll(keepingCapacity: true)
-                collectingThreadingHeaders = false
-                let messageInfo = MessageInfo(sequenceNumber: SequenceNumber(sequenceNumber.rawValue))
-                lock.withLock {
-                    self.messageInfos.append(messageInfo)
-                }
-                
-            case .streamingBegin(let kind, _):
-                collectingThreadingHeaders = Self.shouldCollectThreadingHeaders(for: kind)
-                if collectingThreadingHeaders {
-                    currentHeaderLiteral.removeAll(keepingCapacity: true)
-                }
-                
-            case .streamingBytes(let data):
-                guard collectingThreadingHeaders else { break }
-                currentHeaderLiteral.append(contentsOf: data.readableBytesView)
-
-            case .streamingEnd:
-                guard collectingThreadingHeaders else { break }
-                applyCollectedThreadingHeaders()
-                collectingThreadingHeaders = false
-                currentHeaderLiteral.removeAll(keepingCapacity: true)
-
-            case .finish:
-                currentSequenceNumber = nil
-                collectingThreadingHeaders = false
-                currentHeaderLiteral.removeAll(keepingCapacity: true)
-                
-            default:
-                break
-        }
-    }
-
-    private func applyCollectedThreadingHeaders() {
-        guard let headerBlock = String(data: currentHeaderLiteral, encoding: .utf8) ?? String(data: currentHeaderLiteral, encoding: .ascii) else { return }
-
-        let allHeaders = EMLParser.parseHeaders(headerBlock)
-
-        // Headers already exposed via ENVELOPE or stored in dedicated fields
-        let envelopeKeys: Set<String> = ["from", "to", "cc", "bcc", "subject", "date", "message-id", "in-reply-to", "references", "reply-to"]
-
-        let referencesValue = allHeaders["references"]?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let additionalHeaders = allHeaders.filter { !envelopeKeys.contains($0.key) }
-
-        lock.withLock {
-            guard let index = currentMessageIndex() else { return }
-            var header = self.messageInfos[index]
-
-            if let references = referencesValue, !references.isEmpty {
-                let parsed = Self.parseMessageIDs(from: references)
-                header.references = parsed.isEmpty ? nil : parsed
-            }
-
-            header.additionalFields = additionalHeaders.isEmpty ? nil : additionalHeaders
-            self.messageInfos[index] = header
-        }
-    }
-
-    private func currentMessageIndex() -> Int? {
-        if let currentSequenceNumber,
-           let index = messageInfos.firstIndex(where: { $0.sequenceNumber == currentSequenceNumber }) {
-            return index
-        }
-
-        return messageInfos.indices.last
-    }
-    
-    /// Process a message attribute and update the corresponding email header
-    /// - Parameters:
-    ///   - attribute: The message attribute to process
-    ///   - sequenceNumber: The sequence number of the message (if known)
-    private func processMessageAttribute(_ attribute: MessageAttribute, sequenceNumber: SequenceNumber?) {
-        // If we don't have a sequence number, we can't update a header
-        guard let sequenceNumber = sequenceNumber else {
-            // For attributes that come without a sequence number, we assume they belong to the last header
-            lock.withLock {
-                if let lastIndex = self.messageInfos.indices.last {
-                    var header = self.messageInfos[lastIndex]
-                    updateHeader(&header, with: attribute)
-                    self.messageInfos[lastIndex] = header
-                }
-            }
-            return
-        }
-        
-        // Find or create a header for this sequence number
-        let seqNum = SequenceNumber(sequenceNumber.value)
-        lock.withLock {
-            if let index = self.messageInfos.firstIndex(where: { $0.sequenceNumber == seqNum }) {
-                var header = self.messageInfos[index]
-                updateHeader(&header, with: attribute)
-                self.messageInfos[index] = header
-            } else {
-                var header = MessageInfo(sequenceNumber: seqNum)
-                updateHeader(&header, with: attribute)
-                self.messageInfos.append(header)
-            }
-        }
-    }
-    
-    /// Update an email header with information from a message attribute
-    /// - Parameters:
-    ///   - header: The header to update
-    ///   - attribute: The attribute containing the information
-    private func updateHeader(_ header: inout MessageInfo, with attribute: MessageAttribute) {
-        switch attribute {
-        case .envelope(let envelope):
-            // Extract information from envelope
-            if let subject = envelope.subject?.stringValue {
-                header.subject = subject.decodeMIMEHeader()
-            }
-            
-            // Handle from addresses - check if array is not empty
-            if !envelope.from.isEmpty {
-                header.from = formatAddress(envelope.from[0])
-            }
-            
-            // Handle to addresses - capture all recipients
-            header.to = envelope.to.map { formatAddress($0) }
-
-            // Handle cc addresses - capture all recipients
-            header.cc = envelope.cc.map { formatAddress($0) }
-
-            // Handle bcc addresses - capture all recipients
-            header.bcc = envelope.bcc.map { formatAddress($0) }
-            
-            if let date = envelope.date {
-                let dateString = String(date)
-                if let parsedDate = Self.parseEnvelopeDate(dateString) {
-                    header.date = parsedDate
-                } else {
-                    print("Warning: Failed to parse email date: \(dateString)")
-                }
-            }
-            
-            if let messageID = envelope.messageID {
-                header.messageId = MessageID(String(messageID))
-            }
-
-            if let inReplyTo = envelope.inReplyTo {
-                header.inReplyTo = MessageID(String(inReplyTo))
-            }
-
-        case .uid(let uid):
-				header.uid = UID(nio: uid)
-
-        case .internalDate(let serverDate):
-            let c = serverDate.components
-            var dc = DateComponents()
-            dc.year = c.year
-            dc.month = c.month
-            dc.day = c.day
-            dc.hour = c.hour
-            dc.minute = c.minute
-            dc.second = c.second
-            dc.timeZone = Foundation.TimeZone(secondsFromGMT: c.zoneMinutes * 60)
-            if let date = Calendar(identifier: .gregorian).date(from: dc) {
-                header.internalDate = date
-            }
-
-        case .flags(let flags):
-            header.flags = flags.map(self.convertFlag)
-            
-        case .body(let bodyStructure, _):
-            if case .valid(let structure) = bodyStructure {
-                header.parts = Array<MessagePart>(structure)
-            }
-            
-        default:
-            break
-        }
-    }
-    
-	/// Convert a NIOIMAPCore.Flag to our MessageFlag type
-	private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {
-		let flagString = String(flag)
-		
-		switch flagString.uppercased() {
-			case "\\SEEN":
-				return .seen
-			case "\\ANSWERED":
-				return .answered
-			case "\\FLAGGED":
-				return .flagged
-			case "\\DELETED":
-				return .deleted
-			case "\\DRAFT":
-				return .draft
-			default:
-				// For any other flag, treat it as a custom flag
-				return .custom(flagString)
-		}
-	}
-    
-    /// Format an address for display
-    /// - Parameter address: The address to format
-    /// - Returns: A formatted string representation of the address
-    private func formatAddress(_ address: EmailAddressListElement) -> String {
-        switch address {
-            case .singleAddress(let emailAddress):
-                let name = emailAddress.personName?.stringValue.decodeMIMEHeader() ?? ""
-                let mailbox = emailAddress.mailbox?.stringValue ?? ""
-                let host = emailAddress.host?.stringValue ?? ""
-                
-                if !name.isEmpty {
-                    return "\"\(name)\" <\(mailbox)@\(host)>"
-                } else {
-                    return "\(mailbox)@\(host)"
-                }
-                
-            case .group(let group):
-                let groupName = group.groupName.stringValue.decodeMIMEHeader()
-                let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
-                return "\(groupName): \(members)"
-        }
-    }
-
-    static func shouldCollectThreadingHeaders(for kind: StreamingKind) -> Bool {
-        kind.sectionSpecifier.kind == .header
-    }
-
-    /// Parse a date string from an IMAP envelope into a `Date`.
-    ///
-    /// Accepts the standard RFC 5322 forms and additionally tolerates several common
-    /// deviations seen in the wild: lowercase month or weekday abbreviations
-    /// (e.g. `29 apr 2026 02:14:25`) and a missing timezone (interpreted as GMT).
-    ///
-    /// Out-of-range numeric fields (e.g. `99 Apr`) are still rejected — strict
-    /// parsing is used so corrupted dates surface as `nil` rather than silently
-    /// rolling over into a different valid timestamp.
-    static func parseEnvelopeDate(_ dateString: String) -> Date? {
-        // Strip trailing parenthetical comments such as " (UTC)"
-        let cleaned = dateString.replacingOccurrences(
-            of: "\\s*\\([^)]+\\)\\s*$",
-            with: "",
-            options: .regularExpression
-        )
-
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-
-        let formats = [
-            "EEE, dd MMM yyyy HH:mm:ss Z",       // RFC 5322
-            "EEE, d MMM yyyy HH:mm:ss Z",        // single-digit day
-            "d MMM yyyy HH:mm:ss Z",             // no weekday
-            "dd MMM yyyy HH:mm:ss Z",            // no weekday, two-digit day
-            "EEE, dd MMM yy HH:mm:ss Z",         // two-digit year
-            "EEE, dd MMM yyyy HH:mm:ss",         // no timezone
-            "EEE, d MMM yyyy HH:mm:ss",
-            "d MMM yyyy HH:mm:ss",               // no weekday, no timezone
-            "dd MMM yyyy HH:mm:ss",
-        ]
-
-        if let date = parseEnvelopeDate(cleaned, formats: formats, formatter: formatter) {
-            return date
-        }
-
-        // Fallback: capitalize lowercase month/weekday tokens and retry. This
-        // handles the case-mismatch deviation without enabling lenient parsing,
-        // so out-of-range numeric fields still fail.
-        let normalized = normalizeMonthAndWeekdayCase(cleaned)
-        if normalized != cleaned {
-            return parseEnvelopeDate(normalized, formats: formats, formatter: formatter)
-        }
-        return nil
-    }
-
-    private static func parseEnvelopeDate(_ string: String, formats: [String], formatter: DateFormatter) -> Date? {
-        for format in formats {
-            formatter.dateFormat = format
-            if let date = formatter.date(from: string) {
-                return date
-            }
-        }
-        return nil
-    }
-
-    private static let monthAbbreviations: Set<String> = [
-        "jan", "feb", "mar", "apr", "may", "jun",
-        "jul", "aug", "sep", "oct", "nov", "dec",
-    ]
-
-    private static let weekdayAbbreviations: Set<String> = [
-        "mon", "tue", "wed", "thu", "fri", "sat", "sun",
-    ]
-
-    private static func normalizeMonthAndWeekdayCase(_ string: String) -> String {
-        let tokens = string.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
-        let normalized: [String] = tokens.map { token in
-            let stripped = token.trimmingCharacters(in: CharacterSet(charactersIn: ","))
-            let lower = stripped.lowercased()
-            if monthAbbreviations.contains(lower) || weekdayAbbreviations.contains(lower) {
-                return token.capitalized
-            }
-            return token
-        }
-        return normalized.joined(separator: " ")
-    }
-
-    /// Parse a space/whitespace-separated list of Message-IDs from a References or similar header.
-    /// Extracts `<...>` bracketed IDs directly, which handles tabs, folded whitespace, and other
-    /// RFC 2822 folding whitespace between IDs.
-    static func parseMessageIDs(from value: String) -> [MessageID] {
-        // Extract all angle-bracketed tokens — this handles any whitespace between IDs
-        var results: [MessageID] = []
-        var searchRange = value.startIndex..<value.endIndex
-        while let openRange = value.range(of: "<", range: searchRange),
-              let closeRange = value.range(of: ">", range: openRange.upperBound..<value.endIndex) {
-            let token = String(value[openRange.lowerBound...closeRange.lowerBound])
-            if let id = MessageID(token) {
-                results.append(id)
-            }
-            searchRange = closeRange.upperBound..<value.endIndex
-        }
-        return results
-    }
-
 }

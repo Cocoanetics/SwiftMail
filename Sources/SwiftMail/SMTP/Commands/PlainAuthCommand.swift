@@ -7,19 +7,19 @@ import NIO
 struct PlainAuthCommand: SMTPCommand {
     /// The result type for this command
     typealias ResultType = AuthResult
-    
+
     /// The handler type for this command
     typealias HandlerType = PlainAuthHandler
-    
+
     /// Username for authentication
     let username: String
-    
+
     /// Password for authentication
     let password: String
-    
+
     /// Default timeout in seconds
     let timeoutSeconds: Int = 30
-    
+
     /**
      Initialize a new PLAIN authentication command
      - Parameters:
@@ -30,7 +30,7 @@ struct PlainAuthCommand: SMTPCommand {
         self.username = username
         self.password = password
     }
-    
+
     /**
      Convert the command to a string to send to the server
      - Returns: The command string
@@ -42,19 +42,19 @@ struct PlainAuthCommand: SMTPCommand {
         let authzid = "" // Authorization identity (usually empty)
         let authcid = username // Authentication identity (username)
         let passwd = password
-        
+
         // Build the credentials string with null bytes
         let credentialsString = "\(authzid)\0\(authcid)\0\(passwd)"
-        
+
         // Convert to data with proper UTF-8 encoding
         let credentialsData = credentialsString.data(using: .utf8)!
-        
+
         // Base64 encode the data
         let encoded = credentialsData.base64EncodedString()
-        
+
         return "AUTH PLAIN \(encoded)"
     }
-    
+
     /**
      Validate that the command parameters are valid
      - Throws: SMTPError if validation fails
@@ -63,9 +63,9 @@ struct PlainAuthCommand: SMTPCommand {
         guard !username.isEmpty else {
             throw SMTPError.authenticationFailed("Username cannot be empty")
         }
-        
+
         guard !password.isEmpty else {
             throw SMTPError.authenticationFailed("Password cannot be empty")
         }
     }
-} 
+}

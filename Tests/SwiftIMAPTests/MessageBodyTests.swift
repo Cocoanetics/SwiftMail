@@ -27,9 +27,9 @@ func testFindHtmlBodyWithCharset() throws {
             encoding: "quoted-printable",
             filename: nil,
             contentId: nil,
-            data: "<html><body>Test HTML content</body></html>".data(using: .utf8)
+            data: Data("<html><body>Test HTML content</body></html>".utf8)
         )
-        
+
         let textPart = MessagePart(
             section: Section([2]),
             contentType: "text/plain; charset=utf-8",
@@ -37,28 +37,28 @@ func testFindHtmlBodyWithCharset() throws {
             encoding: "quoted-printable",
             filename: nil,
             contentId: nil,
-            data: "Test plain text content".data(using: .utf8)
+            data: Data("Test plain text content".utf8)
         )
-        
+
         let message = Message(header: header, parts: [htmlPart, textPart])
-        
+
         // Test the new unified API
         let bodies = message.bodies
         #expect(bodies.count == 2)
-        
+
         let htmlBodyPart = message.findHtmlBodyPart()
         #expect(htmlBodyPart != nil)
         #expect(htmlBodyPart?.contentType == "text/html; charset=utf-8")
-        
+
         let textBodyPart = message.findTextBodyPart()
         #expect(textBodyPart != nil)
         #expect(textBodyPart?.contentType == "text/plain; charset=utf-8")
-        
+
         // Test the legacy API (now fixed)
         let htmlBody = message.htmlBody
         #expect(htmlBody != nil)
         #expect(htmlBody?.contains("Test HTML content") == true)
-        
+
         let textBody = message.textBody
         #expect(textBody != nil)
         #expect(textBody?.contains("Test plain text content") == true)
@@ -79,7 +79,7 @@ func testFindBodiesExcludesAttachments() throws {
             date: Date(),
             flags: []
         )
-        
+
         let htmlPart = MessagePart(
             section: Section([1]),
             contentType: "text/html; charset=utf-8",
@@ -87,9 +87,9 @@ func testFindBodiesExcludesAttachments() throws {
             encoding: "quoted-printable",
             filename: nil,
             contentId: nil,
-            data: "<html><body>Test HTML content</body></html>".data(using: .utf8)
+            data: Data("<html><body>Test HTML content</body></html>".utf8)
         )
-        
+
         let attachmentPart = MessagePart(
             section: Section([2]),
             contentType: "text/plain; charset=utf-8",
@@ -97,16 +97,16 @@ func testFindBodiesExcludesAttachments() throws {
             encoding: "base64",
             filename: "test.txt",
             contentId: nil,
-            data: "Test attachment content".data(using: .utf8)
+            data: Data("Test attachment content".utf8)
         )
-        
+
         let message = Message(header: header, parts: [htmlPart, attachmentPart])
-        
+
         // Test that attachments are excluded from bodies
         let bodies = message.bodies
         #expect(bodies.count == 1)
         #expect(bodies.first?.contentType == "text/html; charset=utf-8")
-        
+
         // Test that attachments are still found
         let attachments = message.attachments
         #expect(attachments.count == 1)
@@ -166,7 +166,7 @@ func testGetTextContentFromPart() throws {
             encoding: "quoted-printable",
             filename: nil,
             contentId: nil,
-            data: "<html><body>Test HTML content</body></html>".data(using: .utf8)
+            data: Data("<html><body>Test HTML content</body></html>".utf8)
         )
 
         // Test the new textContent property
@@ -179,7 +179,8 @@ func testGetTextContentFromPart() throws {
 func testIso88591QuotedPrintableDecodesUmlauts() throws {
         // Body bytes are transfer-encoded quoted-printable text in ISO-8859-1.
         // The ä/ö/ü bytes (E4/F6/FC) must survive transfer decoding before charset decoding.
-        let qpHTML = "<html><head><meta charset=\"iso-8859-1\"></head><body><p>Gr=FC=DFe aus K=F6ln: =E4=F6=FC</p></body></html>"
+        let qpHTML = "<html><head><meta charset=\"iso-8859-1\"></head><body>"
+            + "<p>Gr=FC=DFe aus K=F6ln: =E4=F6=FC</p></body></html>"
         let htmlPart = MessagePart(
             section: Section([1]),
             contentType: "text/html; charset=iso-8859-1",
@@ -224,7 +225,7 @@ func testDecodesMIMEEncodedAttachmentFilename() throws {
         )
         let structure = BodyStructure.singlepart(single)
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
         #expect(parts.count == 1)
         #expect(parts.first?.filename == "HC_1161254447.pdf")
         #expect(parts.first?.suggestedFilename == "HC_1161254447.pdf")
@@ -248,72 +249,78 @@ func testUsesNameParameterForFilename() throws {
         )
         let structure = BodyStructure.singlepart(single)
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
         #expect(parts.count == 1)
         #expect(parts.first?.filename == "image001.jpg")
         #expect(parts.first?.contentId == "image001.jpg@cid")
 }
 
-@Test
-func testFetchMessagesSequentialOrder() async throws {
-        final class FakeServer {
-            var callOrder: [String] = []
+/// Fake IMAP server used by ``testFetchMessagesSequentialOrder`` to verify that the message-fetching
+/// flow alternates `info` and `message` calls in lockstep.
+private final class FetchSequentialOrderFakeServer {
+    var callOrder: [String] = []
 
-            func fetchMessageInfo<T: SwiftMail.MessageIdentifier>(for identifier: T) async throws -> MessageInfo? {
-                callOrder.append("info")
-                return MessageInfo(
-                    sequenceNumber: SwiftMail.SequenceNumber(1),
-                    uid: SwiftMail.UID(1),
-                    subject: nil,
-                    from: nil,
-                    to: [],
-                    cc: [],
-                    date: Date(),
-                    flags: []
-                )
-            }
+    func fetchMessageInfo<T: SwiftMail.MessageIdentifier>(for identifier: T) async throws -> MessageInfo? {
+        callOrder.append("info")
+        return MessageInfo(
+            sequenceNumber: SwiftMail.SequenceNumber(1),
+            uid: SwiftMail.UID(1),
+            subject: nil,
+            from: nil,
+            to: [],
+            cc: [],
+            date: Date(),
+            flags: []
+        )
+    }
 
-            func fetchMessage(from header: MessageInfo) async throws -> Message {
-                callOrder.append("message")
-                return Message(header: header, parts: [])
-            }
+    func fetchMessage(from header: MessageInfo) async throws -> Message {
+        callOrder.append("message")
+        return Message(header: header, parts: [])
+    }
 
-            nonisolated func fetchMessages<T: SwiftMail.MessageIdentifier>(using identifierSet: SwiftMail.MessageIdentifierSet<T>) -> AsyncThrowingStream<Message, Error> {
-                AsyncThrowingStream { continuation in
-                    let task = Task {
-                        do {
-                            guard !identifierSet.isEmpty else {
-                                throw IMAPError.emptyIdentifierSet
-                            }
+    nonisolated func fetchMessages<T: SwiftMail.MessageIdentifier>(
+        using identifierSet: SwiftMail.MessageIdentifierSet<T>
+    ) -> AsyncThrowingStream<Message, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard !identifierSet.isEmpty else {
+                        throw IMAPError.emptyIdentifierSet
+                    }
 
-                            for identifier in identifierSet.toArray() {
-                                try Task.checkCancellation()
-                                if let header = try await fetchMessageInfo(for: identifier) {
-                                    let email = try await fetchMessage(from: header)
-                                    continuation.yield(email)
-                                }
-                            }
-
-                            continuation.finish()
-                        } catch {
-                            continuation.finish(throwing: error)
+                    for identifier in identifierSet.toArray() {
+                        try Task.checkCancellation()
+                        if let header = try await fetchMessageInfo(for: identifier) {
+                            let email = try await fetchMessage(from: header)
+                            continuation.yield(email)
                         }
                     }
 
-                    continuation.onTermination = { @Sendable _ in
-                        task.cancel()
-                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
                 }
             }
-        }
 
-        let server = FakeServer()
-        let set = SwiftMail.MessageIdentifierSet<SwiftMail.SequenceNumber>([SwiftMail.SequenceNumber(1), SwiftMail.SequenceNumber(2)])
-        var messages: [Message] = []
-        for try await message in server.fetchMessages(using: set) {
-            messages.append(message)
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
         }
+    }
+}
 
-        #expect(messages.count == 2)
-        #expect(server.callOrder == ["info", "message", "info", "message"])
+@Test
+func testFetchMessagesSequentialOrder() async throws {
+    let server = FetchSequentialOrderFakeServer()
+    let set = SwiftMail.MessageIdentifierSet<SwiftMail.SequenceNumber>(
+        [SwiftMail.SequenceNumber(1), SwiftMail.SequenceNumber(2)]
+    )
+    var messages: [Message] = []
+    for try await message in server.fetchMessages(using: set) {
+        messages.append(message)
+    }
+
+    #expect(messages.count == 2)
+    #expect(server.callOrder == ["info", "message", "info", "message"])
 }

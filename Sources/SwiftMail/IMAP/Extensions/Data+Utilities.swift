@@ -17,19 +17,19 @@ extension Data {
             return "<Empty data>"
         }
     }
-    
+
     /// Check if the data appears to be text content
     /// - Returns: True if the data appears to be text, false otherwise
     func isTextContent() -> Bool {
         // Check if the data can be converted to a string
-        guard let _ = String(data: self, encoding: .utf8) else {
+        guard String(data: self, encoding: .utf8) != nil else {
             return false
         }
-        
+
         // Check for common binary file signatures
         if self.count >= 4 {
             let bytes = [UInt8](self.prefix(4))
-            
+
             // Check for common binary file signatures
             if bytes.starts(with: [0xFF, 0xD8, 0xFF]) { // JPEG
                 return false
@@ -47,7 +47,7 @@ extension Data {
                 return false
             }
         }
-        
+
         return true
     }
-} 
+}

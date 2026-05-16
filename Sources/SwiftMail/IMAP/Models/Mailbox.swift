@@ -5,181 +5,186 @@ import NIOIMAPCore
 public enum Mailbox {
     /// Information about a mailbox from a LIST command
     public struct Info: Codable, Sendable {
-        /// Attributes of a mailbox from a LIST command
-        public struct Attributes: OptionSet, Codable, Sendable {
+        /// Attributes of a mailbox from a LIST command.
+        /// Kept nested as `Mailbox.Info.Attributes` because it's part of the public API surface.
+        public struct Attributes: OptionSet, Codable, Sendable { // swiftlint:disable:this nesting
             public let rawValue: UInt16
-            
+
             public init(rawValue: UInt16) {
                 self.rawValue = rawValue
             }
-            
+
             /// The mailbox cannot be selected
             public static let noSelect = Attributes(rawValue: 1 << 0)
-            
+
             /// The mailbox has child mailboxes
             public static let hasChildren = Attributes(rawValue: 1 << 1)
-            
+
             /// The mailbox has no child mailboxes
             public static let hasNoChildren = Attributes(rawValue: 1 << 2)
-            
+
             /// The mailbox is marked
             public static let marked = Attributes(rawValue: 1 << 3)
-            
+
             /// The mailbox is unmarked
             public static let unmarked = Attributes(rawValue: 1 << 4)
-            
+
             // MARK: - Special-Use Attributes (RFC 6154)
-            
+
             /// The mailbox is used for archive storage
             public static let archive = Attributes(rawValue: 1 << 5)
-            
+
             /// The mailbox is used to store draft messages
             public static let drafts = Attributes(rawValue: 1 << 6)
-            
+
             /// The mailbox contains flagged/important messages
             public static let flagged = Attributes(rawValue: 1 << 7)
-            
+
             /// The mailbox is used to store junk/spam messages
             public static let junk = Attributes(rawValue: 1 << 8)
-            
+
             /// The mailbox is used to store sent messages
             public static let sent = Attributes(rawValue: 1 << 9)
-            
+
             /// The mailbox is used to store deleted/trash messages
             public static let trash = Attributes(rawValue: 1 << 10)
-            
+
             /// The mailbox is the primary inbox
             public static let inbox = Attributes(rawValue: 1 << 11)
-            
+
             /// Initialize from NIOIMAPCore.MailboxInfo.Attribute array
             init(from attributes: [NIOIMAPCore.MailboxInfo.Attribute]) {
                 var result: Attributes = []
-                
                 for attribute in attributes {
-                    switch attribute {
-                    case .noSelect:
-                        result.insert(.noSelect)
-                    case .hasChildren:
-                        result.insert(.hasChildren)
-                    case .hasNoChildren:
-                        result.insert(.hasNoChildren)
-                    case .marked:
-                        result.insert(.marked)
-                    case .unmarked:
-                        result.insert(.unmarked)
-                    default:
-                        // Check for special-use attributes in the raw value
-                        let rawString = String(describing: attribute)
-                        if rawString.contains("\\Archive") {
-                            result.insert(.archive)
-                        } else if rawString.contains("\\Drafts") {
-                            result.insert(.drafts)
-                        } else if rawString.contains("\\Flagged") {
-                            result.insert(.flagged)
-                        } else if rawString.contains("\\Junk") {
-                            result.insert(.junk)
-                        } else if rawString.contains("\\Sent") {
-                            result.insert(.sent)
-                        } else if rawString.contains("\\Trash") {
-                            result.insert(.trash)
-                        } else if rawString.contains("\\Inbox") {
-                            result.insert(.inbox)
-                        }
-                        // Ignore any other attributes for now
-                    }
+                    result.formUnion(Self.attribute(from: attribute))
                 }
-                
                 self = result
             }
+
+            /// Map a single NIO attribute to the corresponding `Attributes` flag(s).
+            /// Returns an empty set for unknown attributes.
+            private static func attribute(from attribute: NIOIMAPCore.MailboxInfo.Attribute) -> Attributes {
+                switch attribute {
+                case .noSelect: return .noSelect
+                case .hasChildren: return .hasChildren
+                case .hasNoChildren: return .hasNoChildren
+                case .marked: return .marked
+                case .unmarked: return .unmarked
+                default:
+                    // Check for special-use attributes in the raw value (RFC 6154).
+                    return specialUseAttribute(from: String(describing: attribute))
+                }
+            }
+
+            /// Map a special-use raw string ("\Archive", "\Drafts", ...) to the corresponding flag.
+            /// Returns an empty set if the string does not match any known special-use marker.
+            private static func specialUseAttribute(from rawString: String) -> Attributes {
+                let mapping: [(needle: String, value: Attributes)] = [
+                    ("\\Archive", .archive),
+                    ("\\Drafts", .drafts),
+                    ("\\Flagged", .flagged),
+                    ("\\Junk", .junk),
+                    ("\\Sent", .sent),
+                    ("\\Trash", .trash),
+                    ("\\Inbox", .inbox)
+                ]
+                for entry in mapping where rawString.contains(entry.needle) {
+                    return entry.value
+                }
+                return []
+            }
         }
-        
+
         /// The name of the mailbox
         public let name: String
-        
+
         /// The attributes of the mailbox
         public let attributes: Attributes
-        
+
         /// The hierarchy delimiter used by the server (e.g. "/" or ".")
         public let hierarchyDelimiter: String?
-        
-        /// Initialize from NIOIMAPCore.MailboxInfo
+
+        /// Initialize from NIOIMAPCore.MailboxInfo.
+        /// Mailbox names use IMAP's modified UTF-7 encoding; lossy decoding preserves the
+        /// raw bytes for later interpretation rather than failing on non-UTF-8 sequences.
         internal init(nio info: NIOIMAPCore.MailboxInfo) {
+            // swiftlint:disable:next optional_data_string_conversion
             self.name = String(decoding: info.path.name.bytes, as: UTF8.self)
             self.attributes = Attributes(from: Array(info.attributes))
             self.hierarchyDelimiter = info.path.pathSeparator.map(String.init)
         }
-        
+
         /// Initialize with raw values
         public init(name: String, attributes: Attributes, hierarchyDelimiter: String?) {
             self.name = name
             self.attributes = attributes
             self.hierarchyDelimiter = hierarchyDelimiter
         }
-        
+
         /// Whether this mailbox can be selected
         public var isSelectable: Bool {
             return !attributes.contains(.noSelect)
         }
-        
+
         /// Whether this mailbox has child mailboxes
         public var hasChildren: Bool {
             return attributes.contains(.hasChildren)
         }
-        
+
         /// Whether this mailbox has no child mailboxes
         public var hasNoChildren: Bool {
             return attributes.contains(.hasNoChildren)
         }
-        
+
         /// Whether this mailbox is marked
         public var isMarked: Bool {
             return attributes.contains(.marked)
         }
-        
+
         /// Whether this mailbox is unmarked
         public var isUnmarked: Bool {
             return attributes.contains(.unmarked)
         }
     }
-    
+
     /// Result of selecting a mailbox via the IMAP `SELECT` command.
     public struct Selection: Codable, Sendable {
         /// The total number of messages in the mailbox
         public var messageCount: Int = 0
-        
+
         /// The number of recent messages in the mailbox
         public var recentCount: Int = 0
-        
+
         /// The sequence number of the first unseen message
         public var firstUnseen: Int = 0
-        
+
         /// The UID validity value for the mailbox
         public var uidValidity: UIDValidity = UIDValidity(0)
-        
+
         /// The next UID value for the mailbox
         public var uidNext: UID = UID(0)
-        
+
         /// Whether the mailbox is read-only
         public var isReadOnly: Bool = false
-        
+
         /// The flags available in the mailbox
         public var availableFlags: [Flag] = []
-        
+
         /// The flags that can be permanently stored
         public var permanentFlags: [Flag] = []
-        
+
         /// Get a sequence number set for the latest n messages in the mailbox
         /// - Parameter count: The number of latest messages to include
         /// - Returns: A sequence number set containing the latest n messages, or nil if the mailbox is empty
         public func latest(_ count: Int) -> SequenceNumberSet? {
             guard messageCount > 0 else { return nil }
-            
+
             let startIndex = max(1, messageCount - count + 1)
             let endIndex = messageCount
-            
+
             let startMessage = SequenceNumber(startIndex)
             let endMessage = SequenceNumber(endIndex)
-            
+
             return SequenceNumberSet(startMessage...endMessage)
         }
     }
@@ -203,13 +208,13 @@ extension Mailbox.Info: CustomStringConvertible {
 extension Mailbox.Info.Attributes: CustomStringConvertible {
     public var description: String {
         var components: [String] = []
-        
+
         if contains(.noSelect) { components.append("noSelect") }
         if contains(.hasChildren) { components.append("hasChildren") }
         if contains(.hasNoChildren) { components.append("hasNoChildren") }
         if contains(.marked) { components.append("marked") }
         if contains(.unmarked) { components.append("unmarked") }
-        
+
         // Add special-use attributes
         if contains(.archive) { components.append("\\Archive") }
         if contains(.drafts) { components.append("\\Drafts") }
@@ -218,7 +223,7 @@ extension Mailbox.Info.Attributes: CustomStringConvertible {
         if contains(.sent) { components.append("\\Sent") }
         if contains(.trash) { components.append("\\Trash") }
         if contains(.inbox) { components.append("\\Inbox") }
-        
+
         return components.isEmpty ? "[]" : "[\(components.joined(separator: ", "))]"
     }
 }

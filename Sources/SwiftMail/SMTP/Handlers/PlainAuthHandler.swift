@@ -18,7 +18,7 @@ class PlainAuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
             promise.succeed(AuthResult(method: AuthMethod.plain, success: false, errorMessage: response.message))
             return true
         }
-        
+
         return false // Not yet complete
     }
-} 
+}

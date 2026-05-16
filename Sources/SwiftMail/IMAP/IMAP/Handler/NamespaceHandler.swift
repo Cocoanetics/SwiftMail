@@ -11,9 +11,9 @@ final class NamespaceHandler: BaseIMAPCommandHandler<NamespaceResponse>, IMAPCom
     	override func handleTaggedOKResponse(_ response: TaggedResponse) {
 		// Call super to handle CLIENTBUG warnings
 		super.handleTaggedOKResponse(response)
-		
-		if let ns = lock.withLock({ self.namespace }) {
-			succeedWithResult(ns)
+
+		if let namespace = lock.withLock({ self.namespace }) {
+			succeedWithResult(namespace)
 		} else {
 			failWithError(IMAPError.commandFailed("NAMESPACE response missing"))
 		}
@@ -25,8 +25,8 @@ final class NamespaceHandler: BaseIMAPCommandHandler<NamespaceResponse>, IMAPCom
 
     override func handleUntaggedResponse(_ response: Response) -> Bool {
         if case .untagged(let payload) = response {
-            if case .mailboxData(.namespace(let ns)) = payload {
-                lock.withLock { self.namespace = NamespaceResponse(from: ns) }
+            if case .mailboxData(.namespace(let payload)) = payload {
+                lock.withLock { self.namespace = NamespaceResponse(from: payload) }
             }
         }
         return false

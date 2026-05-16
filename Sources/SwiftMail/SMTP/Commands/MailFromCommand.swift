@@ -1,29 +1,28 @@
 import Foundation
 import NIOCore
 
-
 /**
  Command to specify the sender of an email
  */
 struct MailFromCommand: SMTPCommand {
     /// The result type is a simple success Boolean
 	typealias ResultType = Bool
-    
+
     /// The handler type that will process responses for this command
 	typealias HandlerType = MailFromHandler
-    
+
     /// The email address of the sender
     private let senderAddress: String
-    
+
     /// Indicates if 8BITMIME is supported and should be used
     private let use8BitMIME: Bool
 
     /// Optional RFC 1870 SIZE parameter value in octets
     private let messageSizeOctets: Int?
-    
+
     /// Default timeout in seconds
 	let timeoutSeconds: Int = 30
-    
+
     /**
      Initialize a new MAIL FROM command
      - Parameters:
@@ -40,12 +39,12 @@ struct MailFromCommand: SMTPCommand {
         guard senderAddress.isValidEmail() else {
             throw SMTPError.invalidEmailAddress("Invalid sender address: \(senderAddress)")
         }
-        
+
         self.senderAddress = senderAddress
         self.use8BitMIME = use8BitMIME
         self.messageSizeOctets = messageSizeOctets
     }
-    
+
     /**
      Convert the command to a string that can be sent to the server
      */
@@ -59,7 +58,7 @@ struct MailFromCommand: SMTPCommand {
         }
         return command
     }
-    
+
     /**
      Validate that the sender address is valid
      */
@@ -70,10 +69,10 @@ struct MailFromCommand: SMTPCommand {
         if let messageSizeOctets, messageSizeOctets < 0 {
             throw SMTPError.sendFailed("Message size cannot be negative")
         }
-        
+
         // Use our cross-platform email validation method
         guard senderAddress.isValidEmail() else {
             throw SMTPError.invalidEmailAddress("Invalid sender address: \(senderAddress)")
         }
     }
-} 
+}

@@ -11,13 +11,13 @@ struct IMAPPlaintextIntegrationTests {
         let maildir = tempRoot.appendingPathComponent("Maildir")
         let curDir = maildir.appendingPathComponent("cur")
         let newDir = maildir.appendingPathComponent("new")
-        
+
         try FileManager.default.createDirectory(at: curDir, withIntermediateDirectories: true, attributes: nil)
         try FileManager.default.createDirectory(at: newDir, withIntermediateDirectories: true, attributes: nil)
         defer {
             try? FileManager.default.removeItem(at: tempRoot)
         }
-        
+
         let sampleMessage = """
         From: Test Sender <sender@example.com>\r
         To: Test Recipient <recipient@example.com>\r
@@ -30,7 +30,7 @@ struct IMAPPlaintextIntegrationTests {
         """
         let messageURL = curDir.appendingPathComponent("1.eml")
         try sampleMessage.data(using: .utf8)?.write(to: messageURL)
-        
+
         let testServer = try IMAPTestServer(
             host: "localhost",
             port: 0,
@@ -40,7 +40,7 @@ struct IMAPPlaintextIntegrationTests {
         )
         try testServer.start()
         defer { testServer.stop() }
-        
+
         let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
         try await server.connect()
         try await server.login(username: "testuser", password: "testpass")

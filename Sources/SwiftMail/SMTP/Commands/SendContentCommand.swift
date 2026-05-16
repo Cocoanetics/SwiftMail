@@ -1,23 +1,22 @@
 import Foundation
 import NIOCore
 
-
 /**
  Command to send email content data
  */
 struct SendContentCommand: SMTPCommand {
     /// The result type is Void since we rely on error throwing for failure cases
 	typealias ResultType = Void
-    
+
     /// The handler type that will process responses for this command
 	typealias HandlerType = SendContentHandler
-    
+
     /// The fully constructed MIME message content to send (as raw bytes)
     private let contentData: Data
-	
+
 	/// Default timeout in seconds
 	let timeoutSeconds: Int = 10
-    
+
     /**
      Initialize a new SendContent command with raw data
      - Parameters:
@@ -26,7 +25,7 @@ struct SendContentCommand: SMTPCommand {
     init(data: Data) {
         self.contentData = data
     }
-    
+
     /**
      Convert the command to raw bytes that can be sent to the server.
      Applies RFC 5321 §4.5.2 dot-stuffing and appends the terminating sequence.
@@ -45,6 +44,9 @@ struct SendContentCommand: SMTPCommand {
      */
 	func toCommandString() -> String {
         let stuffed = Self.dotStuff(contentData)
+        // Message body may contain non-UTF-8 (Latin-1, binary attachments); preserve bytes
+        // via lossy decoding rather than failing the SMTP send.
+        // swiftlint:disable:next optional_data_string_conversion
         let contentString = String(decoding: stuffed, as: UTF8.self)
         return contentString + "\r\n."
     }
@@ -54,8 +56,8 @@ struct SendContentCommand: SMTPCommand {
     /// server strips the extra dot. Without this, a leading dot can be mistaken
     /// for the end-of-data indicator, truncating the message.
     static func dotStuff(_ data: Data) -> Data {
-        let cr: UInt8 = 0x0D
-        let lf: UInt8 = 0x0A
+        let carriageReturn: UInt8 = 0x0D
+        let lineFeed: UInt8 = 0x0A
         let dot: UInt8 = 0x2E
 
         var result = Data(capacity: data.count + data.count / 40) // small over-allocation
@@ -66,9 +68,9 @@ struct SendContentCommand: SMTPCommand {
                 result.append(dot) // extra dot
             }
             result.append(byte)
-            if byte == lf {
+            if byte == lineFeed {
                 atLineStart = true
-            } else if byte != cr {
+            } else if byte != carriageReturn {
                 atLineStart = false
             }
             // CR keeps atLineStart unchanged (waiting for LF)
@@ -76,4 +78,4 @@ struct SendContentCommand: SMTPCommand {
 
         return result
     }
-} 
+}

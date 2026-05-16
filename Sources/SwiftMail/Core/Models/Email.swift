@@ -9,28 +9,28 @@ import Foundation
 public struct Email: Sendable {
     /** The sender of the email */
     public var sender: EmailAddress
-    
+
     /** The primary recipients of the email */
     public var recipients: [EmailAddress]
-    
+
     /** The CC (Carbon Copy) recipients of the email */
     public var ccRecipients: [EmailAddress]
-    
+
     /** The BCC (Blind Carbon Copy) recipients of the email */
     public var bccRecipients: [EmailAddress]
-    
+
     /** The subject of the email */
     public var subject: String
-    
+
     /** The plain text body of the email */
     public var textBody: String
-    
+
     /** The HTML body of the email (optional) */
     public var htmlBody: String?
-    
+
     /** Optional attachments for the email */
     public var attachments: [Attachment]?
-    
+
     /** Optional additional headers (e.g. X-Custom-Header) */
     public var additionalHeaders: [String: String]?
 
@@ -45,7 +45,7 @@ public struct Email: Sendable {
      When `nil`, a Message-ID is auto-generated during content construction.
      */
     public var messageID: MessageID?
-    
+
     /**
      Initialize a new email with EmailAddress objects
      - Parameters:
@@ -77,7 +77,7 @@ public struct Email: Sendable {
         self.htmlBody = htmlBody
         self.attachments = attachments
     }
-    
+
     /**
      Initialize a new email with string-based sender and recipient information
      - Parameters:
@@ -90,17 +90,26 @@ public struct Email: Sendable {
      - htmlBody: The HTML body of the email (optional)
      - attachments: Optional attachments for the email
      */
-    public init(senderName: String?, senderAddress: String, recipientNames: [String]?, recipientAddresses: [String], subject: String, textBody: String, htmlBody: String? = nil, attachments: [Attachment]? = nil) {
+    public init(
+        senderName: String?,
+        senderAddress: String,
+        recipientNames: [String]?,
+        recipientAddresses: [String],
+        subject: String,
+        textBody: String,
+        htmlBody: String? = nil,
+        attachments: [Attachment]? = nil
+    ) {
         // Create sender EmailAddress
         let sender = EmailAddress(name: senderName, address: senderAddress)
-        
+
         // Create recipient EmailAddress objects
         var recipients: [EmailAddress] = []
-        
+
         if let recipientNames = recipientNames, recipientNames.count == recipientAddresses.count {
             // If recipient names are provided and count matches addresses
-            for i in 0..<recipientAddresses.count {
-                let recipient = EmailAddress(name: recipientNames[i], address: recipientAddresses[i])
+            for index in 0..<recipientAddresses.count {
+                let recipient = EmailAddress(name: recipientNames[index], address: recipientAddresses[index])
                 recipients.append(recipient)
             }
         } else {
@@ -110,11 +119,18 @@ public struct Email: Sendable {
                 recipients.append(recipient)
             }
         }
-        
+
         // Initialize with the created objects
-        self.init(sender: sender, recipients: recipients, subject: subject, textBody: textBody, htmlBody: htmlBody, attachments: attachments)
+        self.init(
+            sender: sender,
+            recipients: recipients,
+            subject: subject,
+            textBody: textBody,
+            htmlBody: htmlBody,
+            attachments: attachments
+        )
     }
-    
+
     /**
      Get all inline attachments from the email
      - Returns: An array of inline attachments, or an empty array if none
@@ -123,7 +139,7 @@ public struct Email: Sendable {
         guard let attachments = attachments else { return [] }
         return attachments.filter { $0.isInline }
     }
-    
+
     /**
      Get all regular (non-inline) attachments from the email
      - Returns: An array of regular attachments, or an empty array if none
@@ -132,7 +148,7 @@ public struct Email: Sendable {
         guard let attachments = attachments else { return [] }
         return attachments.filter { !$0.isInline }
     }
-    
+
     /**
      Get all recipients (To, CC, and BCC) combined
      - Returns: An array of all recipients
@@ -140,4 +156,4 @@ public struct Email: Sendable {
     public var allRecipients: [EmailAddress] {
         return recipients + ccRecipients + bccRecipients
     }
-} 
+}

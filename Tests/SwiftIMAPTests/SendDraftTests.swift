@@ -76,7 +76,8 @@ struct SendDraftTests {
 
     @Test
     func testParseEmailAddressesGroupSyntaxMixed() {
-        let results = IMAPServer.parseEmailAddresses(from: "Sales: plain@example.com, Named <named@example.com>, <brackets@example.com>;")
+        let input = "Sales: plain@example.com, Named <named@example.com>, <brackets@example.com>;"
+        let results = IMAPServer.parseEmailAddresses(from: input)
         #expect(results.count == 3)
         #expect(results[0].address == "plain@example.com")
         #expect(results[1].address == "named@example.com")

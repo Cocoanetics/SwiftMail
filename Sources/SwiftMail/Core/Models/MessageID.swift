@@ -38,13 +38,13 @@ extension MessageID {
     /// Returns `nil` if the string doesn't match the expected format.
     public init?(_ string: String) {
         // Trim whitespace first — IMAP ENVELOPE can return " <id@domain>" with leading space
-        var s = string.trimmingCharacters(in: .whitespaces)
+        var trimmed = string.trimmingCharacters(in: .whitespaces)
         // Strip optional angle brackets
-        if s.hasPrefix("<") { s.removeFirst() }
-        if s.hasSuffix(">") { s.removeLast() }
-        guard let atIndex = s.lastIndex(of: "@") else { return nil }
-        let local = String(s[s.startIndex..<atIndex])
-        let domain = String(s[s.index(after: atIndex)...])
+        if trimmed.hasPrefix("<") { trimmed.removeFirst() }
+        if trimmed.hasSuffix(">") { trimmed.removeLast() }
+        guard let atIndex = trimmed.lastIndex(of: "@") else { return nil }
+        let local = String(trimmed[trimmed.startIndex..<atIndex])
+        let domain = String(trimmed[trimmed.index(after: atIndex)...])
         guard !local.isEmpty, !domain.isEmpty else { return nil }
         self.localPart = local
         self.domain = domain
@@ -58,7 +58,10 @@ extension MessageID {
         let container = try decoder.singleValueContainer()
         let string = try container.decode(String.self)
         guard let parsed = MessageID(string) else {
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid Message-ID format: \(string)")
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid Message-ID format: \(string)"
+            )
         }
         self = parsed
     }
