@@ -51,19 +51,19 @@ struct StringHostnameTests {
         // Simple IPv6 validation (allows abbreviated format)
         let ipv6Pattern =
             "^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}"
-            + "|([0-9a-fA-F]{1,4}:){1,7}:"
-            + "|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}"
-            + "|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}"
-            + "|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}"
-            + "|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}"
-            + "|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}"
-            + "|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})"
-            + "|:((:[0-9a-fA-F]{1,4}){1,7}|:)"
-            + "|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]+"
-            + "|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}"
-            + "(25[0-5]|(2[0-4]|1?[0-9])?[0-9])"
-            + "|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}"
-            + "(25[0-5]|(2[0-4]|1?[0-9])?[0-9]))$"
+                + "|([0-9a-fA-F]{1,4}:){1,7}:"
+                + "|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}"
+                + "|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}"
+                + "|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}"
+                + "|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}"
+                + "|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}"
+                + "|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})"
+                + "|:((:[0-9a-fA-F]{1,4}){1,7}|:)"
+                + "|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]+"
+                + "|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}"
+                + "(25[0-5]|(2[0-4]|1?[0-9])?[0-9])"
+                + "|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}"
+                + "(25[0-5]|(2[0-4]|1?[0-9])?[0-9]))$"
 
         // swiftlint:disable force_try
         // Patterns are constant string literals defined immediately above; compilation is deterministic.
@@ -80,7 +80,7 @@ struct StringHostnameTests {
         // RFC 1123 strict validation (no underscores)
         let strictPattern =
             "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*"
-            + "([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$"
+                + "([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$"
         // swiftlint:disable:next force_try
         let strictRegex = try! NSRegularExpression(pattern: strictPattern)
         let range = NSRange(hostname.startIndex..<hostname.endIndex, in: hostname)
@@ -91,7 +91,7 @@ struct StringHostnameTests {
         if hostname.hasSuffix(".local") {
             let relaxedPattern =
                 "^(([A-Za-z0-9_]|[A-Za-z0-9_][A-Za-z0-9_\\-]*[A-Za-z0-9_])\\.)*"
-                + "([A-Za-z0-9_]|[A-Za-z0-9_][A-Za-z0-9_\\-]*[A-Za-z0-9_])$"
+                    + "([A-Za-z0-9_]|[A-Za-z0-9_][A-Za-z0-9_\\-]*[A-Za-z0-9_])$"
             // swiftlint:disable:next force_try
             let relaxedRegex = try! NSRegularExpression(pattern: relaxedPattern)
             return relaxedRegex.firstMatch(in: hostname, range: range) != nil
