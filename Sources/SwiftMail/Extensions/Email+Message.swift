@@ -21,9 +21,7 @@ public enum ConversionError: Error, Equatable, CustomStringConvertible {
 }
 
 extension Email {
-    // swiftlint:disable function_body_length
-    /// Initialize an `Email` from an IMAP `Message`. One-shot conversion that
-    /// touches each Email field linearly.
+    /// Initialize an `Email` from an IMAP `Message`.
     ///
     /// - Parameter message: The IMAP message to convert.
     /// - Throws: `ConversionError.missingSender` if the message has no `from` field,
@@ -36,54 +34,14 @@ extension Email {
             throw ConversionError.unparsableSender(fromStr)
         }
 
-        let recipients = message.to.compactMap { EmailAddress($0) }
-        let ccRecipients = message.cc.compactMap { EmailAddress($0) }
-        let bccRecipients = message.bcc.compactMap { EmailAddress($0) }
-
-        // Explicit attachments from the message
-        let attachmentParts = message.attachments
-
-        // CID-referenced inline parts not already in the attachments list
-        let attachmentSections = Set(attachmentParts.map { $0.section })
-        let cidParts = message.cids.filter { !attachmentSections.contains($0.section) }
-
-        var allAttachments: [Attachment] = []
-
-        for part in attachmentParts {
-            guard let data = part.decodedData() else { continue }
-            allAttachments.append(Attachment(
-                filename: part.filename ?? part.suggestedFilename,
-                mimeType: part.contentType,
-                data: data,
-                contentID: part.contentId,
-                isInline: part.disposition?.lowercased() == "inline"
-            ))
-        }
-
-        for part in cidParts {
-            guard let data = part.decodedData() else { continue }
-            allAttachments.append(Attachment(
-                filename: part.filename ?? part.suggestedFilename,
-                mimeType: part.contentType,
-                data: data,
-                contentID: part.contentId,
-                isInline: true
-            ))
-        }
-
-        // Skip standard headers already captured via dedicated fields
-        let standardHeaders: Set<String> = [
-            "Subject", "From", "To", "Cc", "Bcc",
-            "Message-ID", "References", "In-Reply-To", "Date"
-        ]
-        let additionalHeaders = message.header.additionalFields?
-            .filter { !standardHeaders.contains($0.key) }
+        let allAttachments = Self.collectAttachments(from: message)
+        let additionalHeaders = Self.nonStandardHeaders(from: message)
 
         self.init(
             sender: sender,
-            recipients: recipients,
-            ccRecipients: ccRecipients,
-            bccRecipients: bccRecipients,
+            recipients: message.to.compactMap { EmailAddress($0) },
+            ccRecipients: message.cc.compactMap { EmailAddress($0) },
+            bccRecipients: message.bcc.compactMap { EmailAddress($0) },
             subject: message.subject ?? "",
             textBody: message.textBody ?? "",
             htmlBody: message.htmlBody,
@@ -92,5 +50,44 @@ extension Email {
         self.messageID = message.header.messageId
         self.additionalHeaders = (additionalHeaders?.isEmpty == false) ? additionalHeaders : nil
     }
-    // swiftlint:enable function_body_length
+
+    /// Collect explicit attachments plus any CID-referenced inline parts not already
+    /// included in the attachments list, turning each into an ``Attachment``.
+    private static func collectAttachments(from message: Message) -> [Attachment] {
+        let attachmentParts = message.attachments
+        let attachmentSections = Set(attachmentParts.map { $0.section })
+        let cidParts = message.cids.filter { !attachmentSections.contains($0.section) }
+
+        var attachments: [Attachment] = []
+        for part in attachmentParts {
+            guard let data = part.decodedData() else { continue }
+            attachments.append(Attachment(
+                filename: part.filename ?? part.suggestedFilename,
+                mimeType: part.contentType,
+                data: data,
+                contentID: part.contentId,
+                isInline: part.disposition?.lowercased() == "inline"
+            ))
+        }
+        for part in cidParts {
+            guard let data = part.decodedData() else { continue }
+            attachments.append(Attachment(
+                filename: part.filename ?? part.suggestedFilename,
+                mimeType: part.contentType,
+                data: data,
+                contentID: part.contentId,
+                isInline: true
+            ))
+        }
+        return attachments
+    }
+
+    /// Skip standard headers already captured via dedicated fields.
+    private static func nonStandardHeaders(from message: Message) -> [String: String]? {
+        let standardHeaders: Set<String> = [
+            "Subject", "From", "To", "Cc", "Bcc",
+            "Message-ID", "References", "In-Reply-To", "Date"
+        ]
+        return message.header.additionalFields?.filter { !standardHeaders.contains($0.key) }
+    }
 }
