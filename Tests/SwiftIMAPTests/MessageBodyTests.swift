@@ -255,64 +255,59 @@ func testUsesNameParameterForFilename() throws {
     #expect(parts.first?.contentId == "image001.jpg@cid")
 }
 
-@Test
-// Test sets up a FakeServer with sequential-order assertions over many fetches.
-// swiftlint:disable:next function_body_length
-func testFetchMessagesSequentialOrder() async throws {
-    final class FakeServer {
-        var callOrder: [String] = []
+/// Records the sequence of `fetchMessageInfo` / `fetchMessage` calls observed
+/// during an `AsyncThrowingStream`-based fetch so the test can assert ordering.
+private final class FakeSequentialFetchServer {
+    var callOrder: [String] = []
 
-        func fetchMessageInfo<T: SwiftMail.MessageIdentifier>(for identifier: T) async throws -> MessageInfo? {
-            callOrder.append("info")
-            return MessageInfo(
-                sequenceNumber: SwiftMail.SequenceNumber(1),
-                uid: SwiftMail.UID(1),
-                subject: nil,
-                from: nil,
-                to: [],
-                cc: [],
-                date: Date(),
-                flags: []
-            )
-        }
-
-        func fetchMessage(from header: MessageInfo) async throws -> Message {
-            callOrder.append("message")
-            return Message(header: header, parts: [])
-        }
-
-        nonisolated func fetchMessages<T: SwiftMail.MessageIdentifier>(
-            using identifierSet: SwiftMail.MessageIdentifierSet<T>
-        ) -> AsyncThrowingStream<Message, Error> {
-            AsyncThrowingStream { continuation in
-                let task = Task {
-                    do {
-                        guard !identifierSet.isEmpty else {
-                            throw IMAPError.emptyIdentifierSet
-                        }
-
-                        for identifier in identifierSet.toArray() {
-                            try Task.checkCancellation()
-                            if let header = try await fetchMessageInfo(for: identifier) {
-                                let email = try await fetchMessage(from: header)
-                                continuation.yield(email)
-                            }
-                        }
-
-                        continuation.finish()
-                    } catch {
-                        continuation.finish(throwing: error)
-                    }
-                }
-
-                continuation.onTermination = { @Sendable _ in
-                    task.cancel()
-                }
-            }
-        }
+    func fetchMessageInfo<T: SwiftMail.MessageIdentifier>(for identifier: T) async throws -> MessageInfo? {
+        callOrder.append("info")
+        return MessageInfo(
+            sequenceNumber: SwiftMail.SequenceNumber(1),
+            uid: SwiftMail.UID(1),
+            subject: nil,
+            from: nil,
+            to: [],
+            cc: [],
+            date: Date(),
+            flags: []
+        )
     }
 
-    let server = FakeServer()
+    func fetchMessage(from header: MessageInfo) async throws -> Message {
+        callOrder.append("message")
+        return Message(header: header, parts: [])
+    }
+
+    nonisolated func fetchMessages<T: SwiftMail.MessageIdentifier>(
+        using identifierSet: SwiftMail.MessageIdentifierSet<T>
+    ) -> AsyncThrowingStream<Message, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard !identifierSet.isEmpty else {
+                        throw IMAPError.emptyIdentifierSet
+                    }
+                    for identifier in identifierSet.toArray() {
+                        try Task.checkCancellation()
+                        if let header = try await fetchMessageInfo(for: identifier) {
+                            let email = try await fetchMessage(from: header)
+                            continuation.yield(email)
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { @Sendable _ in task.cancel() }
+        }
+    }
+}
+
+@Test
+func testFetchMessagesSequentialOrder() async throws {
+    let server = FakeSequentialFetchServer()
     let set = SwiftMail.MessageIdentifierSet<SwiftMail.SequenceNumber>(
         [SwiftMail.SequenceNumber(1), SwiftMail.SequenceNumber(2)]
     )
