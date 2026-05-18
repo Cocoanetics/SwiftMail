@@ -138,12 +138,12 @@ public indirect enum SearchCriteria: Sendable {
                     throw IMAPError.invalidArgument("WITHIN interval must be a positive integer (got \(seconds))")
                 }
             case .and(let criterias):
-                for c in criterias { try c.validate() }
+                for child in criterias { try child.validate() }
             case .not(let criteria):
                 try criteria.validate()
-            case .or(let c1, let c2):
-                try c1.validate()
-                try c2.validate()
+            case .or(let left, let right):
+                try left.validate()
+                try right.validate()
             default:
                 break
         }
@@ -158,8 +158,8 @@ public indirect enum SearchCriteria: Sendable {
                 return criterias.contains { $0.requiresWithin }
             case .not(let criteria):
                 return criteria.requiresWithin
-            case .or(let c1, let c2):
-                return c1.requiresWithin || c2.requiresWithin
+            case .or(let left, let right):
+                return left.requiresWithin || right.requiresWithin
             default:
                 return false
         }
