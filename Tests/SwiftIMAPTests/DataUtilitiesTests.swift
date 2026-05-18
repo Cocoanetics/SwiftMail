@@ -44,15 +44,15 @@ struct DataUtilitiesTests {
     @Test
     func testIsTextContent() {
         // Test plain text
-        let plainText = "This is plain text".data(using: .utf8)!
+        let plainText = Data("This is plain text".utf8)
         #expect(plainText.isTextContent() == true)
 
         // Test HTML content
-        let htmlContent = "<html><body>This is HTML</body></html>".data(using: .utf8)!
+        let htmlContent = Data("<html><body>This is HTML</body></html>".utf8)
         #expect(htmlContent.isTextContent() == true)
 
         // Test JSON content
-        let jsonContent = "{\"key\": \"value\"}".data(using: .utf8)!
+        let jsonContent = Data("{\"key\": \"value\"}".utf8)
         #expect(jsonContent.isTextContent() == true)
 
         // Test binary data (JPEG signature)
@@ -66,7 +66,7 @@ struct DataUtilitiesTests {
         #expect(pngData.isTextContent() == false)
 
         // Test binary data (PDF signature)
-        let pdfSignature = "%PDF-1.5".data(using: .utf8)!
+        let pdfSignature = Data("%PDF-1.5".utf8)
         #expect(pdfSignature.isTextContent() == false)
 
         // Test empty data

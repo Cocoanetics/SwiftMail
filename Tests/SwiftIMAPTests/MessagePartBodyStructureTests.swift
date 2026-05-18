@@ -236,12 +236,12 @@ struct MessagePartBodyStructureTests {
         let part1 = MessagePart(
             section: Section([1]),
             contentType: "text/plain",
-            data: "First body".data(using: .utf8)
+            data: Data("First body".utf8)
         )
         let part2 = MessagePart(
             section: Section([2]),
             contentType: "text/plain",
-            data: "Second body".data(using: .utf8)
+            data: Data("Second body".utf8)
         )
         let message = Message(header: header, parts: [part1, part2])
 

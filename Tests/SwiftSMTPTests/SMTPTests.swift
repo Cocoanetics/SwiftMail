@@ -443,7 +443,7 @@ struct SMTPTests {
     @Test
     func testSendRawMessageRequiresAtLeastOneRecipient() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
-        let rawMessage = "Subject: Test\r\n\r\nBody".data(using: .utf8)!
+        let rawMessage = Data("Subject: Test\r\n\r\nBody".utf8)
         let sender = EmailAddress(address: "sender@example.com")
 
         await #expect(throws: SMTPError.self) {
@@ -454,7 +454,7 @@ struct SMTPTests {
     @Test
     func testSendRawMessageRequiresConnection() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
-        let rawMessage = "Subject: Test\r\n\r\nBody".data(using: .utf8)!
+        let rawMessage = Data("Subject: Test\r\n\r\nBody".utf8)
         let sender = EmailAddress(address: "sender@example.com")
         let recipient = EmailAddress(address: "recipient@example.com")
 

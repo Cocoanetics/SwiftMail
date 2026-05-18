@@ -57,12 +57,12 @@ struct PipelinedFetchPartHandlerTests {
         // Simulate streaming: start → bytes → bytes → finish
         handler.processFetchResponse(.start(.init(1)))
 
-        let chunk1 = "Hello, ".data(using: .utf8)!
+        let chunk1 = Data("Hello, ".utf8)
         var buf1 = ByteBufferAllocator().buffer(capacity: chunk1.count)
         buf1.writeBytes(chunk1)
         handler.processFetchResponse(.streamingBytes(buf1))
 
-        let chunk2 = "World!".data(using: .utf8)!
+        let chunk2 = Data("World!".utf8)
         var buf2 = ByteBufferAllocator().buffer(capacity: chunk2.count)
         buf2.writeBytes(chunk2)
         handler.processFetchResponse(.streamingBytes(buf2))
@@ -93,7 +93,7 @@ struct PipelinedFetchPartHandlerTests {
         handler.processFetchResponse(.finish)
 
         // Data after finish should be ignored
-        let late = "late data".data(using: .utf8)!
+        let late = Data("late data".utf8)
         var buf = ByteBufferAllocator().buffer(capacity: late.count)
         buf.writeBytes(late)
         handler.processFetchResponse(.streamingBytes(buf))

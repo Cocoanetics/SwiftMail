@@ -27,7 +27,7 @@ func testFindHtmlBodyWithCharset() throws {
         encoding: "quoted-printable",
         filename: nil,
         contentId: nil,
-        data: "<html><body>Test HTML content</body></html>".data(using: .utf8)
+        data: Data("<html><body>Test HTML content</body></html>".utf8)
     )
 
     let textPart = MessagePart(
@@ -37,7 +37,7 @@ func testFindHtmlBodyWithCharset() throws {
         encoding: "quoted-printable",
         filename: nil,
         contentId: nil,
-        data: "Test plain text content".data(using: .utf8)
+        data: Data("Test plain text content".utf8)
     )
 
     let message = Message(header: header, parts: [htmlPart, textPart])
@@ -87,7 +87,7 @@ func testFindBodiesExcludesAttachments() throws {
         encoding: "quoted-printable",
         filename: nil,
         contentId: nil,
-        data: "<html><body>Test HTML content</body></html>".data(using: .utf8)
+        data: Data("<html><body>Test HTML content</body></html>".utf8)
     )
 
     let attachmentPart = MessagePart(
@@ -97,7 +97,7 @@ func testFindBodiesExcludesAttachments() throws {
         encoding: "base64",
         filename: "test.txt",
         contentId: nil,
-        data: "Test attachment content".data(using: .utf8)
+        data: Data("Test attachment content".utf8)
     )
 
     let message = Message(header: header, parts: [htmlPart, attachmentPart])
@@ -166,7 +166,7 @@ func testGetTextContentFromPart() throws {
         encoding: "quoted-printable",
         filename: nil,
         contentId: nil,
-        data: "<html><body>Test HTML content</body></html>".data(using: .utf8)
+        data: Data("<html><body>Test HTML content</body></html>".utf8)
     )
 
     // Test the new textContent property
