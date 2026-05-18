@@ -11,19 +11,19 @@ class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
     // Type definitions
     typealias OutboundIn = Any
     typealias OutboundOut = Any
-    
+
     // These must be defined by subclasses
     typealias InboundIn = Any
     typealias InboundOut = Any
-    
+
     // Common properties - using protected-like access
 	let outboundLogger: Logging.Logger
 	let inboundLogger: Logging.Logger
 	let lock = NSRecursiveLock()
-    
+
     // Make inboundBuffer accessible for modification by subclasses
 	var inboundBuffer: [String] = []
-    
+
     /// Initialize a new mail logger
     /// - Parameters:
     ///   - outboundLogger: Logger for outbound messages
@@ -32,14 +32,14 @@ class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
         self.outboundLogger = outboundLogger
         self.inboundLogger = inboundLogger
     }
-    
+
     /// Add a response to the inbound buffer
 	func bufferInboundResponse(_ message: String) {
         lock.withLock {
             inboundBuffer.append(message)
         }
     }
-    
+
     /// Flush the inbound buffer
 	func flushInboundBuffer() {
         lock.withLock {
@@ -50,14 +50,14 @@ class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
             }
         }
     }
-    
+
     /// Check if there are buffered messages
 	func hasBufferedMessages() -> Bool {
         lock.withLock {
             return !inboundBuffer.isEmpty
         }
     }
-    
+
     /// Helper method for extracting string representation from various types
 	func stringRepresentation(from command: Any) -> String {
         if let ioData = command as? IOData {
@@ -85,12 +85,12 @@ class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
             return String(describing: command)
         }
     }
-    
+
     // Abstract methods that must be implemented by subclasses
 	func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         fatalError("write(context:data:promise:) must be implemented by subclasses")
     }
-    
+
 	func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         fatalError("channelRead(context:data:) must be implemented by subclasses")
     }

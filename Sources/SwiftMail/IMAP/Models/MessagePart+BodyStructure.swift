@@ -44,14 +44,14 @@ extension Array where Element == MessagePart {
             }
 
             // Extract disposition and filename if available
-            var disposition: String? = nil
-            var filename: String? = nil
+            var disposition: String?
+            var filename: String?
             let encoding: String? = part.fields.encoding?.debugDescription
 
             // Check Content-Type parameters for filename or name first
             for (key, value) in part.fields.parameters {
                 let lowerKey = key.lowercased()
-                if (lowerKey == "filename" || lowerKey == "name"), !value.isEmpty {
+                if lowerKey == "filename" || lowerKey == "name", !value.isEmpty {
                     filename = value
                     break
                 }
@@ -110,7 +110,7 @@ extension Array where Element == MessagePart {
             } ?? nil
 
             // For message/rfc822: extract envelope into MessageInfo, derive filename from subject
-            var embeddedMessageInfo: MessageInfo? = nil
+            var embeddedMessageInfo: MessageInfo?
             if case .message(let message) = part.kind {
                 let envelope = message.envelope
                 let subject: String? = {
@@ -176,11 +176,11 @@ extension Array where Element == MessagePart {
                 switch message.body {
                 case .multipart:
                     // Multipart children: parent.1, parent.2, etc. — handled by multipart case
-                    let nestedParts = Array<MessagePart>(message.body, sectionPath: parentPath)
+                    let nestedParts = [MessagePart](message.body, sectionPath: parentPath)
                     self.append(contentsOf: nestedParts)
                 case .singlepart:
                     // Single-part content is at parent.1 per RFC 3501
-                    let nestedParts = Array<MessagePart>(message.body, sectionPath: parentPath + [1])
+                    let nestedParts = [MessagePart](message.body, sectionPath: parentPath + [1])
                     self.append(contentsOf: nestedParts)
                 }
             }
@@ -192,7 +192,7 @@ extension Array where Element == MessagePart {
                 let childSectionPath = sectionPath.isEmpty ? [index + 1] : sectionPath + [index + 1]
 
                 // Recursively process child parts
-                let childParts = Array<MessagePart>(childPart, sectionPath: childSectionPath)
+                let childParts = [MessagePart](childPart, sectionPath: childSectionPath)
 
                 // Append all child parts to our result
                 self.append(contentsOf: childParts)

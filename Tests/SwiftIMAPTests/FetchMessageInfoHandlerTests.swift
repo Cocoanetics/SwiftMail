@@ -26,7 +26,7 @@ struct FetchMessageInfoHandlerTests {
                     ),
                     headerBlock: headerBlock
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -62,7 +62,7 @@ struct FetchMessageInfoHandlerTests {
                     envelope: envelopeAttribute(messageId: "<reply-b@example.com>"),
                     headerBlock: secondHeader
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -88,7 +88,7 @@ struct FetchMessageInfoHandlerTests {
                     envelope: envelopeAttribute(messageId: "<loner@example.com>"),
                     headerBlock: headerBlock
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -120,7 +120,7 @@ struct FetchMessageInfoHandlerTests {
                     ),
                     headerBlock: headerBlock
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -217,7 +217,7 @@ struct FetchMessageInfoHandlerTests {
                     headerFields: ["List-Unsubscribe", "List-ID", "References"],
                     headerBlock: headerBlock
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 

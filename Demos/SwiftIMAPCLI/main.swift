@@ -182,10 +182,10 @@ struct Folders: ParsableCommand {
 
 struct List: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "List emails in INBOX")
-    
+
     @Option(name: .shortAndLong, help: "Number of messages to list")
     var limit: Int = 10
-    
+
     @Option(name: .shortAndLong, help: "Mailbox to list from")
     var mailbox: String = "INBOX"
 
@@ -194,12 +194,12 @@ struct List: ParsableCommand {
             try await withServer { server in
                 let status = try await server.selectMailbox(mailbox)
                 print("📂 Selected \(mailbox): \(status.messageCount) messages")
-                
+
                 guard let latest = status.latest(limit) else {
                     print("No messages found.")
                     return
                 }
-                
+
                 print("\nfetching \(limit) messages...")
                 for try await message in server.fetchMessages(using: latest) {
                     print("[\(message.uid?.value ?? 0)] \(message.date?.description ?? "") - \(message.from ?? "Unknown")")
@@ -212,16 +212,16 @@ struct List: ParsableCommand {
 
 struct Fetch: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Fetch a specific email by UID")
-    
+
     @Argument(help: "UID(s) of the message (comma-separated; ranges like 1-3 allowed)")
     var uid: String
 
     @Option(name: .shortAndLong, help: "Mailbox")
     var mailbox: String = "INBOX"
-    
+
     @ArgumentParser.Flag(help: "Download raw RFC 822 message as .eml file")
     var eml: Bool = false
-    
+
     @Option(help: "Output directory (saves .eml with --eml, or .txt/.html without)")
     var out: String?
 
@@ -231,23 +231,23 @@ struct Fetch: ParsableCommand {
                 print("Selecting mailbox \(mailbox)...")
                 _ = try await server.selectMailbox(mailbox)
                 print("Mailbox selected.")
-                
+
                 guard let uids = MessageIdentifierSet<UID>(string: uid) else {
                     throw ValidationError("Invalid UID list: \(uid)")
                 }
-                
+
                 var outputURL: URL?
                 if let out {
                     outputURL = URL(fileURLWithPath: out, isDirectory: true)
                     try FileManager.default.createDirectory(at: outputURL!, withIntermediateDirectories: true, attributes: nil)
                 }
-                
+
                 var found = false
-                
+
                 for try await message in server.fetchMessages(using: uids) {
                     found = true
                     guard let msgUID = message.uid else { continue }
-                    
+
                     // Sanitized subject for filenames
                     let safeSubject = message.subject.map {
                         String($0
@@ -256,7 +256,7 @@ struct Fetch: ParsableCommand {
                             .replacingOccurrences(of: "\\", with: "-")
                             .prefix(80))
                     }
-                    
+
                     if eml {
                         let data = try await server.fetchRawMessage(identifier: msgUID)
                         let filename = safeSubject.map { "\(msgUID.value)-\($0).eml" } ?? "message-\(msgUID.value).eml"
@@ -270,7 +270,7 @@ struct Fetch: ParsableCommand {
                         content += "To: \(message.to.joined(separator: ", "))\n"
                         content += "Subject: \(message.subject ?? "")\n"
                         content += "Date: \(message.date?.description ?? "")\n\n"
-                        
+
                         let ext: String
                         if let text = message.textBody {
                             content += text
@@ -282,7 +282,7 @@ struct Fetch: ParsableCommand {
                             content += "(No body)"
                             ext = "txt"
                         }
-                        
+
                         let filename = safeSubject.map { "\(msgUID.value)-\($0).\(ext)" } ?? "message-\(msgUID.value).\(ext)"
                         let destination = outputURL.appendingPathComponent(filename)
                         try content.write(to: destination, atomically: true, encoding: .utf8)
@@ -300,7 +300,7 @@ struct Fetch: ParsableCommand {
                             print("(HTML Body)\n")
                             print(html)
                         }
-                        
+
                         if !message.attachments.isEmpty {
                             print("\nAttachments: \(message.attachments.count)")
                             for part in message.attachments {
@@ -309,7 +309,7 @@ struct Fetch: ParsableCommand {
                         }
                     }
                 }
-                
+
                 if !found {
                     print("Message UID \(uid) not found.")
                 }
@@ -320,10 +320,10 @@ struct Fetch: ParsableCommand {
 
 struct Move: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Move an email to another folder")
-    
+
     @Argument(help: "UID(s) of the message (comma-separated; ranges like 1-3 allowed)")
     var uid: String
-    
+
     @Argument(help: "Target mailbox")
     var target: String
 
@@ -334,7 +334,7 @@ struct Move: ParsableCommand {
         runAsyncBlock {
             try await withServer { server in
                 _ = try await server.selectMailbox(mailbox)
-                
+
                 guard let uids = MessageIdentifierSet<UID>(string: uid) else {
                     throw ValidationError("Invalid UID list: \(uid)")
                 }
@@ -355,106 +355,106 @@ struct Search: ParsableCommand {
           SwiftIMAPCLI search --text invoice --since 2025-01-01 --any
         """
     )
-    
+
     @Option(name: .shortAndLong, help: "Mailbox")
     var mailbox: String = "INBOX"
-    
+
     @Option(help: "Match From field (repeatable)")
     var from: [String] = []
-    
+
     @Option(help: "Match Subject field (repeatable)")
     var subject: [String] = []
-    
+
     @Option(help: "Match text in headers and body (repeatable)")
     var text: [String] = []
-    
+
     @Option(help: "Match body only (repeatable)")
     var body: [String] = []
-    
+
     @Option(help: "Match To field (repeatable)")
     var to: [String] = []
-    
+
     @Option(help: "Match Cc field (repeatable)")
     var cc: [String] = []
-    
+
     @Option(help: "Match Bcc field (repeatable)")
     var bcc: [String] = []
-    
+
     @Option(help: "Match header FIELD:VALUE (repeatable)")
     var header: [String] = []
-    
+
     @Option(help: "Internal date since (YYYY-MM-DD)")
     var since: String?
-    
+
     @Option(help: "Internal date before (YYYY-MM-DD)")
     var before: String?
-    
+
     @Option(help: "Internal date on (YYYY-MM-DD)")
     var on: String?
-    
+
     @Option(help: "Sent date since (YYYY-MM-DD)")
     var sentSince: String?
-    
+
     @Option(help: "Sent date before (YYYY-MM-DD)")
     var sentBefore: String?
-    
+
     @Option(help: "Sent date on (YYYY-MM-DD)")
     var sentOn: String?
-    
+
     @Option(help: "Messages larger than size in bytes")
     var larger: Int?
-    
+
     @Option(help: "Messages smaller than size in bytes")
     var smaller: Int?
-    
+
     @ArgumentParser.Flag(help: "Seen messages")
     var seen: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Unseen messages")
     var unseen: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Flagged messages")
     var flagged: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Unflagged messages")
     var unflagged: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Answered messages")
     var answered: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Unanswered messages")
     var unanswered: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Deleted messages")
     var deleted: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Undeleted messages")
     var undeleted: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Draft messages")
     var draft: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Undraft messages")
     var undraft: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Recent messages")
     var recent: Bool = false
-    
+
     @ArgumentParser.Flag(help: "New messages (Recent but not Seen)")
     var new: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Old messages (not Recent)")
     var old: Bool = false
-    
+
     @ArgumentParser.Flag(help: "Use OR instead of AND across all criteria")
     var any: Bool = false
 
     @Option(help: "Sort key (repeatable). Prefix with '-' for descending, e.g. --sort -date --sort subject")
     var sort: [String] = []
-    
+
     @Option(help: "Attachment file extension to match (repeatable, e.g. pdf, docx)")
     var attachment: [String] = []
-    
+
     private func parseDate(_ value: String, label: String) throws -> Date {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -465,15 +465,15 @@ struct Search: ParsableCommand {
         }
         return date
     }
-    
+
     private func buildCriteria() throws -> [SearchCriteria] {
         var criterias: [SearchCriteria] = []
-        
+
         func groupOr(_ items: [SearchCriteria]) -> SearchCriteria? {
             guard let first = items.first else { return nil }
             return items.dropFirst().reduce(first) { .or($0, $1) }
         }
-        
+
         if let grouped = groupOr(from.map { .from($0) }) { criterias.append(grouped) }
         if let grouped = groupOr(subject.map { .subject($0) }) { criterias.append(grouped) }
         if let grouped = groupOr(text.map { .text($0) }) { criterias.append(grouped) }
@@ -481,7 +481,7 @@ struct Search: ParsableCommand {
         if let grouped = groupOr(to.map { .to($0) }) { criterias.append(grouped) }
         if let grouped = groupOr(cc.map { .cc($0) }) { criterias.append(grouped) }
         if let grouped = groupOr(bcc.map { .bcc($0) }) { criterias.append(grouped) }
-        
+
         var headerCriteria: [SearchCriteria] = []
         for headerValue in header {
             let parts = headerValue.split(separator: ":", maxSplits: 1).map(String.init)
@@ -491,7 +491,7 @@ struct Search: ParsableCommand {
             headerCriteria.append(.header(parts[0], parts[1]))
         }
         if let grouped = groupOr(headerCriteria) { criterias.append(grouped) }
-        
+
         if let since {
             criterias.append(.since(try parseDate(since, label: "--since")))
         }
@@ -510,14 +510,14 @@ struct Search: ParsableCommand {
         if let sentOn {
             criterias.append(.sentOn(try parseDate(sentOn, label: "--sent-on")))
         }
-        
+
         if let larger {
             criterias.append(.larger(larger))
         }
         if let smaller {
             criterias.append(.smaller(smaller))
         }
-        
+
         if seen { criterias.append(.seen) }
         if unseen { criterias.append(.unseen) }
         if flagged { criterias.append(.flagged) }
@@ -531,18 +531,18 @@ struct Search: ParsableCommand {
         if recent { criterias.append(.recent) }
         if new { criterias.append(.new) }
         if old { criterias.append(.old) }
-        
+
         if criterias.isEmpty {
             throw ValidationError("No search criteria provided. Use --subject, --from, --text, etc.")
         }
-        
+
         if any && criterias.count > 1 {
             return [criterias.reduce(criterias[0]) { .or($0, $1) }]
         }
-        
+
         return criterias
     }
-    
+
     private func attachmentExtensions() -> Set<String> {
         Set(
             attachment
@@ -594,7 +594,7 @@ struct Search: ParsableCommand {
         runAsyncBlock {
             try await withServer { server in
                 _ = try await server.selectMailbox(mailbox)
-                
+
                 print("Building search criteria...")
                 let criteria = try buildCriteria()
                 let sortCriteria = try buildSortCriteria()
@@ -608,7 +608,7 @@ struct Search: ParsableCommand {
                 let attachmentExts = attachmentExtensions()
                 let criteriaDescription = any ? "OR" : "AND"
                 print("Found \(uids.count) messages matching \(criteriaDescription) criteria")
-                
+
                 if !uids.isEmpty {
                     let orderedUIDs = searchResult.ordered ?? uids.toArray()
                     print("Fetching messages for results...")
@@ -637,7 +637,7 @@ struct Search: ParsableCommand {
                         print("To: \(toList)")
                         print("Subject: \(message.subject ?? "")")
                         print("Date: \(message.date?.description ?? "")")
-                        
+
                         if message.attachments.isEmpty {
                             print("Attachments: 0")
                         } else {
@@ -658,19 +658,19 @@ struct DownloadAttachment: ParsableCommand {
         commandName: "attachment",
         abstract: "Download attachments for a message UID"
     )
-    
+
     @Argument(help: "UID(s) of the message (comma-separated; ranges like 1-3 allowed)")
     var uid: String
-    
+
     @Option(name: .shortAndLong, help: "Mailbox")
     var mailbox: String = "INBOX"
-    
+
     @Option(help: "Attachment file extension to match (repeatable, e.g. pdf, docx)")
     var attachment: [String] = []
-    
+
     @Option(help: "Output directory")
     var out: String = "."
-    
+
     private func attachmentExtensions() -> Set<String> {
         Set(
             attachment
@@ -679,25 +679,25 @@ struct DownloadAttachment: ParsableCommand {
                 .map { $0.hasPrefix(".") ? String($0.dropFirst()) : $0 }
         )
     }
-    
+
     func run() throws {
         runAsyncBlock {
             try await withServer { server in
                 print("Selecting mailbox \(mailbox)...")
                 _ = try await server.selectMailbox(mailbox)
                 print("Mailbox selected.")
-                
+
                 guard let uids = MessageIdentifierSet<UID>(string: uid) else {
                     throw ValidationError("Invalid UID list: \(uid)")
                 }
                 let outputURL = URL(fileURLWithPath: out, isDirectory: true)
                 try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true, attributes: nil)
                 print("Output directory: \(outputURL.path)")
-                
+
                 var found = false
                 let attachmentExts = attachmentExtensions()
                 print("Fetching message UID(s) \(uid)...")
-                
+
                 for try await message in server.fetchMessages(using: uids) {
                     found = true
                     var parts = message.attachments
@@ -707,12 +707,12 @@ struct DownloadAttachment: ParsableCommand {
                             return attachmentExts.contains(where: { filename.hasSuffix(".\($0)") })
                         }
                     }
-                    
+
                     if parts.isEmpty {
                         print("No matching attachments found for UID \(message.uid?.value ?? 0).")
                         return
                     }
-                    
+
                     for part in parts {
                         let filename = part.suggestedFilename
                         let destination = outputURL.appendingPathComponent(filename)
@@ -724,22 +724,22 @@ struct DownloadAttachment: ParsableCommand {
                         print("Saved \(filename) to \(destination.path)")
                     }
                 }
-                
+
                 if !found {
                     print("Message UID(s) \(uid) not found.")
                 }
             }
         }
     }
-    
+
 }
 
 struct Idle: ParsableCommand {
     static let configuration = CommandConfiguration(abstract: "Watch for IMAP IDLE events (all types)")
-    
+
     @Option(name: .shortAndLong, help: "Mailbox")
     var mailbox: String = "INBOX"
-    
+
     @Option(name: .shortAndLong, help: "IDLE heartbeat interval in seconds (DONE → NOOP → re-IDLE)")
     var cycle: Int = 300
 
@@ -756,14 +756,14 @@ struct Idle: ParsableCommand {
             let status = try await server.selectMailbox(mailbox)
             print("📬 \(mailbox): \(status.messageCount) messages")
             print("Listening for IDLE events (heartbeat: \(cycle)s, Ctrl+C to stop)...\n")
-            
+
             var idleConfiguration = IMAPIdleConfiguration.default
             idleConfiguration.noopInterval = TimeInterval(cycle)
             let idleSession = try await server.idle(on: mailbox, configuration: idleConfiguration)
-            
+
             let formatter = DateFormatter()
             formatter.dateFormat = "HH:mm:ss"
-            
+
             for await event in idleSession.events {
                 let ts = formatter.string(from: Date())
                 switch event {
@@ -799,7 +799,7 @@ struct Idle: ParsableCommand {
                     print("[\(ts)] 🔧 CAPABILITY: \(caps.joined(separator: " "))")
                 }
             }
-            
+
             print("\nIDLE stream ended.")
             try? await idleSession.done()
             try? await server.disconnect()

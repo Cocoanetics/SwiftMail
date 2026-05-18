@@ -7,22 +7,22 @@ import Foundation
 public struct MessagePart: Sendable {
 	/// The section number (e.g., [1, 2, 3] represents "1.2.3")
 	public let section: Section
-	
+
 	/// The content type of the part (e.g., "text/html", "image/jpeg")
 	public let contentType: String
-	
+
 	/// The content disposition (e.g., "inline", "attachment")
 	public let disposition: String?
-	
+
 	/// The content transfer encoding (e.g., "base64", "quoted-printable")
 	public let encoding: String?
-	
+
 	/// The filename of the part (if any)
 	public let filename: String?
-	
+
 	/// The content ID of the part (if any)
 	public let contentId: String?
-	
+
 	/// The content data (if any)
 	public var data: Data?
 
@@ -70,7 +70,7 @@ public struct MessagePart: Sendable {
 		self.data = data
 		self.embeddedMessageInfo = embeddedMessageInfo
 	}
-	
+
 	/// Get a suggested filename for the part
 	/// - Returns: A filename based on part information
 	public var suggestedFilename: String {
@@ -100,7 +100,7 @@ public struct MessagePart: Sendable {
 			.replacingOccurrences(of: "\"", with: "")
 			.replacingOccurrences(of: "'", with: "")
 	}
-	
+
 	/// The text content of the part
 	/// - Returns: The text content, or nil if can't be decoded
 	public var textContent: String? {
@@ -124,14 +124,14 @@ public struct MessagePart: Sendable {
 
 		return nil
 	}
-	
+
 	/// Decode the part content using appropriate decoding based on content type and encoding
 	/// - Returns: The decoded data, or nil if no data is available
 	public func decodedData() -> Data? {
 		guard let data = data else {
 			return nil
 		}
-		
+
 		return data.decoded(for: self)
 	}
 }

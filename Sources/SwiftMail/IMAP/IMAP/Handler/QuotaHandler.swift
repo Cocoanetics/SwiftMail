@@ -10,7 +10,7 @@ final class QuotaHandler: BaseIMAPCommandHandler<Quota>, IMAPCommandHandler, @un
     	override func handleTaggedOKResponse(_ response: TaggedResponse) {
 		// Call super to handle CLIENTBUG warnings
 		super.handleTaggedOKResponse(response)
-		
+
 		if let quota = quota {
 			succeedWithResult(quota)
 		} else {

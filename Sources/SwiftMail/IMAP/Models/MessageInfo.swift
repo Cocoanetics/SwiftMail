@@ -7,16 +7,16 @@ import Foundation
 public struct MessageInfo: Codable, Sendable {
     /// The sequence number of the message
     public var sequenceNumber: SequenceNumber
-    
+
     /// The UID of the message (if available)
     public var uid: SwiftMail.UID?
-    
+
     /// The subject of the message
     public var subject: String?
-    
+
     /// The sender of the message
     public var from: String?
-    
+
     /// The recipients of the message
     public var to: [String] = []
 
@@ -25,7 +25,7 @@ public struct MessageInfo: Codable, Sendable {
 
     /// The BCC recipients of the message
     public var bcc: [String] = []
-    
+
     /// The date of the message (from the ENVELOPE Date: header — set by the sender)
     public var date: Date?
 
@@ -40,13 +40,13 @@ public struct MessageInfo: Codable, Sendable {
 
     /// The message IDs referenced by this message (from the References header)
     public var references: [MessageID]?
-    
+
     /// The flags of the message
     public var flags: [Flag]
-    
+
     /// The message parts
     public var parts: [MessagePart]
-    
+
     /// Additional header fields
     public var additionalFields: [String: String]?
 
@@ -72,7 +72,7 @@ public struct MessageInfo: Codable, Sendable {
         case additionalFields
         case size
     }
-    
+
     /// Initialize a new email header
     /// - Parameters:
     ///   - sequenceNumber: The sequence number of the message

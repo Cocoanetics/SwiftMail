@@ -17,7 +17,7 @@ public enum Flag: Sendable {
     case draft
     // Note: Recent flag is not allowed in STORE commands
     case custom(String)
-    
+
     /// Convert from a NIOIMAPCore Flag
     internal init(nio: NIOIMAPCore.Flag) {
         let s = String(nio)
@@ -89,12 +89,12 @@ extension Flag: Codable {
         var container = encoder.singleValueContainer()
         try container.encode(self.description)
     }
-    
+
     // Decoding from a string
     public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let value = try container.decode(String.self)
-        
+
         switch value.lowercased() {
         case "seen": self = .seen
         case "answered": self = .answered

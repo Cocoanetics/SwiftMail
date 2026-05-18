@@ -3,36 +3,35 @@
 
 import Foundation
 
-
 /**
  Error types for SMTP operations
  */
 public enum SMTPError: Error {
-    
+
     /// Connection to the server failed
     case connectionFailed(String)
-    
+
     /// Invalid or unexpected response
     case invalidResponse(String)
-    
+
     /// Failed to send command or data
     case sendFailed(String)
-    
+
     /// Authentication failed
     case authenticationFailed(String)
-    
+
     /// Command failed with a specific error message
     case commandFailed(String)
-    
+
     /// Invalid email address format
     case invalidEmailAddress(String)
-    
+
     /// TLS negotiation failed
     case tlsFailed(String)
 
     /// The message exceeds the server-advertised maximum size
     case messageTooLarge(messageSizeOctets: Int, maximumMessageSizeOctets: Int)
-    
+
     /// Unexpected response from server
     case unexpectedResponse(SMTPResponse)
 }
@@ -66,4 +65,4 @@ extension SMTPError: CustomStringConvertible {
             return "SMTP unexpected response: \(response.code) \(response.message)"
         }
     }
-} 
+}

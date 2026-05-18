@@ -14,40 +14,40 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     private var currentSequenceNumber: SequenceNumber?
     private var currentHeaderLiteral = Data()
     private var collectingThreadingHeaders = false
-    
+
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
         // Call super to handle CLIENTBUG warnings
         super.handleTaggedOKResponse(response)
-        
+
         // Succeed with the collected headers
         let collectedInfos = lock.withLock { self.messageInfos }
         succeedWithResult(collectedInfos)
     }
-    
+
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.fetchFailed(String(describing: response.state)))
     }
-    
+
     /// Process an incoming response
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override func processResponse(_ response: Response) -> Bool {
         // Call the base class implementation to buffer the response
         let handled = super.processResponse(response)
-        
+
         // Process fetch responses
         if case .fetch(let fetchResponse) = response {
             processFetchResponse(fetchResponse)
         }
-        
+
         // Return the result from the base class
         return handled
     }
-    
+
     /// Process a fetch response
     /// - Parameter fetchResponse: The fetch response to process
     private func processFetchResponse(_ fetchResponse: FetchResponse) {
@@ -55,7 +55,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             case .simpleAttribute(let attribute):
                 // Process simple attributes (no sequence number)
                 processMessageAttribute(attribute, sequenceNumber: nil)
-                
+
             case .start(let sequenceNumber):
                 // Create a new header for this sequence number
                 currentSequenceNumber = SequenceNumber(sequenceNumber.rawValue)
@@ -65,13 +65,13 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 lock.withLock {
                     self.messageInfos.append(messageInfo)
                 }
-                
+
             case .streamingBegin(let kind, _):
                 collectingThreadingHeaders = Self.shouldCollectThreadingHeaders(for: kind)
                 if collectingThreadingHeaders {
                     currentHeaderLiteral.removeAll(keepingCapacity: true)
                 }
-                
+
             case .streamingBytes(let data):
                 guard collectingThreadingHeaders else { break }
                 currentHeaderLiteral.append(contentsOf: data.readableBytesView)
@@ -86,7 +86,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 currentSequenceNumber = nil
                 collectingThreadingHeaders = false
                 currentHeaderLiteral.removeAll(keepingCapacity: true)
-                
+
             default:
                 break
         }
@@ -125,7 +125,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
         return messageInfos.indices.last
     }
-    
+
     /// Process a message attribute and update the corresponding email header
     /// - Parameters:
     ///   - attribute: The message attribute to process
@@ -143,7 +143,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             }
             return
         }
-        
+
         // Find or create a header for this sequence number
         let seqNum = SequenceNumber(sequenceNumber.value)
         lock.withLock {
@@ -158,7 +158,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             }
         }
     }
-    
+
     /// Update an email header with information from a message attribute
     /// - Parameters:
     ///   - header: The header to update
@@ -170,12 +170,12 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             if let subject = envelope.subject?.stringValue {
                 header.subject = subject.decodeMIMEHeader()
             }
-            
+
             // Handle from addresses - check if array is not empty
             if !envelope.from.isEmpty {
                 header.from = formatAddress(envelope.from[0])
             }
-            
+
             // Handle to addresses - capture all recipients
             header.to = envelope.to.map { formatAddress($0) }
 
@@ -184,7 +184,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
             // Handle bcc addresses - capture all recipients
             header.bcc = envelope.bcc.map { formatAddress($0) }
-            
+
             if let date = envelope.date {
                 let dateString = String(date)
                 if let parsedDate = Self.parseEnvelopeDate(dateString) {
@@ -194,7 +194,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 // (the server's receipt timestamp) as a stable fallback. We don't log here:
                 // a large mailbox with many unparsable dates would flood stderr.
             }
-            
+
             if let messageID = envelope.messageID {
                 header.messageId = MessageID(String(messageID))
             }
@@ -222,10 +222,10 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
         case .flags(let flags):
             header.flags = flags.map(self.convertFlag)
-            
+
         case .body(let bodyStructure, _):
             if case .valid(let structure) = bodyStructure {
-                header.parts = Array<MessagePart>(structure)
+                header.parts = [MessagePart](structure)
             }
 
         case .rfc822Size(let size):
@@ -235,11 +235,11 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             break
         }
     }
-    
+
 	/// Convert a NIOIMAPCore.Flag to our MessageFlag type
 	private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {
 		let flagString = String(flag)
-		
+
 		switch flagString.uppercased() {
 			case "\\SEEN":
 				return .seen
@@ -256,7 +256,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 				return .custom(flagString)
 		}
 	}
-    
+
     /// Format an address for display
     /// - Parameter address: The address to format
     /// - Returns: A formatted string representation of the address
@@ -266,13 +266,13 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 let name = emailAddress.personName?.stringValue.decodeMIMEHeader() ?? ""
                 let mailbox = emailAddress.mailbox?.stringValue ?? ""
                 let host = emailAddress.host?.stringValue ?? ""
-                
+
                 if !name.isEmpty {
                     return "\"\(name)\" <\(mailbox)@\(host)>"
                 } else {
                     return "\(mailbox)@\(host)"
                 }
-                
+
             case .group(let group):
                 let groupName = group.groupName.stringValue.decodeMIMEHeader()
                 let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
@@ -323,7 +323,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             "EEE, dd MMM yyyy HH:mm:ss",         // no timezone
             "EEE, d MMM yyyy HH:mm:ss",
             "d MMM yyyy HH:mm:ss",               // no weekday, no timezone
-            "dd MMM yyyy HH:mm:ss",
+            "dd MMM yyyy HH:mm:ss"
         ]
 
         if let date = parseEnvelopeDate(cleaned, formats: formats, formatter: formatter) {
@@ -352,11 +352,11 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
     private static let monthAbbreviations: Set<String> = [
         "jan", "feb", "mar", "apr", "may", "jun",
-        "jul", "aug", "sep", "oct", "nov", "dec",
+        "jul", "aug", "sep", "oct", "nov", "dec"
     ]
 
     private static let weekdayAbbreviations: Set<String> = [
-        "mon", "tue", "wed", "thu", "fri", "sat", "sun",
+        "mon", "tue", "wed", "thu", "fri", "sat", "sun"
     ]
 
     private static func normalizeMonthAndWeekdayCase(_ string: String) -> String {

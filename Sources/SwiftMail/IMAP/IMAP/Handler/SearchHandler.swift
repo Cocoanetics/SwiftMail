@@ -15,12 +15,12 @@ final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageI
     typealias ResultType = MessageIdentifierSet<T>
     typealias InboundIn = Response
     typealias InboundOut = Never
-    
+
     private var searchResults: [T] = []
-    
+
     override func processResponse(_ response: Response) -> Bool {
         let handled = super.processResponse(response)
-        
+
         // Check for untagged status responses that indicate errors
         if case let .untagged(untagged) = response,
            case let .conditionalState(status) = untagged {
@@ -38,7 +38,7 @@ final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageI
                 break
             }
         }
-        
+
         if case let .untagged(untagged) = response,
            case let .mailboxData(mailboxData) = untagged {
             switch mailboxData {
@@ -52,14 +52,14 @@ final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageI
                 break
             }
         }
-        
+
         return handled
     }
-    
+
     	override func handleTaggedOKResponse(_ response: TaggedResponse) {
 		// Call super to handle CLIENTBUG warnings
 		super.handleTaggedOKResponse(response)
-		
+
 		// When we receive an OK response, the search is complete
 		// Return the collected search results as a MessageIdentifierSet
 		// Create a MessageIdentifierSet from the array of results
@@ -67,10 +67,10 @@ final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageI
 		for identifier in searchResults {
 			resultSet.insert(identifier)
 		}
-		
+
 		succeedWithResult(resultSet)
 	}
-    
+
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         // If the search command fails, report the error with more specific information
         switch response.state {

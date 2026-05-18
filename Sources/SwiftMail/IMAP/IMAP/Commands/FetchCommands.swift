@@ -12,23 +12,23 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
 
     /// The set of message identifiers to fetch
         let identifierSet: MessageIdentifierSet<T>
-    
+
     /// Custom timeout for this operation
 	let timeoutSeconds = 10
-    
+
     /// Initialize a new fetch headers command
     /// - Parameter identifierSet: The set of message identifiers to fetch
     init(identifierSet: MessageIdentifierSet<T>) {
         self.identifierSet = identifierSet
     }
-    
+
     /// Validate the command before execution
 	func validate() throws {
         guard !identifierSet.isEmpty else {
             throw IMAPError.emptyIdentifierSet
         }
     }
-    
+
     /// Convert to an IMAP tagged command
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server
@@ -41,7 +41,7 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
             .bodySection(peek: true, .header, nil),
             .flags
         ]
-        
+
         if T.self == UID.self {
             return TaggedCommand(tag: tag, command: .uidFetch(
                 .set(identifierSet.toNIOSet()), attributes, []
@@ -58,16 +58,16 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
  struct FetchMessagePartCommand<T: MessageIdentifier>: IMAPTaggedCommand {
 	typealias ResultType = Data
 	typealias HandlerType = FetchPartHandler
-    
+
     /// The message identifier to fetch
 	let identifier: T
-    
+
     /// The section path to fetch (e.g., [1], [1, 1], [2], etc.)
 	let section: Section
-    
+
     /// Custom timeout for this operation
 	var timeoutSeconds: Int { return 60 }
-    
+
     /// Initialize a new fetch message part command
     /// - Parameters:
     ///   - identifier: The message identifier to fetch
@@ -76,21 +76,21 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         self.identifier = identifier
         self.section = section
     }
-    
+
     /// Convert to an IMAP tagged command
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server
 	func toTaggedCommand(tag: String) -> TaggedCommand {
         let set = MessageIdentifierSet<T>(identifier)
-        
+
         // Create the section path directly from the array
 		let part = SectionSpecifier.Part(section.components)
         let section = SectionSpecifier(part: part)
-        
+
         let attributes: [FetchAttribute] = [
             .bodySection(peek: true, section, nil)
         ]
-        
+
         if T.self == UID.self {
             return TaggedCommand(tag: tag, command: .uidFetch(
                 .set(set.toNIOSet()), attributes, []
@@ -145,29 +145,29 @@ struct FetchRawMessageCommand<T: MessageIdentifier>: IMAPTaggedCommand {
  struct FetchStructureCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     typealias ResultType = [MessagePart]
     typealias HandlerType = FetchStructureHandler
-    
+
     /// The message identifier to fetch
     let identifier: T
-    
+
     /// Custom timeout for this operation
     var timeoutSeconds: Int { return 10 }
-    
+
     /// Initialize a new fetch structure command
     /// - Parameter identifier: The message identifier to fetch
     init(identifier: T) {
         self.identifier = identifier
     }
-    
+
     /// Convert to an IMAP tagged command
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server
     func toTaggedCommand(tag: String) -> TaggedCommand {
         let set = MessageIdentifierSet<T>(identifier)
-        
+
         let attributes: [FetchAttribute] = [
             .bodyStructure(extensions: true)
         ]
-        
+
         if T.self == UID.self {
             return TaggedCommand(tag: tag, command: .uidFetch(
                 .set(set.toNIOSet()), attributes, []
@@ -178,4 +178,4 @@ struct FetchRawMessageCommand<T: MessageIdentifier>: IMAPTaggedCommand {
             ))
         }
     }
-} 
+}

@@ -21,15 +21,15 @@ public extension Email {
         guard let sender = EmailAddress(senderString) else {
             return nil
         }
-        
+
         let recipients = recipientStrings.compactMap { EmailAddress($0) }
         guard !recipients.isEmpty else {
             return nil
         }
-        
+
         let ccRecipients = ccRecipientStrings.compactMap { EmailAddress($0) }
         let bccRecipients = bccRecipientStrings.compactMap { EmailAddress($0) }
-        
+
         self.init(
             sender: sender,
             recipients: recipients,
@@ -41,7 +41,7 @@ public extension Email {
             attachments: attachments
         )
     }
-    
+
     /**
      Initialize a new email with string-based sender and a single recipient
      

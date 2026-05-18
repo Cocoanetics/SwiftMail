@@ -1,23 +1,22 @@
 import Foundation
 import NIOCore
 
-
 /**
  Command to send email content data
  */
 struct SendContentCommand: SMTPCommand {
     /// The result type is Void since we rely on error throwing for failure cases
 	typealias ResultType = Void
-    
+
     /// The handler type that will process responses for this command
 	typealias HandlerType = SendContentHandler
-    
+
     /// The fully constructed MIME message content to send (as raw bytes)
     private let contentData: Data
-	
+
 	/// Default timeout in seconds
 	let timeoutSeconds: Int = 10
-    
+
     /**
      Initialize a new SendContent command with raw data
      - Parameters:
@@ -26,7 +25,7 @@ struct SendContentCommand: SMTPCommand {
     init(data: Data) {
         self.contentData = data
     }
-    
+
     /**
      Convert the command to raw bytes that can be sent to the server.
      Applies RFC 5321 §4.5.2 dot-stuffing and appends the terminating sequence.
@@ -76,4 +75,4 @@ struct SendContentCommand: SMTPCommand {
 
         return result
     }
-} 
+}

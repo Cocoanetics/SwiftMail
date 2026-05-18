@@ -12,11 +12,11 @@ extension Email: CustomDebugStringConvertible {
 		description += "  To: \(recipients.map { $0.description }.joined(separator: ", "))\n"
         description += "  Subject: \(subject)\n"
         description += "  Text Body: \(textBody.prefix(100))\(textBody.count > 100 ? "..." : "")\n"
-        
+
         if let htmlBody = htmlBody {
             description += "  HTML Body: \(htmlBody.prefix(100))\(htmlBody.count > 100 ? "..." : "")\n"
         }
-        
+
         if let attachments = attachments, !attachments.isEmpty {
             description += "  Attachments: \(attachments.count) {\n"
             for attachment in attachments {
@@ -26,8 +26,8 @@ extension Email: CustomDebugStringConvertible {
             }
             description += "  }\n"
         }
-        
+
         description += "}"
         return description
     }
-} 
+}

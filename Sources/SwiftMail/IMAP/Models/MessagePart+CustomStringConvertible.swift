@@ -15,4 +15,4 @@ extension MessagePart: CustomStringConvertible {
         \(data != nil ? "Data size: \(data!.count) bytes" : "No data")
         """
     }
-} 
+}

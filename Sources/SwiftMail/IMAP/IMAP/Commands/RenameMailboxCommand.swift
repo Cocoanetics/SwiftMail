@@ -11,11 +11,6 @@ struct RenameMailboxCommand: IMAPTaggedCommand {
     let from: String
     let to: String
 
-    init(from: String, to: String) {
-        self.from = from
-        self.to = to
-    }
-
     func validate() throws {
         guard !from.isEmpty, !to.isEmpty else {
             throw IMAPError.invalidArgument("Source and destination mailbox names must not be empty")

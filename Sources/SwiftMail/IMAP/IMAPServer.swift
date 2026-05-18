@@ -32,7 +32,7 @@ public actor IMAPServer {
 
     /** The hostname of the IMAP server */
     private let host: String
-    
+
     /** The port number of the IMAP server */
     private let port: Int
 
@@ -41,7 +41,7 @@ public actor IMAPServer {
 
     /// Certificate verification preference used by all TLS transports for this server.
     private let certificateVerificationPolicy: MailCertificateVerificationPolicy
-    
+
     /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
 
@@ -56,16 +56,16 @@ public actor IMAPServer {
 
     /// Authentication configuration for spawning new connections.
     private var authentication: Authentication?
-    
+
     /** The list of all mailboxes with their attributes */
     public private(set) var mailboxes: [Mailbox.Info] = []
-    
+
     /** Special folders - mailboxes with SPECIAL-USE attributes */
     public private(set) var specialMailboxes: [Mailbox.Info] = []
-    
+
     /// Namespaces discovered from the server
     public private(set) var namespaces: NamespaceResponse?
-    
+
     /// Capabilities reported by the primary connection.
     private var capabilities: Set<NIOIMAPCore.Capability> {
         primaryConnection.capabilitiesSnapshot
@@ -79,7 +79,7 @@ public actor IMAPServer {
     var primaryConnectionCertificateVerificationPolicyForTesting: MailCertificateVerificationPolicy {
         primaryConnection.certificateVerificationPolicyForTesting
     }
-    
+
     /**
      Logger for IMAP operations
      To view these logs in Console.app:
@@ -88,7 +88,7 @@ public actor IMAPServer {
      3. You may need to adjust the "Action" menu to show "Include Debug Messages" and "Include Info Messages"
      */
     private let logger: Logging.Logger
-    
+
     private struct IdleConnection {
         let mailbox: String
         let connection: IMAPConnection
@@ -116,9 +116,9 @@ public actor IMAPServer {
             }
         }
     }
-    
+
     // MARK: - Initialization
-    
+
     /**
      Initialize a new IMAP server connection
      
@@ -145,7 +145,7 @@ public actor IMAPServer {
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
-        
+
         // Initialize loggers
         self.logger = Logging.Logger(label: "com.cocoanetics.SwiftMail.IMAPServer")
 
@@ -187,16 +187,16 @@ public actor IMAPServer {
 
         return .plainText
     }
-    
+
     deinit {
         // Schedule shutdown on a background thread to avoid EventLoop issues
         Task {  @MainActor [group] in
             try? await group.shutdownGracefully()
         }
     }
-    
+
     // MARK: - Connection and Login Commands
-    
+
     /**
      Connect to the IMAP server using SSL/TLS
      
@@ -212,7 +212,7 @@ public actor IMAPServer {
     public func connect() async throws {
         try await primaryConnection.connect()
     }
-    
+
     /**
      Fetch server capabilities
      
@@ -226,7 +226,7 @@ public actor IMAPServer {
     @discardableResult public func fetchCapabilities() async throws -> [Capability] {
         try await primaryConnection.fetchCapabilities()
     }
-    
+
     /**
      Check if the server supports a specific capability
      - Parameter capability: The capability to check for
@@ -235,7 +235,7 @@ public actor IMAPServer {
     private func supportsCapability(_ check: (Capability) -> Bool) -> Bool {
         return primaryConnection.supportsCapability(check)
     }
-    
+
     /**
      Check if the connection to the IMAP server is currently active
      - Returns: True if the connection is active and ready for commands
@@ -243,7 +243,7 @@ public actor IMAPServer {
     public var isConnected: Bool {
         primaryConnection.isConnected
     }
-    
+
     /**
      Login to the IMAP server
      
@@ -301,7 +301,7 @@ public actor IMAPServer {
     ) {
         authentication = .xoauth2(email: email, accessTokenProvider: accessTokenProvider)
     }
-    
+
     /// Identify the client to the server using the `ID` command.
     /// - Parameter identification: Information describing the client. Pass the default value to send no information.
     /// - Returns: Information returned by the server.
@@ -310,11 +310,11 @@ public actor IMAPServer {
         guard capabilities.contains(.id) else {
             throw IMAPError.commandNotSupported("ID command not supported by server")
         }
-        
+
         let command = IDCommand(identification: identification)
         return try await executeCommand(command)
     }
-    
+
     /**
      Disconnect from the server without sending a command
      
@@ -324,8 +324,7 @@ public actor IMAPServer {
      - Throws: An error if the disconnection fails
      - Note: Logs disconnection at debug level
      */
-    public func disconnect() async throws
-    {
+    public func disconnect() async throws {
         try await closeAllConnections()
     }
 
@@ -471,7 +470,7 @@ public actor IMAPServer {
         mailboxes = []
         specialMailboxes = []
     }
-    
+
     // MARK: - Mailbox Commands
 
     /**
@@ -544,7 +543,7 @@ public actor IMAPServer {
         let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
         return try await executeCommand(command)
     }
-    
+
     /**
      Close the currently selected mailbox
      
@@ -560,7 +559,7 @@ public actor IMAPServer {
         let command = CloseCommand()
         try await executeCommand(command)
     }
-    
+
     /**
      Unselect the currently selected mailbox without expunging deleted messages
      
@@ -578,13 +577,13 @@ public actor IMAPServer {
         if !capabilities.contains(.unselect) {
             throw IMAPError.commandNotSupported("UNSELECT command not supported by server")
         }
-        
+
         let command = UnselectCommand()
         try await executeCommand(command)
     }
-    
+
     // MARK: - Idle
-    
+
     /// Begin an IDLE session and receive server events
     ///
     /// **Manual Cleanup**: When cancelling IDLE tasks, call `done()` in your cancellation
@@ -921,7 +920,7 @@ public actor IMAPServer {
         configuration.postIdleNoopEnabled = true
         return try await idle(on: mailbox, configuration: configuration)
     }
-    
+
     /// Terminate the current IDLE session
     ///
     /// **Note**: Call this method in cancellation handlers to properly clean up IDLE sessions.
@@ -932,12 +931,12 @@ public actor IMAPServer {
     public func done() async throws {
         try await primaryConnection.done()
     }
-    
+
     /// Send a NOOP command and collect unsolicited responses.
     public func noop() async throws -> [IMAPServerEvent] {
         try await primaryConnection.noop()
     }
-    
+
     /**
      Logout from the IMAP server
      
@@ -954,9 +953,9 @@ public actor IMAPServer {
         try await executeCommand(command)
         try await closeAllConnections()
     }
-    
+
     // MARK: - Message Commands
-    
+
     /**
      Fetches the structure of a message.
      
@@ -977,7 +976,7 @@ public actor IMAPServer {
         let command = FetchStructureCommand(identifier: identifier)
         return try await executeCommand(command)
     }
-    
+
     /**
      Fetches a specific part of a message.
      
@@ -1037,7 +1036,7 @@ public actor IMAPServer {
         let command = FetchRawMessageCommand(identifier: identifier)
         return try await executeCommand(command)
     }
-    
+
     /**
      Fetch all message parts and their data for a message
      - Parameter identifier: The message identifier (UID or sequence number)
@@ -1045,16 +1044,16 @@ public actor IMAPServer {
      - Throws: IMAPError if any fetch operation fails
      */
     public func fetchAllMessageParts<T: MessageIdentifier>(identifier: T) async throws -> [MessagePart] {
-        
+
         var parts = try await fetchStructure(identifier)
-        
+
         for (index, part) in parts.enumerated() {
             parts[index].data = try await self.fetchPart(section: part.section, of: identifier)
         }
-        
+
         return parts
     }
-    
+
     /**
      Fetches and decodes the data for a specific message part.
      
@@ -1082,7 +1081,7 @@ public actor IMAPServer {
             return try await fetchPart(section: part.section, of: sequenceNumber).decoded(for: part)
         }
     }
-    
+
     /**
      Fetch a complete email with all parts from an email header
      
@@ -1104,7 +1103,7 @@ public actor IMAPServer {
             return Message(header: header, parts: parts)
         }
     }
-    
+
     /// Fetch message info for a single identifier
     /// - Parameter identifier: The message identifier to fetch
     /// - Returns: The message info if available
@@ -1142,7 +1141,7 @@ public actor IMAPServer {
     public func fetchMessageInfos(sequenceRange: ClosedRange<SequenceNumber>) async throws -> [MessageInfo] {
         try await fetchMessageInfosBulk(using: SequenceNumberSet(sequenceRange))
     }
-    
+
     /// Stream message headers for a set of identifiers
     ///
     /// Large identifier sets are automatically split into chunks of
@@ -1226,9 +1225,7 @@ public actor IMAPServer {
             }
         }
     }
-    
-    
-    
+
     /**
      Moves messages to another mailbox.
      
@@ -1257,7 +1254,7 @@ public actor IMAPServer {
             try await expungeMoveFallback(messages: identifierSet)
         }
     }
-    
+
     /**
      Move a single message from the current mailbox to another mailbox
      - Parameters:
@@ -1269,7 +1266,7 @@ public actor IMAPServer {
         let set = MessageIdentifierSet<T>(identifier)
         try await move(messages: set, to: destinationMailbox)
     }
-    
+
     /**
      Move an email identified by its header from the current mailbox to another mailbox
      - Parameters:
@@ -1288,7 +1285,7 @@ public actor IMAPServer {
             try await move(message: sequenceNumber, to: destinationMailbox)
         }
     }
-    
+
     /**
      Searches for messages matching the given criteria.
      
@@ -1416,8 +1413,6 @@ public actor IMAPServer {
         return try await executeCommand(command)
     }
 
-
-
     /**
      Get status information about a mailbox without selecting it
      
@@ -1442,7 +1437,7 @@ public actor IMAPServer {
             .recentCount,
             .unseenCount
         ]
-        
+
         // Add optional attributes based on server capabilities
         if capabilities.contains(.uidPlus) {
             attributes.append(.uidNext)
@@ -1460,12 +1455,12 @@ public actor IMAPServer {
         if capabilities.contains(.mailboxSpecificAppendLimit) {
             attributes.append(.appendLimit)
         }
-        
+
         let command = StatusCommand(mailboxName: resolveMailboxPath(mailboxName), attributes: attributes)
         let status: NIOIMAPCore.MailboxStatus = try await executeCommand(command)
         return Mailbox.Status(nio: status)
     }
-    
+
     /**
      Searches for messages matching the given criteria
      
@@ -1481,7 +1476,7 @@ public actor IMAPServer {
         let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: resolveMailboxPath(destinationMailbox))
         try await executeCommand(command)
     }
-    
+
     /**
      Updates flags on messages.
      
@@ -1510,7 +1505,7 @@ public actor IMAPServer {
         let command = StoreCommand(identifierSet: identifierSet, data: storeData)
         try await executeCommand(command)
     }
-    
+
     /**
      Permanently removes messages marked for deletion.
      
@@ -1543,7 +1538,7 @@ public actor IMAPServer {
             try await expunge()
         }
     }
-    
+
     /**
      Retrieve storage quota information for a quota root.
      
@@ -1557,11 +1552,11 @@ public actor IMAPServer {
         guard supportsCapability({ $0 == .quota }) else {
             throw IMAPError.commandNotSupported("QUOTA command not supported by server")
         }
-        
+
         let command = GetQuotaCommand(quotaRoot: quotaRoot)
         return try await executeCommand(command)
     }
-    
+
     /// Retrieve quota information for a mailbox using GETQUOTAROOT.
     /// - Parameter mailboxName: The mailbox name to query. Uses "INBOX" if nil.
     /// - Returns: The quota details for the mailbox's quota root.
@@ -1570,13 +1565,13 @@ public actor IMAPServer {
         guard supportsCapability({ $0 == .quota }) else {
             throw IMAPError.commandNotSupported("QUOTA command not supported by server")
         }
-        
+
         let command = GetQuotaRootCommand(mailboxName: mailboxName.map(resolveMailboxPath))
         return try await executeCommand(command)
     }
-    
+
     // MARK: - Sub-Commands
-    
+
     /**
      Process a body structure recursively to fetch all parts
      - Parameters:
@@ -1591,10 +1586,10 @@ public actor IMAPServer {
             case .singlepart(let part):
                 // Fetch the part content
                 let partData = try await fetchPart(section: section, of: identifier)
-                
+
                 // Extract content type
                 var contentType = ""
-                
+
                 switch part.kind {
                     case .basic(let mediaType):
                         contentType = "\(String(mediaType.topLevel))/\(String(mediaType.sub))"
@@ -1603,21 +1598,21 @@ public actor IMAPServer {
                     case .message(let message):
                         contentType = "message/\(String(message.message))"
                 }
-                
+
                 // Add charset parameter if present
                 if let charset = part.fields.parameters.first(where: { $0.key.lowercased() == "charset" })?.value {
                     contentType += "; charset=\(charset)"
                 }
-                
+
                 // Extract disposition and filename if available
-                var disposition: String? = nil
-                var filename: String? = nil
+                var disposition: String?
+                var filename: String?
                 let encoding: String? = part.fields.encoding?.debugDescription
-                
+
                 if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
                     if let disp = dispAndLang.disposition {
                         disposition = String(describing: disp)
-                        
+
                         for (key, value) in disp.parameters {
                             if key.lowercased() == "filename" {
                                 filename = value
@@ -1625,10 +1620,10 @@ public actor IMAPServer {
                         }
                     }
                 }
-                
+
                 // Set content ID if available
                 let contentId = part.fields.id
-                
+
                 // Create a message part
                 let messagePart = MessagePart(
                     section: section,
@@ -1639,27 +1634,27 @@ public actor IMAPServer {
                     contentId: contentId,
                     data: partData
                 )
-                
+
                 // Return a single-element array with this part
                 return [messagePart]
-                
+
             case .multipart(let multipart):
                 // For multipart messages, process each child part and collect results
                 var allParts: [MessagePart] = []
-                
+
                 for (index, childPart) in multipart.parts.enumerated() {
                     // Create a new section by appending the current index + 1
                     let childSection = Section(section.components + [index + 1])
                     let childParts = try await recursivelyFetchParts(childPart, section: childSection, identifier: identifier)
                     allParts.append(contentsOf: childParts)
                 }
-                
+
                 return allParts
         }
     }
-    
+
     // MARK: - Command Helpers
-    
+
     /**
      Execute an IMAP command
      - Parameter command: The command to execute
@@ -1735,7 +1730,7 @@ public actor IMAPServer {
 
         return ServerMessageDate(serverComponents)
     }
-    
+
     /**
      Execute a move command
      
@@ -1773,7 +1768,7 @@ extension IMAPServer {
         self.namespaces = response
         return response
     }
-    
+
     /**
      Lists mailboxes with special-use attributes.
      
@@ -1790,19 +1785,19 @@ extension IMAPServer {
     public func listSpecialUseMailboxes() async throws -> [Mailbox.Info] {
         // Check if the server supports SPECIAL-USE capability
         let supportsSpecialUse = capabilities.contains(NIOIMAPCore.Capability("SPECIAL-USE"))
-        
+
         // Get all mailboxes and store them
         self.mailboxes = try await listMailboxes()
         var specialFolders: [Mailbox.Info] = []
-        
+
         // Flag to track if we've found an explicit inbox
         var foundExplicitInbox = false
-        
+
         if supportsSpecialUse {
             // Create a ListCommand with SPECIAL-USE return option
             let command = ListCommand(returnOptions: [.specialUse])
             let mailboxesWithAttributes = try await executeCommand(command)
-            
+
             // Keep only mailboxes with special-use attributes
             for mailbox in mailboxesWithAttributes {
                 let hasSpecialUse = mailbox.attributes.contains(.inbox) ||
@@ -1812,7 +1807,7 @@ extension IMAPServer {
                 mailbox.attributes.contains(.drafts) ||
                 mailbox.attributes.contains(.junk) ||
                 mailbox.attributes.contains(.flagged)
-                
+
                 if hasSpecialUse {
                     specialFolders.append(mailbox)
                     if mailbox.attributes.contains(.inbox) {
@@ -1825,10 +1820,10 @@ extension IMAPServer {
             for mailbox in mailboxes {
                 var attributes = mailbox.attributes
                 var hasSpecialUse = false
-                
+
                 // Check name patterns for common special folders
                 let nameLower = normalizedMailboxName(mailbox.name).lowercased()
-                
+
                 if mailbox.attributes.contains(.inbox) {
                     foundExplicitInbox = true
                     hasSpecialUse = true
@@ -1851,7 +1846,7 @@ extension IMAPServer {
                     attributes.insert(.flagged)
                     hasSpecialUse = true
                 }
-                
+
                 // Special case for Gmail's folders
                 if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/Trash") == .orderedSame || normalizedMailboxName(mailbox.name).caseInsensitiveCompare("Trash") == .orderedSame {
                     attributes.insert(.trash)
@@ -1872,7 +1867,7 @@ extension IMAPServer {
                     attributes.insert(.flagged)
                     hasSpecialUse = true
                 }
-                
+
                 if hasSpecialUse {
                     // Create a new mailbox info with the enhanced attributes
                     let specialMailbox = Mailbox.Info(
@@ -1884,7 +1879,7 @@ extension IMAPServer {
                 }
             }
         }
-        
+
         // Per IMAP spec, INBOX always exists - if no explicit inbox was found, add it
         if !foundExplicitInbox {
             // Find the INBOX in the mailboxes list
@@ -1892,20 +1887,20 @@ extension IMAPServer {
                 // Create a copy with the inbox attribute added
                 var inboxAttributes = inboxMailbox.attributes
                 inboxAttributes.insert(.inbox)
-                
+
                 let inboxWithAttribute = Mailbox.Info(
                     name: inboxMailbox.name,
                     attributes: inboxAttributes,
                     hierarchyDelimiter: inboxMailbox.hierarchyDelimiter
                 )
-                
+
                 specialFolders.append(inboxWithAttribute)
             }
         }
-        
+
         // Update the specialMailboxes property
         self.specialMailboxes = specialFolders
-        
+
         return specialFolders
     }
 }
@@ -1948,7 +1943,7 @@ extension IMAPServer {
         self.mailboxes = listed
         return listed
     }
-    
+
     /**
      Get the inbox folder or throw if not found
      
@@ -1963,7 +1958,7 @@ extension IMAPServer {
             return inbox
         }
     }
-    
+
     /**
      Get the trash folder or throw if not found
      
@@ -1981,7 +1976,7 @@ extension IMAPServer {
             throw UndefinedFolderError.trash
         }
     }
-    
+
     /**
      Get the archive folder or throw if not found
      
@@ -1999,7 +1994,7 @@ extension IMAPServer {
             throw UndefinedFolderError.archive
         }
     }
-    
+
     /**
      Get the sent folder or throw if not found
      
@@ -2017,7 +2012,7 @@ extension IMAPServer {
             throw UndefinedFolderError.sent
         }
     }
-    
+
     /**
      Get the drafts folder or throw if not found
      
@@ -2035,7 +2030,7 @@ extension IMAPServer {
             throw UndefinedFolderError.drafts
         }
     }
-    
+
     /**
      Get the junk folder or throw if not found
      
@@ -2057,7 +2052,7 @@ extension IMAPServer {
 
 // Update the existing folder operations to use the throwing getters
 extension IMAPServer {
-    
+
     /// Ensures special-use mailboxes and the general mailbox list have been fetched.
     /// Called automatically by convenience folder operations so callers don't need
     /// to manually call `listSpecialUseMailboxes()` first.
@@ -2069,7 +2064,7 @@ extension IMAPServer {
             try await listSpecialUseMailboxes()
         }
     }
-    
+
     /**
      Move messages to the trash folder
      
@@ -2087,7 +2082,7 @@ extension IMAPServer {
         try await ensureMailboxesLoaded()
         try await move(messages: identifierSet, to: try trashFolder.name)
     }
-    
+
     /**
      Archive messages by marking them as seen and moving them to the archive folder
      
@@ -2106,7 +2101,7 @@ extension IMAPServer {
         try await store(flags: [.seen], on: identifierSet, operation: .add)
         try await move(messages: identifierSet, to: try archiveFolder.name)
     }
-    
+
     /**
      Mark messages as junk by moving them to the junk folder
      
@@ -2124,7 +2119,7 @@ extension IMAPServer {
         try await ensureMailboxesLoaded()
         try await move(messages: identifierSet, to: try junkFolder.name)
     }
-    
+
     /**
      Save messages as drafts by adding the draft flag and moving them to the drafts folder
      

@@ -16,7 +16,7 @@ extension Int {
         formatter.unitOptions = .providedUnit
         formatter.numberFormatter.maximumFractionDigits = 1
         formatter.locale = locale
-        
+
         // Format sizes in the appropriate unit
         if self < 1_000 {
             return formatter.string(from: byteCount)
@@ -33,7 +33,7 @@ extension Int {
         let numberFormatter = NumberFormatter()
         numberFormatter.maximumFractionDigits = 1
         numberFormatter.locale = locale
-        
+
         if byteCount < 1_000 {
             // Use "byte" (singular) for all byte values - matches test expectations
             return "\(Int(byteCount)) byte"
@@ -50,4 +50,4 @@ extension Int {
         }
         #endif
     }
-} 
+}

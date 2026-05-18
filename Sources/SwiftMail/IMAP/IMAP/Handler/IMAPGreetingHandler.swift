@@ -10,7 +10,7 @@ import NIOConcurrencyHelpers
 
 /// Handler for IMAP server greeting
 final class IMAPGreetingHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler, @unchecked Sendable {
-    
+
     /// Process untagged responses to look for the server greeting
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
@@ -32,8 +32,8 @@ final class IMAPGreetingHandler: BaseIMAPCommandHandler<[Capability]>, IMAPComma
                 }
             }
         }
-        
+
         // Not the greeting
         return false
     }
-} 
+}

@@ -27,11 +27,11 @@ final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandH
         default:
             break
         }
-        
+
         // For tagged responses and anything else, use base class handling
         return super.processResponse(response)
     }
-    
+
     override func handleUntaggedResponse(_ response: Response) -> Bool {
         // NoopHandler collects BYE as an event rather than terminating immediately
         if case .untagged(let payload) = response,
@@ -40,7 +40,7 @@ final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandH
             events.append(.bye(text.text))
             return true  // Indicate we handled this BYE
         }
-        
+
         // Let base class handle other untagged responses
         return super.handleUntaggedResponse(response)
     }
@@ -48,7 +48,7 @@ final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandH
     	override func handleTaggedOKResponse(_ response: TaggedResponse) {
 		// Call super to handle CLIENTBUG warnings
 		super.handleTaggedOKResponse(response)
-		
+
 		succeedWithResult(events)
 	}
 

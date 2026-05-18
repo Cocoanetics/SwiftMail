@@ -2,7 +2,6 @@ import Foundation
 import NIO
 import Logging
 
-
 /**
  Handler for SMTP STARTTLS command responses
  */
@@ -22,10 +21,10 @@ final class StartTLSHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
             promise.fail(SMTPError.tlsFailed("STARTTLS failed: \(response.message)"))
             return true
         }
-        
+
         return false // Not complete yet
     }
-    
+
     /**
      Handle a successful response
      - Parameter response: The parsed SMTP response
@@ -33,7 +32,7 @@ final class StartTLSHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
     override func handleSuccess(response: SMTPResponse) {
         promise.succeed(true)
     }
-    
+
     /**
      Handle an error response
      - Parameter response: The parsed SMTP response
@@ -41,4 +40,4 @@ final class StartTLSHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
     override func handleError(response: SMTPResponse) {
         promise.fail(SMTPError.tlsFailed("STARTTLS failed: \(response.message)"))
     }
-} 
+}

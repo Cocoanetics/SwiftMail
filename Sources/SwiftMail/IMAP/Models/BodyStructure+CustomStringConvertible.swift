@@ -11,7 +11,7 @@ extension NIOIMAPCore.BodyStructure: @retroactive CustomStringConvertible {
         buildTreeRepresentation(into: &lines, indent: "", isLast: true, partPath: [], includePartNumbers: true)
         return lines.joined(separator: "\n")
     }
-    
+
     /// Build a tree representation of the body structure
     /// - Parameters:
     ///   - lines: Array to store the formatted lines
@@ -28,14 +28,14 @@ extension NIOIMAPCore.BodyStructure: @retroactive CustomStringConvertible {
     ) {
         let connector = isLast ? "└── " : "├── "
         let childIndent = indent + (isLast ? "    " : "│   ")
-        
+
         // Format this node
         let (contentType, _) = formatDescription(partPath: partPath)
         let partNumberInfo = includePartNumbers && !partPath.isEmpty ? " ← part \(partPath.map(String.init).joined(separator: "."))" : ""
         let wholePart = partPath.isEmpty ? " ← part: (entire message, unnumbered)" : partNumberInfo
-        
+
         lines.append("\(indent)\(connector)\(contentType)\(wholePart)")
-        
+
         // Process children for multipart and message/rfc822
         switch self {
         case .multipart(let multipart):
@@ -77,7 +77,7 @@ extension NIOIMAPCore.BodyStructure: @retroactive CustomStringConvertible {
             }
         }
     }
-    
+
     /// Format a description for this body part
     /// - Parameter partPath: Current part path
     /// - Returns: A tuple with (contentType, description)
@@ -93,9 +93,9 @@ extension NIOIMAPCore.BodyStructure: @retroactive CustomStringConvertible {
             case .message(let message):
                 contentType = "message/\(message.message)"
             }
-            
+
             // Get filename if available
-            var filename: String? = nil
+            var filename: String?
             if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
                 if let disp = dispAndLang.disposition {
                     for (key, value) in disp.parameters where key.lowercased() == "filename" {
@@ -103,13 +103,13 @@ extension NIOIMAPCore.BodyStructure: @retroactive CustomStringConvertible {
                     }
                 }
             }
-            
+
             let descriptionPart = filename != nil ? " (\(filename!))" : ""
             return (contentType, descriptionPart)
-            
+
         case .multipart(let multipart):
             let contentType = "multipart/\(multipart.mediaSubtype)"
             return (contentType, "")
         }
     }
-} 
+}

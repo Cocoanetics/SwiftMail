@@ -143,7 +143,7 @@ final class IMAPTestServer {
         let readBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 65536)
         defer { readBuf.deallocate() }
 
-        var idleTag: String? = nil  // non-nil while in IDLE state
+        var idleTag: String?  // non-nil while in IDLE state
 
         while true {
             let n = read(fd, readBuf, 65536)

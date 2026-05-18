@@ -21,4 +21,4 @@ private extension String {
         let endIndex = self.index(self.startIndex, offsetBy: maxLength - 3)
         return String(self[..<endIndex]) + "..."
     }
-} 
+}

@@ -467,7 +467,7 @@ public struct EMLParser {
             "d MMM yyyy HH:mm:ss Z",             // No day name, single-digit day
             "EEE, dd MMM yyyy HH:mm:ss ZZZZ",    // Named timezone
             "EEE, d MMM yyyy HH:mm:ss ZZZZ",
-            "EEE, dd MMM yy HH:mm:ss Z",         // Two-digit year
+            "EEE, dd MMM yy HH:mm:ss Z"         // Two-digit year
         ]
 
         for format in formats {

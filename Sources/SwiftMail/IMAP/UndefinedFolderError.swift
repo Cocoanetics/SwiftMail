@@ -28,7 +28,7 @@ public enum UndefinedFolderError: Error, CustomStringConvertible {
 	case drafts
 	/// The junk folder is not defined
 	case junk
-	
+
 	public var description: String {
 		let folderName: String
 		switch self {

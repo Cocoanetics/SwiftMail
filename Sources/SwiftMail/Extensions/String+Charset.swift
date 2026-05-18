@@ -143,44 +143,44 @@ public func stringEncoding(for rawCharset: String) -> String.Encoding? {
         "utf-32": .utf32,       // platform-endian with BOM
         "utf-32le": .utf32LittleEndian,
         "utf-32be": .utf32BigEndian,
-        
+
         // ASCII
         "us-ascii": .ascii,
-        
+
         // ISO Latin family (only the ones that exist in String.Encoding)
         "iso-8859-1": .isoLatin1,
         "iso-8859-2": .isoLatin2,
-        
+
         // Windows code pages (only the ones that exist in String.Encoding)
         "windows-1250": .windowsCP1250,
         "windows-1251": .windowsCP1251,
         "windows-1252": .windowsCP1252,
         "windows-1253": .windowsCP1253,
         "windows-1254": .windowsCP1254,
-        
+
         // Japanese encodings
         "shift_jis": .shiftJIS,
         "euc-jp": .japaneseEUC,
         "iso-2022-jp": .iso2022JP,
-        
+
         // Korean encodings (fallback to UTF-8 for unsupported encodings)
         "euc-kr": .utf8,
-        
+
         // Chinese encodings (fallback to UTF-8 for unsupported encodings)
         "gb2312": .utf8,
         "gbk": .utf8,
         "gb18030": .utf8,
         "big5": .utf8,
-        
+
         // Other encodings (fallback to UTF-8 for unsupported encodings)
         "koi8-r": .utf8,
         "macintosh": .utf8
     ]
-    
+
     if let encoding = additionalCharsets[label] {
         return encoding
     }
-    
+
     return nil
 }
 

@@ -10,22 +10,22 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
         case usernameProvided
         case completed
     }
-    
+
     /// Current authentication state
     private var state: AuthState = .initial
-    
+
     /// Authentication method to use
     private let method: AuthMethod
-    
+
     /// Username for authentication
     private let username: String
-    
+
     /// Password for authentication
     private let password: String
-    
+
     /// The channel for sending commands
     private weak var channel: Channel?
-    
+
     /// Initialize a new auth handler
     /// - Parameters:
     ///   - commandTag: Optional tag for the command
@@ -34,7 +34,7 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
         // These will be set in the designated initializer
         self.init(commandTag: commandTag, promise: promise, method: .plain, username: "", password: "", channel: nil)
     }
-    
+
     /// Designated initializer
     init(commandTag: String?, promise: EventLoopPromise<AuthResult>,
                method: AuthMethod, username: String, password: String, channel: Channel?) {
@@ -44,7 +44,7 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
         self.channel = channel
         super.init(commandTag: commandTag, promise: promise)
     }
-    
+
     /// Process a response line from the server
     /// - Parameter response: The response line to process
     /// - Returns: Whether the handler is complete
@@ -76,7 +76,7 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
                     promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
                     return true
                 }
-                
+
             case .usernameProvided:
                 // After username, should be a challenge for the password
                 if response.code == 334 {
@@ -89,7 +89,7 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
                     promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
                     return true
                 }
-                
+
             case .completed:
                 // Final response after password
                 if response.code >= 200 && response.code < 300 {
@@ -101,10 +101,10 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
                 }
             }
         }
-        
+
         return false // Not yet complete
     }
-    
+
     /// Send a credential for LOGIN authentication
     /// - Parameter credential: The credential to send (username or password)
     private func sendLoginCredential(_ credential: String) {
@@ -112,10 +112,10 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
             promise.fail(SMTPError.connectionFailed("Channel is nil"))
             return
         }
-        
+
         // Encode the credential in base64
         let base64Credential = Data(credential.utf8).base64EncodedString()
-        
+
         // Send the credential
         let buffer = channel.allocator.buffer(string: base64Credential + "\r\n")
         channel.writeAndFlush(buffer).whenFailure { error in
@@ -135,13 +135,13 @@ enum AuthMethod: String {
 struct AuthResult {
     /// Method used for authentication
     let method: AuthMethod
-    
+
     /// Whether authentication was successful
     let success: Bool
-    
+
     /// Error message, if authentication failed
     let errorMessage: String?
-    
+
     /// Initialize a new authentication result
     /// - Parameters:
     ///   - method: Method used for authentication
@@ -152,4 +152,4 @@ struct AuthResult {
         self.success = success
         self.errorMessage = errorMessage
     }
-} 
+}

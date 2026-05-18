@@ -150,7 +150,7 @@ struct EMLParserTests {
         let formats = [
             "Mon, 16 Feb 2026 10:30:00 +0100",
             "16 Feb 2026 10:30:00 +0100",
-            "Mon, 6 Feb 2026 10:30:00 +0100",
+            "Mon, 6 Feb 2026 10:30:00 +0100"
         ]
 
         for format in formats {

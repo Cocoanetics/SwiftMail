@@ -7,27 +7,27 @@ import Foundation
 public struct Message: Codable, Sendable {
     /// The email header information
     public let header: MessageInfo
-    
+
     /// The UID of the message
     public var uid: UID? {
         return header.uid
     }
-    
+
     /// The sequence number of the message
     public var sequenceNumber: SequenceNumber {
         return header.sequenceNumber
     }
-    
+
     /// The subject of the message
     public var subject: String? {
         return header.subject
     }
-    
+
     /// The sender of the message
     public var from: String? {
         return header.from
     }
-    
+
     /// The recipients of the message
     public var to: [String] {
         return header.to
@@ -47,25 +47,25 @@ public struct Message: Codable, Sendable {
     public var date: Date? {
         return header.date
     }
-    
+
     /// The flags of the message
     public var flags: [Flag] {
         return header.flags
     }
-    
+
     /// All message parts
     public let parts: [MessagePart]
-    
+
     /// The plain text body of the email (if available)
     public var textBody: String? {
         return bodyContent(for: "text/plain")
     }
-    
+
     /// The HTML body of the email (if available)
     public var htmlBody: String? {
         return bodyContent(for: "text/html")
     }
-    
+
     /// All attachments in the email
     public var attachments: [MessagePart] {
         return parts.filter { part in
@@ -92,7 +92,7 @@ public struct Message: Codable, Sendable {
     public var cids: [MessagePart] {
         return parts.filter { $0.contentId != nil }
     }
-    
+
     /// All body parts in the email (text and HTML)
     public var bodies: [MessagePart] {
         return parts.filter { part in
@@ -103,7 +103,7 @@ public struct Message: Codable, Sendable {
                 && part.disposition?.lowercased() != "attachment"
         }
     }
-    
+
     /// Initialize a new email
     /// - Parameters:
     ///   - header: The email header
@@ -124,7 +124,7 @@ public struct Message: Codable, Sendable {
             }
             return String(previewText)
         }
-        
+
         if let html = htmlBody {
             // Simple HTML to text conversion for preview
             let strippedHtml = html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
@@ -135,7 +135,7 @@ public struct Message: Codable, Sendable {
             }
             return String(previewText)
         }
-        
+
         return "No preview available"
     }
 }
@@ -164,7 +164,7 @@ public extension Message {
     func findTextBodyPart() -> MessagePart? {
         return bodies.first { $0.contentType.lowercased().hasPrefix("text/plain") }
     }
-    
+
     /// Find the HTML body part
     /// - Returns: The HTML body part, or `nil` if not found
     func findHtmlBodyPart() -> MessagePart? {

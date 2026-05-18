@@ -79,7 +79,7 @@ struct ICSCalendarDetectionTests {
         let part = BodyStructure.Singlepart(kind: .text(text), fields: fields)
         let structure = BodyStructure.singlepart(part)
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
 
         #expect(parts.count == 1)
         #expect(parts[0].filename == "invite.ics")
@@ -94,7 +94,7 @@ struct ICSCalendarDetectionTests {
         let part = BodyStructure.Singlepart(kind: .text(text), fields: fields)
         let structure = BodyStructure.singlepart(part)
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
 
         #expect(parts[0].filename == "meeting.ics")
     }

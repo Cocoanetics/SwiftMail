@@ -11,7 +11,7 @@ public struct StoreData {
         case add
         case remove
         case replace
-        
+
         /// Convert to NIO StoreType
         internal func toNIO() -> NIOIMAPCore.StoreOperation {
             switch self {
@@ -24,13 +24,13 @@ public struct StoreData {
             }
         }
     }
-    
+
     /// The flags to store
     public let flags: [Flag]
-    
+
     /// The type of store operation
     public let storeType: StoreType
-    
+
     /// Initialize with flags and store type
     /// - Parameters:
     ///   - flags: The flags to store
@@ -39,7 +39,7 @@ public struct StoreData {
         self.flags = flags
         self.storeType = storeType
     }
-    
+
     /// Factory method for creating a StoreData with flags
     /// - Parameters:
     ///   - flags: The flags to store
@@ -48,12 +48,12 @@ public struct StoreData {
     public static func flags(_ flags: [Flag], _ storeType: StoreType) -> StoreData {
         return StoreData(flags: flags, storeType: storeType)
     }
-    
+
     /// Convert to NIOIMAPCore.StoreData
     public func toNIO() -> NIOIMAPCore.StoreData {
         // Convert flags to NIOIMAPCore.Flag array
         let nioFlags = flags.map { $0.toNIO() }
-        
+
         // Create and return NIOIMAPCore.StoreData with the appropriate operation and flags
         // Using the proper factory methods on StoreFlags
         let storeFlags: NIOIMAPCore.StoreFlags

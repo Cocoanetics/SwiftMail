@@ -10,19 +10,19 @@ final class AuthHandlerStateMachine {
         case usernameProvided
         case completed
     }
-    
+
     /// Authentication method in use
     let method: AuthMethod
-    
+
     /// Username for authentication
     let username: String
-    
+
     /// Password for authentication
     let password: String
-    
+
     /// Current state in the authentication process
     private var state: AuthState = .initial
-    
+
     /// Initialize a new auth handler state machine
     /// - Parameters:
     ///   - method: The authentication method to use
@@ -33,7 +33,7 @@ final class AuthHandlerStateMachine {
         self.username = username
         self.password = password
     }
-    
+
     /// Process a response from the server and determine next steps
     /// - Parameters:
     ///   - response: The SMTP response to process
@@ -64,7 +64,7 @@ final class AuthHandlerStateMachine {
                     // Error response
                     return (true, AuthResult(method: method, success: false, errorMessage: response.message))
                 }
-                
+
             case .usernameProvided:
                 // After username, should be a challenge for the password
                 if response.code == 334 {
@@ -76,7 +76,7 @@ final class AuthHandlerStateMachine {
                     // Error response
                     return (true, AuthResult(method: method, success: false, errorMessage: response.message))
                 }
-                
+
             case .completed:
                 // Final response after password
                 if response.code >= 200 && response.code < 300 {
@@ -86,12 +86,12 @@ final class AuthHandlerStateMachine {
                 }
             }
         }
-        
+
         return (false, nil) // Not yet complete
     }
-    
+
     /// Get the current auth state
     var currentState: AuthState {
         return state
     }
-} 
+}

@@ -22,40 +22,40 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
 
     /// Whether we've already finished collecting our requested part
     private var didFinishPart = false
-    
+
     	/// Handle a tagged OK response by succeeding the promise with the collected data
 	/// - Parameter response: The tagged response
 	override func handleTaggedOKResponse(_ response: TaggedResponse) {
 		// Call super to handle CLIENTBUG warnings
 		super.handleTaggedOKResponse(response)
-		
+
 		// Succeed with the collected data
 		let collectedPartData = lock.withLock { self.partData }
 		succeedWithResult(collectedPartData)
 	}
-    
+
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.fetchFailed(String(describing: response.state)))
     }
-    
+
     /// Process an incoming response
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override func processResponse(_ response: Response) -> Bool {
         // Call the base class implementation to buffer the response
         let handled = super.processResponse(response)
-        
+
         // Process fetch responses
         if case .fetch(let fetchResponse) = response {
             processFetchResponse(fetchResponse)
         }
-        
+
         // Return the result from the base class
         return handled
     }
-    
+
     /// Process a fetch response
     /// - Parameter fetchResponse: The fetch response to process
     private func processFetchResponse(_ fetchResponse: FetchResponse) {
@@ -97,7 +97,7 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
                 break
         }
     }
-    
+
     /// Process a message attribute
     /// - Parameter attribute: The attribute to process
     private func processMessageAttribute(_ attribute: MessageAttribute) {
@@ -108,9 +108,9 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
 						self.parts = .init(structure)
                     }
                 }
-                
+
             default:
                 break
         }
     }
-} 
+}

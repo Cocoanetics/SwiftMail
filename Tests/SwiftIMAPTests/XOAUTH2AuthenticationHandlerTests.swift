@@ -104,7 +104,6 @@ struct XOAUTH2AuthenticationHandlerTests {
         #expect(capabilities.isEmpty)
     }
 
-
     @Test
     func testSASLIRServerSendsEmptyChallengeRetriesCredentials() async throws {
         let (channel, promise, _) = try await setUpChannel(tag: "A002A", expectsChallenge: false)
@@ -224,7 +223,6 @@ struct XOAUTH2AuthenticationHandlerTests {
             Issue.record("Unexpected error type: \(error)")
         }
     }
-
 
     @Test
     func testChannelCloseFailsPendingAuthentication() async throws {

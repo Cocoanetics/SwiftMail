@@ -11,7 +11,7 @@ import NIOConcurrencyHelpers
 final class MoveHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
     /** The result type for this handler */
     typealias ResultType = Void
-    
+
     /**
      Process an incoming response
      - Parameter response: The response to process
@@ -20,7 +20,7 @@ final class MoveHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
     override func processResponse(_ response: Response) -> Bool {
         // Log the response using the base handler
         let baseHandled = super.processResponse(response)
-        
+
         // Check if this is our tagged response
         if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
             if case .ok = taggedResponse.state {
@@ -32,8 +32,8 @@ final class MoveHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
             }
             return true
         }
-        
+
         // Not our tagged response
         return baseHandled
     }
-} 
+}

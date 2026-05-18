@@ -4,8 +4,6 @@ import Foundation
 import FoundationNetworking
 #endif
 import SwiftMail
-import SwiftMail
-
 extension Email {
     /// Creates a demo email with Swift logo embedded inline
     /// - Parameters:
@@ -28,23 +26,23 @@ extension Email {
         let mimeType = String.mimeType(for: logoURL.pathExtension)
         let logoContentID = "swift-logo"
         let logoFilename = "swift-logo.svg"
-        
+
         // Download the image data using a cross-platform approach
         // Create a URLSession configuration that works on all platforms
         let config = URLSessionConfiguration.default
         let session = URLSession(configuration: config)
         let (imageData, response) = try await session.data(from: logoURL)
-        
+
         guard let httpResponse = response as? HTTPURLResponse else {
             throw NSError(domain: "com.cocoanetics.SwiftSMTPCLI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid response type"])
         }
-        
+
         guard httpResponse.statusCode == 200 else {
             throw NSError(domain: "com.cocoanetics.SwiftSMTPCLI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to download Swift logo, status code: \(httpResponse.statusCode)"])
         }
-        
+
         print("Swift logo downloaded successfully (\(imageData.count) bytes)")
-        
+
         // Create the email with both text and HTML content
         var email = Email(
             sender: sender,
@@ -54,7 +52,7 @@ extension Email {
             subject: "HTML Email with Swift Logo from SwiftSMTPCLI",
             textBody: "This is a test email sent from the SwiftSMTPCLI application. This is the plain text version for email clients that don't support HTML."
         )
-        
+
         // Add HTML body with the Swift logo
         let htmlBody = """
         <!DOCTYPE html>
@@ -84,7 +82,7 @@ extension Email {
                 <p>This is a test email demonstrating HTML formatting and embedded images using Swift's email capabilities.</p>
                 <p>Here's a simple Swift code example:</p>
                 <pre><code>let message = "Hello, Swift!"\nprint(message)</code></pre>
-                
+
                 <p>This email demonstrates CC and BCC functionality:</p>
                 <ul>
                     <li>Primary recipient: \(recipient.description)</li>
@@ -98,7 +96,7 @@ extension Email {
         </body>
         </html>
         """
-        
+
         // Create a custom attachment with inline disposition
         let attachment = Attachment(
             filename: logoFilename,
@@ -107,13 +105,13 @@ extension Email {
             contentID: logoContentID,
             isInline: true
         )
-        
+
         // Add HTML body and inline image attachment
         email.htmlBody = htmlBody
         email.attachments = [attachment]
-        
+
         print("Created HTML email with embedded Swift logo")
-        
+
         return email
     }
 }
@@ -124,4 +122,4 @@ private func formatCurrentDate() -> String {
     dateFormatter.dateStyle = .full
     dateFormatter.timeStyle = .medium
     return dateFormatter.string(from: Date())
-} 
+}

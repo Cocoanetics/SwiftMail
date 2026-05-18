@@ -9,19 +9,19 @@ import Foundation
 public struct Attachment: Codable, Sendable {
     /** The filename of the attachment */
     public let filename: String
-    
+
     /** The MIME type of the attachment */
     public let mimeType: String
-    
+
     /** The data of the attachment */
     public let data: Data
-    
+
     /** Optional content ID for inline attachments */
     public let contentID: String?
-    
+
     /** Whether this attachment should be displayed inline */
     public let isInline: Bool
-    
+
     /**
      Initialize a new attachment
      - Parameters:
@@ -38,7 +38,7 @@ public struct Attachment: Codable, Sendable {
         self.contentID = contentID
         self.isInline = isInline
     }
-    
+
     /**
      Initialize a new attachment from a file URL
      - Parameters:
@@ -51,7 +51,7 @@ public struct Attachment: Codable, Sendable {
     public init(fileURL: URL, mimeType: String? = nil, contentID: String? = nil, isInline: Bool = false) throws {
         // Get the filename from the URL
         self.filename = fileURL.lastPathComponent
-        
+
         // Determine MIME type if not provided
         if let providedMimeType = mimeType {
             self.mimeType = providedMimeType
@@ -83,12 +83,12 @@ public struct Attachment: Codable, Sendable {
                 self.mimeType = "application/octet-stream"
             }
         }
-        
+
         // Read the file data
         self.data = try Data(contentsOf: fileURL)
-        
+
         // Set content ID and inline flag
         self.contentID = contentID
         self.isInline = isInline
     }
-} 
+}

@@ -244,13 +244,13 @@ final class IMAPConnection {
         let certificateVerificationPolicy = self.certificateVerificationPolicy
         let duplexLogger = self.duplexLogger
         let responseBuffer = self.responseBuffer
-        
+
         // Create greeting handler and promise before connecting so they can be installed
         // in the channelInitializer. This prevents a race condition where the server
         // greeting arrives before the handler is installed (especially in plaintext mode).
         let greetingPromise = group.next().makePromise(of: [Capability].self)
         let greetingHandler = IMAPGreetingHandler(commandTag: "", promise: greetingPromise)
-        
+
         let bootstrap = ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
             .channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
@@ -304,7 +304,7 @@ final class IMAPConnection {
         let timeoutTask = group.next().scheduleTask(in: .seconds(5)) {
             greetingPromise.fail(IMAPError.timeout)
         }
-        
+
         let greetingCapabilities: [Capability]
         do {
             greetingCapabilities = try await greetingPromise.futureResult.get()
@@ -646,7 +646,6 @@ final class IMAPConnection {
         self.capabilities = Set(refreshedCapabilities)
     }
 
-    
     func fetchNamespaces() async throws -> NamespaceResponse {
         let response = try await executeCommand(NamespaceCommand())
         namespaces = response

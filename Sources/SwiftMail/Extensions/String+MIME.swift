@@ -24,7 +24,7 @@ extension String {
         return Self.mimeTypeToExtension[mimeType.lowercased()]
         #endif
     }
-    
+
     /// Get MIME type for a file extension
     /// - Parameter fileExtension: The file extension (without dot)
     /// - Returns: The corresponding MIME type, or application/octet-stream if unknown
@@ -41,7 +41,7 @@ extension String {
         return Self.extensionToMimeType[fileExtension.lowercased()] ?? "application/octet-stream"
         #endif
     }
-    
+
     /// Comprehensive extension to MIME type mapping
     private static let extensionToMimeType: [String: String] = [
         "123": "application/vnd.lotus-1-2-3",
@@ -1048,7 +1048,7 @@ extension String {
         "zirz": "application/vnd.zul",
         "zmm": "application/vnd.handheld-entertainment+xml"
     ]
-    
+
     /// Comprehensive MIME type to preferred extension mapping
     private static let mimeTypeToExtension: [String: String] = [
         "application/andrew-inset": "ez",

@@ -16,21 +16,21 @@ extension EmailAddress: LosslessStringConvertible {
             self.init(address: description)
             return
         }
-        
+
         // Email address with a name
         // Format: "Name <email@example.com>" or "\"Name with, special chars\" <email@example.com>"
         let namePattern = "(?:\"([^\"]+)\"|([^<]*))\\s*<([^>]+)>"
         let nameRegex = try? NSRegularExpression(pattern: namePattern, options: [])
-        
+
         if let match = nameRegex?.firstMatch(in: description, options: [], range: NSRange(location: 0, length: description.count)) {
             let nameRange1 = match.range(at: 1)
             let nameRange2 = match.range(at: 2)
             let emailRange = match.range(at: 3)
-            
+
             if emailRange.location != NSNotFound {
                 let nsString = description as NSString
                 let email = nsString.substring(with: emailRange)
-                
+
                 // Check if we have a quoted name or a regular name
                 if nameRange1.location != NSNotFound {
                     // Quoted name (with special characters)
@@ -49,10 +49,10 @@ extension EmailAddress: LosslessStringConvertible {
                 }
             }
         }
-        
+
         return nil
     }
-	
+
 	/**
 	 Get the string representation of the email address
 	 This uses the formatted representation which includes the name if available

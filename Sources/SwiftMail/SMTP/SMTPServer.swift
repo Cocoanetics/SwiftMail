@@ -57,10 +57,10 @@ public actor SMTPServer {
     }
 
     // MARK: - Properties
-    
+
     /** The hostname of the SMTP server */
     private let host: String
-    
+
     /** The port number of the SMTP server */
     private let port: Int
 
@@ -69,16 +69,16 @@ public actor SMTPServer {
 
     /** The certificate verification policy for TLS connections */
     private let certificateVerificationPolicy: MailCertificateVerificationPolicy
-    
+
     /** The event loop group for handling asynchronous operations */
     private let group: EventLoopGroup
-    
+
     /** The channel for communication with the server */
     private var channel: Channel?
-    
+
     /** Flag indicating whether TLS is enabled for the connection */
     private var isTLSEnabled = false
-    
+
     /** Server capabilities reported by EHLO command */
     private var capabilities: [String] = []
 
@@ -98,7 +98,7 @@ public actor SMTPServer {
         let emailSizeOctets: Int
         let mailFromMessageSizeOctets: Int?
     }
-    
+
     /** 
      Logger for SMTP operations
      
@@ -117,7 +117,7 @@ public actor SMTPServer {
      3. Adjust the "Action" menu to show Debug and Info messages
      */
     private let logger = Logger(label: "com.cocoanetics.SwiftMail.SMTPServer")
-    
+
     /** 
      A logger that monitors both inbound and outbound SMTP traffic
      
@@ -131,7 +131,7 @@ public actor SMTPServer {
     private let duplexLogger: SMTPLogger
 
     // MARK: - Initialization
-    
+
     /** 
      Initialize a new SMTP server connection
      
@@ -162,19 +162,19 @@ public actor SMTPServer {
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
-		
+
 		let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
 		let inboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_IN")
 
 		self.duplexLogger = SMTPLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
     }
-    
+
     deinit {
         try? group.syncShutdownGracefully()
     }
-    
+
     // MARK: - Connection and Authentication
-    
+
     /** 
      Connect to the SMTP server
      
@@ -193,7 +193,7 @@ public actor SMTPServer {
      */
     public func connect() async throws {
         logger.debug("Connecting to SMTP server at \(host):\(port)")
-        
+
         let transportMode = Self.resolveTransportMode(
             port: port,
             transportSecurity: transportSecurity
@@ -202,7 +202,7 @@ public actor SMTPServer {
         let host = self.host
         let certificateVerificationPolicy = self.certificateVerificationPolicy
         let duplexLogger = self.duplexLogger
-        
+
         // Create the bootstrap
         let bootstrap = ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
@@ -214,11 +214,11 @@ public actor SMTPServer {
                         let tlsConfig = MailTLSConfiguration.makeClientConfiguration(
                             certificateVerificationPolicy: certificateVerificationPolicy
                         )
-                        
+
                         let sslContext = try NIOSSLContext(configuration: tlsConfig)
                         let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
                         let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: serverHostname)
-                        
+
                         // Add SSL handler first, then SMTP handlers using syncOperations
                         try! channel.pipeline.syncOperations.addHandler(sslHandler)
                         try! channel.pipeline.syncOperations.addHandlers([
@@ -226,7 +226,7 @@ public actor SMTPServer {
 							duplexLogger,
 							SMTPResponseHandler()
 						])
-                        
+
                         return channel.eventLoop.makeSucceededFuture(())
                     } catch {
                         return channel.eventLoop.makeFailedFuture(error)
@@ -238,28 +238,28 @@ public actor SMTPServer {
 						duplexLogger,
 						SMTPResponseHandler()
 					])
-                    
+
                     return channel.eventLoop.makeSucceededFuture(())
                 }
             }
-        
+
         // Connect to the server
         let channel = try await bootstrap.connect(host: host, port: port).get()
-        
+
         // Store the channel
         self.channel = channel
-        
+
         // Wait for the server greeting using our generic handler execution pattern
         let greeting = try await executeHandlerOnly(handlerType: SMTPGreetingHandler.self)
-        
+
         // Check if the greeting is positive
         guard greeting.code >= 200 && greeting.code < 300 else {
             throw SMTPError.connectionFailed("Server rejected connection: \(greeting.message)")
         }
-        
+
         // Fetch capabilities using our new method
         let capabilities = try await fetchCapabilities()
-        
+
         try await applyPostEHLOTLSPolicy(
             transportMode: transportMode,
             capabilities: capabilities
@@ -299,7 +299,7 @@ public actor SMTPServer {
             }
         }
     }
-    
+
     /**
      Authenticate with the SMTP server
      
@@ -320,33 +320,33 @@ public actor SMTPServer {
      - Note: Logs authentication attempts at info level (without credentials)
      */
     public func login(username: String, password: String) async throws {
-        
+
         // Check if we have PLAIN auth support
         if capabilities.contains("AUTH PLAIN") {
             let plainCommand = PlainAuthCommand(username: username, password: password)
             let result = try await executeCommand(plainCommand)
-            
+
             // If successful, return success
             if result.success {
                 return
             }
         }
-        
+
         // If PLAIN auth failed or is not supported, try LOGIN auth
         if capabilities.contains("AUTH LOGIN") {
             let loginCommand = LoginAuthCommand(username: username, password: password)
             let result = try await executeCommand(loginCommand)
-            
+
             // If successful, return success
             if result.success {
                 return
             }
         }
-        
+
         // If we get here, authentication failed
         throw SMTPError.authenticationFailed("Authentication failed with all available methods")
     }
-    
+
     /**
      Authenticate with the SMTP server using XOAUTH2
 
@@ -479,9 +479,9 @@ public actor SMTPServer {
 
         logger.info("Disconnected from SMTP server")
     }
-    
+
     // MARK: - Email Sending
-    
+
     /**
      Send an email with the server
      
@@ -508,25 +508,25 @@ public actor SMTPServer {
             logger.error("Attempting to send email without an active connection")
             throw SMTPError.connectionFailed("Not connected to SMTP server. Call connect() first.")
         }
-        
+
         // We don't explicitly check for authentication here, as the SMTP server will reject
         // commands if not authenticated, and that will be handled by the error handling below.
-        
+
         var allRecipients = email.recipients
         allRecipients.append(contentsOf: email.ccRecipients)
         allRecipients.append(contentsOf: email.bccRecipients)
-        
+
         logger.debug("Sending email to \(allRecipients.count) recipients with subject: \(email.subject)")
         if !email.regularAttachments.isEmpty || !email.inlineAttachments.isEmpty {
             logger.debug("Email contains \(email.regularAttachments.count) regular attachments and \(email.inlineAttachments.count) inline attachments")
         }
-        
+
         let preparedEmail = try Self.prepareEmailForSend(email, capabilities: capabilities)
-        
+
         if preparedEmail.use8BitMIME {
             self.logger.debug("Server supports 8BITMIME, using it for this email")
         }
-        
+
         do {
             // Create Mail From command using 8BITMIME if supported
             let mailFrom = try MailFromCommand(
@@ -535,28 +535,28 @@ public actor SMTPServer {
                 messageSizeOctets: preparedEmail.mailFromMessageSizeOctets
             )
             _ = try await executeCommand(mailFrom)
-            
+
             // RCPT TO commands
             for recipient in allRecipients {
                 let rcptTo = try RcptToCommand(recipientAddress: recipient.address)
                 _ = try await executeCommand(rcptTo)
             }
-            
+
             // DATA command
             let data = DataCommand()
             _ = try await executeCommand(data)
-            
+
             // Send content
             let sendContent = SendContentCommand(data: preparedEmail.contentData)
             try await executeCommand(sendContent)
-            
+
             self.logger.debug("Email sent successfully")
         } catch {
             self.logger.error("Failed to send email: \(error)")
             throw error
         }
     }
-    
+
     /// Send a pre-built RFC 822 message (e.g., a draft fetched from IMAP).
     ///
     /// Unlike ``sendEmail(_:)`` which constructs the MIME body from an ``Email``
@@ -593,7 +593,7 @@ public actor SMTPServer {
         }
 
         let use8BitMIME = supports8BitMIME
-        
+
         // Check for 8-bit content if server doesn't support 8BITMIME
         if !use8BitMIME && rawMessage.contains(where: { $0 > 127 }) {
             throw SMTPError.sendFailed("Message contains 8-bit content but server does not support 8BITMIME")
@@ -626,7 +626,7 @@ public actor SMTPServer {
     }
 
     // MARK: - Helper Methods
-    
+
 	/**
 	 Execute a command and return the result
 	 
@@ -649,57 +649,55 @@ public actor SMTPServer {
 		guard let channel = channel else {
 			throw SMTPError.connectionFailed("Not connected to SMTP server")
 		}
-		
+
 		// Validate the command
 		try command.validate()
-		
+
 		// Create a promise for the result
 		let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
-		
+
 		// Generate a command tag for traceability
 		let commandTag = UUID().uuidString
-		
+
 		// Get the command as raw bytes
 		let commandData = command.toCommandData()
-		
+
 		// Create the handler using standard initialization
 		let handler: any SMTPCommandHandler
-		
+
 		// Special case for LoginAuthHandler which needs the command parameters
 		if let loginCommand = command as? LoginAuthCommand {
 			handler = LoginAuthHandler(commandTag: commandTag, promise: resultPromise as! EventLoopPromise<AuthResult>, command: loginCommand)
-		}
-		else
-		{
+		} else {
 			handler = CommandType.HandlerType(commandTag: commandTag, promise: resultPromise)
 		}
-		
+
 		// Create a timeout for the command
 		let timeoutSeconds = command.timeoutSeconds
-		
+
 		let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
 			resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
 		}
-		
+
 		do {
 			// Add the command handler to the pipeline
 			try await channel.pipeline.addHandler(handler).get()
-			
+
 			// Send the command to the server as raw bytes + CRLF
 			var buffer = channel.allocator.buffer(capacity: commandData.count + 2)
 			buffer.writeBytes(commandData)
 			buffer.writeBytes([0x0D, 0x0A]) // CRLF
 			try await channel.writeAndFlush(buffer).get()
-			
+
 			// Wait for the result
 			let result = try await resultPromise.futureResult.get()
-			
+
 			// Cancel the timeout
 			scheduledTask.cancel()
-			
+
 			// Flush the DuplexLogger's buffer after command execution
 			duplexLogger.flushInboundBuffer()
-			
+
 			return result
 		} catch {
 			// Cancel the timeout
@@ -716,7 +714,7 @@ public actor SMTPServer {
 			}
 		}
 	}
-	
+
     /**
      Execute a handler without sending a command
      
@@ -740,25 +738,25 @@ public actor SMTPServer {
         guard let channel = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
-        
+
         // Create the handler promise
         let promise = channel.eventLoop.makePromise(of: T.self)
-        
+
         // Create the handler directly using initializer
         let handler = HandlerType.init(commandTag: "", promise: promise)
-        
+
         do {
             // Wait for the handler to complete with a timeout
             return try await withTimeout(seconds: Double(timeoutSeconds), operation: {
 				// Add the handler to the pipeline
 				try await channel.pipeline.addHandler(handler).get()
-				
+
 				// Wait for the result
 				let result = try await promise.futureResult.get()
-				
+
 				// Flush the DuplexLogger's buffer even if there was an error
 				self.duplexLogger.flushInboundBuffer()
-				
+
 				return result
             }, onTimeout: {
                 // Fulfill the promise with an error to prevent leaks
@@ -768,14 +766,14 @@ public actor SMTPServer {
         } catch {
             // If any error occurs, fail the promise to prevent leaks
             promise.fail(error)
-            
+
             // Flush the DuplexLogger's buffer even if there was an error
             duplexLogger.flushInboundBuffer()
 
             throw error
         }
     }
-    
+
     /**
      Handle errors in the SMTP channel
      - Parameter error: The error that occurred
@@ -787,10 +785,10 @@ public actor SMTPServer {
         } else {
             logger.error("Error in SMTP channel: \(error.localizedDescription)")
         }
-        
+
         // Error handling is now done directly by the handlers
     }
-    
+
     /** 
      Upgrade the connection to use TLS
      
@@ -808,25 +806,25 @@ public actor SMTPServer {
         // Send STARTTLS command using the modernized command approach
         let command = StartTLSCommand()
         let success = try await executeCommand(command)
-        
+
         // Check if STARTTLS was accepted
         guard success else {
             throw SMTPError.tlsFailed("Server rejected STARTTLS")
         }
-        
+
         guard let channel = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
-        
+
         // Create SSL context with proper configuration for secure connection
         let tlsConfig = MailTLSConfiguration.makeClientConfiguration(
             certificateVerificationPolicy: certificateVerificationPolicy
         )
-        
+
         // Capture the configuration before the closure to avoid concurrency issues
         let finalTlsConfig = tlsConfig
         let host = self.host
-        
+
         // Add SSL handler to the pipeline using EventLoop submission to ensure correct thread
         try await channel.eventLoop.submit {
             let sslContext = try NIOSSLContext(configuration: finalTlsConfig)
@@ -834,10 +832,10 @@ public actor SMTPServer {
             let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: serverHostname)
             try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
         }.get()
-        
+
         // Set TLS flag
         isTLSEnabled = true
-        
+
         // Send EHLO again after STARTTLS and update capabilities
         let ehloCommand = EHLOCommand(hostname: String.localHostname)
         let rawResponse = try await executeCommand(ehloCommand)
@@ -848,7 +846,7 @@ public actor SMTPServer {
         // Store capabilities for later use
         self.capabilities = capabilities
     }
-    
+
     /**
      Parse server capabilities from EHLO response
      - Parameter response: The EHLO response message
@@ -857,25 +855,25 @@ public actor SMTPServer {
     private func parseCapabilities(from response: String) -> [String] {
         // Create a new array for capabilities
         var parsedCapabilities = [String]()
-        
+
         // Split the response into lines
         let lines = response.split(separator: "\n")
-        
+
         // Process each line (skip the first line which is the greeting)
         for line in lines.dropFirst() {
             // Extract the capability (remove the response code prefix if present)
             let capabilityLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            
+
             // For EHLO responses, each line starts with a response code (e.g., "250-AUTH LOGIN PLAIN")
             if capabilityLine.count > 4 && (capabilityLine.prefix(4).hasPrefix("250-") || capabilityLine.prefix(4).hasPrefix("250 ")) {
                 // Extract the capability (after the response code)
                 let capabilityPart = capabilityLine.dropFirst(4).trimmingCharacters(in: .whitespaces)
-                
+
                 // Special handling for AUTH capability which may list multiple methods
                 if capabilityPart.hasPrefix("AUTH ") {
                     // Add the base AUTH capability
                     parsedCapabilities.append("AUTH")
-                    
+
                     // Extract and add each individual auth method
                     let authMethods = capabilityPart.dropFirst(5).split(separator: " ")
 
@@ -889,7 +887,7 @@ public actor SMTPServer {
                 }
             }
         }
-        
+
         return parsedCapabilities
     }
 
@@ -923,7 +921,7 @@ public actor SMTPServer {
             mailFromMessageSizeOctets: maximumMessageSizeOctets == nil ? nil : preparedContent.messageSizeOctets
         )
     }
-    
+
     /**
      Fetch server capabilities using EHLO command
      
@@ -940,22 +938,22 @@ public actor SMTPServer {
     @discardableResult
     public func fetchCapabilities() async throws -> [String] {
         let command = EHLOCommand(hostname: String.localHostname)
-        
+
         do {
             let response = try await executeCommand(command)
-            
+
             // Parse the capabilities from the raw response
             let capabilities = parseCapabilities(from: response)
-            
+
             // Store capabilities for later use
             self.capabilities = capabilities
-            
+
             return capabilities
         } catch {
             throw error
         }
     }
-    
+
     /**
      Execute an async operation with a timeout
      - Parameters:
@@ -971,21 +969,21 @@ public actor SMTPServer {
             group.addTask {
                 return try await operation()
             }
-            
+
             // Add a timeout task
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
                 try onTimeout()
                 throw SMTPError.connectionFailed("Timeout")
             }
-            
+
             // Wait for the first task to complete
             let result = try await group.next()!
-            
+
             // Cancel the remaining tasks
             group.cancelAll()
-            
+
             return result
         }
     }
-} 
+}

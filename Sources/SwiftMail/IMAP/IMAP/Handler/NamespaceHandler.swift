@@ -11,7 +11,7 @@ final class NamespaceHandler: BaseIMAPCommandHandler<NamespaceResponse>, IMAPCom
     	override func handleTaggedOKResponse(_ response: TaggedResponse) {
 		// Call super to handle CLIENTBUG warnings
 		super.handleTaggedOKResponse(response)
-		
+
 		if let ns = lock.withLock({ self.namespace }) {
 			succeedWithResult(ns)
 		} else {

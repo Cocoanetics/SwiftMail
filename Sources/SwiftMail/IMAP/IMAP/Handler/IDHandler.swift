@@ -20,7 +20,7 @@ final class IDHandler: BaseIMAPCommandHandler<Identification>, IMAPCommandHandle
     	override func handleTaggedOKResponse(_ response: TaggedResponse) {
 		// Call super to handle CLIENTBUG warnings
 		super.handleTaggedOKResponse(response)
-		
+
 		let params = lock.withLock { responseParams }
 		succeedWithResult(Identification(parameters: params))
 	}

@@ -86,7 +86,7 @@ extension IMAPError: LocalizedError {
     public var errorDescription: String? {
         return description
     }
-    
+
     public var failureReason: String? {
         switch self {
         case .connectionFailed(let reason):

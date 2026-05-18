@@ -29,7 +29,7 @@ func testFindHtmlBodyWithCharset() throws {
             contentId: nil,
             data: "<html><body>Test HTML content</body></html>".data(using: .utf8)
         )
-        
+
         let textPart = MessagePart(
             section: Section([2]),
             contentType: "text/plain; charset=utf-8",
@@ -39,26 +39,26 @@ func testFindHtmlBodyWithCharset() throws {
             contentId: nil,
             data: "Test plain text content".data(using: .utf8)
         )
-        
+
         let message = Message(header: header, parts: [htmlPart, textPart])
-        
+
         // Test the new unified API
         let bodies = message.bodies
         #expect(bodies.count == 2)
-        
+
         let htmlBodyPart = message.findHtmlBodyPart()
         #expect(htmlBodyPart != nil)
         #expect(htmlBodyPart?.contentType == "text/html; charset=utf-8")
-        
+
         let textBodyPart = message.findTextBodyPart()
         #expect(textBodyPart != nil)
         #expect(textBodyPart?.contentType == "text/plain; charset=utf-8")
-        
+
         // Test the legacy API (now fixed)
         let htmlBody = message.htmlBody
         #expect(htmlBody != nil)
         #expect(htmlBody?.contains("Test HTML content") == true)
-        
+
         let textBody = message.textBody
         #expect(textBody != nil)
         #expect(textBody?.contains("Test plain text content") == true)
@@ -79,7 +79,7 @@ func testFindBodiesExcludesAttachments() throws {
             date: Date(),
             flags: []
         )
-        
+
         let htmlPart = MessagePart(
             section: Section([1]),
             contentType: "text/html; charset=utf-8",
@@ -89,7 +89,7 @@ func testFindBodiesExcludesAttachments() throws {
             contentId: nil,
             data: "<html><body>Test HTML content</body></html>".data(using: .utf8)
         )
-        
+
         let attachmentPart = MessagePart(
             section: Section([2]),
             contentType: "text/plain; charset=utf-8",
@@ -99,14 +99,14 @@ func testFindBodiesExcludesAttachments() throws {
             contentId: nil,
             data: "Test attachment content".data(using: .utf8)
         )
-        
+
         let message = Message(header: header, parts: [htmlPart, attachmentPart])
-        
+
         // Test that attachments are excluded from bodies
         let bodies = message.bodies
         #expect(bodies.count == 1)
         #expect(bodies.first?.contentType == "text/html; charset=utf-8")
-        
+
         // Test that attachments are still found
         let attachments = message.attachments
         #expect(attachments.count == 1)
@@ -224,7 +224,7 @@ func testDecodesMIMEEncodedAttachmentFilename() throws {
         )
         let structure = BodyStructure.singlepart(single)
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
         #expect(parts.count == 1)
         #expect(parts.first?.filename == "HC_1161254447.pdf")
         #expect(parts.first?.suggestedFilename == "HC_1161254447.pdf")
@@ -248,7 +248,7 @@ func testUsesNameParameterForFilename() throws {
         )
         let structure = BodyStructure.singlepart(single)
 
-        let parts = Array<MessagePart>(structure)
+        let parts = [MessagePart](structure)
         #expect(parts.count == 1)
         #expect(parts.first?.filename == "image001.jpg")
         #expect(parts.first?.contentId == "image001.jpg@cid")

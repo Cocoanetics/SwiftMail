@@ -32,7 +32,7 @@ struct AppendLimitTests {
             .uidPlus,
             .idle,
             .appendLimit(5_000_000),
-            .move,
+            .move
         ]
         #expect(caps.globalAppendLimit == 5_000_000)
     }
