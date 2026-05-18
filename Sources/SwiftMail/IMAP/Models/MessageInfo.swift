@@ -126,6 +126,8 @@ public struct MessageInfo: Codable, Sendable {
 }
 
 public extension MessageInfo {
+    // Codable Decoder.init with one decode call per stored property; expand-friendly.
+    // swiftlint:disable:next function_body_length
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
 

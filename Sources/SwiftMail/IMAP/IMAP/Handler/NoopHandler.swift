@@ -56,6 +56,8 @@ final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandH
         failWithError(IMAPProtocolError.unexpectedTaggedResponse(String(describing: response.state)))
     }
 
+    // Nested switch over ResponsePayload and MailboxData enum cases — inherent complexity.
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     private func handleUntagged(_ payload: ResponsePayload) {
         switch payload {
             case .mailboxData(let data):

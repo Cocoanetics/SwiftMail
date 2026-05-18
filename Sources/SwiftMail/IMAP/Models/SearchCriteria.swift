@@ -203,7 +203,9 @@ public indirect enum SearchCriteria: Sendable {
         NIOIMAPCore.Flag.Keyword(str) ?? NIOIMAPCore.Flag.Keyword("CUSTOM")!
     }
 
+    // swiftlint:disable cyclomatic_complexity function_body_length
     /** Converts the SwiftMail search criteria to the NIO IMAP search key format.
+     *   Big switch over the SearchCriteria enum's ~30 cases — inherent complexity.
      * - Parameter calendar: The calendar used for date-to-day conversions. Defaults to the Gregorian
      *   calendar in the device's current timezone.
      * - Returns: The equivalent NIOIMAP.SearchKey for this search criteria.
@@ -293,4 +295,5 @@ public indirect enum SearchCriteria: Sendable {
                 return .younger(seconds)
         }
     }
+    // swiftlint:enable cyclomatic_complexity function_body_length
 }

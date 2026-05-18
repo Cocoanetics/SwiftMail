@@ -16,8 +16,13 @@ extension Email {
         preparedContent(use8BitMIME: use8BitMIME).messageSizeOctets
     }
 
+    // swiftlint:disable cyclomatic_complexity function_body_length
     /**
      Build the MIME encoded email body.
+
+     Inline MIME assembler covering 8-bit selection, multipart/alternative,
+     multipart/related, multipart/mixed, attachment and inline-cid branches —
+     inherent length from the format.
 
      This helper assembles the full message body including all MIME headers
      and boundaries. The method automatically chooses between quoted
@@ -259,6 +264,7 @@ extension Email {
 
         return content
     }
+    // swiftlint:enable cyclomatic_complexity function_body_length
 
     /// Formats the current date in RFC 2822 format for the Date header.
     private static func rfc2822Date() -> String {

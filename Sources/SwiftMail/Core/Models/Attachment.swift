@@ -39,8 +39,11 @@ public struct Attachment: Codable, Sendable {
         self.isInline = isInline
     }
 
+    // swiftlint:disable cyclomatic_complexity
     /**
-     Initialize a new attachment from a file URL
+     Initialize a new attachment from a file URL — complexity is inherent from
+     the file-extension -> MIME-type if/else chain.
+
      - Parameters:
      - fileURL: The URL of the file to attach
      - mimeType: The MIME type of the attachment (if nil, will attempt to determine from file extension)
@@ -91,4 +94,5 @@ public struct Attachment: Codable, Sendable {
         self.contentID = contentID
         self.isInline = isInline
     }
+    // swiftlint:enable cyclomatic_complexity
 }

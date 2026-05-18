@@ -6,6 +6,7 @@ import Foundation
 import NIOIMAPCore
 
 extension Array where Element == MessagePart {
+    // swiftlint:disable cyclomatic_complexity function_body_length
     /**
      Initialize an array of message parts from a BodyStructure
 
@@ -205,6 +206,7 @@ extension Array where Element == MessagePart {
                 }
         }
     }
+    // swiftlint:enable cyclomatic_complexity function_body_length
 
     // MARK: - Envelope Helpers
 

@@ -41,7 +41,9 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPComman
         failWithError(IMAPError.selectFailed(String(describing: response.state)))
     }
 
-    /// Handle untagged responses to extract mailbox information
+    // swiftlint:disable cyclomatic_complexity function_body_length
+    /// Handle untagged responses to extract mailbox information — nested switch
+    /// over Response and ResponseCode enum cases gives inherent complexity.
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override func handleUntaggedResponse(_ response: Response) -> Bool {
@@ -124,6 +126,7 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPComman
 
         return false
     }
+    // swiftlint:enable cyclomatic_complexity function_body_length
 
     /// Convert a NIOIMAPCore.Flag to our MessageFlag type
     private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {

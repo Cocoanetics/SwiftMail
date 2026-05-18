@@ -256,6 +256,8 @@ func testUsesNameParameterForFilename() throws {
 }
 
 @Test
+// Test sets up a FakeServer with sequential-order assertions over many fetches.
+// swiftlint:disable:next function_body_length
 func testFetchMessagesSequentialOrder() async throws {
     final class FakeServer {
         var callOrder: [String] = []

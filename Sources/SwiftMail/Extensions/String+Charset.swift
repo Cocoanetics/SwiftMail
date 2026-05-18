@@ -3,10 +3,11 @@ import Foundation
     import CoreFoundation
 #endif
 
+// swiftlint:disable function_body_length
 /// Resolve a charset label (e.g. "utf-8", "ISO-8859-1", "windows-1252", "cp932")
 /// to a `String.Encoding`. Returns `nil` if unknown or not text (e.g. "binary").
 ///
-/// This function:
+/// This function (five layered detection strategies — inherent length from the alias table):
 ///  - normalizes case, separators, quotes
 ///  - fixes common aliases/typos
 ///  - uses CoreFoundation's IANA mapping where possible (macOS/iOS)
@@ -184,6 +185,7 @@ public func stringEncoding(for rawCharset: String) -> String.Encoding? {
 
     return nil
 }
+// swiftlint:enable function_body_length
 
 // MARK: - String Extension for Backward Compatibility
 

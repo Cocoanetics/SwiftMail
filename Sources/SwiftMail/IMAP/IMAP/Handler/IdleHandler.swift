@@ -67,6 +67,8 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
         return false
     }
 
+    // Nested switch over ResponsePayload and MailboxData enum cases — inherent complexity.
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     private func handlePayload(_ payload: ResponsePayload) -> Bool {
         switch payload {
             case .mailboxData(let mailboxData):

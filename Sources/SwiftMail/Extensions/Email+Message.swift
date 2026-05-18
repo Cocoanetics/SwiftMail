@@ -21,7 +21,9 @@ public enum ConversionError: Error, Equatable, CustomStringConvertible {
 }
 
 extension Email {
-    /// Initialize an `Email` from an IMAP `Message`.
+    // swiftlint:disable function_body_length
+    /// Initialize an `Email` from an IMAP `Message`. One-shot conversion that
+    /// touches each Email field linearly.
     ///
     /// - Parameter message: The IMAP message to convert.
     /// - Throws: `ConversionError.missingSender` if the message has no `from` field,
@@ -90,4 +92,5 @@ extension Email {
         self.messageID = message.header.messageId
         self.additionalHeaders = (additionalHeaders?.isEmpty == false) ? additionalHeaders : nil
     }
+    // swiftlint:enable function_body_length
 }

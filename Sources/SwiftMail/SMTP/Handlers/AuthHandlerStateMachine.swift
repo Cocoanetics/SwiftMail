@@ -34,7 +34,9 @@ final class AuthHandlerStateMachine {
         self.password = password
     }
 
-    /// Process a response from the server and determine next steps
+    // swiftlint:disable cyclomatic_complexity
+    /// Process a response from the server and determine next steps — switch over
+    /// auth method × response code combinations gives inherent complexity.
     /// - Parameters:
     ///   - response: The SMTP response to process
     ///   - sendCredential: Closure to send credentials when needed
@@ -91,6 +93,7 @@ final class AuthHandlerStateMachine {
 
         return (false, nil) // Not yet complete
     }
+    // swiftlint:enable cyclomatic_complexity
 
     /// Get the current auth state
     var currentState: AuthState {

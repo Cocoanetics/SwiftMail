@@ -5,9 +5,8 @@ import NIOIMAPCore
 public enum Mailbox {
     /// Information about a mailbox from a LIST command
     public struct Info: Codable, Sendable {
-        /// Attributes of a mailbox from a LIST command.
-        /// Nested under `Mailbox.Info.Attributes` because the type is part of
-        /// the public API surface and flattening would break consumers.
+        // Nested under `Mailbox.Info.Attributes` because the type is part of
+        // the public API surface and flattening would break consumers.
         // swiftlint:disable:next nesting
         public struct Attributes: OptionSet, Codable, Sendable {
             public let rawValue: UInt16
@@ -54,7 +53,8 @@ public enum Mailbox {
             /// The mailbox is the primary inbox
             public static let inbox = Attributes(rawValue: 1 << 11)
 
-            /// Initialize from NIOIMAPCore.MailboxInfo.Attribute array
+            // Switch over MailboxInfo.Attribute enum cases — inherent complexity.
+            // swiftlint:disable:next cyclomatic_complexity
             init(from attributes: [NIOIMAPCore.MailboxInfo.Attribute]) {
                 var result: Attributes = []
 

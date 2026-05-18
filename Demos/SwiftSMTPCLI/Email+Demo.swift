@@ -5,7 +5,10 @@ import Foundation
 #endif
 import SwiftMail
 extension Email {
-    /// Creates a demo email with Swift logo embedded inline
+    // swiftlint:disable function_body_length
+    /// Creates a demo email with Swift logo embedded inline. Contains the full
+    /// multi-line HTML email template and attachment-download flow inline; not
+    /// split because it's a one-off example.
     /// - Parameters:
     ///   - sender: The email sender
     ///   - recipient: The primary recipient
@@ -95,7 +98,7 @@ extension Email {
                 <p>This is a test email demonstrating HTML formatting and embedded images using Swift's email capabilities.</p>
                 <p>Here's a simple Swift code example:</p>
                 <pre><code>let message = "Hello, Swift!"\nprint(message)</code></pre>
-        
+
                 <p>This email demonstrates CC and BCC functionality:</p>
                 <ul>
                     <li>Primary recipient: \(recipient.description)</li>
@@ -130,6 +133,7 @@ extension Email {
 
         return email
     }
+    // swiftlint:enable function_body_length
 }
 
 // Helper function to format the current date in a compatible way

@@ -23,7 +23,10 @@ public struct EMLSerializer {
 
     // MARK: - Public API
 
-    /// Serialize a ``Message`` to RFC 822 / EML data.
+    // swiftlint:disable cyclomatic_complexity
+    /// Serialize a ``Message`` to RFC 822 / EML data — top-level emitter that
+    /// writes headers and then descends into parts. The branchy structure
+    /// mirrors the message shape and isn't naturally splittable.
     ///
     /// Part data is written as-is (it should already be in transfer-encoded form,
     /// e.g. base64 for binary attachments).
@@ -100,6 +103,7 @@ public struct EMLSerializer {
 
         return data
     }
+    // swiftlint:enable cyclomatic_complexity
 
     // MARK: - Multipart Serialization
 

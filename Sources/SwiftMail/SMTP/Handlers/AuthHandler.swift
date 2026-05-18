@@ -51,7 +51,9 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
         super.init(commandTag: commandTag, promise: promise)
     }
 
-    /// Process a response line from the server
+    // swiftlint:disable cyclomatic_complexity
+    /// Process a response line from the server — switch over auth method ×
+    /// response code combinations gives inherent complexity.
     /// - Parameter response: The response line to process
     /// - Returns: Whether the handler is complete
     override func processResponse(_ response: SMTPResponse) -> Bool {
@@ -110,6 +112,7 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
 
         return false // Not yet complete
     }
+    // swiftlint:enable cyclomatic_complexity
 
     /// Send a credential for LOGIN authentication
     /// - Parameter credential: The credential to send (username or password)

@@ -56,7 +56,8 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
         return handled
     }
 
-    /// Process a fetch response
+    // swiftlint:disable cyclomatic_complexity
+    /// Process a fetch response — complexity 11 from FetchResponse-case switch.
     /// - Parameter fetchResponse: The fetch response to process
     private func processFetchResponse(_ fetchResponse: FetchResponse) {
         switch fetchResponse {
@@ -97,6 +98,7 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
                 break
         }
     }
+    // swiftlint:enable cyclomatic_complexity
 
     /// Process a message attribute
     /// - Parameter attribute: The attribute to process

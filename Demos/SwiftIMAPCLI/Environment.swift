@@ -106,7 +106,9 @@ func authenticate(server: IMAPServer, using environment: IMAPEnvironment) async 
 
         case .xoauth2:
             guard let accessToken = environment.accessToken else {
-                throw ValidationError("IMAP_AUTH_METHOD=\(environment.authMethodLabel) requires IMAP_ACCESS_TOKEN in .env")
+                throw ValidationError(
+                    "IMAP_AUTH_METHOD=\(environment.authMethodLabel) requires IMAP_ACCESS_TOKEN in .env"
+                )
             }
             print(
                 "Authenticating using XOAUTH2 as \(environment.username) "

@@ -30,6 +30,8 @@ final class ExtendedSearchHandler<T: MessageIdentifier>:
     private var esearchPartial: ExtendedSearchResult<T>.PartialResult?
     private var receivedEsearch = false
 
+    // Inherent complexity from dispatching across the ESEARCH attribute enum cases.
+    // swiftlint:disable:next cyclomatic_complexity function_body_length
     override func processResponse(_ response: Response) -> Bool {
         let handled = super.processResponse(response)
 
