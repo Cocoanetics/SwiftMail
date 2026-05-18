@@ -65,8 +65,11 @@ struct StringHostnameTests {
             + "|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}"
             + "(25[0-5]|(2[0-4]|1?[0-9])?[0-9]))$"
 
+        // swiftlint:disable force_try
+        // Patterns are constant string literals defined immediately above; compilation is deterministic.
         let ipv4Regex = try! NSRegularExpression(pattern: ipv4Pattern)
         let ipv6Regex = try! NSRegularExpression(pattern: ipv6Pattern)
+        // swiftlint:enable force_try
 
         let range = NSRange(ip.startIndex..<ip.endIndex, in: ip)
         return ipv4Regex.firstMatch(in: ip, range: range) != nil ||
@@ -78,6 +81,7 @@ struct StringHostnameTests {
         let strictPattern =
             "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*"
             + "([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$"
+        // swiftlint:disable:next force_try
         let strictRegex = try! NSRegularExpression(pattern: strictPattern)
         let range = NSRange(hostname.startIndex..<hostname.endIndex, in: hostname)
         if strictRegex.firstMatch(in: hostname, range: range) != nil {
@@ -88,6 +92,7 @@ struct StringHostnameTests {
             let relaxedPattern =
                 "^(([A-Za-z0-9_]|[A-Za-z0-9_][A-Za-z0-9_\\-]*[A-Za-z0-9_])\\.)*"
                 + "([A-Za-z0-9_]|[A-Za-z0-9_][A-Za-z0-9_\\-]*[A-Za-z0-9_])$"
+            // swiftlint:disable:next force_try
             let relaxedRegex = try! NSRegularExpression(pattern: relaxedPattern)
             return relaxedRegex.firstMatch(in: hostname, range: range) != nil
         }

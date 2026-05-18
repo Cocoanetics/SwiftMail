@@ -219,9 +219,11 @@ public actor SMTPServer {
                         let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
                         let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: serverHostname)
 
-                        // Add SSL handler first, then SMTP handlers using syncOperations
-                        try! channel.pipeline.syncOperations.addHandler(sslHandler)
-                        try! channel.pipeline.syncOperations.addHandlers([
+                        // Add SSL handler first, then SMTP handlers using syncOperations.
+                        // The enclosing `do/catch` already routes failures into makeFailedFuture,
+                        // so use plain `try` here instead of `try!`.
+                        try channel.pipeline.syncOperations.addHandler(sslHandler)
+                        try channel.pipeline.syncOperations.addHandlers([
                             ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
                             duplexLogger,
                             SMTPResponseHandler()
@@ -232,12 +234,16 @@ public actor SMTPServer {
                         return channel.eventLoop.makeFailedFuture(error)
                     }
                 } else {
-                    // Just add SMTP handlers without SSL using syncOperations
-                    try! channel.pipeline.syncOperations.addHandlers([
-                        ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-                        duplexLogger,
-                        SMTPResponseHandler()
-                    ])
+                    do {
+                        // Just add SMTP handlers without SSL using syncOperations
+                        try channel.pipeline.syncOperations.addHandlers([
+                            ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
+                            duplexLogger,
+                            SMTPResponseHandler()
+                        ])
+                    } catch {
+                        return channel.eventLoop.makeFailedFuture(error)
+                    }
 
                     return channel.eventLoop.makeSucceededFuture(())
                 }

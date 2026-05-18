@@ -14,9 +14,12 @@ final class IMAPLogger: MailLogger, @unchecked Sendable {
     typealias InboundIn = Response
     typealias InboundOut = Response
 
-    // Regular expressions for redacting sensitive information
+    // Regular expressions for redacting sensitive information.
+    // Patterns are compile-time constants and cannot fail at runtime.
+    // swiftlint:disable force_try
     private let loginRegex = try! NSRegularExpression(pattern: "^[A-Za-z0-9]+ LOGIN", options: [])
     private let authRegex = try! NSRegularExpression(pattern: "^[A-Za-z0-9]+ AUTH", options: [])
+    // swiftlint:enable force_try
     private let contextPrefix: String
 
     init(outboundLogger: Logging.Logger, inboundLogger: Logging.Logger, contextPrefix: String = "") {
