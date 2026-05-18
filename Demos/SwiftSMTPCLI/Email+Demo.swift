@@ -60,10 +60,13 @@ extension Email {
             ccRecipients: ccRecipient != nil ? [ccRecipient!] : [],
             bccRecipients: bccRecipient != nil ? [bccRecipient!] : [],
             subject: "HTML Email with Swift Logo from SwiftSMTPCLI",
-            textBody: "This is a test email sent from the SwiftSMTPCLI application. This is the plain text version for email clients that don't support HTML."
+            textBody: "This is a test email sent from the SwiftSMTPCLI application."
+                + " This is the plain text version for email clients that don't support HTML."
         )
 
-        // Add HTML body with the Swift logo
+        // Add HTML body with the Swift logo.
+        // Long CSS/HTML lines below would otherwise trigger line_length warnings.
+        // swiftlint:disable line_length
         let htmlBody = """
         <!DOCTYPE html>
         <html>
@@ -108,6 +111,7 @@ extension Email {
         </body>
         </html>
         """
+        // swiftlint:enable line_length
 
         // Create a custom attachment with inline disposition
         let attachment = Attachment(

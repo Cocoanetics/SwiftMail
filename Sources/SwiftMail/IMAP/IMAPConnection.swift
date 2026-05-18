@@ -330,9 +330,9 @@ final class IMAPConnection {
         }
 
         if handler.isCompleted {
-            logger.warning(
-                "\(connectionContext) IDLE already completed before DONE; forcing reconnect due to ambiguous IDLE completion state"
-            )
+            let warning = "\(connectionContext) IDLE already completed before DONE;"
+                + " forcing reconnect due to ambiguous IDLE completion state"
+            logger.warning("\(warning)")
             idleHandler = nil
             responseBuffer.hasActiveHandler = false
             try? await disconnectBody()
@@ -502,9 +502,10 @@ final class IMAPConnection {
 
         let terminationReasons = responseBuffer.consumeBufferedConnectionTerminationReasons()
         if !terminationReasons.isEmpty {
-            logger.warning(
-                "\(connectionContext) Draining \(terminationReasons.count) buffered connection termination signal(s): \(terminationReasons.joined(separator: " | "))"
-            )
+            let summary = terminationReasons.joined(separator: " | ")
+            let warning = "\(connectionContext) Draining \(terminationReasons.count)"
+                + " buffered connection termination signal(s): \(summary)"
+            logger.warning("\(warning)")
         }
 
         logger.debug("\(connectionContext) Draining \(raw.count) buffered response(s)")
@@ -776,9 +777,9 @@ final class IMAPConnection {
 
         if supportsSASLIR {
             if let limit = maxInlineBytes, credentials.readableBytes > limit {
-                logger.info(
-                    "SASL-IR payload size \(credentials.readableBytes) exceeds inline limit \(limit); switching to continuation mode"
-                )
+                let info = "SASL-IR payload size \(credentials.readableBytes)"
+                    + " exceeds inline limit \(limit); switching to continuation mode"
+                logger.info("\(info)")
                 return (nil, true)
             }
             return (InitialResponse(credentials), false)
@@ -1034,9 +1035,9 @@ final class IMAPConnection {
         guard responseBuffer.hasBufferedConnectionTermination else { return }
         let reasons = responseBuffer.consumeBufferedConnectionTerminationReasons()
         let reasonSummary = reasons.isEmpty ? "<unknown>" : reasons.joined(separator: " | ")
-        logger.warning(
-            "\(connectionContext) Buffered BYE/fatal detected before \(operation). Recycling connection. reasons=\(reasonSummary)"
-        )
+        let warning = "\(connectionContext) Buffered BYE/fatal detected before \(operation)."
+            + " Recycling connection. reasons=\(reasonSummary)"
+        logger.warning("\(warning)")
         try await disconnectBody()
     }
 
@@ -1104,7 +1105,9 @@ final class IMAPConnection {
         }
     }
 
-    private func executeCommandBody<CommandType: IMAPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+    private func executeCommandBody<CommandType: IMAPCommand>(
+        _ command: CommandType
+    ) async throws -> CommandType.ResultType {
         try command.validate()
         try await waitForIdleCompletionIfNeeded()
         try await recycleConnectionIfBufferedTerminationIfNeeded(operation: String(describing: CommandType.self))

@@ -295,9 +295,9 @@ public actor SMTPServer {
                     try await startTLS()
                 }
             } catch {
-                logger.error(
-                    "STARTTLS failed for \(host):\(port): \(error.localizedDescription). Cannot continue without encryption."
-                )
+                let errorMessage = "STARTTLS failed for \(host):\(port):"
+                    + " \(error.localizedDescription). Cannot continue without encryption."
+                logger.error("\(errorMessage)")
                 await closeAndClearChannelAfterSTARTTLSPolicyFailure()
                 throw SMTPError.tlsFailed("STARTTLS upgrade failed: \(error.localizedDescription)")
             }
@@ -522,9 +522,9 @@ public actor SMTPServer {
 
         logger.debug("Sending email to \(allRecipients.count) recipients with subject: \(email.subject)")
         if !email.regularAttachments.isEmpty || !email.inlineAttachments.isEmpty {
-            logger.debug(
-                "Email contains \(email.regularAttachments.count) regular attachments and \(email.inlineAttachments.count) inline attachments"
-            )
+            let debugMessage = "Email contains \(email.regularAttachments.count) regular attachments"
+                + " and \(email.inlineAttachments.count) inline attachments"
+            logger.debug("\(debugMessage)")
         }
 
         let preparedEmail = try Self.prepareEmailForSend(email, capabilities: capabilities)
@@ -589,7 +589,11 @@ public actor SMTPServer {
     /// - Throws:
     ///   - `SMTPError.connectionFailed` if not connected.
     ///   - `SMTPError.sendFailed` if the server rejects the message.
-    public func sendRawMessage(_ rawMessage: Data, from sender: EmailAddress, to recipients: [EmailAddress]) async throws {
+    public func sendRawMessage(
+        _ rawMessage: Data,
+        from sender: EmailAddress,
+        to recipients: [EmailAddress]
+    ) async throws {
         guard channel != nil else {
             throw SMTPError.connectionFailed("Not connected to SMTP server. Call connect() first.")
         }
@@ -650,7 +654,9 @@ public actor SMTPServer {
        - `SMTPError.timeout` if the command times out
      - Note: Logs command execution at debug level
      */
-    @discardableResult private func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+    @discardableResult private func executeCommand<CommandType: SMTPCommand>(
+        _ command: CommandType
+    ) async throws -> CommandType.ResultType {
         // Ensure we have a valid channel
         guard let channel = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
