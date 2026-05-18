@@ -103,12 +103,11 @@ public enum Mailbox {
         /// The hierarchy delimiter used by the server (e.g. "/" or ".")
         public let hierarchyDelimiter: String?
 
-        /// Initialize from NIOIMAPCore.MailboxInfo
+        /// Initialize from NIOIMAPCore.MailboxInfo. Mailbox names may use non-UTF-8
+        /// modified-UTF-7 encoding; lossy decoding preserves the bytes (with
+        /// replacement characters) rather than failing.
         internal init(nio info: NIOIMAPCore.MailboxInfo) {
-            // Mailbox names may use non-UTF-8 modified-UTF-7 encoding; lossy decoding
-            // preserves the bytes (with replacement characters) rather than failing.
-            // swiftlint:disable:next optional_data_string_conversion
-            self.name = String(decoding: info.path.name.bytes, as: UTF8.self)
+            self.name = Data(info.path.name.bytes).lossyUTF8String
             self.attributes = Attributes(from: Array(info.attributes))
             self.hierarchyDelimiter = info.path.pathSeparator.map(String.init)
         }

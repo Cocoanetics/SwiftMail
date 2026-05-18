@@ -39,7 +39,9 @@ struct XOAUTH2AuthenticationHandlerTests {
 
     @Test
     func testSASLIRSuccess() async throws {
-        let (channel, promise, _) = try await setUpChannel(tag: "A001", expectsChallenge: false)
+        let setup = try await setUpChannel(tag: "A001", expectsChallenge: false)
+        let channel = setup.channel
+        let promise = setup.promise
 
         let command = TaggedCommand(
             tag: "A001",
@@ -69,7 +71,9 @@ struct XOAUTH2AuthenticationHandlerTests {
 
     @Test
     func testFallbackWithoutSASLIR() async throws {
-        let (channel, promise, _) = try await setUpChannel(tag: "A002", expectsChallenge: true)
+        let setup = try await setUpChannel(tag: "A002", expectsChallenge: true)
+        let channel = setup.channel
+        let promise = setup.promise
 
         let command = TaggedCommand(
             tag: "A002",
@@ -110,7 +114,9 @@ struct XOAUTH2AuthenticationHandlerTests {
 
     @Test
     func testSASLIRServerSendsEmptyChallengeRetriesCredentials() async throws {
-        let (channel, promise, _) = try await setUpChannel(tag: "A002A", expectsChallenge: false)
+        let setup = try await setUpChannel(tag: "A002A", expectsChallenge: false)
+        let channel = setup.channel
+        let promise = setup.promise
 
         let command = TaggedCommand(
             tag: "A002A",
@@ -151,7 +157,9 @@ struct XOAUTH2AuthenticationHandlerTests {
 
     @Test
     func testServerErrorBlobTriggersAuthFailure() async throws {
-        let (channel, promise, _) = try await setUpChannel(tag: "A003", expectsChallenge: false)
+        let setup = try await setUpChannel(tag: "A003", expectsChallenge: false)
+        let channel = setup.channel
+        let promise = setup.promise
 
         let command = TaggedCommand(
             tag: "A003",
@@ -197,7 +205,9 @@ struct XOAUTH2AuthenticationHandlerTests {
 
     @Test
     func testDirectNOFailsAuthentication() async throws {
-        let (channel, promise, _) = try await setUpChannel(tag: "A004", expectsChallenge: false)
+        let setup = try await setUpChannel(tag: "A004", expectsChallenge: false)
+        let channel = setup.channel
+        let promise = setup.promise
 
         let command = TaggedCommand(
             tag: "A004",
@@ -230,7 +240,9 @@ struct XOAUTH2AuthenticationHandlerTests {
 
     @Test
     func testChannelCloseFailsPendingAuthentication() async throws {
-        let (channel, promise, _) = try await setUpChannel(tag: "A005", expectsChallenge: false)
+        let setup = try await setUpChannel(tag: "A005", expectsChallenge: false)
+        let channel = setup.channel
+        let promise = setup.promise
 
         let command = TaggedCommand(
             tag: "A005",
@@ -261,11 +273,13 @@ struct XOAUTH2AuthenticationHandlerTests {
 
     @Test
     func testInactiveChannelDuringContinuationSendFailsPromptly() async throws {
-        let (channel, promise, _) = try await setUpChannel(
+        let setup = try await setUpChannel(
             tag: "A006",
             expectsChallenge: true,
             failContinuationWrite: true
         )
+        let channel = setup.channel
+        let promise = setup.promise
 
         let command = TaggedCommand(
             tag: "A006",
@@ -314,17 +328,19 @@ struct XOAUTH2AuthenticationHandlerTests {
         }
     }
 
-    // 3-tuple return is fine for a test helper.
-    // swiftlint:disable large_tuple
+    /// Bundles the three values the per-test setup needs to drive an
+    /// XOAUTH2 handler through its message exchange.
+    private struct ChannelSetup {
+        let channel: NIOAsyncTestingChannel
+        let promise: EventLoopPromise<[Capability]>
+        let handler: XOAUTH2AuthenticationHandler
+    }
+
     private func setUpChannel(
         tag: String,
         expectsChallenge: Bool,
         failContinuationWrite: Bool = false
-    ) async throws -> (
-        NIOAsyncTestingChannel,
-        EventLoopPromise<[Capability]>,
-        XOAUTH2AuthenticationHandler
-    ) {
+    ) async throws -> ChannelSetup {
         let channel = NIOAsyncTestingChannel()
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -342,7 +358,7 @@ struct XOAUTH2AuthenticationHandlerTests {
         )
         try await channel.pipeline.addHandler(handler)
 
-        return (channel, promise, handler)
+        return ChannelSetup(channel: channel, promise: promise, handler: handler)
     }
 
     private func makeCredentialBuffer(using allocator: ByteBufferAllocator) -> ByteBuffer {
@@ -362,4 +378,4 @@ struct XOAUTH2AuthenticationHandlerTests {
         return Data(raw.utf8).base64EncodedString()
     }
 }
-// swiftlint:enable type_body_length large_tuple
+// swiftlint:enable type_body_length

@@ -91,10 +91,9 @@ extension IMAPServer {
     /// Append the raw draft message to the Sent mailbox with the `\Seen` flag.
     private func appendDraftToSent(rawMessageData: Data, mailbox: String) async throws -> AppendResult {
         // Raw messages may include non-UTF-8 bytes (Latin-1 etc.) that we still need to
-        // preserve verbatim; lossy String(decoding:as:) keeps replacement chars rather than
+        // preserve verbatim; lossy decoding keeps replacement chars rather than
         // dropping the message entirely.
-        // swiftlint:disable:next optional_data_string_conversion
-        var rawMessageString = String(decoding: rawMessageData, as: UTF8.self)
+        var rawMessageString = rawMessageData.lossyUTF8String
         rawMessageString = canonicalizeCRLF(rawMessageString)
         if !rawMessageString.hasSuffix("\r\n") {
             rawMessageString.append("\r\n")

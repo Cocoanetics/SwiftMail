@@ -107,7 +107,6 @@ extension String {
 
         // Lossy fallback preserves QP-decoded bytes that don't match the declared charset;
         // dropping the message would lose readable content from misdeclared encodings.
-        // swiftlint:disable:next optional_data_string_conversion
-        return String(data: bytes, encoding: enc) ?? String(decoding: bytes, as: UTF8.self)
+        return String(data: bytes, encoding: enc) ?? bytes.lossyUTF8String
     }
 }

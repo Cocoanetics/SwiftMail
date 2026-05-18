@@ -43,13 +43,10 @@ struct SendContentCommand: SMTPCommand {
      - Note: Prefer `toCommandData()` for raw byte handling.
      */
     func toCommandString() -> String {
-        let stuffed = Self.dotStuff(contentData)
         // Lossy UTF-8 decoding: messages may carry 8-bit or non-UTF-8 bytes that
         // we still want to wire to the server; replacement characters are
         // preferable to dropping the message entirely.
-        // swiftlint:disable:next optional_data_string_conversion
-        let contentString = String(decoding: stuffed, as: UTF8.self)
-        return contentString + "\r\n."
+        Self.dotStuff(contentData).lossyUTF8String + "\r\n."
     }
 
     /// RFC 5321 §4.5.2 — Any line in the message body that starts with a period

@@ -4,6 +4,15 @@
 import Foundation
 
 extension Data {
+    // swiftlint:disable optional_data_string_conversion
+    /// Lossy UTF-8 decoding that substitutes the replacement character for any
+    /// non-UTF-8 byte sequences. Use when the data may already be in another
+    /// encoding (e.g. raw email bytes or modified-UTF-7 mailbox names) and
+    /// preserving the message with replacement characters is preferable to
+    /// dropping it on the floor.
+    var lossyUTF8String: String { String(decoding: self, as: UTF8.self) }
+    // swiftlint:enable optional_data_string_conversion
+
     /// Create a preview of the data content
     /// - Parameter maxLength: The maximum length of the preview
     /// - Returns: A string preview of the content
