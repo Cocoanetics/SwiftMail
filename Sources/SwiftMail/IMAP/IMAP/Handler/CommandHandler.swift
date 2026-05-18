@@ -140,6 +140,8 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
 		// Default implementation succeeds with Void for handlers that don't need a result
 		// This only works for ResultType == Void, otherwise subclasses must override
 		if ResultType.self == Void.self {
+			// Cast is safe: guarded by the ResultType.self == Void.self check above.
+			// swiftlint:disable:next force_cast
 			succeedWithResult(() as! ResultType)
 		}
 		// For non-Void result types, subclasses must override this method

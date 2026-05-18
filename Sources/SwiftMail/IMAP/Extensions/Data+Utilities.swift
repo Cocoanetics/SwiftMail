@@ -22,7 +22,7 @@ extension Data {
     /// - Returns: True if the data appears to be text, false otherwise
     func isTextContent() -> Bool {
         // Check if the data can be converted to a string
-        guard let _ = String(data: self, encoding: .utf8) else {
+        guard String(data: self, encoding: .utf8) != nil else {
             return false
         }
 

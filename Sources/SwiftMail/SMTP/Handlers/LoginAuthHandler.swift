@@ -19,8 +19,11 @@ final class LoginAuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     }
 
     /// Custom initializer with command parameters
-	convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>,
-                         command: LoginAuthCommand) {
+    convenience init(
+        commandTag: String?,
+        promise: EventLoopPromise<AuthResult>,
+        command: LoginAuthCommand
+    ) {
         self.init(commandTag: commandTag, promise: promise)
         // Update the state machine with the actual credentials from the command
         self.stateMachine = AuthHandlerStateMachine(
