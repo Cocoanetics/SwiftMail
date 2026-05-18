@@ -79,8 +79,8 @@ public struct Identification: Sendable {
         params["os-version"] = osVersion
         params["vendor"] = vendor
         params["support-url"] = supportURL
-        for (k, v) in additional {
-            params[k] = v
+        for (key, value) in additional {
+            params[key] = value
         }
         return params
     }

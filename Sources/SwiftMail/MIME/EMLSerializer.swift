@@ -139,11 +139,11 @@ public struct EMLSerializer {
     private static func serializePartHeaders(_ part: MessagePart) -> String {
         var headers = ""
 
-        var ct = part.contentType
+        var contentType = part.contentType
         if let filename = part.filename {
-            ct += "; name=\"\(filename)\""
+            contentType += "; name=\"\(filename)\""
         }
-        headers += "Content-Type: \(ct)\r\n"
+        headers += "Content-Type: \(contentType)\r\n"
 
         if let encoding = part.encoding {
             headers += "Content-Transfer-Encoding: \(encoding)\r\n"

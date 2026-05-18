@@ -38,15 +38,21 @@ extension Int {
                 // Use "byte" (singular) for all byte values - matches test expectations
                 return "\(Int(byteCount)) byte"
             } else if byteCount < 1_000_000 {
-                let kb = byteCount / 1_000
+                let kilobytes = byteCount / 1_000
                 // Use lowercase "kB" - matches test expectations
-                return "\(numberFormatter.string(from: NSNumber(value: kb)) ?? String(format: "%.1f", kb)) kB"
+                let formatted = numberFormatter.string(from: NSNumber(value: kilobytes))
+                    ?? String(format: "%.1f", kilobytes)
+                return "\(formatted) kB"
             } else if byteCount < 1_000_000_000 {
-                let mb = byteCount / 1_000_000
-                return "\(numberFormatter.string(from: NSNumber(value: mb)) ?? String(format: "%.1f", mb)) MB"
+                let megabytes = byteCount / 1_000_000
+                let formatted = numberFormatter.string(from: NSNumber(value: megabytes))
+                    ?? String(format: "%.1f", megabytes)
+                return "\(formatted) MB"
             } else {
-                let gb = byteCount / 1_000_000_000
-                return "\(numberFormatter.string(from: NSNumber(value: gb)) ?? String(format: "%.1f", gb)) GB"
+                let gigabytes = byteCount / 1_000_000_000
+                let formatted = numberFormatter.string(from: NSNumber(value: gigabytes))
+                    ?? String(format: "%.1f", gigabytes)
+                return "\(formatted) GB"
             }
         #endif
     }

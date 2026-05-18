@@ -57,8 +57,8 @@ struct SendContentCommand: SMTPCommand {
     /// server strips the extra dot. Without this, a leading dot can be mistaken
     /// for the end-of-data indicator, truncating the message.
     static func dotStuff(_ data: Data) -> Data {
-        let cr: UInt8 = 0x0D
-        let lf: UInt8 = 0x0A
+        let carriageReturn: UInt8 = 0x0D
+        let lineFeed: UInt8 = 0x0A
         let dot: UInt8 = 0x2E
 
         var result = Data(capacity: data.count + data.count / 40) // small over-allocation
@@ -69,9 +69,9 @@ struct SendContentCommand: SMTPCommand {
                 result.append(dot) // extra dot
             }
             result.append(byte)
-            if byte == lf {
+            if byte == lineFeed {
                 atLineStart = true
-            } else if byte != cr {
+            } else if byte != carriageReturn {
                 atLineStart = false
             }
             // CR keeps atLineStart unchanged (waiting for LF)

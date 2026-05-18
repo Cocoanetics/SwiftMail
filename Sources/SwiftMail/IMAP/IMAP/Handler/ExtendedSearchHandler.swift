@@ -64,8 +64,8 @@ final class ExtendedSearchHandler<T: MessageIdentifier>:
                         if case .set(let nioSet) = lastCommandSet {
                             esearchAll = convertNIOSet(nioSet.set)
                         }
-                    case .count(let c):
-                        esearchCount = c
+                    case .count(let count):
+                        esearchCount = count
                     case .partial(let range, let nioSet):
                         let ids = convertNIOSet(nioSet)
                         esearchPartial = ExtendedSearchResult<T>.PartialResult(range: range, results: ids)

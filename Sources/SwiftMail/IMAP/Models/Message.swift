@@ -69,7 +69,7 @@ public struct Message: Codable, Sendable {
     /// All attachments in the email
     public var attachments: [MessagePart] {
         return parts.filter { part in
-            let ct = part.contentType.lowercased()
+            let contentType = part.contentType.lowercased()
             let disposition = part.disposition?.lowercased()
             let hasFilename = !(part.filename?.isEmpty ?? true)
             let isExplicitAttachment = disposition == "attachment"
@@ -79,11 +79,11 @@ public struct Message: Codable, Sendable {
             // they are typically embedded via cid: references (logos, signatures).
             let isInlineNonImage = disposition == "inline"
                 && hasFilename
-                && !ct.hasPrefix("image/")
+                && !contentType.hasPrefix("image/")
             let isCidOnly = part.contentId != nil && !isExplicitAttachment
             // text/calendar (ICS invites) are attachments even without explicit
             // disposition or filename.
-            let isCalendar = ct.hasPrefix("text/calendar")
+            let isCalendar = contentType.hasPrefix("text/calendar")
             return isExplicitAttachment
                 || (hasFileNotInline && !isCidOnly)
                 || (isInlineNonImage && !isCidOnly)
@@ -101,8 +101,8 @@ public struct Message: Codable, Sendable {
         return parts.filter { part in
             // Only text/plain and text/html are displayable body content.
             // Other text/* types (text/calendar, text/csv, etc.) are attachments.
-            let ct = part.contentType.lowercased()
-            return (ct.hasPrefix("text/plain") || ct.hasPrefix("text/html"))
+            let contentType = part.contentType.lowercased()
+            return (contentType.hasPrefix("text/plain") || contentType.hasPrefix("text/html"))
                 && part.disposition?.lowercased() != "attachment"
         }
     }

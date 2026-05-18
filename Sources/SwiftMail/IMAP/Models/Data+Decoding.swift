@@ -67,7 +67,7 @@ extension Data {
     fileprivate func quotedPrintableTransferDecodedData() -> Data {
         var output = Data(capacity: count)
         let bytes = [UInt8](self)
-        var i = 0
+        var index = 0
 
         @inline(__always)
         func hexNibble(_ value: UInt8) -> UInt8? {
@@ -79,39 +79,39 @@ extension Data {
             }
         }
 
-        while i < bytes.count {
-            let current = bytes[i]
+        while index < bytes.count {
+            let current = bytes[index]
 
             // '=' introduces either soft-line-break or hex-escaped octet.
             if current == UInt8(ascii: "=") {
                 // Soft line break: =\r\n
-                if i + 2 < bytes.count,
-                   bytes[i + 1] == UInt8(ascii: "\r"),
-                   bytes[i + 2] == UInt8(ascii: "\n") {
-                    i += 3
+                if index + 2 < bytes.count,
+                   bytes[index + 1] == UInt8(ascii: "\r"),
+                   bytes[index + 2] == UInt8(ascii: "\n") {
+                    index += 3
                     continue
                 }
 
                 // Soft line break: =\n
-                if i + 1 < bytes.count,
-                   bytes[i + 1] == UInt8(ascii: "\n") {
-                    i += 2
+                if index + 1 < bytes.count,
+                   bytes[index + 1] == UInt8(ascii: "\n") {
+                    index += 2
                     continue
                 }
 
                 // Hex escaped octet: =XX
-                if i + 2 < bytes.count,
-                   let hi = hexNibble(bytes[i + 1]),
-                   let lo = hexNibble(bytes[i + 2]) {
-                    output.append((hi << 4) | lo)
-                    i += 3
+                if index + 2 < bytes.count,
+                   let highNibble = hexNibble(bytes[index + 1]),
+                   let lowNibble = hexNibble(bytes[index + 2]) {
+                    output.append((highNibble << 4) | lowNibble)
+                    index += 3
                     continue
                 }
             }
 
             // Literal byte (also used as lossy fallback for malformed sequences).
             output.append(current)
-            i += 1
+            index += 1
         }
 
         return output

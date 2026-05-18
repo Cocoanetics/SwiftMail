@@ -18,8 +18,8 @@ struct StringHostnameTests {
         // Test hostname format
         if hostname.hasPrefix("[") && hostname.hasSuffix("]") {
             // IP address format
-            let ip = String(hostname.dropFirst().dropLast())
-            #expect(isValidIP(ip), "Invalid IP address format: \(ip)")
+            let address = String(hostname.dropFirst().dropLast())
+            #expect(isValidIP(address), "Invalid IP address format: \(address)")
         } else {
             // Hostname format - allow fallback values in CI environments
             // Note: In CI environments, fallback values like "localhost" and "swift-mail-client.local" are legitimate
@@ -44,7 +44,7 @@ struct StringHostnameTests {
 
     // MARK: - Helper Functions
 
-    private func isValidIP(_ ip: String) -> Bool {
+    private func isValidIP(_ address: String) -> Bool {
         // Simple IPv4 validation
         let ipv4Pattern = "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
 
@@ -71,9 +71,9 @@ struct StringHostnameTests {
         let ipv6Regex = try! NSRegularExpression(pattern: ipv6Pattern)
         // swiftlint:enable force_try
 
-        let range = NSRange(ip.startIndex..<ip.endIndex, in: ip)
-        return ipv4Regex.firstMatch(in: ip, range: range) != nil ||
-            ipv6Regex.firstMatch(in: ip, range: range) != nil
+        let range = NSRange(address.startIndex..<address.endIndex, in: address)
+        return ipv4Regex.firstMatch(in: address, range: range) != nil ||
+            ipv6Regex.firstMatch(in: address, range: range) != nil
     }
 
     private func isValidHostname(_ hostname: String) -> Bool {

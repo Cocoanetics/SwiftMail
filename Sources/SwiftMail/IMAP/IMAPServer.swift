@@ -76,7 +76,7 @@ public actor IMAPServer {
         capabilities.contains(.uidPlus)
     }
 
-    var primaryConnectionCertificateVerificationPolicyForTesting: MailCertificateVerificationPolicy {
+    var primaryConnectionVerifyPolicyForTesting: MailCertificateVerificationPolicy {
         primaryConnection.certificateVerificationPolicyForTesting
     }
 

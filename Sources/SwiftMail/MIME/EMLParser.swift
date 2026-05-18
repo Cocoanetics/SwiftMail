@@ -195,9 +195,9 @@ public struct EMLParser {
     private static func parseParts(contentType: String, encoding: String?, bodyData: Data, sectionPath: [Int]) -> [
         MessagePart
     ] {
-        let ct = contentType.lowercased()
+        let lowercasedContentType = contentType.lowercased()
 
-        if ct.hasPrefix("multipart/") {
+        if lowercasedContentType.hasPrefix("multipart/") {
             return parseMultipart(contentType: contentType, bodyData: bodyData, sectionPath: sectionPath)
         } else {
             // Single part
@@ -546,9 +546,10 @@ public struct EMLParser {
                 let next1 = input.index(index, offsetBy: 1, limitedBy: input.endIndex)
                 let next2 = next1.flatMap { input.index($0, offsetBy: 1, limitedBy: input.endIndex) }
 
-                if let n1 = next1, next2 != nil {
+                if let firstHexIndex = next1, next2 != nil {
                     // Decode two hex chars after "=" into a single byte.
-                    let hexStr = String(input[n1]) + String(input[input.index(after: n1)])
+                    let hexStr = String(input[firstHexIndex])
+                        + String(input[input.index(after: firstHexIndex)])
                     if let byte = UInt8(hexStr, radix: 16) {
                         bytes.append(byte)
                         index = input.index(index, offsetBy: 3)

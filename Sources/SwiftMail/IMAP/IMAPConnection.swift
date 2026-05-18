@@ -1331,9 +1331,9 @@ final class IMAPConnection {
             var results: [PipelinedFetchResult] = []
             var firstError: Error?
 
-            for (i, (_, uid, section)) in tagToRequest.enumerated() {
+            for (index, (_, uid, section)) in tagToRequest.enumerated() {
                 do {
-                    let data = try await futures[i].get()
+                    let data = try await futures[index].get()
                     results.append(PipelinedFetchResult(uid: uid, section: section, data: data))
                 } catch {
                     if firstError == nil { firstError = error }

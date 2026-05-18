@@ -787,38 +787,42 @@ struct Idle: ParsableCommand {
             formatter.dateFormat = "HH:mm:ss"
 
             for await event in idleSession.events {
-                let ts = formatter.string(from: Date())
+                let timestamp = formatter.string(from: Date())
                 switch event {
                     case .exists(let count):
-                        print("[\(ts)] 📩 EXISTS count=\(count)")
+                        print("[\(timestamp)] 📩 EXISTS count=\(count)")
                     case .expunge(let seq):
-                        print("[\(ts)] 🗑️  EXPUNGE seq=\(seq.value)")
+                        print("[\(timestamp)] 🗑️  EXPUNGE seq=\(seq.value)")
                     case .recent(let count):
-                        print("[\(ts)] 🆕 RECENT count=\(count)")
+                        print("[\(timestamp)] 🆕 RECENT count=\(count)")
                     case .fetch(let seq, let attrs):
                         let flags = attrs.compactMap { attr -> String? in
-                            if case .flags(let f) = attr { return f.map(String.init).joined(separator: ", ") }
+                            if case .flags(let flagList) = attr {
+                                return flagList.map(String.init).joined(separator: ", ")
+                            }
                             return nil
                         }.first ?? ""
-                        print("[\(ts)] 📋 FETCH seq=\(seq.value) flags=[\(flags)]")
+                        print("[\(timestamp)] 📋 FETCH seq=\(seq.value) flags=[\(flags)]")
                     case .fetchUID(let uid, let attrs):
                         let flags = attrs.compactMap { attr -> String? in
-                            if case .flags(let f) = attr { return f.map(String.init).joined(separator: ", ") }
+                            if case .flags(let flagList) = attr {
+                                return flagList.map(String.init).joined(separator: ", ")
+                            }
                             return nil
                         }.first ?? ""
-                        print("[\(ts)] 📋 FETCH uid=\(uid.value) flags=[\(flags)]")
+                        print("[\(timestamp)] 📋 FETCH uid=\(uid.value) flags=[\(flags)]")
                     case .vanished(let uids):
                         let count = uids.count
-                        print("[\(ts)] 💨 VANISHED \(count) UID(s)")
+                        print("[\(timestamp)] 💨 VANISHED \(count) UID(s)")
                     case .flags(let flags):
                         let flagList = flags.map(\.description).joined(separator: ", ")
-                        print("[\(ts)] 🏷️  FLAGS [\(flagList)]")
+                        print("[\(timestamp)] 🏷️  FLAGS [\(flagList)]")
                     case .bye(let text):
-                        print("[\(ts)] 👋 BYE: \(text ?? "")")
+                        print("[\(timestamp)] 👋 BYE: \(text ?? "")")
                     case .alert(let text):
-                        print("[\(ts)] ⚠️  ALERT: \(text)")
+                        print("[\(timestamp)] ⚠️  ALERT: \(text)")
                     case .capability(let caps):
-                        print("[\(ts)] 🔧 CAPABILITY: \(caps.joined(separator: " "))")
+                        print("[\(timestamp)] 🔧 CAPABILITY: \(caps.joined(separator: " "))")
                 }
             }
 

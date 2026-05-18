@@ -108,8 +108,8 @@ public struct Email: Sendable {
 
         if let recipientNames = recipientNames, recipientNames.count == recipientAddresses.count {
             // If recipient names are provided and count matches addresses
-            for i in 0..<recipientAddresses.count {
-                let recipient = EmailAddress(name: recipientNames[i], address: recipientAddresses[i])
+            for index in 0..<recipientAddresses.count {
+                let recipient = EmailAddress(name: recipientNames[index], address: recipientAddresses[index])
                 recipients.append(recipient)
             }
         } else {

@@ -221,16 +221,16 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 header.uid = UID(nio: uid)
 
             case .internalDate(let serverDate):
-                let c = serverDate.components
-                var dc = DateComponents()
-                dc.year = c.year
-                dc.month = c.month
-                dc.day = c.day
-                dc.hour = c.hour
-                dc.minute = c.minute
-                dc.second = c.second
-                dc.timeZone = Foundation.TimeZone(secondsFromGMT: c.zoneMinutes * 60)
-                if let date = Calendar(identifier: .gregorian).date(from: dc) {
+                let components = serverDate.components
+                var dateComponents = DateComponents()
+                dateComponents.year = components.year
+                dateComponents.month = components.month
+                dateComponents.day = components.day
+                dateComponents.hour = components.hour
+                dateComponents.minute = components.minute
+                dateComponents.second = components.second
+                dateComponents.timeZone = Foundation.TimeZone(secondsFromGMT: components.zoneMinutes * 60)
+                if let date = Calendar(identifier: .gregorian).date(from: dateComponents) {
                     header.internalDate = date
                 }
 
@@ -419,10 +419,10 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     /// Replace a trailing alphabetic time zone abbreviation (e.g. ` PST`) with its numeric offset
     /// so DateFormatter's `Z` token can parse it. Returns the input unchanged if the trailing
     /// token isn't a recognised abbreviation.
-    static func normalizeNamedTimeZones(in s: String) -> String {
-        guard let lastSpaceIndex = s.lastIndex(of: " ") else { return s }
-        let zone = String(s[s.index(after: lastSpaceIndex)...]).uppercased()
-        guard let offset = namedZoneOffsets[zone] else { return s }
-        return String(s[..<lastSpaceIndex]) + " " + offset
+    static func normalizeNamedTimeZones(in input: String) -> String {
+        guard let lastSpaceIndex = input.lastIndex(of: " ") else { return input }
+        let zone = String(input[input.index(after: lastSpaceIndex)...]).uppercased()
+        guard let offset = namedZoneOffsets[zone] else { return input }
+        return String(input[..<lastSpaceIndex]) + " " + offset
     }
 }

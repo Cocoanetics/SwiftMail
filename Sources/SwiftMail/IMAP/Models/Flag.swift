@@ -20,14 +20,14 @@ public enum Flag: Sendable {
 
     /// Convert from a NIOIMAPCore Flag
     internal init(nio: NIOIMAPCore.Flag) {
-        let s = String(nio)
-        switch s.uppercased() {
+        let raw = String(nio)
+        switch raw.uppercased() {
             case "\\SEEN":      self = .seen
             case "\\ANSWERED":  self = .answered
             case "\\FLAGGED":   self = .flagged
             case "\\DELETED":   self = .deleted
             case "\\DRAFT":     self = .draft
-            default:            self = .custom(s)
+            default:            self = .custom(raw)
         }
     }
 
