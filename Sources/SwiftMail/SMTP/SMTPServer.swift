@@ -277,7 +277,9 @@ public actor SMTPServer {
             transportMode: transportMode,
             capabilities: capabilities
         ) {
-            logger.error("STARTTLS required for \(host):\(port) but was not advertised. Cannot continue without encryption.")
+            logger.error(
+                "STARTTLS required for \(host):\(port) but was not advertised. Cannot continue without encryption."
+            )
             await closeAndClearChannelAfterSTARTTLSPolicyFailure()
             throw SMTPError.tlsFailed("STARTTLS required but not advertised by server")
         }
@@ -293,7 +295,9 @@ public actor SMTPServer {
                     try await startTLS()
                 }
             } catch {
-                logger.error("STARTTLS failed for \(host):\(port): \(error.localizedDescription). Cannot continue without encryption.")
+                logger.error(
+                    "STARTTLS failed for \(host):\(port): \(error.localizedDescription). Cannot continue without encryption."
+                )
                 await closeAndClearChannelAfterSTARTTLSPolicyFailure()
                 throw SMTPError.tlsFailed("STARTTLS upgrade failed: \(error.localizedDescription)")
             }
@@ -518,7 +522,9 @@ public actor SMTPServer {
 
         logger.debug("Sending email to \(allRecipients.count) recipients with subject: \(email.subject)")
         if !email.regularAttachments.isEmpty || !email.inlineAttachments.isEmpty {
-            logger.debug("Email contains \(email.regularAttachments.count) regular attachments and \(email.inlineAttachments.count) inline attachments")
+            logger.debug(
+                "Email contains \(email.regularAttachments.count) regular attachments and \(email.inlineAttachments.count) inline attachments"
+            )
         }
 
         let preparedEmail = try Self.prepareEmailForSend(email, capabilities: capabilities)
@@ -667,7 +673,11 @@ public actor SMTPServer {
 
         // Special case for LoginAuthHandler which needs the command parameters
         if let loginCommand = command as? LoginAuthCommand {
-            handler = LoginAuthHandler(commandTag: commandTag, promise: resultPromise as! EventLoopPromise<AuthResult>, command: loginCommand)
+            handler = LoginAuthHandler(
+                commandTag: commandTag,
+                promise: resultPromise as! EventLoopPromise<AuthResult>,
+                command: loginCommand
+            )
         } else {
             handler = CommandType.HandlerType(commandTag: commandTag, promise: resultPromise)
         }
@@ -865,7 +875,9 @@ public actor SMTPServer {
             let capabilityLine = line.trimmingCharacters(in: .whitespacesAndNewlines)
 
             // For EHLO responses, each line starts with a response code (e.g., "250-AUTH LOGIN PLAIN")
-            if capabilityLine.count > 4 && (capabilityLine.prefix(4).hasPrefix("250-") || capabilityLine.prefix(4).hasPrefix("250 ")) {
+            if capabilityLine.count > 4 && (
+                capabilityLine.prefix(4).hasPrefix("250-") || capabilityLine.prefix(4).hasPrefix("250 ")
+            ) {
                 // Extract the capability (after the response code)
                 let capabilityPart = capabilityLine.dropFirst(4).trimmingCharacters(in: .whitespaces)
 
@@ -963,7 +975,11 @@ public actor SMTPServer {
      - Returns: The result of the operation
      - Throws: An error if the operation fails or times out
      */
-    private func withTimeout<T: Sendable>(seconds: TimeInterval, operation: @escaping @Sendable () async throws -> T, onTimeout: @escaping @Sendable () throws -> Void) async throws -> T {
+    private func withTimeout<T: Sendable>(
+        seconds: TimeInterval,
+        operation: @escaping @Sendable () async throws -> T,
+        onTimeout: @escaping @Sendable () throws -> Void
+    ) async throws -> T {
         return try await withThrowingTaskGroup(of: T.self) { group in
             // Add the main operation
             group.addTask {

@@ -49,9 +49,11 @@ struct ICSCalendarDetectionTests {
         // text/calendar without explicit "attachment" disposition should still be an attachment
         let header = MessageInfo(sequenceNumber: SequenceNumber(1))
         let plainPart = MessagePart(section: Section([1]), contentType: "text/plain")
-        let calendarPart = MessagePart(section: Section([2]),
-                                       contentType: "text/calendar; method=REQUEST",
-                                       filename: "invite.ics")
+        let calendarPart = MessagePart(
+            section: Section([2]),
+            contentType: "text/calendar; method=REQUEST",
+            filename: "invite.ics"
+        )
         let message = Message(header: header, parts: [plainPart, calendarPart])
 
         let attachments = message.attachments

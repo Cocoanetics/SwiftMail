@@ -39,8 +39,10 @@ final class AuthHandlerStateMachine {
     ///   - response: The SMTP response to process
     ///   - sendCredential: Closure to send credentials when needed
     /// - Returns: A tuple with a boolean indicating if auth is complete and the result if complete
-    func processResponse(_ response: SMTPResponse,
-                         sendCredential: (String) -> Void) -> (isComplete: Bool, result: AuthResult?) {
+    func processResponse(
+        _ response: SMTPResponse,
+        sendCredential: (String) -> Void
+    ) -> (isComplete: Bool, result: AuthResult?) {
         switch method {
             case .plain, .xoauth2:
                 // For PLAIN and XOAUTH2 auth, we should get a success response immediately

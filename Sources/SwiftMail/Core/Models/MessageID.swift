@@ -58,7 +58,10 @@ extension MessageID {
         let container = try decoder.singleValueContainer()
         let string = try container.decode(String.self)
         guard let parsed = MessageID(string) else {
-            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid Message-ID format: \(string)")
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Invalid Message-ID format: \(string)"
+            )
         }
         self = parsed
     }

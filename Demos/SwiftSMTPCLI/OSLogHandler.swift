@@ -40,7 +40,15 @@ import Logging
         }
 
         // Required method for LogHandler protocol
-        func log(level: Logging.Logger.Level, message: Logging.Logger.Message, metadata: Logging.Logger.Metadata?, source: String, file: String, function: String, line: UInt) {
+        func log(
+            level: Logging.Logger.Level,
+            message: Logging.Logger.Message,
+            metadata: Logging.Logger.Metadata?,
+            source: String,
+            file: String,
+            function: String,
+            line: UInt
+        ) {
             // Map Swift Logging levels to OSLog types
             let type: OSLogType
             switch level {

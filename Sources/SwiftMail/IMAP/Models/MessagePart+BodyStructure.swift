@@ -142,7 +142,9 @@ extension Array where Element == MessagePart {
                             // Sanitize subject for filename: remove characters invalid in filenames
                             let invalidChars = try? NSRegularExpression(pattern: "[/\\\\:*?\"<>|]")
                             let range = NSRange(subject.startIndex..., in: subject)
-                            let sanitized = (invalidChars?.stringByReplacingMatches(in: subject, range: range, withTemplate: "-") ?? subject)
+                            let sanitized = (
+                                invalidChars?.stringByReplacingMatches(in: subject, range: range, withTemplate: "-") ?? subject
+                            )
                                 .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
                             filename = sanitized.isEmpty ? "message.eml" : "\(sanitized).eml"
                         } else {
@@ -237,7 +239,11 @@ extension Array where Element == MessagePart {
     private static func parseEnvelopeDate(_ date: InternetMessageDate?) -> Date? {
         guard let date else { return nil }
         let dateString = String(date)
-        let cleanDateString = dateString.replacingOccurrences(of: "\\s*\\([^)]+\\)\\s*$", with: "", options: .regularExpression)
+        let cleanDateString = dateString.replacingOccurrences(
+            of: "\\s*\\([^)]+\\)\\s*$",
+            with: "",
+            options: .regularExpression
+        )
 
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

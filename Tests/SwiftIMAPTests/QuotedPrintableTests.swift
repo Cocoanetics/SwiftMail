@@ -270,7 +270,10 @@ struct QuotedPrintableTests {
         // Test = followed by only one character (previously crashed with String index out of bounds)
         let equalsOneChar = "Hello=X"
         #expect(equalsOneChar.decodeQuotedPrintable() == nil, "Should return nil for = with only one trailing char")
-        #expect(equalsOneChar.decodeQuotedPrintableLossy() == "Hello=X", "Lossy should preserve = with one trailing char")
+        #expect(
+            equalsOneChar.decodeQuotedPrintableLossy() == "Hello=X",
+            "Lossy should preserve = with one trailing char"
+        )
 
         // Test = as the very last character
         let trailingEquals = "Hello="
@@ -310,7 +313,10 @@ struct QuotedPrintableTests {
         // Test that decoding completes without hanging
         let decoded = largeContent.decodeQuotedPrintable()
         #expect(decoded != nil, "Should decode large content successfully")
-        #expect(decoded?.contains("This is a test string with spaces") ?? false, "Should contain expected decoded content")
+        #expect(
+            decoded?.contains("This is a test string with spaces") ?? false,
+            "Should contain expected decoded content"
+        )
     }
 }
 

@@ -17,7 +17,16 @@ public extension Email {
         - htmlBody: The HTML body of the email (optional)
         - attachments: Optional attachments for the email
      */
-    init?(senderString: String, recipientStrings: [String], ccRecipientStrings: [String] = [], bccRecipientStrings: [String] = [], subject: String, textBody: String, htmlBody: String? = nil, attachments: [Attachment]? = nil) {
+    init?(
+        senderString: String,
+        recipientStrings: [String],
+        ccRecipientStrings: [String] = [],
+        bccRecipientStrings: [String] = [],
+        subject: String,
+        textBody: String,
+        htmlBody: String? = nil,
+        attachments: [Attachment]? = nil
+    ) {
         guard let sender = EmailAddress(senderString) else {
             return nil
         }
@@ -55,7 +64,16 @@ public extension Email {
         - htmlBody: The HTML body of the email (optional)
         - attachments: Optional attachments for the email
      */
-    init?(senderString: String, recipientString: String, ccRecipientStrings: [String] = [], bccRecipientStrings: [String] = [], subject: String, textBody: String, htmlBody: String? = nil, attachments: [Attachment]? = nil) {
+    init?(
+        senderString: String,
+        recipientString: String,
+        ccRecipientStrings: [String] = [],
+        bccRecipientStrings: [String] = [],
+        subject: String,
+        textBody: String,
+        htmlBody: String? = nil,
+        attachments: [Attachment]? = nil
+    ) {
         self.init(
             senderString: senderString,
             recipientStrings: [recipientString],

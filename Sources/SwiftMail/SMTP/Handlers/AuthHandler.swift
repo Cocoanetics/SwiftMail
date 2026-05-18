@@ -36,8 +36,14 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     }
 
     /// Designated initializer
-    init(commandTag: String?, promise: EventLoopPromise<AuthResult>,
-         method: AuthMethod, username: String, password: String, channel: Channel?) {
+    init(
+        commandTag: String?,
+        promise: EventLoopPromise<AuthResult>,
+        method: AuthMethod,
+        username: String,
+        password: String,
+        channel: Channel?
+    ) {
         self.method = method
         self.username = username
         self.password = password

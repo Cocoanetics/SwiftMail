@@ -27,7 +27,13 @@ import Testing
             """
             try sampleMessage.data(using: .utf8)?.write(to: curDir.appendingPathComponent("1.eml"))
 
-            let server = try IMAPTestServer(host: "localhost", port: 0, username: "u", password: "p", maildirURL: maildir)
+            let server = try IMAPTestServer(
+                host: "localhost",
+                port: 0,
+                username: "u",
+                password: "p",
+                maildirURL: maildir
+            )
             return (server, tempRoot)
         }
 

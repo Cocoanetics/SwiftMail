@@ -164,14 +164,18 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
                 if let seq = currentSeq {
                     continuation.yield(.fetch(seq, currentAttributes))
                 } else if let uid = currentUID {
-                    idleLogger.debug("IdleHandler: UID FETCH finish for UID \(uid.value), attributes: \(currentAttributes.count)")
+                    idleLogger.debug(
+                        "IdleHandler: UID FETCH finish for UID \(uid.value), attributes: \(currentAttributes.count)"
+                    )
                     continuation.yield(.fetchUID(uid, currentAttributes))
                 }
                 currentSeq = nil
                 currentUID = nil
                 currentAttributes = []
             case .streamingBegin(let kind, let byteCount):
-                idleLogger.debug("IdleHandler: ignoring streaming FETCH begin (kind=\(kind), bytes=\(byteCount)) during IDLE")
+                idleLogger.debug(
+                    "IdleHandler: ignoring streaming FETCH begin (kind=\(kind), bytes=\(byteCount)) during IDLE"
+                )
             case .streamingBytes:
                 break  // Silently skip streaming body bytes
             case .streamingEnd:

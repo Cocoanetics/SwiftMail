@@ -138,7 +138,9 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
     // MARK: - Private helpers
 
     /// Convert a NIOIMAPCore ``MessageIdentifierSet<UnknownMessageIdentifier>`` to a SwiftMail ``MessageIdentifierSet<T>``.
-    private func convertNIOSet(_ source: NIOIMAPCore.MessageIdentifierSet<NIOIMAPCore.UnknownMessageIdentifier>) -> MessageIdentifierSet<T> {
+    private func convertNIOSet(_ source: NIOIMAPCore.MessageIdentifierSet<NIOIMAPCore.UnknownMessageIdentifier>) -> MessageIdentifierSet<
+        T
+    > {
         var result = MessageIdentifierSet<T>()
         for nioRange in source.ranges {
             let lower = T(UInt32(nioRange.range.lowerBound))

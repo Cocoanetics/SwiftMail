@@ -86,8 +86,10 @@ struct ProblematicMessageTests {
 
         #expect(message.attachments.count == 7, "Expected 7 PDF attachments, got \(message.attachments.count)")
         for attachment in message.attachments {
-            #expect(attachment.contentType.lowercased().hasPrefix("application/pdf"),
-                    "Expected application/pdf but got \(attachment.contentType)")
+            #expect(
+                attachment.contentType.lowercased().hasPrefix("application/pdf"),
+                "Expected application/pdf but got \(attachment.contentType)"
+            )
         }
     }
 
@@ -113,7 +115,10 @@ struct ProblematicMessageTests {
             if encoded == "=A0" {
                 // =A0 decodes to non-breaking space (U+00A0), not regular space (U+0020)
                 let nonBreakingSpace = Character(UnicodeScalar(0x00A0)!)
-                #expect(decoded == String(nonBreakingSpace), "Failed to decode '\(encoded)' to non-breaking space, got '\(decoded ?? "nil")'")
+                #expect(
+                    decoded == String(nonBreakingSpace),
+                    "Failed to decode '\(encoded)' to non-breaking space, got '\(decoded ?? "nil")'"
+                )
             } else {
                 #expect(decoded == expected, "Failed to decode '\(encoded)' to '\(expected)', got '\(decoded ?? "nil")'")
             }

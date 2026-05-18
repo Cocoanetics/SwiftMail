@@ -14,7 +14,13 @@ struct ExtendedSearchHandlerTests {
 
     // MARK: - Helpers
 
-    private func sendSearchCommand(on channel: NIOAsyncTestingChannel, tag: String, useUID: Bool, useEsearch: Bool, partialRange: NIOIMAPCore.PartialRange? = nil) async throws {
+    private func sendSearchCommand(
+        on channel: NIOAsyncTestingChannel,
+        tag: String,
+        useUID: Bool,
+        useEsearch: Bool,
+        partialRange: NIOIMAPCore.PartialRange? = nil
+    ) async throws {
         let key = NIOIMAPCore.SearchKey.all
         var returnOptions: [NIOIMAPCore.SearchReturnOption] = []
         if useEsearch {
@@ -368,7 +374,11 @@ struct ExtendedSearchHandlerTests {
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
         let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1...100))
-        let command = ExtendedSearchCommand<UID>(criteria: [SearchCriteria.unseen], useEsearch: true, partialRange: partialRange)
+        let command = ExtendedSearchCommand<UID>(
+            criteria: [SearchCriteria.unseen],
+            useEsearch: true,
+            partialRange: partialRange
+        )
         let tagged = command.toTaggedCommand(tag: "C007")
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)

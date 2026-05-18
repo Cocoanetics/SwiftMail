@@ -192,7 +192,9 @@ public struct EMLParser {
     // MARK: - MIME Body Parsing
 
     /// Parse the body into MessagePart(s) based on Content-Type.
-    private static func parseParts(contentType: String, encoding: String?, bodyData: Data, sectionPath: [Int]) -> [MessagePart] {
+    private static func parseParts(contentType: String, encoding: String?, bodyData: Data, sectionPath: [Int]) -> [
+        MessagePart
+    ] {
         let ct = contentType.lowercased()
 
         if ct.hasPrefix("multipart/") {

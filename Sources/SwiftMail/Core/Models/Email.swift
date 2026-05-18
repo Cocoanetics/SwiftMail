@@ -90,7 +90,16 @@ public struct Email: Sendable {
      - htmlBody: The HTML body of the email (optional)
      - attachments: Optional attachments for the email
      */
-    public init(senderName: String?, senderAddress: String, recipientNames: [String]?, recipientAddresses: [String], subject: String, textBody: String, htmlBody: String? = nil, attachments: [Attachment]? = nil) {
+    public init(
+        senderName: String?,
+        senderAddress: String,
+        recipientNames: [String]?,
+        recipientAddresses: [String],
+        subject: String,
+        textBody: String,
+        htmlBody: String? = nil,
+        attachments: [Attachment]? = nil
+    ) {
         // Create sender EmailAddress
         let sender = EmailAddress(name: senderName, address: senderAddress)
 
@@ -112,7 +121,14 @@ public struct Email: Sendable {
         }
 
         // Initialize with the created objects
-        self.init(sender: sender, recipients: recipients, subject: subject, textBody: textBody, htmlBody: htmlBody, attachments: attachments)
+        self.init(
+            sender: sender,
+            recipients: recipients,
+            subject: subject,
+            textBody: textBody,
+            htmlBody: htmlBody,
+            attachments: attachments
+        )
     }
 
     /**

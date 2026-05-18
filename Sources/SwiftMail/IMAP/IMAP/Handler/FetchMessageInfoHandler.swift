@@ -93,12 +93,26 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     }
 
     private func applyCollectedThreadingHeaders() {
-        guard let headerBlock = String(data: currentHeaderLiteral, encoding: .utf8) ?? String(data: currentHeaderLiteral, encoding: .ascii) else { return }
+        guard let headerBlock = String(data: currentHeaderLiteral, encoding: .utf8) ?? String(
+            data: currentHeaderLiteral,
+            encoding: .ascii
+        ) else { return }
 
         let allHeaders = EMLParser.parseHeaders(headerBlock)
 
         // Headers already exposed via ENVELOPE or stored in dedicated fields
-        let envelopeKeys: Set<String> = ["from", "to", "cc", "bcc", "subject", "date", "message-id", "in-reply-to", "references", "reply-to"]
+        let envelopeKeys: Set<String> = [
+            "from",
+            "to",
+            "cc",
+            "bcc",
+            "subject",
+            "date",
+            "message-id",
+            "in-reply-to",
+            "references",
+            "reply-to"
+        ]
 
         let referencesValue = allHeaders["references"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         let additionalHeaders = allHeaders.filter { !envelopeKeys.contains($0.key) }

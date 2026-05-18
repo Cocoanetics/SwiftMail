@@ -588,7 +588,10 @@ struct SMTPTests {
             (.commandFailed("550 denied"), "SMTP command failed: 550 denied"),
             (.invalidEmailAddress("bad@"), "SMTP invalid email address: bad@"),
             (.tlsFailed("handshake"), "SMTP TLS failed: handshake"),
-            (.messageTooLarge(messageSizeOctets: 100, maximumMessageSizeOctets: 50), "SMTP message too large: 100 bytes exceeds 50 byte limit")
+            (
+                .messageTooLarge(messageSizeOctets: 100, maximumMessageSizeOctets: 50),
+                "SMTP message too large: 100 bytes exceeds 50 byte limit"
+            )
         ]
         for (error, expected) in cases {
             let asError: Error = error

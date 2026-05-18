@@ -153,7 +153,9 @@ public actor IMAPNamedConnection {
     }
 
     /// Fetch message metadata in a single FETCH/UID FETCH command.
-    public func fetchMessageInfosBulk<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) async throws -> [MessageInfo] {
+    public func fetchMessageInfosBulk<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) async throws -> [
+        MessageInfo
+    ] {
         let command = FetchMessageInfoCommand(identifierSet: identifierSet)
         return try await executeCommand(command)
     }
@@ -190,7 +192,9 @@ public actor IMAPNamedConnection {
         calendar: Calendar = Calendar(identifier: .gregorian)
     ) async throws -> MessageIdentifierSet<T> {
         if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
-            throw IMAPError.commandNotSupported("WITHIN extension not supported by server (required for OLDER/YOUNGER search)")
+            throw IMAPError.commandNotSupported(
+                "WITHIN extension not supported by server (required for OLDER/YOUNGER search)"
+            )
         }
         let command = SearchCommand(
             identifierSet: identifierSet,
@@ -242,7 +246,9 @@ public actor IMAPNamedConnection {
         partialRange: PartialRange? = nil
     ) async throws -> ExtendedSearchResult<T> {
         if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
-            throw IMAPError.commandNotSupported("WITHIN extension not supported by server (required for OLDER/YOUNGER search)")
+            throw IMAPError.commandNotSupported(
+                "WITHIN extension not supported by server (required for OLDER/YOUNGER search)"
+            )
         }
         let useSort = capabilities.supportsSort(criteria: sortCriteria)
         if !sortCriteria.isEmpty && !useSort {
@@ -266,8 +272,14 @@ public actor IMAPNamedConnection {
     }
 
     /// Copy messages to another mailbox.
-    public func copy<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        let command = CopyCommand(identifierSet: identifierSet, destinationMailbox: resolveMailboxPath(destinationMailbox))
+    public func copy<T: MessageIdentifier>(
+        messages identifierSet: MessageIdentifierSet<T>,
+        to destinationMailbox: String
+    ) async throws {
+        let command = CopyCommand(
+            identifierSet: identifierSet,
+            destinationMailbox: resolveMailboxPath(destinationMailbox)
+        )
         try await executeCommand(command)
     }
 
@@ -299,7 +311,10 @@ public actor IMAPNamedConnection {
     }
 
     /// Move messages to another mailbox (uses MOVE if supported, otherwise COPY+STORE+EXPUNGE).
-    public func move<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
+    public func move<T: MessageIdentifier>(
+        messages identifierSet: MessageIdentifierSet<T>,
+        to destinationMailbox: String
+    ) async throws {
         if capabilities.contains(.move) && (T.self != UID.self || capabilities.contains(.uidPlus)) {
             try await executeMove(messages: identifierSet, to: destinationMailbox)
         } else {
@@ -400,8 +415,14 @@ public actor IMAPNamedConnection {
         return result
     }
 
-    private func executeMove<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>, to destinationMailbox: String) async throws {
-        let command = MoveCommand(identifierSet: identifierSet, destinationMailbox: resolveMailboxPath(destinationMailbox))
+    private func executeMove<T: MessageIdentifier>(
+        messages identifierSet: MessageIdentifierSet<T>,
+        to destinationMailbox: String
+    ) async throws {
+        let command = MoveCommand(
+            identifierSet: identifierSet,
+            destinationMailbox: resolveMailboxPath(destinationMailbox)
+        )
         try await executeCommand(command)
     }
 

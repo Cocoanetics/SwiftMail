@@ -36,7 +36,13 @@ final class IMAPTestServer {
     private let messages: [Message]
     private var clientFds: [Int32] = []
 
-    init(host: String = "localhost", port: Int = 0, username: String = "testuser", password: String = "testpass", maildirURL: URL) throws {
+    init(
+        host: String = "localhost",
+        port: Int = 0,
+        username: String = "testuser",
+        password: String = "testpass",
+        maildirURL: URL
+    ) throws {
         self.host = host
         self.port = port
         self.username = username
@@ -179,7 +185,13 @@ final class IMAPTestServer {
                     continue
                 }
 
-                let response = handleCommand(tag: tag, command: command, args: args, authenticated: &authenticated, selectedMailbox: &selectedMailbox)
+                let response = handleCommand(
+                    tag: tag,
+                    command: command,
+                    args: args,
+                    authenticated: &authenticated,
+                    selectedMailbox: &selectedMailbox
+                )
                 sendLine(fd: fd, response)
 
                 if command == "LOGOUT" {
@@ -207,7 +219,13 @@ final class IMAPTestServer {
 
     // MARK: - Command Handling
 
-    private func handleCommand(tag: String, command: String, args: String, authenticated: inout Bool, selectedMailbox: inout String?) -> String {
+    private func handleCommand(
+        tag: String,
+        command: String,
+        args: String,
+        authenticated: inout Bool,
+        selectedMailbox: inout String?
+    ) -> String {
         switch command {
             case "CAPABILITY":
                 return "* CAPABILITY IMAP4rev1 AUTH=PLAIN LITERAL+ ID NAMESPACE UIDPLUS IDLE\r\n\(tag) OK CAPABILITY completed\r\n"

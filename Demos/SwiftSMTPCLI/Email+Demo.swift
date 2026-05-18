@@ -34,11 +34,21 @@ extension Email {
         let (imageData, response) = try await session.data(from: logoURL)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw NSError(domain: "com.cocoanetics.SwiftSMTPCLI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid response type"])
+            throw NSError(
+                domain: "com.cocoanetics.SwiftSMTPCLI",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid response type"]
+            )
         }
 
         guard httpResponse.statusCode == 200 else {
-            throw NSError(domain: "com.cocoanetics.SwiftSMTPCLI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to download Swift logo, status code: \(httpResponse.statusCode)"])
+            throw NSError(
+                domain: "com.cocoanetics.SwiftSMTPCLI",
+                code: 1,
+                userInfo: [
+                    NSLocalizedDescriptionKey: "Failed to download Swift logo, status code: \(httpResponse.statusCode)"
+                ]
+            )
         }
 
         print("Swift logo downloaded successfully (\(imageData.count) bytes)")
@@ -87,7 +97,9 @@ extension Email {
                 <ul>
                     <li>Primary recipient: \(recipient.description)</li>
                     \(ccRecipient != nil ? "<li>CC recipient: \(ccRecipient!.description)</li>" : "")
-                    \(bccRecipient != nil ? "<li>BCC recipient: \(bccRecipient!.description) (not visible in headers)</li>" : "")
+                    \(
+            bccRecipient != nil ? "<li>BCC recipient: \(bccRecipient!.description) (not visible in headers)</li>" : ""
+        )
                 </ul>
             </div>
             <div class="footer">

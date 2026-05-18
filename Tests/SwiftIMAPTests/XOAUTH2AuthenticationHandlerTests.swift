@@ -257,7 +257,11 @@ struct XOAUTH2AuthenticationHandlerTests {
 
     @Test
     func testInactiveChannelDuringContinuationSendFailsPromptly() async throws {
-        let (channel, promise, _) = try await setUpChannel(tag: "A006", expectsChallenge: true, failContinuationWrite: true)
+        let (channel, promise, _) = try await setUpChannel(
+            tag: "A006",
+            expectsChallenge: true,
+            failContinuationWrite: true
+        )
 
         let command = TaggedCommand(
             tag: "A006",
@@ -303,7 +307,11 @@ struct XOAUTH2AuthenticationHandlerTests {
         }
     }
 
-    private func setUpChannel(tag: String, expectsChallenge: Bool, failContinuationWrite: Bool = false) async throws -> (NIOAsyncTestingChannel, EventLoopPromise<[Capability]>, XOAUTH2AuthenticationHandler) {
+    private func setUpChannel(tag: String, expectsChallenge: Bool, failContinuationWrite: Bool = false) async throws -> (
+        NIOAsyncTestingChannel,
+        EventLoopPromise<[Capability]>,
+        XOAUTH2AuthenticationHandler
+    ) {
         let channel = NIOAsyncTestingChannel()
         try await channel.pipeline.addHandler(IMAPClientHandler())
 

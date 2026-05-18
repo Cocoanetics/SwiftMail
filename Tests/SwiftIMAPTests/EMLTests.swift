@@ -98,8 +98,10 @@ struct EMLParserTests {
         let message = try Message(emlData: data)
 
         let partsSummary = message.parts.map { "\($0.section): \($0.contentType)" }
-        try #require(message.parts.count == 2,
-                     "Expected 2 parts, got \(message.parts.count): \(partsSummary)")
+        try #require(
+            message.parts.count == 2,
+            "Expected 2 parts, got \(message.parts.count): \(partsSummary)"
+        )
         #expect(message.parts[1].filename == "report.pdf")
         #expect(message.parts[1].disposition == "attachment")
         #expect(message.parts[1].encoding == "base64")

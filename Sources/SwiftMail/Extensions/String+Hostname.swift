@@ -82,11 +82,15 @@ extension String {
                     #endif
 
                     // Get address info
-                    if getnameinfo(interface.ifa_addr,
-                                   saLen,
-                                   &hostname, socklen_t(hostname.count),
-                                   nil, 0,
-                                   NI_NUMERICHOST) == 0 {
+                    if getnameinfo(
+                        interface.ifa_addr,
+                        saLen,
+                        &hostname,
+                        socklen_t(hostname.count),
+                        nil,
+                        0,
+                        NI_NUMERICHOST
+                    ) == 0 {
 
                         if let address = String(cString: hostname, encoding: .utf8) {
                             foundAddress = address

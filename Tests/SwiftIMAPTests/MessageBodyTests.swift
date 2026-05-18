@@ -278,7 +278,9 @@ func testFetchMessagesSequentialOrder() async throws {
             return Message(header: header, parts: [])
         }
 
-        nonisolated func fetchMessages<T: SwiftMail.MessageIdentifier>(using identifierSet: SwiftMail.MessageIdentifierSet<T>) -> AsyncThrowingStream<Message, Error> {
+        nonisolated func fetchMessages<T: SwiftMail.MessageIdentifier>(
+            using identifierSet: SwiftMail.MessageIdentifierSet<T>
+        ) -> AsyncThrowingStream<Message, Error> {
             AsyncThrowingStream { continuation in
                 let task = Task {
                     do {
@@ -308,7 +310,9 @@ func testFetchMessagesSequentialOrder() async throws {
     }
 
     let server = FakeServer()
-    let set = SwiftMail.MessageIdentifierSet<SwiftMail.SequenceNumber>([SwiftMail.SequenceNumber(1), SwiftMail.SequenceNumber(2)])
+    let set = SwiftMail.MessageIdentifierSet<SwiftMail.SequenceNumber>(
+        [SwiftMail.SequenceNumber(1), SwiftMail.SequenceNumber(2)]
+    )
     var messages: [Message] = []
     for try await message in server.fetchMessages(using: set) {
         messages.append(message)

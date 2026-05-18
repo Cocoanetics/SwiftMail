@@ -131,7 +131,9 @@ final class IMAPConnection {
                     case 143:
                         return .startTLSIfAvailable
                     default:
-                        throw IMAPError.invalidArgument("Port \(port) requires explicit transportSecurity because TLS mode cannot be inferred")
+                        throw IMAPError.invalidArgument(
+                            "Port \(port) requires explicit transportSecurity because TLS mode cannot be inferred"
+                        )
                 }
             case .implicitTLS:
                 return .implicitTLS
@@ -711,7 +713,10 @@ final class IMAPConnection {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
 
-            let command = TaggedCommand(tag: tag, command: .authenticate(mechanism: mechanism, initialResponse: initialResponse))
+            let command = TaggedCommand(
+                tag: tag,
+                command: .authenticate(mechanism: mechanism, initialResponse: initialResponse)
+            )
             let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
 
             let authenticationTimeoutSeconds = 10
@@ -771,7 +776,9 @@ final class IMAPConnection {
 
         if supportsSASLIR {
             if let limit = maxInlineBytes, credentials.readableBytes > limit {
-                logger.info("SASL-IR payload size \(credentials.readableBytes) exceeds inline limit \(limit); switching to continuation mode")
+                logger.info(
+                    "SASL-IR payload size \(credentials.readableBytes) exceeds inline limit \(limit); switching to continuation mode"
+                )
                 return (nil, true)
             }
             return (InitialResponse(credentials), false)
@@ -834,7 +841,10 @@ final class IMAPConnection {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
 
-            let command = TaggedCommand(tag: tag, command: .authenticate(mechanism: mechanism, initialResponse: initialResponse))
+            let command = TaggedCommand(
+                tag: tag,
+                command: .authenticate(mechanism: mechanism, initialResponse: initialResponse)
+            )
             let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
 
             let authenticationTimeoutSeconds = 10
@@ -963,7 +973,9 @@ final class IMAPConnection {
         do {
             try await waitForIdleHandlerCompletion(handler, timeoutSeconds: timeoutSeconds)
         } catch {
-            logger.warning("\(connectionContext) IDLE handler did not complete in time; resetting connection before continuing")
+            logger.warning(
+                "\(connectionContext) IDLE handler did not complete in time; resetting connection before continuing"
+            )
             idleHandler = nil
             responseBuffer.hasActiveHandler = false
             try? await disconnectBody()
@@ -1022,7 +1034,9 @@ final class IMAPConnection {
         guard responseBuffer.hasBufferedConnectionTermination else { return }
         let reasons = responseBuffer.consumeBufferedConnectionTerminationReasons()
         let reasonSummary = reasons.isEmpty ? "<unknown>" : reasons.joined(separator: " | ")
-        logger.warning("\(connectionContext) Buffered BYE/fatal detected before \(operation). Recycling connection. reasons=\(reasonSummary)")
+        logger.warning(
+            "\(connectionContext) Buffered BYE/fatal detected before \(operation). Recycling connection. reasons=\(reasonSummary)"
+        )
         try await disconnectBody()
     }
 
@@ -1065,7 +1079,9 @@ final class IMAPConnection {
         \(connectionContext) \(operation) failed: \(error); \
         channelActive=\(active) authenticated=\(isSessionAuthenticated) \
         idleHandlerActive=\(idleHandler != nil) idleTerminationInProgress=\(idleTerminationInProgress) \
-        bufferedResponses=\(responseBuffer.bufferedCount) bufferedTermination=\(responseBuffer.hasBufferedConnectionTermination)
+        bufferedResponses=\(responseBuffer.bufferedCount) bufferedTermination=\(
+            responseBuffer.hasBufferedConnectionTermination
+        )
         """
         logger.error("\(diagnostics)")
     }

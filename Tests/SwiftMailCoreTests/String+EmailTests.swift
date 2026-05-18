@@ -110,8 +110,10 @@ struct StringEmailTests {
         ]
 
         for maliciousEmail in maliciousInputs {
-            #expect(!maliciousEmail.isValidEmail(),
-                    "Malicious input '\(maliciousEmail)' should be rejected")
+            #expect(
+                !maliciousEmail.isValidEmail(),
+                "Malicious input '\(maliciousEmail)' should be rejected"
+            )
         }
     }
 

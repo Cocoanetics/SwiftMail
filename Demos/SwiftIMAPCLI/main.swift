@@ -46,7 +46,9 @@ private enum IMAPAuthMethod {
             case "XOAUTH2", "OAUTH2", "MODERN":
                 return (.xoauth2, normalized)
             default:
-                throw ValidationError("Invalid IMAP_AUTH_METHOD=\(normalized). Supported values: LOGIN, XOAUTH2, OAUTH2, MODERN.")
+                throw ValidationError(
+                    "Invalid IMAP_AUTH_METHOD=\(normalized). Supported values: LOGIN, XOAUTH2, OAUTH2, MODERN."
+                )
         }
     }
 }
@@ -130,9 +132,13 @@ private func authenticate(server: IMAPServer, using environment: IMAPEnvironment
 
         case .xoauth2:
             guard let accessToken = environment.accessToken else {
-                throw ValidationError("IMAP_AUTH_METHOD=\(environment.authMethodLabel) requires IMAP_ACCESS_TOKEN in .env")
+                throw ValidationError(
+                    "IMAP_AUTH_METHOD=\(environment.authMethodLabel) requires IMAP_ACCESS_TOKEN in .env"
+                )
             }
-            print("Authenticating using XOAUTH2 as \(environment.username) (IMAP_AUTH_METHOD=\(environment.authMethodLabel))...")
+            print(
+                "Authenticating using XOAUTH2 as \(environment.username) (IMAP_AUTH_METHOD=\(environment.authMethodLabel))..."
+            )
             try await server.authenticateXOAUTH2(email: environment.username, accessToken: accessToken)
             print("Authentication OK (XOAUTH2).")
     }
@@ -202,7 +208,9 @@ struct List: ParsableCommand {
 
                 print("\nfetching \(limit) messages...")
                 for try await message in server.fetchMessages(using: latest) {
-                    print("[\(message.uid?.value ?? 0)] \(message.date?.description ?? "") - \(message.from ?? "Unknown")")
+                    print(
+                        "[\(message.uid?.value ?? 0)] \(message.date?.description ?? "") - \(message.from ?? "Unknown")"
+                    )
                     print("   \(message.subject ?? "(No Subject)")")
                 }
             }
@@ -239,7 +247,11 @@ struct Fetch: ParsableCommand {
                 var outputURL: URL?
                 if let out {
                     outputURL = URL(fileURLWithPath: out, isDirectory: true)
-                    try FileManager.default.createDirectory(at: outputURL!, withIntermediateDirectories: true, attributes: nil)
+                    try FileManager.default.createDirectory(
+                        at: outputURL!,
+                        withIntermediateDirectories: true,
+                        attributes: nil
+                    )
                 }
 
                 var found = false
@@ -583,7 +595,9 @@ struct Search: ParsableCommand {
                 case "displayto", "display-to":
                     key = .displayTo
                 default:
-                    throw ValidationError("Unsupported --sort value: \(rawValue). Supported values: arrival, cc, date, from, size, subject, to, displayfrom, displayto. Prefix with '-' for descending.")
+                    throw ValidationError(
+                        "Unsupported --sort value: \(rawValue). Supported values: arrival, cc, date, from, size, subject, to, displayfrom, displayto. Prefix with '-' for descending."
+                    )
             }
 
             return descending ? .descending(key) : .ascending(key)
@@ -691,7 +705,11 @@ struct DownloadAttachment: ParsableCommand {
                     throw ValidationError("Invalid UID list: \(uid)")
                 }
                 let outputURL = URL(fileURLWithPath: out, isDirectory: true)
-                try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true, attributes: nil)
+                try FileManager.default.createDirectory(
+                    at: outputURL,
+                    withIntermediateDirectories: true,
+                    attributes: nil
+                )
                 print("Output directory: \(outputURL.path)")
 
                 var found = false

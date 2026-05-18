@@ -35,7 +35,13 @@ struct MessagePartBodyStructureTests {
     }
 
     /// Create a minimal Envelope with subject and from address.
-    private func envelope(subject: String? = nil, fromName: String? = nil, fromMailbox: String = "user", fromHost: String = "example.com", date: String? = nil) -> Envelope {
+    private func envelope(
+        subject: String? = nil,
+        fromName: String? = nil,
+        fromMailbox: String = "user",
+        fromHost: String = "example.com",
+        date: String? = nil
+    ) -> Envelope {
         let subjectBuf: ByteBuffer? = subject.map { buffer($0) }
         let fromAddr = EmailAddress(
             personName: fromName.map { buffer($0) },

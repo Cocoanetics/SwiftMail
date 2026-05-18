@@ -35,7 +35,9 @@ struct StringMIMETests {
 
             // Test Office document types
             #expect(String.fileExtension(for: "application/msword") == "doc")
-            #expect(String.fileExtension(for: "application/vnd.openxmlformats-officedocument.wordprocessingml.document") == "docx")
+            #expect(
+                String.fileExtension(for: "application/vnd.openxmlformats-officedocument.wordprocessingml.document") == "docx"
+            )
             #expect(String.fileExtension(for: "application/vnd.ms-excel") == "xls")
         #endif
 
@@ -56,7 +58,9 @@ struct StringMIMETests {
 
         // Test Office file extensions
         #expect(String.mimeType(for: "doc") == "application/msword")
-        #expect(String.mimeType(for: "docx") == "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        #expect(
+            String.mimeType(for: "docx") == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        )
         #expect(String.mimeType(for: "xls") == "application/vnd.ms-excel")
 
         // Test case insensitivity
@@ -91,15 +95,19 @@ struct StringMIMETests {
 
         // Test development file types
         let jsonType = String.mimeType(for: "json")
-        #expect(jsonType.hasPrefix("application/") || jsonType.hasPrefix("text/"),
-                "JSON should be application or text type, got: \(jsonType)")
+        #expect(
+            jsonType.hasPrefix("application/") || jsonType.hasPrefix("text/"),
+            "JSON should be application or text type, got: \(jsonType)"
+        )
 
         let cssType = String.mimeType(for: "css")
         #expect(cssType.hasPrefix("text/"), "CSS should be a text type, got: \(cssType)")
 
         let jsType = String.mimeType(for: "js")
-        #expect(jsType.hasPrefix("application/") || jsType.hasPrefix("text/"),
-                "JavaScript should be application or text type, got: \(jsType)")
+        #expect(
+            jsType.hasPrefix("application/") || jsType.hasPrefix("text/"),
+            "JavaScript should be application or text type, got: \(jsType)"
+        )
     }
 
     @Test("Edge cases for MIME type resolution")

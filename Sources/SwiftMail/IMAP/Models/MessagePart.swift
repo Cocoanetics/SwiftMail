@@ -41,7 +41,16 @@ public struct MessagePart: Sendable {
     ///   - contentId: The content ID
     ///   - data: The content data (optional)
     ///   - embeddedMessageInfo: Envelope headers for message/rfc822 parts (optional)
-    public init(section: Section, contentType: String, disposition: String? = nil, encoding: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data? = nil, embeddedMessageInfo: MessageInfo? = nil) {
+    public init(
+        section: Section,
+        contentType: String,
+        disposition: String? = nil,
+        encoding: String? = nil,
+        filename: String? = nil,
+        contentId: String? = nil,
+        data: Data? = nil,
+        embeddedMessageInfo: MessageInfo? = nil
+    ) {
         self.section = section
         self.contentType = contentType
         self.disposition = disposition
@@ -60,7 +69,16 @@ public struct MessagePart: Sendable {
     ///   - filename: The filename
     ///   - contentId: The content ID
     ///   - data: The content data (optional)
-    public init(sectionString: String, contentType: String, disposition: String? = nil, encoding: String? = nil, filename: String? = nil, contentId: String? = nil, data: Data? = nil, embeddedMessageInfo: MessageInfo? = nil) {
+    public init(
+        sectionString: String,
+        contentType: String,
+        disposition: String? = nil,
+        encoding: String? = nil,
+        filename: String? = nil,
+        contentId: String? = nil,
+        data: Data? = nil,
+        embeddedMessageInfo: MessageInfo? = nil
+    ) {
         self.section = Section(sectionString)
         self.contentType = contentType
         self.disposition = disposition

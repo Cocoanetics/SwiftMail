@@ -134,7 +134,9 @@ extension Email {
                         content += "Content-Disposition: inline; filename=\"\(attachment.filename)\"\r\n\r\n"
 
                         // Encode attachment data as base64
-                        let base64Data = attachment.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn])
+                        let base64Data = attachment.data.base64EncodedString(
+                            options: [.lineLength76Characters, .endLineWithCarriageReturn]
+                        )
                         content += "\(base64Data)\r\n\r\n"
                     }
 
@@ -175,7 +177,9 @@ extension Email {
                 content += "Content-Disposition: attachment; filename=\"\(attachment.filename)\"\r\n\r\n"
 
                 // Encode attachment data as base64
-                let base64Data = attachment.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn])
+                let base64Data = attachment.data.base64EncodedString(
+                    options: [.lineLength76Characters, .endLineWithCarriageReturn]
+                )
                 content += "\(base64Data)\r\n\r\n"
             }
 
@@ -219,7 +223,9 @@ extension Email {
                 content += "Content-Disposition: inline; filename=\"\(attachment.filename)\"\r\n\r\n"
 
                 // Encode attachment data as base64
-                let base64Data = attachment.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn])
+                let base64Data = attachment.data.base64EncodedString(
+                    options: [.lineLength76Characters, .endLineWithCarriageReturn]
+                )
                 content += "\(base64Data)\r\n\r\n"
             }
 
