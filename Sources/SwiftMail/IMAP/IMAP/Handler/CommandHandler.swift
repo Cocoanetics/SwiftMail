@@ -32,17 +32,17 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
     /// Whether this handler has completed processing
     private(set) var isCompleted: Bool = false
 
-    	/// Lock for thread-safe access to mutable properties
-	let lock = NSRecursiveLock()
+    /// Lock for thread-safe access to mutable properties
+    let lock = NSRecursiveLock()
 
-	/// Logger for command operations
-	let logger = Logger(label: "com.swiftmail.imap.command")
+    /// Logger for command operations
+    let logger = Logger(label: "com.swiftmail.imap.command")
 
-	/// Buffer for logging during command processing
-	var logBuffer: [String] = []
+    /// Buffer for logging during command processing
+    var logBuffer: [String] = []
 
-	/// Promise for the command result
-	let promise: EventLoopPromise<ResultType>
+    /// Promise for the command result
+    let promise: EventLoopPromise<ResultType>
 
     /// Collected untagged responses during command execution
     private(set) var untaggedResponses: [Response] = []
@@ -123,30 +123,30 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
         return handled
     }
 
-    	/// Handle a tagged OK response
-	/// Subclasses should override this method to handle successful responses
-	/// - Parameter response: The tagged response
-	func handleTaggedOKResponse(_ response: TaggedResponse) {
-		// Check for client bug warnings in the response
-		if case .ok(let responseText) = response.state {
-			if let code = responseText.code {
-				// Check for CLIENTBUG response code
-				if case .clientBug = code {
-					logger.warning("CLIENTBUG warning: \(responseText.text)")
-				}
-			}
-		}
+    /// Handle a tagged OK response
+    /// Subclasses should override this method to handle successful responses
+    /// - Parameter response: The tagged response
+    func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Check for client bug warnings in the response
+        if case .ok(let responseText) = response.state {
+            if let code = responseText.code {
+                // Check for CLIENTBUG response code
+                if case .clientBug = code {
+                    logger.warning("CLIENTBUG warning: \(responseText.text)")
+                }
+            }
+        }
 
-		// Default implementation succeeds with Void for handlers that don't need a result
-		// This only works for ResultType == Void, otherwise subclasses must override
-		if ResultType.self == Void.self {
-			// Cast is safe: guarded by the ResultType.self == Void.self check above.
-			// swiftlint:disable:next force_cast
-			succeedWithResult(() as! ResultType)
-		}
-		// For non-Void result types, subclasses must override this method
-		// but we don't call fatalError here to allow them to call super for CLIENTBUG checking
-	}
+        // Default implementation succeeds with Void for handlers that don't need a result
+        // This only works for ResultType == Void, otherwise subclasses must override
+        if ResultType.self == Void.self {
+            // Cast is safe: guarded by the ResultType.self == Void.self check above.
+            // swiftlint:disable:next force_cast
+            succeedWithResult(() as! ResultType)
+        }
+        // For non-Void result types, subclasses must override this method
+        // but we don't call fatalError here to allow them to call super for CLIENTBUG checking
+    }
 
     /// Handle a tagged error response
     /// Subclasses can override this method to handle error responses differently

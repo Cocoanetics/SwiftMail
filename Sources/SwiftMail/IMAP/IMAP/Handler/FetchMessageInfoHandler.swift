@@ -165,97 +165,97 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     ///   - attribute: The attribute containing the information
     private func updateHeader(_ header: inout MessageInfo, with attribute: MessageAttribute) {
         switch attribute {
-        case .envelope(let envelope):
-            // Extract information from envelope
-            if let subject = envelope.subject?.stringValue {
-                header.subject = subject.decodeMIMEHeader()
-            }
-
-            // Handle from addresses - check if array is not empty
-            if !envelope.from.isEmpty {
-                header.from = formatAddress(envelope.from[0])
-            }
-
-            // Handle to addresses - capture all recipients
-            header.to = envelope.to.map { formatAddress($0) }
-
-            // Handle cc addresses - capture all recipients
-            header.cc = envelope.cc.map { formatAddress($0) }
-
-            // Handle bcc addresses - capture all recipients
-            header.bcc = envelope.bcc.map { formatAddress($0) }
-
-            if let date = envelope.date {
-                let dateString = String(date)
-                if let parsedDate = Self.parseEnvelopeDate(dateString) {
-                    header.date = parsedDate
+            case .envelope(let envelope):
+                // Extract information from envelope
+                if let subject = envelope.subject?.stringValue {
+                    header.subject = subject.decodeMIMEHeader()
                 }
-                // If parsing fails we silently fall through. Callers can use `internalDate`
-                // (the server's receipt timestamp) as a stable fallback. We don't log here:
-                // a large mailbox with many unparsable dates would flood stderr.
-            }
 
-            if let messageID = envelope.messageID {
-                header.messageId = MessageID(String(messageID))
-            }
+                // Handle from addresses - check if array is not empty
+                if !envelope.from.isEmpty {
+                    header.from = formatAddress(envelope.from[0])
+                }
 
-            if let inReplyTo = envelope.inReplyTo {
-                header.inReplyTo = MessageID(String(inReplyTo))
-            }
+                // Handle to addresses - capture all recipients
+                header.to = envelope.to.map { formatAddress($0) }
 
-        case .uid(let uid):
-				header.uid = UID(nio: uid)
+                // Handle cc addresses - capture all recipients
+                header.cc = envelope.cc.map { formatAddress($0) }
 
-        case .internalDate(let serverDate):
-            let c = serverDate.components
-            var dc = DateComponents()
-            dc.year = c.year
-            dc.month = c.month
-            dc.day = c.day
-            dc.hour = c.hour
-            dc.minute = c.minute
-            dc.second = c.second
-            dc.timeZone = Foundation.TimeZone(secondsFromGMT: c.zoneMinutes * 60)
-            if let date = Calendar(identifier: .gregorian).date(from: dc) {
-                header.internalDate = date
-            }
+                // Handle bcc addresses - capture all recipients
+                header.bcc = envelope.bcc.map { formatAddress($0) }
 
-        case .flags(let flags):
-            header.flags = flags.map(self.convertFlag)
+                if let date = envelope.date {
+                    let dateString = String(date)
+                    if let parsedDate = Self.parseEnvelopeDate(dateString) {
+                        header.date = parsedDate
+                    }
+                    // If parsing fails we silently fall through. Callers can use `internalDate`
+                    // (the server's receipt timestamp) as a stable fallback. We don't log here:
+                    // a large mailbox with many unparsable dates would flood stderr.
+                }
 
-        case .body(let bodyStructure, _):
-            if case .valid(let structure) = bodyStructure {
-                header.parts = [MessagePart](structure)
-            }
+                if let messageID = envelope.messageID {
+                    header.messageId = MessageID(String(messageID))
+                }
 
-        case .rfc822Size(let size):
-            header.size = size
+                if let inReplyTo = envelope.inReplyTo {
+                    header.inReplyTo = MessageID(String(inReplyTo))
+                }
 
-        default:
-            break
+            case .uid(let uid):
+                header.uid = UID(nio: uid)
+
+            case .internalDate(let serverDate):
+                let c = serverDate.components
+                var dc = DateComponents()
+                dc.year = c.year
+                dc.month = c.month
+                dc.day = c.day
+                dc.hour = c.hour
+                dc.minute = c.minute
+                dc.second = c.second
+                dc.timeZone = Foundation.TimeZone(secondsFromGMT: c.zoneMinutes * 60)
+                if let date = Calendar(identifier: .gregorian).date(from: dc) {
+                    header.internalDate = date
+                }
+
+            case .flags(let flags):
+                header.flags = flags.map(self.convertFlag)
+
+            case .body(let bodyStructure, _):
+                if case .valid(let structure) = bodyStructure {
+                    header.parts = [MessagePart](structure)
+                }
+
+            case .rfc822Size(let size):
+                header.size = size
+
+            default:
+                break
         }
     }
 
-	/// Convert a NIOIMAPCore.Flag to our MessageFlag type
-	private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {
-		let flagString = String(flag)
+    /// Convert a NIOIMAPCore.Flag to our MessageFlag type
+    private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {
+        let flagString = String(flag)
 
-		switch flagString.uppercased() {
-			case "\\SEEN":
-				return .seen
-			case "\\ANSWERED":
-				return .answered
-			case "\\FLAGGED":
-				return .flagged
-			case "\\DELETED":
-				return .deleted
-			case "\\DRAFT":
-				return .draft
-			default:
-				// For any other flag, treat it as a custom flag
-				return .custom(flagString)
-		}
-	}
+        switch flagString.uppercased() {
+            case "\\SEEN":
+                return .seen
+            case "\\ANSWERED":
+                return .answered
+            case "\\FLAGGED":
+                return .flagged
+            case "\\DELETED":
+                return .deleted
+            case "\\DRAFT":
+                return .draft
+            default:
+                // For any other flag, treat it as a custom flag
+                return .custom(flagString)
+        }
+    }
 
     /// Format an address for display
     /// - Parameter address: The address to format
@@ -282,10 +282,10 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
     static func shouldCollectThreadingHeaders(for kind: StreamingKind) -> Bool {
         switch kind.sectionSpecifier.kind {
-        case .header, .headerFields:
-            return true
-        default:
-            return false
+            case .header, .headerFields:
+                return true
+            default:
+                return false
         }
     }
 

@@ -41,12 +41,12 @@ private enum IMAPAuthMethod {
             ?? "LOGIN"
 
         switch normalized {
-        case "", "LOGIN":
-            return (.login, "LOGIN")
-        case "XOAUTH2", "OAUTH2", "MODERN":
-            return (.xoauth2, normalized)
-        default:
-            throw ValidationError("Invalid IMAP_AUTH_METHOD=\(normalized). Supported values: LOGIN, XOAUTH2, OAUTH2, MODERN.")
+            case "", "LOGIN":
+                return (.login, "LOGIN")
+            case "XOAUTH2", "OAUTH2", "MODERN":
+                return (.xoauth2, normalized)
+            default:
+                throw ValidationError("Invalid IMAP_AUTH_METHOD=\(normalized). Supported values: LOGIN, XOAUTH2, OAUTH2, MODERN.")
         }
     }
 }
@@ -86,55 +86,55 @@ private func loadIMAPEnvironment() throws -> IMAPEnvironment {
     let (authMethod, authMethodLabel) = try IMAPAuthMethod.fromEnvironment(rawAuthMethod)
 
     switch authMethod {
-    case .login:
-        guard case let .string(password) = Dotenv["IMAP_PASSWORD"] else {
-            throw ValidationError("IMAP_AUTH_METHOD=LOGIN requires IMAP_PASSWORD in .env")
-        }
+        case .login:
+            guard case let .string(password) = Dotenv["IMAP_PASSWORD"] else {
+                throw ValidationError("IMAP_AUTH_METHOD=LOGIN requires IMAP_PASSWORD in .env")
+            }
 
-        return IMAPEnvironment(
-            host: host,
-            port: port,
-            username: username,
-            authMethod: authMethod,
-            authMethodLabel: authMethodLabel,
-            password: password,
-            accessToken: nil
-        )
+            return IMAPEnvironment(
+                host: host,
+                port: port,
+                username: username,
+                authMethod: authMethod,
+                authMethodLabel: authMethodLabel,
+                password: password,
+                accessToken: nil
+            )
 
-    case .xoauth2:
-        guard case let .string(accessToken) = Dotenv["IMAP_ACCESS_TOKEN"] else {
-            throw ValidationError("IMAP_AUTH_METHOD=\(authMethodLabel) requires IMAP_ACCESS_TOKEN in .env")
-        }
+        case .xoauth2:
+            guard case let .string(accessToken) = Dotenv["IMAP_ACCESS_TOKEN"] else {
+                throw ValidationError("IMAP_AUTH_METHOD=\(authMethodLabel) requires IMAP_ACCESS_TOKEN in .env")
+            }
 
-        return IMAPEnvironment(
-            host: host,
-            port: port,
-            username: username,
-            authMethod: authMethod,
-            authMethodLabel: authMethodLabel,
-            password: nil,
-            accessToken: accessToken
-        )
+            return IMAPEnvironment(
+                host: host,
+                port: port,
+                username: username,
+                authMethod: authMethod,
+                authMethodLabel: authMethodLabel,
+                password: nil,
+                accessToken: accessToken
+            )
     }
 }
 
 private func authenticate(server: IMAPServer, using environment: IMAPEnvironment) async throws {
     switch environment.authMethod {
-    case .login:
-        guard let password = environment.password else {
-            throw ValidationError("IMAP_AUTH_METHOD=LOGIN requires IMAP_PASSWORD in .env")
-        }
-        print("Authenticating using LOGIN as \(environment.username)...")
-        try await server.login(username: environment.username, password: password)
-        print("Authentication OK (LOGIN).")
+        case .login:
+            guard let password = environment.password else {
+                throw ValidationError("IMAP_AUTH_METHOD=LOGIN requires IMAP_PASSWORD in .env")
+            }
+            print("Authenticating using LOGIN as \(environment.username)...")
+            try await server.login(username: environment.username, password: password)
+            print("Authentication OK (LOGIN).")
 
-    case .xoauth2:
-        guard let accessToken = environment.accessToken else {
-            throw ValidationError("IMAP_AUTH_METHOD=\(environment.authMethodLabel) requires IMAP_ACCESS_TOKEN in .env")
-        }
-        print("Authenticating using XOAUTH2 as \(environment.username) (IMAP_AUTH_METHOD=\(environment.authMethodLabel))...")
-        try await server.authenticateXOAUTH2(email: environment.username, accessToken: accessToken)
-        print("Authentication OK (XOAUTH2).")
+        case .xoauth2:
+            guard let accessToken = environment.accessToken else {
+                throw ValidationError("IMAP_AUTH_METHOD=\(environment.authMethodLabel) requires IMAP_ACCESS_TOKEN in .env")
+            }
+            print("Authenticating using XOAUTH2 as \(environment.username) (IMAP_AUTH_METHOD=\(environment.authMethodLabel))...")
+            try await server.authenticateXOAUTH2(email: environment.username, accessToken: accessToken)
+            print("Authentication OK (XOAUTH2).")
     }
 }
 
@@ -564,26 +564,26 @@ struct Search: ParsableCommand {
 
             let key: SortCriterion.Key
             switch normalized {
-            case "arrival":
-                key = .arrival
-            case "cc":
-                key = .cc
-            case "date":
-                key = .date
-            case "from":
-                key = .from
-            case "size":
-                key = .size
-            case "subject":
-                key = .subject
-            case "to":
-                key = .to
-            case "displayfrom", "display-from":
-                key = .displayFrom
-            case "displayto", "display-to":
-                key = .displayTo
-            default:
-                throw ValidationError("Unsupported --sort value: \(rawValue). Supported values: arrival, cc, date, from, size, subject, to, displayfrom, displayto. Prefix with '-' for descending.")
+                case "arrival":
+                    key = .arrival
+                case "cc":
+                    key = .cc
+                case "date":
+                    key = .date
+                case "from":
+                    key = .from
+                case "size":
+                    key = .size
+                case "subject":
+                    key = .subject
+                case "to":
+                    key = .to
+                case "displayfrom", "display-from":
+                    key = .displayFrom
+                case "displayto", "display-to":
+                    key = .displayTo
+                default:
+                    throw ValidationError("Unsupported --sort value: \(rawValue). Supported values: arrival, cc, date, from, size, subject, to, displayfrom, displayto. Prefix with '-' for descending.")
             }
 
             return descending ? .descending(key) : .ascending(key)
@@ -767,36 +767,36 @@ struct Idle: ParsableCommand {
             for await event in idleSession.events {
                 let ts = formatter.string(from: Date())
                 switch event {
-                case .exists(let count):
-                    print("[\(ts)] 📩 EXISTS count=\(count)")
-                case .expunge(let seq):
-                    print("[\(ts)] 🗑️  EXPUNGE seq=\(seq.value)")
-                case .recent(let count):
-                    print("[\(ts)] 🆕 RECENT count=\(count)")
-                case .fetch(let seq, let attrs):
-                    let flags = attrs.compactMap { attr -> String? in
-                        if case .flags(let f) = attr { return f.map(String.init).joined(separator: ", ") }
-                        return nil
-                    }.first ?? ""
-                    print("[\(ts)] 📋 FETCH seq=\(seq.value) flags=[\(flags)]")
-                case .fetchUID(let uid, let attrs):
-                    let flags = attrs.compactMap { attr -> String? in
-                        if case .flags(let f) = attr { return f.map(String.init).joined(separator: ", ") }
-                        return nil
-                    }.first ?? ""
-                    print("[\(ts)] 📋 FETCH uid=\(uid.value) flags=[\(flags)]")
-                case .vanished(let uids):
-                    let count = uids.count
-                    print("[\(ts)] 💨 VANISHED \(count) UID(s)")
-                case .flags(let flags):
-                    let flagList = flags.map(\.description).joined(separator: ", ")
-                    print("[\(ts)] 🏷️  FLAGS [\(flagList)]")
-                case .bye(let text):
-                    print("[\(ts)] 👋 BYE: \(text ?? "")")
-                case .alert(let text):
-                    print("[\(ts)] ⚠️  ALERT: \(text)")
-                case .capability(let caps):
-                    print("[\(ts)] 🔧 CAPABILITY: \(caps.joined(separator: " "))")
+                    case .exists(let count):
+                        print("[\(ts)] 📩 EXISTS count=\(count)")
+                    case .expunge(let seq):
+                        print("[\(ts)] 🗑️  EXPUNGE seq=\(seq.value)")
+                    case .recent(let count):
+                        print("[\(ts)] 🆕 RECENT count=\(count)")
+                    case .fetch(let seq, let attrs):
+                        let flags = attrs.compactMap { attr -> String? in
+                            if case .flags(let f) = attr { return f.map(String.init).joined(separator: ", ") }
+                            return nil
+                        }.first ?? ""
+                        print("[\(ts)] 📋 FETCH seq=\(seq.value) flags=[\(flags)]")
+                    case .fetchUID(let uid, let attrs):
+                        let flags = attrs.compactMap { attr -> String? in
+                            if case .flags(let f) = attr { return f.map(String.init).joined(separator: ", ") }
+                            return nil
+                        }.first ?? ""
+                        print("[\(ts)] 📋 FETCH uid=\(uid.value) flags=[\(flags)]")
+                    case .vanished(let uids):
+                        let count = uids.count
+                        print("[\(ts)] 💨 VANISHED \(count) UID(s)")
+                    case .flags(let flags):
+                        let flagList = flags.map(\.description).joined(separator: ", ")
+                        print("[\(ts)] 🏷️  FLAGS [\(flagList)]")
+                    case .bye(let text):
+                        print("[\(ts)] 👋 BYE: \(text ?? "")")
+                    case .alert(let text):
+                        print("[\(ts)] ⚠️  ALERT: \(text)")
+                    case .capability(let caps):
+                        print("[\(ts)] 🔧 CAPABILITY: \(caps.joined(separator: " "))")
                 }
             }
 

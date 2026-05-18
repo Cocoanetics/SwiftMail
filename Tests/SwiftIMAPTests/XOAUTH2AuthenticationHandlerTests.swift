@@ -181,10 +181,10 @@ struct XOAUTH2AuthenticationHandlerTests {
             Issue.record("Expected authentication failure")
         } catch let error as IMAPError {
             switch error {
-            case .authFailed(let message):
-                #expect(message.contains("AUTHENTICATE failed"))
-            default:
-                Issue.record("Unexpected IMAPError: \(error)")
+                case .authFailed(let message):
+                    #expect(message.contains("AUTHENTICATE failed"))
+                default:
+                    Issue.record("Unexpected IMAPError: \(error)")
             }
         } catch {
             Issue.record("Unexpected error type: \(error)")

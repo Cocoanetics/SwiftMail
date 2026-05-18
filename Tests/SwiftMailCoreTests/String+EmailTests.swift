@@ -103,15 +103,15 @@ struct StringEmailTests {
         let maliciousInputs = [
             "user<script>alert('xss')</script>@example.com",
             "user'; DROP TABLE users; --@example.com",
-                         "user@example.com\\r\\nBCC: evil@hacker.com",
-             "user@example.com\\nSubject: Spam",
-                         "user\\u{0000}@example.com", // Null byte injection
-             "user@exam\\u{0000}ple.com"
+            "user@example.com\\r\\nBCC: evil@hacker.com",
+            "user@example.com\\nSubject: Spam",
+            "user\\u{0000}@example.com", // Null byte injection
+            "user@exam\\u{0000}ple.com"
         ]
 
         for maliciousEmail in maliciousInputs {
             #expect(!maliciousEmail.isValidEmail(),
-                   "Malicious input '\(maliciousEmail)' should be rejected")
+                    "Malicious input '\(maliciousEmail)' should be rejected")
         }
     }
 

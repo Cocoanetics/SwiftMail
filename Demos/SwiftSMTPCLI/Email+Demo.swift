@@ -1,7 +1,7 @@
 import Foundation
 // Import the FoundationNetworking module on Linux platforms
 #if canImport(FoundationNetworking)
-import FoundationNetworking
+    import FoundationNetworking
 #endif
 import SwiftMail
 extension Email {
@@ -82,7 +82,7 @@ extension Email {
                 <p>This is a test email demonstrating HTML formatting and embedded images using Swift's email capabilities.</p>
                 <p>Here's a simple Swift code example:</p>
                 <pre><code>let message = "Hello, Swift!"\nprint(message)</code></pre>
-
+        
                 <p>This email demonstrates CC and BCC functionality:</p>
                 <ul>
                     <li>Primary recipient: \(recipient.description)</li>

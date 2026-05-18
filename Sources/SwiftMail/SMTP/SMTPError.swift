@@ -45,24 +45,24 @@ extension SMTPError: LocalizedError {
 extension SMTPError: CustomStringConvertible {
     public var description: String {
         switch self {
-        case .connectionFailed(let reason):
-            return "SMTP connection failed: \(reason)"
-        case .invalidResponse(let reason):
-            return "SMTP invalid response: \(reason)"
-        case .sendFailed(let reason):
-            return "SMTP send failed: \(reason)"
-        case .authenticationFailed(let reason):
-            return "SMTP authentication failed: \(reason)"
-        case .commandFailed(let reason):
-            return "SMTP command failed: \(reason)"
-        case .invalidEmailAddress(let reason):
-            return "SMTP invalid email address: \(reason)"
-        case .tlsFailed(let reason):
-            return "SMTP TLS failed: \(reason)"
-        case .messageTooLarge(let messageSizeOctets, let maximumMessageSizeOctets):
-            return "SMTP message too large: \(messageSizeOctets) bytes exceeds \(maximumMessageSizeOctets) byte limit"
-        case .unexpectedResponse(let response):
-            return "SMTP unexpected response: \(response.code) \(response.message)"
+            case .connectionFailed(let reason):
+                return "SMTP connection failed: \(reason)"
+            case .invalidResponse(let reason):
+                return "SMTP invalid response: \(reason)"
+            case .sendFailed(let reason):
+                return "SMTP send failed: \(reason)"
+            case .authenticationFailed(let reason):
+                return "SMTP authentication failed: \(reason)"
+            case .commandFailed(let reason):
+                return "SMTP command failed: \(reason)"
+            case .invalidEmailAddress(let reason):
+                return "SMTP invalid email address: \(reason)"
+            case .tlsFailed(let reason):
+                return "SMTP TLS failed: \(reason)"
+            case .messageTooLarge(let messageSizeOctets, let maximumMessageSizeOctets):
+                return "SMTP message too large: \(messageSizeOctets) bytes exceeds \(maximumMessageSizeOctets) byte limit"
+            case .unexpectedResponse(let response):
+                return "SMTP unexpected response: \(response.code) \(response.message)"
         }
     }
 }

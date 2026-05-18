@@ -1,6 +1,6 @@
 import Foundation
 #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
-import CoreFoundation
+    import CoreFoundation
 #endif
 
 private struct MIMEEncodedWordRun {
@@ -29,22 +29,22 @@ extension String {
 
         func token(for byte: UInt8, isEndOfLogicalLine: Bool) -> Token {
             switch byte {
-            case UInt8(ascii: "="):
-                return Token(value: "=3D", isLiteralWhitespace: false)
-            case UInt8(ascii: " "):
-                if isEndOfLogicalLine {
-                    return Token(value: "=20", isLiteralWhitespace: false)
-                }
-                return Token(value: " ", isLiteralWhitespace: true)
-            case UInt8(ascii: "\t"):
-                if isEndOfLogicalLine {
-                    return Token(value: "=09", isLiteralWhitespace: false)
-                }
-                return Token(value: "\t", isLiteralWhitespace: true)
-            case 33...60, 62...126:
-                return Token(value: String(UnicodeScalar(byte)), isLiteralWhitespace: false)
-            default:
-                return Token(value: String(format: "=%02X", byte), isLiteralWhitespace: false)
+                case UInt8(ascii: "="):
+                    return Token(value: "=3D", isLiteralWhitespace: false)
+                case UInt8(ascii: " "):
+                    if isEndOfLogicalLine {
+                        return Token(value: "=20", isLiteralWhitespace: false)
+                    }
+                    return Token(value: " ", isLiteralWhitespace: true)
+                case UInt8(ascii: "\t"):
+                    if isEndOfLogicalLine {
+                        return Token(value: "=09", isLiteralWhitespace: false)
+                    }
+                    return Token(value: "\t", isLiteralWhitespace: true)
+                case 33...60, 62...126:
+                    return Token(value: String(UnicodeScalar(byte)), isLiteralWhitespace: false)
+                default:
+                    return Token(value: String(format: "=%02X", byte), isLiteralWhitespace: false)
             }
         }
 
@@ -362,7 +362,7 @@ extension String {
 
                 // Check if this is a Content-Transfer-Encoding header
                 if line.lowercased().contains("content-transfer-encoding:") &&
-                   line.lowercased().contains("quoted-printable") {
+                    line.lowercased().contains("quoted-printable") {
                     // Found quoted-printable encoding
                     inBody = false
                 }
@@ -397,14 +397,14 @@ extension String {
 private extension String {
     static func decodeMIMEEncodedWordBytes(_ encodedText: String, encoding: String) -> Data? {
         switch encoding {
-        case "B":
-            return Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters)
-        case "Q":
-            return decodeMIMEHeaderQuotedPrintableBytes(
-                encodedText.replacingOccurrences(of: "_", with: " ")
-            )
-        default:
-            return nil
+            case "B":
+                return Data(base64Encoded: encodedText, options: .ignoreUnknownCharacters)
+            case "Q":
+                return decodeMIMEHeaderQuotedPrintableBytes(
+                    encodedText.replacingOccurrences(of: "_", with: " ")
+                )
+            default:
+                return nil
         }
     }
 

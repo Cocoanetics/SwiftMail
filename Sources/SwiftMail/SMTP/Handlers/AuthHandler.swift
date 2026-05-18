@@ -30,14 +30,14 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// - Parameters:
     ///   - commandTag: Optional tag for the command
     ///   - promise: The promise to fulfill when the command completes
-   required convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
+    required convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
         // These will be set in the designated initializer
         self.init(commandTag: commandTag, promise: promise, method: .plain, username: "", password: "", channel: nil)
     }
 
     /// Designated initializer
     init(commandTag: String?, promise: EventLoopPromise<AuthResult>,
-               method: AuthMethod, username: String, password: String, channel: Channel?) {
+         method: AuthMethod, username: String, password: String, channel: Channel?) {
         self.method = method
         self.username = username
         self.password = password
@@ -51,55 +51,55 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     override func processResponse(_ response: SMTPResponse) -> Bool {
         // Handle authentication based on the method and current state
         switch method {
-        case .plain, .xoauth2:
-            // For PLAIN and XOAUTH2 auth, we should get a success response immediately
-            if response.code >= 200 && response.code < 300 {
-                promise.succeed(AuthResult(method: method, success: true))
-                return true
-            } else if response.code >= 400 {
-                promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
-                return true
-            }
-
-        case .login:
-            // For LOGIN auth, we need to handle multiple steps
-            switch state {
-            case .initial:
-                // Initial response should be a challenge for the username
-                if response.code == 334 {
-                    // Send the username (base64 encoded)
-                    sendLoginCredential(username)
-                    state = .usernameProvided
-                    return false // Not complete yet
-                } else if response.code >= 400 {
-                    // Error response
-                    promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
-                    return true
-                }
-
-            case .usernameProvided:
-                // After username, should be a challenge for the password
-                if response.code == 334 {
-                    // Send the password (base64 encoded)
-                    sendLoginCredential(password)
-                    state = .completed
-                    return false // Still need the final response
-                } else if response.code >= 400 {
-                    // Error response
-                    promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
-                    return true
-                }
-
-            case .completed:
-                // Final response after password
+            case .plain, .xoauth2:
+                // For PLAIN and XOAUTH2 auth, we should get a success response immediately
                 if response.code >= 200 && response.code < 300 {
                     promise.succeed(AuthResult(method: method, success: true))
                     return true
-                } else {
+                } else if response.code >= 400 {
                     promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
                     return true
                 }
-            }
+
+            case .login:
+                // For LOGIN auth, we need to handle multiple steps
+                switch state {
+                    case .initial:
+                        // Initial response should be a challenge for the username
+                        if response.code == 334 {
+                            // Send the username (base64 encoded)
+                            sendLoginCredential(username)
+                            state = .usernameProvided
+                            return false // Not complete yet
+                        } else if response.code >= 400 {
+                            // Error response
+                            promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
+                            return true
+                        }
+
+                    case .usernameProvided:
+                        // After username, should be a challenge for the password
+                        if response.code == 334 {
+                            // Send the password (base64 encoded)
+                            sendLoginCredential(password)
+                            state = .completed
+                            return false // Still need the final response
+                        } else if response.code >= 400 {
+                            // Error response
+                            promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
+                            return true
+                        }
+
+                    case .completed:
+                        // Final response after password
+                        if response.code >= 200 && response.code < 300 {
+                            promise.succeed(AuthResult(method: method, success: true))
+                            return true
+                        } else {
+                            promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
+                            return true
+                        }
+                }
         }
 
         return false // Not yet complete

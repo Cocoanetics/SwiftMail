@@ -11,12 +11,12 @@ public enum EMLParserError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .invalidData:
-            return "The data is not valid RFC 822 / EML content"
-        case .missingHeaders:
-            return "No headers found in the message"
-        case .malformedHeader(let detail):
-            return "Malformed header: \(detail)"
+            case .invalidData:
+                return "The data is not valid RFC 822 / EML content"
+            case .missingHeaders:
+                return "No headers found in the message"
+            case .malformedHeader(let detail):
+                return "Malformed header: \(detail)"
         }
     }
 }
@@ -424,23 +424,23 @@ public struct EMLParser {
 
         for char in value {
             switch char {
-            case "\"":
-                inQuotes.toggle()
-                current.append(char)
-            case "<":
-                inAngle = true
-                current.append(char)
-            case ">":
-                inAngle = false
-                current.append(char)
-            case "," where !inQuotes && !inAngle:
-                let trimmed = current.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty {
-                    addresses.append(decodeRFC2047(trimmed) ?? trimmed)
-                }
-                current = ""
-            default:
-                current.append(char)
+                case "\"":
+                    inQuotes.toggle()
+                    current.append(char)
+                case "<":
+                    inAngle = true
+                    current.append(char)
+                case ">":
+                    inAngle = false
+                    current.append(char)
+                case "," where !inQuotes && !inAngle:
+                    let trimmed = current.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty {
+                        addresses.append(decodeRFC2047(trimmed) ?? trimmed)
+                    }
+                    current = ""
+                default:
+                    current.append(char)
             }
         }
 
@@ -570,22 +570,22 @@ extension String.Encoding {
     /// Map a charset name to a String.Encoding.
     static func fromCharsetName(_ name: String) -> String.Encoding? {
         switch name.lowercased() {
-        case "utf-8", "utf8":
-            return .utf8
-        case "iso-8859-1", "latin1", "iso_8859-1":
-            return .isoLatin1
-        case "iso-8859-2", "latin2", "iso_8859-2":
-            return .isoLatin2
-        case "us-ascii", "ascii":
-            return .ascii
-        case "windows-1252", "cp1252":
-            return .windowsCP1252
-        case "windows-1250", "cp1250":
-            return .windowsCP1250
-        case "iso-8859-15", "latin9", "iso_8859-15":
-            return .isoLatin1 // Close enough
-        default:
-            return nil
+            case "utf-8", "utf8":
+                return .utf8
+            case "iso-8859-1", "latin1", "iso_8859-1":
+                return .isoLatin1
+            case "iso-8859-2", "latin2", "iso_8859-2":
+                return .isoLatin2
+            case "us-ascii", "ascii":
+                return .ascii
+            case "windows-1252", "cp1252":
+                return .windowsCP1252
+            case "windows-1250", "cp1250":
+                return .windowsCP1250
+            case "iso-8859-15", "latin9", "iso_8859-15":
+                return .isoLatin1 // Close enough
+            default:
+                return nil
         }
     }
 }

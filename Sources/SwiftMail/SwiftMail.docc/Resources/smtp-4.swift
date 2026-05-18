@@ -18,4 +18,4 @@ let email = Email(sender: sender,
                   recipients: [recipient],
                   subject: "Hello from SwiftMail",
                   textBody: "This is a test email sent using SwiftMail."
-            )
+)

@@ -12,10 +12,10 @@ public enum ConversionError: Error, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-        case .missingSender:
-            return "Message has no sender (from field is nil)"
-        case .unparsableSender(let raw):
-            return "Could not parse sender address: \(raw)"
+            case .missingSender:
+                return "Message has no sender (from field is nil)"
+            case .unparsableSender(let raw):
+                return "Could not parse sender address: \(raw)"
         }
     }
 }

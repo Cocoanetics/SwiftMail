@@ -13,7 +13,7 @@ final class SMTPLogger: MailLogger, @unchecked Sendable {
     typealias InboundOut = String
 
     /// Log outgoing commands and forward them to the next handler
-	override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         // Try to extract the command from the data
         let command = unwrapOutboundIn(data)
 
@@ -32,7 +32,7 @@ final class SMTPLogger: MailLogger, @unchecked Sendable {
     }
 
     /// Log incoming responses and forward them to the next handler
-	override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+    override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         // Cast is safe: MailLogger declares InboundIn = Any, but the SMTP pipeline
         // always sends String responses (see MailLogger.swift:16 and the typealias above).
         // swiftlint:disable:next force_cast

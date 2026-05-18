@@ -4,11 +4,11 @@
 import Foundation
 
 #if canImport(Darwin)
-import Darwin
+    import Darwin
 #elseif canImport(Glibc)
-import Glibc
+    import Glibc
 #elseif canImport(Musl)
-import Musl
+    import Musl
 #endif
 
 extension String {
@@ -18,19 +18,19 @@ extension String {
      */
     public static var localHostname: String {
         #if os(macOS) && !targetEnvironment(macCatalyst)
-        // Host is only available on macOS
-        if let hostname = Host.current().name {
-            return hostname
-        }
+            // Host is only available on macOS
+            if let hostname = Host.current().name {
+                return hostname
+            }
         #else
-		// Use system call on Linux and other platforms
-		var hostname = [CChar](repeating: 0, count: 256) // Linux typically uses 256 as max hostname length.
-		if gethostname(&hostname, hostname.count) == 0 {
-			// Create a string from the C string
-			if let name = String(cString: hostname, encoding: .utf8), !name.isEmpty {
-				return name
-			}
-		}
+            // Use system call on Linux and other platforms
+            var hostname = [CChar](repeating: 0, count: 256) // Linux typically uses 256 as max hostname length.
+            if gethostname(&hostname, hostname.count) == 0 {
+                // Create a string from the C string
+                if let name = String(cString: hostname, encoding: .utf8), !name.isEmpty {
+                    return name
+                }
+            }
         #endif
 
         // Try to get a local IP address as a fallback
@@ -74,21 +74,21 @@ extension String {
                     var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
 
                     #if canImport(Darwin)
-                    let saLen = socklen_t(interface.ifa_addr.pointee.sa_len)
+                        let saLen = socklen_t(interface.ifa_addr.pointee.sa_len)
                     #else
-                    let saLen = addrFamily == UInt8(AF_INET) ?
-                        socklen_t(MemoryLayout<sockaddr_in>.size) :
-                        socklen_t(MemoryLayout<sockaddr_in6>.size)
+                        let saLen = addrFamily == UInt8(AF_INET) ?
+                            socklen_t(MemoryLayout<sockaddr_in>.size) :
+                            socklen_t(MemoryLayout<sockaddr_in6>.size)
                     #endif
 
                     // Get address info
                     if getnameinfo(interface.ifa_addr,
-                                 saLen,
-                                 &hostname, socklen_t(hostname.count),
-                                 nil, 0,
-                                 NI_NUMERICHOST) == 0 {
+                                   saLen,
+                                   &hostname, socklen_t(hostname.count),
+                                   nil, 0,
+                                   NI_NUMERICHOST) == 0 {
 
-						if let address = String(cString: hostname, encoding: .utf8) {
+                        if let address = String(cString: hostname, encoding: .utf8) {
                             foundAddress = address
                             break
                         }

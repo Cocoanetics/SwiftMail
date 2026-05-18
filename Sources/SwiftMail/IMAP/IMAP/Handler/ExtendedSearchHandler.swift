@@ -34,14 +34,14 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
         if case let .untagged(untagged) = response,
            case let .conditionalState(status) = untagged {
             switch status {
-            case .bad(let responseText):
-                failWithError(IMAPError.commandFailed("Extended search failed: BAD \(responseText.text)"))
-                return true
-            case .no(let responseText):
-                failWithError(IMAPError.commandFailed("Extended search failed: NO \(responseText.text)"))
-                return true
-            default:
-                break
+                case .bad(let responseText):
+                    failWithError(IMAPError.commandFailed("Extended search failed: BAD \(responseText.text)"))
+                    return true
+                case .no(let responseText):
+                    failWithError(IMAPError.commandFailed("Extended search failed: NO \(responseText.text)"))
+                    return true
+                default:
+                    break
             }
         }
 
@@ -53,21 +53,21 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
 
             for datum in esearchResponse.returnData {
                 switch datum {
-                case .min(let nioId):
-                    esearchMin = T(UInt32(nioId))
-                case .max(let nioId):
-                    esearchMax = T(UInt32(nioId))
-                case .all(let lastCommandSet):
-                    if case .set(let nioSet) = lastCommandSet {
-                        esearchAll = convertNIOSet(nioSet.set)
-                    }
-                case .count(let c):
-                    esearchCount = c
-                case .partial(let range, let nioSet):
-                    let ids = convertNIOSet(nioSet)
-                    esearchPartial = ExtendedSearchResult<T>.PartialResult(range: range, results: ids)
-                default:
-                    break
+                    case .min(let nioId):
+                        esearchMin = T(UInt32(nioId))
+                    case .max(let nioId):
+                        esearchMax = T(UInt32(nioId))
+                    case .all(let lastCommandSet):
+                        if case .set(let nioSet) = lastCommandSet {
+                            esearchAll = convertNIOSet(nioSet.set)
+                        }
+                    case .count(let c):
+                        esearchCount = c
+                    case .partial(let range, let nioSet):
+                        let ids = convertNIOSet(nioSet)
+                        esearchPartial = ExtendedSearchResult<T>.PartialResult(range: range, results: ids)
+                    default:
+                        break
                 }
             }
         }
@@ -126,12 +126,12 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
 
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         switch response.state {
-        case .bad(let responseText):
-            failWithError(IMAPError.commandFailed("Extended search failed: BAD \(responseText.text)"))
-        case .no(let responseText):
-            failWithError(IMAPError.commandFailed("Extended search failed: NO \(responseText.text)"))
-        default:
-            failWithError(IMAPError.commandFailed("Extended search failed: \(String(describing: response.state))"))
+            case .bad(let responseText):
+                failWithError(IMAPError.commandFailed("Extended search failed: BAD \(responseText.text)"))
+            case .no(let responseText):
+                failWithError(IMAPError.commandFailed("Extended search failed: NO \(responseText.text)"))
+            default:
+                failWithError(IMAPError.commandFailed("Extended search failed: \(String(describing: response.state))"))
         }
     }
 

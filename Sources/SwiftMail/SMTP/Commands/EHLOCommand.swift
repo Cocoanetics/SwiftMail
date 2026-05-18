@@ -19,7 +19,7 @@ struct EHLOCommand: SMTPCommand {
 
     /// Initialize a new EHLO command
     /// - Parameter hostname: The hostname to use for the EHLO command
-   init(hostname: String) {
+    init(hostname: String) {
         self.hostname = hostname
     }
 

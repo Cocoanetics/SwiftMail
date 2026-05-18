@@ -124,21 +124,21 @@ final class IMAPConnection {
         transportSecurity: MailTransportSecurity
     ) throws -> TLSTransportMode {
         switch transportSecurity {
-        case .automatic:
-            switch port {
-            case 993:
+            case .automatic:
+                switch port {
+                    case 993:
+                        return .implicitTLS
+                    case 143:
+                        return .startTLSIfAvailable
+                    default:
+                        throw IMAPError.invalidArgument("Port \(port) requires explicit transportSecurity because TLS mode cannot be inferred")
+                }
+            case .implicitTLS:
                 return .implicitTLS
-            case 143:
-                return .startTLSIfAvailable
-            default:
-                throw IMAPError.invalidArgument("Port \(port) requires explicit transportSecurity because TLS mode cannot be inferred")
-            }
-        case .implicitTLS:
-            return .implicitTLS
-        case .startTLS:
-            return .startTLSRequired
-        case .plainText:
-            return .plainText
+            case .startTLS:
+                return .startTLSRequired
+            case .plainText:
+                return .plainText
         }
     }
 
@@ -147,10 +147,10 @@ final class IMAPConnection {
         capabilities: [Capability]
     ) -> Bool {
         switch tlsTransportMode {
-        case .startTLSIfAvailable, .startTLSRequired:
-            return capabilities.contains(.startTLS)
-        case .implicitTLS, .plainText:
-            return false
+            case .startTLSIfAvailable, .startTLSRequired:
+                return capabilities.contains(.startTLS)
+            case .implicitTLS, .plainText:
+                return false
         }
     }
 
@@ -510,56 +510,56 @@ final class IMAPConnection {
 
         for response in raw {
             switch response {
-            case .untagged(let payload):
-                switch payload {
-                case .mailboxData(let data):
-                    switch data {
-                    case .exists(let count):
-                        events.append(.exists(Int(count)))
-                    case .recent(let count):
-                        events.append(.recent(Int(count)))
-                    case .flags(let flags):
-                        events.append(.flags(flags.map { Flag(nio: $0) }))
-                    default:
-                        logger.debug("Buffered unhandled mailboxData: \(data)")
+                case .untagged(let payload):
+                    switch payload {
+                        case .mailboxData(let data):
+                            switch data {
+                                case .exists(let count):
+                                    events.append(.exists(Int(count)))
+                                case .recent(let count):
+                                    events.append(.recent(Int(count)))
+                                case .flags(let flags):
+                                    events.append(.flags(flags.map { Flag(nio: $0) }))
+                                default:
+                                    logger.debug("Buffered unhandled mailboxData: \(data)")
+                            }
+                        case .messageData(let data):
+                            switch data {
+                                case .expunge(let seq):
+                                    events.append(.expunge(SequenceNumber(seq.rawValue)))
+                                default:
+                                    logger.debug("Buffered unhandled messageData: \(data)")
+                            }
+                        case .conditionalState(let status):
+                            switch status {
+                                case .ok(let text):
+                                    if text.code == .alert {
+                                        events.append(.alert(text.text))
+                                    }
+                                case .bye(let text):
+                                    events.append(.bye(text.text))
+                                default:
+                                    break
+                            }
+                        case .capabilityData(let caps):
+                            events.append(.capability(caps.map { String($0) }))
+                        default:
+                            logger.debug("Buffered unhandled payload: \(payload)")
                     }
-                case .messageData(let data):
-                    switch data {
-                    case .expunge(let seq):
-                        events.append(.expunge(SequenceNumber(seq.rawValue)))
-                    default:
-                        logger.debug("Buffered unhandled messageData: \(data)")
+                case .fetch(let fetch):
+                    // Collect fetch attributes from buffered fetch sequence
+                    switch fetch {
+                        case .start, .startUID, .simpleAttribute, .finish:
+                            // Individual fetch parts can't be meaningfully reconstructed here
+                            // since we may not have the complete sequence. Log it.
+                            logger.debug("Buffered fetch response part: \(fetch)")
+                        default:
+                            logger.debug("Buffered unhandled fetch: \(fetch)")
                     }
-                case .conditionalState(let status):
-                    switch status {
-                    case .ok(let text):
-                        if text.code == .alert {
-                            events.append(.alert(text.text))
-                        }
-                    case .bye(let text):
-                        events.append(.bye(text.text))
-                    default:
-                        break
-                    }
-                case .capabilityData(let caps):
-                    events.append(.capability(caps.map { String($0) }))
+                case .fatal(let text):
+                    events.append(.bye(text.text))
                 default:
-                    logger.debug("Buffered unhandled payload: \(payload)")
-                }
-            case .fetch(let fetch):
-                // Collect fetch attributes from buffered fetch sequence
-                switch fetch {
-                case .start, .startUID, .simpleAttribute, .finish:
-                    // Individual fetch parts can't be meaningfully reconstructed here
-                    // since we may not have the complete sequence. Log it.
-                    logger.debug("Buffered fetch response part: \(fetch)")
-                default:
-                    logger.debug("Buffered unhandled fetch: \(fetch)")
-                }
-            case .fatal(let text):
-                events.append(.bye(text.text))
-            default:
-                break
+                    break
             }
         }
 
@@ -1033,10 +1033,10 @@ final class IMAPConnection {
 
         if let imapError = error as? IMAPError {
             switch imapError {
-            case .connectionFailed, .timeout:
-                return true
-            default:
-                break
+                case .connectionFailed, .timeout:
+                    return true
+                default:
+                    break
             }
         }
 

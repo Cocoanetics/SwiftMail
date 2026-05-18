@@ -7,27 +7,27 @@ import Logging
 import SwiftDotenv
 #if canImport(OSLog)
 
-import OSLog
+    import OSLog
 
-// Set default log level to info - will only show important logs
-// Per the cursor rules: Use OS_LOG_DISABLE=1 to see log output as needed
-LoggingSystem.bootstrap { label in
-    // Create an OSLog-based logger
-    let category = label.split(separator: ".").last?.description ?? "default"
-    let osLogger = OSLog(subsystem: "com.cocoanetics.SwiftSMTPCLI", category: category)
+    // Set default log level to info - will only show important logs
+    // Per the cursor rules: Use OS_LOG_DISABLE=1 to see log output as needed
+    LoggingSystem.bootstrap { label in
+        // Create an OSLog-based logger
+        let category = label.split(separator: ".").last?.description ?? "default"
+        let osLogger = OSLog(subsystem: "com.cocoanetics.SwiftSMTPCLI", category: category)
 
-    // Set log level to info by default (or trace if SWIFT_LOG_LEVEL is set to trace)
-    var handler = OSLogHandler(label: label, log: osLogger)
+        // Set log level to info by default (or trace if SWIFT_LOG_LEVEL is set to trace)
+        var handler = OSLogHandler(label: label, log: osLogger)
 
-	// Check if we need verbose logging
-    if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
-        handler.logLevel = .trace
-    } else {
-        handler.logLevel = .info
+        // Check if we need verbose logging
+        if ProcessInfo.processInfo.environment["ENABLE_DEBUG_OUTPUT"] == "1" {
+            handler.logLevel = .trace
+        } else {
+            handler.logLevel = .info
+        }
+
+        return handler
     }
-
-    return handler
-}
 
 #endif
 
@@ -77,7 +77,7 @@ do {
             // Login with credentials
             print("Authenticating...")
 
-			try await server.login(username: username, password: password)
+            try await server.login(username: username, password: password)
 
             // Create sender and recipients
             let sender = EmailAddress(name: "Test Sender", address: username)

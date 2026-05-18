@@ -11,8 +11,8 @@ import NIOIMAPCore
 
 /// A channel handler that logs both outgoing and incoming IMAP messages
 final class IMAPLogger: MailLogger, @unchecked Sendable {
-	typealias InboundIn = Response
-	typealias InboundOut = Response
+    typealias InboundIn = Response
+    typealias InboundOut = Response
 
     // Regular expressions for redacting sensitive information
     private let loginRegex = try! NSRegularExpression(pattern: "^[A-Za-z0-9]+ LOGIN", options: [])
@@ -30,7 +30,7 @@ final class IMAPLogger: MailLogger, @unchecked Sendable {
     }
 
     /// Process outgoing IMAP commands
-	override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+    override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let command = unwrapOutboundIn(data)
 
         // Get string representation of the command
@@ -54,7 +54,7 @@ final class IMAPLogger: MailLogger, @unchecked Sendable {
     }
 
     /// Process incoming IMAP responses
-	override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+    override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
 
         // Get log message, abbreviating FETCH responses if needed

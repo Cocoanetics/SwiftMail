@@ -7,8 +7,8 @@ import NIOSSL
  A channel handler for processing SMTP responses and forwarding them to the appropriate command handler
  */
 final class SMTPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
-	typealias InboundIn = String
-	typealias InboundOut = SMTPResponse
+    typealias InboundIn = String
+    typealias InboundOut = SMTPResponse
 
     /// Current accumulated response lines
     private var currentResponse = ""
@@ -22,7 +22,7 @@ final class SMTPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
         - context: The channel handler context
         - data: The incoming data (response line)
      */
-	func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let line = unwrapInboundIn(data)
         processLine(line, context: context)
     }
@@ -33,7 +33,7 @@ final class SMTPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
         - context: The channel handler context
         - error: The error that occurred
      */
-	func errorCaught(context: ChannelHandlerContext, error: Error) {
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
         // Fire the error to the next handler in the pipeline
         context.fireErrorCaught(error)
     }
@@ -56,7 +56,7 @@ final class SMTPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
         // SMTP responses end with a space after the code (for the last line of a multi-line response)
         // or if it's a single-line response with a 3-digit code
         let isEndOfResponse = (line.count >= 4 && line[line.index(line.startIndex, offsetBy: 3)] == " ") ||
-                              (currentCode > 0 && line.count == 3)
+            (currentCode > 0 && line.count == 3)
 
         // If we have a response code and it's the end of the response
         if isEndOfResponse && currentCode > 0 {
@@ -92,8 +92,8 @@ final class SMTPResponseHandler: ChannelInboundHandler, @unchecked Sendable {
  A frame decoder for SMTP responses that extracts individual response lines
  */
 final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
-	typealias InboundIn = ByteBuffer
-	typealias InboundOut = String
+    typealias InboundIn = ByteBuffer
+    typealias InboundOut = String
 
     /// Maximum line length (to prevent memory issues)
     private let maxLength: Int
@@ -107,7 +107,7 @@ final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
         - maxLength: Maximum allowed line length
         - stripDelimiter: Whether to strip the delimiter from the output
      */
-	init(maxLength: Int = 8192, stripDelimiter: Bool = true) {
+    init(maxLength: Int = 8192, stripDelimiter: Bool = true) {
         self.maxLength = maxLength
         self.stripDelimiter = stripDelimiter
     }
@@ -119,7 +119,7 @@ final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
         - buffer: The incoming data buffer
      - Returns: Decoding result
      */
-	func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
+    func decode(context: ChannelHandlerContext, buffer: inout ByteBuffer) throws -> DecodingState {
         // Check if we can find a line delimiter
         guard let delimiterIndex = buffer.readableBytesView.firstIndex(where: { $0 == 0x0A /* \n */ }) else {
             return .needMoreData
@@ -147,7 +147,7 @@ final class SMTPLineBasedFrameDecoder: ByteToMessageDecoder {
         return .continue
     }
 
-	func decodeLast(context: ChannelHandlerContext, buffer: inout ByteBuffer, seenEOF: Bool) throws -> DecodingState {
+    func decodeLast(context: ChannelHandlerContext, buffer: inout ByteBuffer, seenEOF: Bool) throws -> DecodingState {
         // Just use the normal decode for the last bytes
         return try decode(context: context, buffer: &buffer)
     }

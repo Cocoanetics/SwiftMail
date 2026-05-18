@@ -6,10 +6,10 @@ import NIOCore
  */
 struct MailFromCommand: SMTPCommand {
     /// The result type is a simple success Boolean
-	typealias ResultType = Bool
+    typealias ResultType = Bool
 
     /// The handler type that will process responses for this command
-	typealias HandlerType = MailFromHandler
+    typealias HandlerType = MailFromHandler
 
     /// The email address of the sender
     private let senderAddress: String
@@ -21,7 +21,7 @@ struct MailFromCommand: SMTPCommand {
     private let messageSizeOctets: Int?
 
     /// Default timeout in seconds
-	let timeoutSeconds: Int = 30
+    let timeoutSeconds: Int = 30
 
     /**
      Initialize a new MAIL FROM command
@@ -30,7 +30,7 @@ struct MailFromCommand: SMTPCommand {
        - use8BitMIME: Whether to use 8BITMIME extension if available
        - messageSizeOctets: Optional SIZE extension value in octets
      */
-	init(
+    init(
         senderAddress: String,
         use8BitMIME: Bool = false,
         messageSizeOctets: Int? = nil
@@ -48,7 +48,7 @@ struct MailFromCommand: SMTPCommand {
     /**
      Convert the command to a string that can be sent to the server
      */
-	func toCommandString() -> String {
+    func toCommandString() -> String {
         var command = "MAIL FROM:<\(senderAddress)>"
         if use8BitMIME {
             command += " BODY=8BITMIME"
@@ -62,7 +62,7 @@ struct MailFromCommand: SMTPCommand {
     /**
      Validate that the sender address is valid
      */
-	func validate() throws {
+    func validate() throws {
         guard !senderAddress.isEmpty else {
             throw SMTPError.sendFailed("Sender address cannot be empty")
         }

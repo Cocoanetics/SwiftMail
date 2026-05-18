@@ -7,8 +7,8 @@ import NIOIMAP
 
 /// Command for retrieving server capabilities
 struct CapabilityCommand: IMAPTaggedCommand {
-	typealias ResultType = [Capability]
-	typealias HandlerType = CapabilityHandler
+    typealias ResultType = [Capability]
+    typealias HandlerType = CapabilityHandler
 
     /// Convert to an IMAP tagged command
     /// - Parameter tag: The command tag

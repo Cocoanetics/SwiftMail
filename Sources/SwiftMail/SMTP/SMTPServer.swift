@@ -10,9 +10,9 @@ import Logging
 import NIOConcurrencyHelpers
 
 #if canImport(Glibc)
-import Glibc
+    import Glibc
 #elseif canImport(Musl)
-import Musl
+    import Musl
 #endif
 
 /**
@@ -163,10 +163,10 @@ public actor SMTPServer {
         self.certificateVerificationPolicy = certificateVerificationPolicy
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
-		let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
-		let inboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_IN")
+        let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
+        let inboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_IN")
 
-		self.duplexLogger = SMTPLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
+        self.duplexLogger = SMTPLogger(outboundLogger: outboundLogger, inboundLogger: inboundLogger)
     }
 
     deinit {
@@ -222,10 +222,10 @@ public actor SMTPServer {
                         // Add SSL handler first, then SMTP handlers using syncOperations
                         try! channel.pipeline.syncOperations.addHandler(sslHandler)
                         try! channel.pipeline.syncOperations.addHandlers([
-							ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-							duplexLogger,
-							SMTPResponseHandler()
-						])
+                            ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
+                            duplexLogger,
+                            SMTPResponseHandler()
+                        ])
 
                         return channel.eventLoop.makeSucceededFuture(())
                     } catch {
@@ -234,10 +234,10 @@ public actor SMTPServer {
                 } else {
                     // Just add SMTP handlers without SSL using syncOperations
                     try! channel.pipeline.syncOperations.addHandlers([
-						ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
-						duplexLogger,
-						SMTPResponseHandler()
-					])
+                        ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
+                        duplexLogger,
+                        SMTPResponseHandler()
+                    ])
 
                     return channel.eventLoop.makeSucceededFuture(())
                 }
@@ -379,21 +379,21 @@ public actor SMTPServer {
         transportSecurity: MailTransportSecurity
     ) -> SMTPTransportMode {
         switch transportSecurity {
-        case .automatic:
-            switch port {
-            case 465:
+            case .automatic:
+                switch port {
+                    case 465:
+                        return .implicitTLS
+                    case 587:
+                        return .startTLSIfAvailable
+                    default:
+                        return .plainText
+                }
+            case .implicitTLS:
                 return .implicitTLS
-            case 587:
-                return .startTLSIfAvailable
-            default:
+            case .startTLS:
+                return .startTLSRequired
+            case .plainText:
                 return .plainText
-            }
-        case .implicitTLS:
-            return .implicitTLS
-        case .startTLS:
-            return .startTLSRequired
-        case .plainText:
-            return .plainText
         }
     }
 
@@ -402,10 +402,10 @@ public actor SMTPServer {
         capabilities: [String]
     ) -> Bool {
         switch transportMode {
-        case .startTLSIfAvailable, .startTLSRequired:
-            return capabilities.contains("STARTTLS")
-        case .implicitTLS, .plainText:
-            return false
+            case .startTLSIfAvailable, .startTLSRequired:
+                return capabilities.contains("STARTTLS")
+            case .implicitTLS, .plainText:
+                return false
         }
     }
 
@@ -464,14 +464,14 @@ public actor SMTPServer {
             return
         }
 
-		// Send QUIT as a courtesy — ignore failures since the email is already sent.
-		// The channel close below will clean up regardless.
-		do {
-			let quitCommand = QuitCommand()
-			try await executeCommand(quitCommand)
-		} catch {
-			logger.warning("QUIT command failed (non-fatal): \(error)")
-		}
+        // Send QUIT as a courtesy — ignore failures since the email is already sent.
+        // The channel close below will clean up regardless.
+        do {
+            let quitCommand = QuitCommand()
+            try await executeCommand(quitCommand)
+        } catch {
+            logger.warning("QUIT command failed (non-fatal): \(error)")
+        }
 
         // Close the channel regardless of QUIT command result
         try? await channel.close().get()
@@ -627,93 +627,93 @@ public actor SMTPServer {
 
     // MARK: - Helper Methods
 
-	/**
-	 Execute a command and return the result
+    /**
+     Execute a command and return the result
 	 
-	 This method handles the execution of SMTP commands by:
-	 1. Validating the command
-	 2. Setting up appropriate handlers
-	 3. Managing command timeouts
-	 4. Handling command-specific requirements (e.g., LOGIN auth)
+     This method handles the execution of SMTP commands by:
+     1. Validating the command
+     2. Setting up appropriate handlers
+     3. Managing command timeouts
+     4. Handling command-specific requirements (e.g., LOGIN auth)
 	 
-	 - Parameter command: The command to execute
-	 - Returns: The result of the command execution
-	 - Throws:
-	   - `SMTPError.connectionFailed` if not connected
-	   - `SMTPError.commandFailed` if the command execution fails
-	   - `SMTPError.timeout` if the command times out
-	 - Note: Logs command execution at debug level
-	 */
-	@discardableResult private func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
-		// Ensure we have a valid channel
-		guard let channel = channel else {
-			throw SMTPError.connectionFailed("Not connected to SMTP server")
-		}
+     - Parameter command: The command to execute
+     - Returns: The result of the command execution
+     - Throws:
+       - `SMTPError.connectionFailed` if not connected
+       - `SMTPError.commandFailed` if the command execution fails
+       - `SMTPError.timeout` if the command times out
+     - Note: Logs command execution at debug level
+     */
+    @discardableResult private func executeCommand<CommandType: SMTPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+        // Ensure we have a valid channel
+        guard let channel = channel else {
+            throw SMTPError.connectionFailed("Not connected to SMTP server")
+        }
 
-		// Validate the command
-		try command.validate()
+        // Validate the command
+        try command.validate()
 
-		// Create a promise for the result
-		let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
+        // Create a promise for the result
+        let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
 
-		// Generate a command tag for traceability
-		let commandTag = UUID().uuidString
+        // Generate a command tag for traceability
+        let commandTag = UUID().uuidString
 
-		// Get the command as raw bytes
-		let commandData = command.toCommandData()
+        // Get the command as raw bytes
+        let commandData = command.toCommandData()
 
-		// Create the handler using standard initialization
-		let handler: any SMTPCommandHandler
+        // Create the handler using standard initialization
+        let handler: any SMTPCommandHandler
 
-		// Special case for LoginAuthHandler which needs the command parameters
-		if let loginCommand = command as? LoginAuthCommand {
-			handler = LoginAuthHandler(commandTag: commandTag, promise: resultPromise as! EventLoopPromise<AuthResult>, command: loginCommand)
-		} else {
-			handler = CommandType.HandlerType(commandTag: commandTag, promise: resultPromise)
-		}
+        // Special case for LoginAuthHandler which needs the command parameters
+        if let loginCommand = command as? LoginAuthCommand {
+            handler = LoginAuthHandler(commandTag: commandTag, promise: resultPromise as! EventLoopPromise<AuthResult>, command: loginCommand)
+        } else {
+            handler = CommandType.HandlerType(commandTag: commandTag, promise: resultPromise)
+        }
 
-		// Create a timeout for the command
-		let timeoutSeconds = command.timeoutSeconds
+        // Create a timeout for the command
+        let timeoutSeconds = command.timeoutSeconds
 
-		let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
-			resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
-		}
+        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+            resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
+        }
 
-		do {
-			// Add the command handler to the pipeline
-			try await channel.pipeline.addHandler(handler).get()
+        do {
+            // Add the command handler to the pipeline
+            try await channel.pipeline.addHandler(handler).get()
 
-			// Send the command to the server as raw bytes + CRLF
-			var buffer = channel.allocator.buffer(capacity: commandData.count + 2)
-			buffer.writeBytes(commandData)
-			buffer.writeBytes([0x0D, 0x0A]) // CRLF
-			try await channel.writeAndFlush(buffer).get()
+            // Send the command to the server as raw bytes + CRLF
+            var buffer = channel.allocator.buffer(capacity: commandData.count + 2)
+            buffer.writeBytes(commandData)
+            buffer.writeBytes([0x0D, 0x0A]) // CRLF
+            try await channel.writeAndFlush(buffer).get()
 
-			// Wait for the result
-			let result = try await resultPromise.futureResult.get()
+            // Wait for the result
+            let result = try await resultPromise.futureResult.get()
 
-			// Cancel the timeout
-			scheduledTask.cancel()
+            // Cancel the timeout
+            scheduledTask.cancel()
 
-			// Flush the DuplexLogger's buffer after command execution
-			duplexLogger.flushInboundBuffer()
+            // Flush the DuplexLogger's buffer after command execution
+            duplexLogger.flushInboundBuffer()
 
-			return result
-		} catch {
-			// Cancel the timeout
-			scheduledTask.cancel()
+            return result
+        } catch {
+            // Cancel the timeout
+            scheduledTask.cancel()
 
-			// Ensure the promise is resolved to prevent NIO "leaking promise" fatal error
-			resultPromise.fail(error)
+            // Ensure the promise is resolved to prevent NIO "leaking promise" fatal error
+            resultPromise.fail(error)
 
-			// If it's a timeout error, throw a more specific error
-			if error is SMTPError {
-				throw error
-			} else {
-				throw SMTPError.connectionFailed("Command failed: \(error.localizedDescription)")
-			}
-		}
-	}
+            // If it's a timeout error, throw a more specific error
+            if error is SMTPError {
+                throw error
+            } else {
+                throw SMTPError.connectionFailed("Command failed: \(error.localizedDescription)")
+            }
+        }
+    }
 
     /**
      Execute a handler without sending a command
@@ -731,7 +731,7 @@ public actor SMTPServer {
        - `SMTPError.timeout` if the operation times out
      - Note: Logs handler execution at debug level
      */
-	private func executeHandlerOnly<T: Sendable, HandlerType: SMTPCommandHandler>(
+    private func executeHandlerOnly<T: Sendable, HandlerType: SMTPCommandHandler>(
         handlerType: HandlerType.Type,
         timeoutSeconds: Int = 5
     ) async throws -> T where HandlerType.ResultType == T {
@@ -748,16 +748,16 @@ public actor SMTPServer {
         do {
             // Wait for the handler to complete with a timeout
             return try await withTimeout(seconds: Double(timeoutSeconds), operation: {
-				// Add the handler to the pipeline
-				try await channel.pipeline.addHandler(handler).get()
+                // Add the handler to the pipeline
+                try await channel.pipeline.addHandler(handler).get()
 
-				// Wait for the result
-				let result = try await promise.futureResult.get()
+                // Wait for the result
+                let result = try await promise.futureResult.get()
 
-				// Flush the DuplexLogger's buffer even if there was an error
-				self.duplexLogger.flushInboundBuffer()
+                // Flush the DuplexLogger's buffer even if there was an error
+                self.duplexLogger.flushInboundBuffer()
 
-				return result
+                return result
             }, onTimeout: {
                 // Fulfill the promise with an error to prevent leaks
                 promise.fail(SMTPError.connectionFailed("Response timeout"))
@@ -877,10 +877,10 @@ public actor SMTPServer {
                     // Extract and add each individual auth method
                     let authMethods = capabilityPart.dropFirst(5).split(separator: " ")
 
-					for method in authMethods {
+                    for method in authMethods {
                         let authMethod = "AUTH \(method)"
                         parsedCapabilities.append(authMethod)
-					}
+                    }
                 } else {
                     // For other capabilities, add them as-is
                     parsedCapabilities.append(capabilityPart)
@@ -963,7 +963,7 @@ public actor SMTPServer {
      - Returns: The result of the operation
      - Throws: An error if the operation fails or times out
      */
-	private func withTimeout<T: Sendable>(seconds: TimeInterval, operation: @escaping @Sendable () async throws -> T, onTimeout: @escaping @Sendable () throws -> Void) async throws -> T {
+    private func withTimeout<T: Sendable>(seconds: TimeInterval, operation: @escaping @Sendable () async throws -> T, onTimeout: @escaping @Sendable () throws -> Void) async throws -> T {
         return try await withThrowingTaskGroup(of: T.self) { group in
             // Add the main operation
             group.addTask {

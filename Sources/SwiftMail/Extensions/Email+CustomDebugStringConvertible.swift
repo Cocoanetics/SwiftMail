@@ -9,7 +9,7 @@ extension Email: CustomDebugStringConvertible {
     public var debugDescription: String {
         var description = "Email {\n"
         description += "  From: \(sender)\n"
-		description += "  To: \(recipients.map { $0.description }.joined(separator: ", "))\n"
+        description += "  To: \(recipients.map { $0.description }.joined(separator: ", "))\n"
         description += "  Subject: \(subject)\n"
         description += "  Text Body: \(textBody.prefix(100))\(textBody.count > 100 ? "..." : "")\n"
 

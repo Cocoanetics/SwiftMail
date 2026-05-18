@@ -6,16 +6,16 @@ import NIOCore
  */
 struct SendContentCommand: SMTPCommand {
     /// The result type is Void since we rely on error throwing for failure cases
-	typealias ResultType = Void
+    typealias ResultType = Void
 
     /// The handler type that will process responses for this command
-	typealias HandlerType = SendContentHandler
+    typealias HandlerType = SendContentHandler
 
     /// The fully constructed MIME message content to send (as raw bytes)
     private let contentData: Data
 
-	/// Default timeout in seconds
-	let timeoutSeconds: Int = 10
+    /// Default timeout in seconds
+    let timeoutSeconds: Int = 10
 
     /**
      Initialize a new SendContent command with raw data
@@ -42,7 +42,7 @@ struct SendContentCommand: SMTPCommand {
      Convert the command to a string that can be sent to the server
      - Note: Prefer `toCommandData()` for raw byte handling.
      */
-	func toCommandString() -> String {
+    func toCommandString() -> String {
         let stuffed = Self.dotStuff(contentData)
         let contentString = String(decoding: stuffed, as: UTF8.self)
         return contentString + "\r\n."

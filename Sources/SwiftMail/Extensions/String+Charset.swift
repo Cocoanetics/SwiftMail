@@ -1,6 +1,6 @@
 import Foundation
 #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
-import CoreFoundation
+    import CoreFoundation
 #endif
 
 /// Resolve a charset label (e.g. "utf-8", "ISO-8859-1", "windows-1252", "cp932")
@@ -117,20 +117,20 @@ public func stringEncoding(for rawCharset: String) -> String.Encoding? {
 
     // 4) Hard "no text" cases
     switch label {
-    case "binary", "x-binary":
-        return nil
-    default:
-        break
+        case "binary", "x-binary":
+            return nil
+        default:
+            break
     }
 
     // 5) Try CoreFoundation's IANA name -> CFStringEncoding -> NSStringEncoding
     // This covers the majority of charsets, including windows-125x, iso-2022-jp, euc-kr, gbk, gb18030, big5, koi8-r, etc.
     #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
-    let cfEnc = CFStringConvertIANACharSetNameToEncoding(label as CFString)
-    if cfEnc != kCFStringEncodingInvalidId {
-        let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
-        return String.Encoding(rawValue: nsEnc)
-    }
+        let cfEnc = CFStringConvertIANACharSetNameToEncoding(label as CFString)
+        if cfEnc != kCFStringEncodingInvalidId {
+            let nsEnc = CFStringConvertEncodingToNSStringEncoding(cfEnc)
+            return String.Encoding(rawValue: nsEnc)
+        }
     #endif
 
     // 6) Additional charset mappings that work on all platforms

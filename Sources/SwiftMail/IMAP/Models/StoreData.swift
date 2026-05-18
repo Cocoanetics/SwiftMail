@@ -15,12 +15,12 @@ public struct StoreData {
         /// Convert to NIO StoreType
         internal func toNIO() -> NIOIMAPCore.StoreOperation {
             switch self {
-            case .add:
-                return .add
-            case .remove:
-                return .remove
-            case .replace:
-                return .replace
+                case .add:
+                    return .add
+                case .remove:
+                    return .remove
+                case .replace:
+                    return .replace
             }
         }
     }
@@ -58,12 +58,12 @@ public struct StoreData {
         // Using the proper factory methods on StoreFlags
         let storeFlags: NIOIMAPCore.StoreFlags
         switch storeType {
-        case .add:
-            storeFlags = NIOIMAPCore.StoreFlags.add(silent: false, list: nioFlags)
-        case .remove:
-            storeFlags = NIOIMAPCore.StoreFlags.remove(silent: false, list: nioFlags)
-        case .replace:
-            storeFlags = NIOIMAPCore.StoreFlags.replace(silent: false, list: nioFlags)
+            case .add:
+                storeFlags = NIOIMAPCore.StoreFlags.add(silent: false, list: nioFlags)
+            case .remove:
+                storeFlags = NIOIMAPCore.StoreFlags.remove(silent: false, list: nioFlags)
+            case .replace:
+                storeFlags = NIOIMAPCore.StoreFlags.replace(silent: false, list: nioFlags)
         }
         return .flags(storeFlags)
     }

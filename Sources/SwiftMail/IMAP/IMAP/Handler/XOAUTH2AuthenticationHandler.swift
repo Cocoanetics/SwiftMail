@@ -119,10 +119,10 @@ final class XOAUTH2AuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, 
         }
 
         switch response {
-        case .untagged(.capabilityData(let capabilities)):
-            lock.withLock { collectedCapabilities = capabilities }
-        default:
-            break
+            case .untagged(.capabilityData(let capabilities)):
+                lock.withLock { collectedCapabilities = capabilities }
+            default:
+                break
         }
 
         return false

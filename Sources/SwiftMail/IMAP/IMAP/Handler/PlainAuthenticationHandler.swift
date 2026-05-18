@@ -38,7 +38,7 @@ final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IM
         if case .authenticationChallenge(let challenge) = response {
             let challengeIsEmpty = challenge.readableBytes == 0 ||
                 (challenge.getString(at: challenge.readerIndex, length: challenge.readableBytes) ?? "")
-                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
             let sendCredentials = lock.withLock { () -> Bool in
                 if shouldSendOnChallenge {
@@ -96,10 +96,10 @@ final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IM
         }
 
         switch response {
-        case .untagged(.capabilityData(let capabilities)):
-            lock.withLock { collectedCapabilities = capabilities }
-        default:
-            break
+            case .untagged(.capabilityData(let capabilities)):
+                lock.withLock { collectedCapabilities = capabilities }
+            default:
+                break
         }
 
         return false

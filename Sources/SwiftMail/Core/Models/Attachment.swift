@@ -59,28 +59,28 @@ public struct Attachment: Codable, Sendable {
             // Try to determine MIME type from file extension
             let pathExtension = fileURL.pathExtension.lowercased()
             switch pathExtension {
-            case "jpg", "jpeg":
-                self.mimeType = "image/jpeg"
-            case "png":
-                self.mimeType = "image/png"
-            case "gif":
-                self.mimeType = "image/gif"
-            case "svg":
-                self.mimeType = "image/svg+xml"
-            case "pdf":
-                self.mimeType = "application/pdf"
-            case "txt":
-                self.mimeType = "text/plain"
-            case "html", "htm":
-                self.mimeType = "text/html"
-            case "doc", "docx":
-                self.mimeType = "application/msword"
-            case "xls", "xlsx":
-                self.mimeType = "application/vnd.ms-excel"
-            case "zip":
-                self.mimeType = "application/zip"
-            default:
-                self.mimeType = "application/octet-stream"
+                case "jpg", "jpeg":
+                    self.mimeType = "image/jpeg"
+                case "png":
+                    self.mimeType = "image/png"
+                case "gif":
+                    self.mimeType = "image/gif"
+                case "svg":
+                    self.mimeType = "image/svg+xml"
+                case "pdf":
+                    self.mimeType = "application/pdf"
+                case "txt":
+                    self.mimeType = "text/plain"
+                case "html", "htm":
+                    self.mimeType = "text/html"
+                case "doc", "docx":
+                    self.mimeType = "application/msword"
+                case "xls", "xlsx":
+                    self.mimeType = "application/vnd.ms-excel"
+                case "zip":
+                    self.mimeType = "application/zip"
+                default:
+                    self.mimeType = "application/octet-stream"
             }
         }
 

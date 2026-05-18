@@ -13,15 +13,15 @@ final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommand
     /// Collected capabilities
     private var capabilities: [Capability] = []
 
-    	/// Handle a tagged OK response by succeeding the promise with the capabilities
-	/// - Parameter response: The tagged response
-	override func handleTaggedOKResponse(_ response: TaggedResponse) {
-		// Call super to handle CLIENTBUG warnings
-		super.handleTaggedOKResponse(response)
+    /// Handle a tagged OK response by succeeding the promise with the capabilities
+    /// - Parameter response: The tagged response
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Call super to handle CLIENTBUG warnings
+        super.handleTaggedOKResponse(response)
 
-		let caps = lock.withLock { self.capabilities }
-		succeedWithResult(caps)
-	}
+        let caps = lock.withLock { self.capabilities }
+        succeedWithResult(caps)
+    }
 
     /// Handle a tagged error response
     /// - Parameter response: The tagged response

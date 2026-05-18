@@ -22,35 +22,35 @@ public enum Flag: Sendable {
     internal init(nio: NIOIMAPCore.Flag) {
         let s = String(nio)
         switch s.uppercased() {
-        case "\\SEEN":      self = .seen
-        case "\\ANSWERED":  self = .answered
-        case "\\FLAGGED":   self = .flagged
-        case "\\DELETED":   self = .deleted
-        case "\\DRAFT":     self = .draft
-        default:            self = .custom(s)
+            case "\\SEEN":      self = .seen
+            case "\\ANSWERED":  self = .answered
+            case "\\FLAGGED":   self = .flagged
+            case "\\DELETED":   self = .deleted
+            case "\\DRAFT":     self = .draft
+            default:            self = .custom(s)
         }
     }
 
     /// Convert to NIO Flag
     internal func toNIO() -> NIOIMAPCore.Flag {
         switch self {
-        case .seen:
-            return .seen
-        case .answered:
-            return .answered
-        case .flagged:
-            return .flagged
-        case .deleted:
-            return .deleted
-        case .draft:
-            return .draft
-        case .custom(let name):
-            if let keyword = NIOIMAPCore.Flag.Keyword(name) {
-                return .keyword(keyword)
-            } else {
-                // Fallback to a safe default if the keyword is invalid
-                return .keyword(NIOIMAPCore.Flag.Keyword("CUSTOM")!)
-            }
+            case .seen:
+                return .seen
+            case .answered:
+                return .answered
+            case .flagged:
+                return .flagged
+            case .deleted:
+                return .deleted
+            case .draft:
+                return .draft
+            case .custom(let name):
+                if let keyword = NIOIMAPCore.Flag.Keyword(name) {
+                    return .keyword(keyword)
+                } else {
+                    // Fallback to a safe default if the keyword is invalid
+                    return .keyword(NIOIMAPCore.Flag.Keyword("CUSTOM")!)
+                }
         }
     }
 }
@@ -96,12 +96,12 @@ extension Flag: Codable {
         let value = try container.decode(String.self)
 
         switch value.lowercased() {
-        case "seen": self = .seen
-        case "answered": self = .answered
-        case "flagged": self = .flagged
-        case "deleted": self = .deleted
-        case "draft": self = .draft
-        default: self = .custom(value)
+            case "seen": self = .seen
+            case "answered": self = .answered
+            case "flagged": self = .flagged
+            case "deleted": self = .deleted
+            case "draft": self = .draft
+            default: self = .custom(value)
         }
     }
 }

@@ -23,16 +23,16 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
     /// Whether we've already finished collecting our requested part
     private var didFinishPart = false
 
-    	/// Handle a tagged OK response by succeeding the promise with the collected data
-	/// - Parameter response: The tagged response
-	override func handleTaggedOKResponse(_ response: TaggedResponse) {
-		// Call super to handle CLIENTBUG warnings
-		super.handleTaggedOKResponse(response)
+    /// Handle a tagged OK response by succeeding the promise with the collected data
+    /// - Parameter response: The tagged response
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Call super to handle CLIENTBUG warnings
+        super.handleTaggedOKResponse(response)
 
-		// Succeed with the collected data
-		let collectedPartData = lock.withLock { self.partData }
-		succeedWithResult(collectedPartData)
-	}
+        // Succeed with the collected data
+        let collectedPartData = lock.withLock { self.partData }
+        succeedWithResult(collectedPartData)
+    }
 
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
@@ -105,7 +105,7 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
             case .body(let bodyStructure, _):
                 if case .valid(let structure) = bodyStructure {
                     lock.withLock {
-						self.parts = .init(structure)
+                        self.parts = .init(structure)
                     }
                 }
 

@@ -10,10 +10,10 @@ public enum EMLSerializerError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .missingPartData(let section):
-            return "Missing data for message part \(section.description)"
-        case .encodingFailed:
-            return "Failed to encode the message as UTF-8"
+            case .missingPartData(let section):
+                return "Missing data for message part \(section.description)"
+            case .encodingFailed:
+                return "Failed to encode the message as UTF-8"
         }
     }
 }

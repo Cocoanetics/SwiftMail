@@ -56,7 +56,7 @@ struct StringHostnameTests {
 
         let range = NSRange(ip.startIndex..<ip.endIndex, in: ip)
         return ipv4Regex.firstMatch(in: ip, range: range) != nil ||
-               ipv6Regex.firstMatch(in: ip, range: range) != nil
+            ipv6Regex.firstMatch(in: ip, range: range) != nil
     }
 
     private func isValidHostname(_ hostname: String) -> Bool {

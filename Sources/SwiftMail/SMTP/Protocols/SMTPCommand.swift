@@ -24,8 +24,8 @@ protocol SMTPCommand where ResultType: Sendable {
     /// - Throws: An error if the command is invalid
     func validate() throws
 
-	/// Custom timeout for this operation
-	var timeoutSeconds: Int { get }
+    /// Custom timeout for this operation
+    var timeoutSeconds: Int { get }
 }
 
 /// Default implementation for common command behaviors

@@ -1,6 +1,6 @@
 import Foundation
 #if canImport(Glibc)
-import Glibc
+    import Glibc
 #endif
 
 enum IMAPTestError: Error {
@@ -46,9 +46,9 @@ final class IMAPTestServer {
 
     func start() throws {
         #if os(Linux)
-        listenFd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+            listenFd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
         #else
-        listenFd = socket(AF_INET, SOCK_STREAM, 0)
+            listenFd = socket(AF_INET, SOCK_STREAM, 0)
         #endif
         guard listenFd >= 0 else {
             throw IMAPTestError.setup("socket() failed: \(errno)")
@@ -59,7 +59,7 @@ final class IMAPTestServer {
 
         var addr = sockaddr_in()
         #if !os(Linux)
-        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+            addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         #endif
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = UInt16(port).bigEndian
@@ -209,36 +209,36 @@ final class IMAPTestServer {
 
     private func handleCommand(tag: String, command: String, args: String, authenticated: inout Bool, selectedMailbox: inout String?) -> String {
         switch command {
-        case "CAPABILITY":
-            return "* CAPABILITY IMAP4rev1 AUTH=PLAIN LITERAL+ ID NAMESPACE UIDPLUS IDLE\r\n\(tag) OK CAPABILITY completed\r\n"
-        case "LOGIN":
-            authenticated = true
-            return "\(tag) OK LOGIN completed\r\n"
-        case "SELECT":
-            guard authenticated else { return "\(tag) NO Not authenticated\r\n" }
-            let mailbox = args.trimmingCharacters(in: .init(charactersIn: "\" "))
-            selectedMailbox = mailbox
-            let count = messages.count
-            let uidnext = (messages.last?.uid ?? 0) + 1
-            return "* \(count) EXISTS\r\n* 0 RECENT\r\n* OK [UIDVALIDITY 1] UIDs valid\r\n* OK [UIDNEXT \(uidnext)] Predicted next UID\r\n* FLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft)\r\n* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)] Flags permitted\r\n\(tag) OK [READ-WRITE] SELECT completed\r\n"
-        case "UID":
-            guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
-            return handleUID(tag: tag, args: args)
-        case "FETCH":
-            guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
-            return handleFetch(tag: tag, args: args, uidMode: false)
-        case "NAMESPACE":
-            return "* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n\(tag) OK NAMESPACE completed\r\n"
-        case "LIST":
-            return "* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n\(tag) OK LIST completed\r\n"
-        case "ID":
-            return "* ID NIL\r\n\(tag) OK ID completed\r\n"
-        case "NOOP":
-            return "\(tag) OK NOOP completed\r\n"
-        case "LOGOUT":
-            return "* BYE IMAP server shutting down\r\n\(tag) OK LOGOUT completed\r\n"
-        default:
-            return "\(tag) BAD Unknown command \(command)\r\n"
+            case "CAPABILITY":
+                return "* CAPABILITY IMAP4rev1 AUTH=PLAIN LITERAL+ ID NAMESPACE UIDPLUS IDLE\r\n\(tag) OK CAPABILITY completed\r\n"
+            case "LOGIN":
+                authenticated = true
+                return "\(tag) OK LOGIN completed\r\n"
+            case "SELECT":
+                guard authenticated else { return "\(tag) NO Not authenticated\r\n" }
+                let mailbox = args.trimmingCharacters(in: .init(charactersIn: "\" "))
+                selectedMailbox = mailbox
+                let count = messages.count
+                let uidnext = (messages.last?.uid ?? 0) + 1
+                return "* \(count) EXISTS\r\n* 0 RECENT\r\n* OK [UIDVALIDITY 1] UIDs valid\r\n* OK [UIDNEXT \(uidnext)] Predicted next UID\r\n* FLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft)\r\n* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)] Flags permitted\r\n\(tag) OK [READ-WRITE] SELECT completed\r\n"
+            case "UID":
+                guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
+                return handleUID(tag: tag, args: args)
+            case "FETCH":
+                guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
+                return handleFetch(tag: tag, args: args, uidMode: false)
+            case "NAMESPACE":
+                return "* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n\(tag) OK NAMESPACE completed\r\n"
+            case "LIST":
+                return "* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n\(tag) OK LIST completed\r\n"
+            case "ID":
+                return "* ID NIL\r\n\(tag) OK ID completed\r\n"
+            case "NOOP":
+                return "\(tag) OK NOOP completed\r\n"
+            case "LOGOUT":
+                return "* BYE IMAP server shutting down\r\n\(tag) OK LOGOUT completed\r\n"
+            default:
+                return "\(tag) BAD Unknown command \(command)\r\n"
         }
     }
 
@@ -249,13 +249,13 @@ final class IMAPTestServer {
         }
         let subargs = parts.count > 1 ? parts[1] : ""
         switch subcmd {
-        case "FETCH":
-            return handleFetch(tag: tag, args: subargs, uidMode: true)
-        case "SEARCH":
-            let uids = messages.map { String($0.uid) }.joined(separator: " ")
-            return "* SEARCH \(uids)\r\n\(tag) OK UID SEARCH completed\r\n"
-        default:
-            return "\(tag) BAD Unknown UID subcommand\r\n"
+            case "FETCH":
+                return handleFetch(tag: tag, args: subargs, uidMode: true)
+            case "SEARCH":
+                let uids = messages.map { String($0.uid) }.joined(separator: " ")
+                return "* SEARCH \(uids)\r\n\(tag) OK UID SEARCH completed\r\n"
+            default:
+                return "\(tag) BAD Unknown UID subcommand\r\n"
         }
     }
 

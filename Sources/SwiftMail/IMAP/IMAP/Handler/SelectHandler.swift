@@ -25,15 +25,15 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPComman
         super.init(commandTag: commandTag, promise: promise)
     }
 
-    	/// Handle a tagged OK response by succeeding the promise with the mailbox info
-	/// - Parameter response: The tagged response
-	override func handleTaggedOKResponse(_ response: TaggedResponse) {
-		// Call super to handle CLIENTBUG warnings
-		super.handleTaggedOKResponse(response)
+    /// Handle a tagged OK response by succeeding the promise with the mailbox info
+    /// - Parameter response: The tagged response
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // Call super to handle CLIENTBUG warnings
+        super.handleTaggedOKResponse(response)
 
-		// Succeed with the mailbox info
-		succeedWithResult(mailboxInfo)
-	}
+        // Succeed with the mailbox info
+        succeedWithResult(mailboxInfo)
+    }
 
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
@@ -134,10 +134,10 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPComman
     /// Convert a NIOIMAPCore.PermanentFlag to our MessageFlag type
     private func convertFlag(_ flag: PermanentFlag) -> Flag {
         switch flag {
-        case .flag(let coreFlag):
-            return convertFlag(coreFlag)
-        case .wildcard:
-            return .custom("wildcard")
+            case .flag(let coreFlag):
+                return convertFlag(coreFlag)
+            case .wildcard:
+                return .custom("wildcard")
         }
     }
 

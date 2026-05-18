@@ -22,9 +22,9 @@ extension String {
             // If regex creation fails (which shouldn't happen with a valid pattern),
             // fall back to a very basic check
             return self.contains("@") &&
-                   self.split(separator: "@").count == 2 &&
-                   !self.hasPrefix("@") &&
-                   !self.hasSuffix("@")
+                self.split(separator: "@").count == 2 &&
+                !self.hasPrefix("@") &&
+                !self.hasSuffix("@")
         }
     }
 }

@@ -5,9 +5,9 @@ import NIOIMAPCore
 
 /** A type that represents IMAP search criteria for filtering messages in a mailbox.
 
-Use `SearchCriteria` to build search queries for finding messages that match specific conditions.
-You can combine multiple criteria using logical operators like `.or` and `.not`.
-*/
+ Use `SearchCriteria` to build search queries for finding messages that match specific conditions.
+ You can combine multiple criteria using logical operators like `.or` and `.not`.
+ */
 public indirect enum SearchCriteria: Sendable {
     /** Matches all messages in the mailbox. */
     case all
@@ -133,35 +133,35 @@ public indirect enum SearchCriteria: Sendable {
     /** Validates this search criteria, throwing if any values are out of range. */
     func validate() throws {
         switch self {
-        case .older(let seconds), .younger(let seconds):
-            guard seconds > 0 else {
-                throw IMAPError.invalidArgument("WITHIN interval must be a positive integer (got \(seconds))")
-            }
-        case .and(let criterias):
-            for c in criterias { try c.validate() }
-        case .not(let criteria):
-            try criteria.validate()
-        case .or(let c1, let c2):
-            try c1.validate()
-            try c2.validate()
-        default:
-            break
+            case .older(let seconds), .younger(let seconds):
+                guard seconds > 0 else {
+                    throw IMAPError.invalidArgument("WITHIN interval must be a positive integer (got \(seconds))")
+                }
+            case .and(let criterias):
+                for c in criterias { try c.validate() }
+            case .not(let criteria):
+                try criteria.validate()
+            case .or(let c1, let c2):
+                try c1.validate()
+                try c2.validate()
+            default:
+                break
         }
     }
 
     /// Whether this criteria (or any nested child) requires the WITHIN extension.
     var requiresWithin: Bool {
         switch self {
-        case .older, .younger:
-            return true
-        case .and(let criterias):
-            return criterias.contains { $0.requiresWithin }
-        case .not(let criteria):
-            return criteria.requiresWithin
-        case .or(let c1, let c2):
-            return c1.requiresWithin || c2.requiresWithin
-        default:
-            return false
+            case .older, .younger:
+                return true
+            case .and(let criterias):
+                return criterias.contains { $0.requiresWithin }
+            case .not(let criteria):
+                return criteria.requiresWithin
+            case .or(let c1, let c2):
+                return c1.requiresWithin || c2.requiresWithin
+            default:
+                return false
         }
     }
 
@@ -210,87 +210,87 @@ public indirect enum SearchCriteria: Sendable {
      */
     func toNIO(calendar: Calendar = Calendar(identifier: .gregorian)) -> NIOIMAP.SearchKey {
         switch self {
-        case .all:
-            return .all
-        case .and(let criterias):
-            return .and(criterias.map { $0.toNIO(calendar: calendar) })
-        case .answered:
-            return .answered
-        case .bcc(let value):
-            return .bcc(stringToBuffer(value))
-        case .before(let date):
-            return .before(dateToCalendarDay(date, calendar: calendar))
-        case .body(let value):
-            return .body(stringToBuffer(value))
-        case .cc(let value):
-            return .cc(stringToBuffer(value))
-        case .deleted:
-            return .deleted
-        case .draft:
-            return .draft
-        case .flagged:
-            return .flagged
-        case .from(let value):
-            return .from(stringToBuffer(value))
-        case .header(let field, let value):
-            return .header(field, stringToBuffer(value))
-        case .keyword(let value):
-            return .keyword(stringToKeyword(value))
-        case .larger(let size):
-            return .messageSizeLarger(size)
-        case .modSeq(let searchModificationSequence):
-            return .modificationSequence(searchModificationSequence)
-        case .new:
-            return .new
-        case .not(let criteria):
-            return .not(criteria.toNIO(calendar: calendar))
-        case .old:
-            return .old
-        case .on(let date):
-            return .on(dateToCalendarDay(date, calendar: calendar))
-        case .or(let criteria1, let criteria2):
-            return .or(criteria1.toNIO(calendar: calendar), criteria2.toNIO(calendar: calendar))
-        case .recent:
-            return .recent
-        case .seen:
-            return .seen
-        case .sentBefore(let date):
-            return .sentBefore(dateToCalendarDay(date, calendar: calendar))
-        case .sentOn(let date):
-            return .sentOn(dateToCalendarDay(date, calendar: calendar))
-        case .sentSince(let date):
-            return .sentSince(dateToCalendarDay(date, calendar: calendar))
-        case .since(let date):
-            return .since(dateToCalendarDay(date, calendar: calendar))
-        case .smaller(let size):
-            return .messageSizeSmaller(size)
-        case .subject(let value):
-            return .subject(stringToBuffer(value))
-        case .text(let value):
-            return .text(stringToBuffer(value))
-        case .to(let value):
-            return .to(stringToBuffer(value))
-        case .uid(let value):
-            let uid = NIOIMAPCore.UID(rawValue: UInt32(value))
-            let range = NIOIMAPCore.MessageIdentifierRange<NIOIMAPCore.UID>(uid)
-            let set = NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOIMAPCore.UID>(range: range)
-            return .uid(.set(set))
-        case .unanswered:
-            return .unanswered
-        case .undeleted:
-            return .undeleted
-        case .undraft:
-            return .undraft
-        case .unflagged:
-            return .unflagged
-        case .unkeyword(let value):
-            return .unkeyword(stringToKeyword(value))
-        case .unseen:
-            return .unseen
-        case .older(let seconds):
-            return .older(seconds)
-        case .younger(let seconds):
-            return .younger(seconds)
+            case .all:
+                return .all
+            case .and(let criterias):
+                return .and(criterias.map { $0.toNIO(calendar: calendar) })
+            case .answered:
+                return .answered
+            case .bcc(let value):
+                return .bcc(stringToBuffer(value))
+            case .before(let date):
+                return .before(dateToCalendarDay(date, calendar: calendar))
+            case .body(let value):
+                return .body(stringToBuffer(value))
+            case .cc(let value):
+                return .cc(stringToBuffer(value))
+            case .deleted:
+                return .deleted
+            case .draft:
+                return .draft
+            case .flagged:
+                return .flagged
+            case .from(let value):
+                return .from(stringToBuffer(value))
+            case .header(let field, let value):
+                return .header(field, stringToBuffer(value))
+            case .keyword(let value):
+                return .keyword(stringToKeyword(value))
+            case .larger(let size):
+                return .messageSizeLarger(size)
+            case .modSeq(let searchModificationSequence):
+                return .modificationSequence(searchModificationSequence)
+            case .new:
+                return .new
+            case .not(let criteria):
+                return .not(criteria.toNIO(calendar: calendar))
+            case .old:
+                return .old
+            case .on(let date):
+                return .on(dateToCalendarDay(date, calendar: calendar))
+            case .or(let criteria1, let criteria2):
+                return .or(criteria1.toNIO(calendar: calendar), criteria2.toNIO(calendar: calendar))
+            case .recent:
+                return .recent
+            case .seen:
+                return .seen
+            case .sentBefore(let date):
+                return .sentBefore(dateToCalendarDay(date, calendar: calendar))
+            case .sentOn(let date):
+                return .sentOn(dateToCalendarDay(date, calendar: calendar))
+            case .sentSince(let date):
+                return .sentSince(dateToCalendarDay(date, calendar: calendar))
+            case .since(let date):
+                return .since(dateToCalendarDay(date, calendar: calendar))
+            case .smaller(let size):
+                return .messageSizeSmaller(size)
+            case .subject(let value):
+                return .subject(stringToBuffer(value))
+            case .text(let value):
+                return .text(stringToBuffer(value))
+            case .to(let value):
+                return .to(stringToBuffer(value))
+            case .uid(let value):
+                let uid = NIOIMAPCore.UID(rawValue: UInt32(value))
+                let range = NIOIMAPCore.MessageIdentifierRange<NIOIMAPCore.UID>(uid)
+                let set = NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOIMAPCore.UID>(range: range)
+                return .uid(.set(set))
+            case .unanswered:
+                return .unanswered
+            case .undeleted:
+                return .undeleted
+            case .undraft:
+                return .undraft
+            case .unflagged:
+                return .unflagged
+            case .unkeyword(let value):
+                return .unkeyword(stringToKeyword(value))
+            case .unseen:
+                return .unseen
+            case .older(let seconds):
+                return .older(seconds)
+            case .younger(let seconds):
+                return .younger(seconds)
         }
     }
 }

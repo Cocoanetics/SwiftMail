@@ -57,35 +57,35 @@ public enum Mailbox {
 
                 for attribute in attributes {
                     switch attribute {
-                    case .noSelect:
-                        result.insert(.noSelect)
-                    case .hasChildren:
-                        result.insert(.hasChildren)
-                    case .hasNoChildren:
-                        result.insert(.hasNoChildren)
-                    case .marked:
-                        result.insert(.marked)
-                    case .unmarked:
-                        result.insert(.unmarked)
-                    default:
-                        // Check for special-use attributes in the raw value
-                        let rawString = String(describing: attribute)
-                        if rawString.contains("\\Archive") {
-                            result.insert(.archive)
-                        } else if rawString.contains("\\Drafts") {
-                            result.insert(.drafts)
-                        } else if rawString.contains("\\Flagged") {
-                            result.insert(.flagged)
-                        } else if rawString.contains("\\Junk") {
-                            result.insert(.junk)
-                        } else if rawString.contains("\\Sent") {
-                            result.insert(.sent)
-                        } else if rawString.contains("\\Trash") {
-                            result.insert(.trash)
-                        } else if rawString.contains("\\Inbox") {
-                            result.insert(.inbox)
-                        }
-                        // Ignore any other attributes for now
+                        case .noSelect:
+                            result.insert(.noSelect)
+                        case .hasChildren:
+                            result.insert(.hasChildren)
+                        case .hasNoChildren:
+                            result.insert(.hasNoChildren)
+                        case .marked:
+                            result.insert(.marked)
+                        case .unmarked:
+                            result.insert(.unmarked)
+                        default:
+                            // Check for special-use attributes in the raw value
+                            let rawString = String(describing: attribute)
+                            if rawString.contains("\\Archive") {
+                                result.insert(.archive)
+                            } else if rawString.contains("\\Drafts") {
+                                result.insert(.drafts)
+                            } else if rawString.contains("\\Flagged") {
+                                result.insert(.flagged)
+                            } else if rawString.contains("\\Junk") {
+                                result.insert(.junk)
+                            } else if rawString.contains("\\Sent") {
+                                result.insert(.sent)
+                            } else if rawString.contains("\\Trash") {
+                                result.insert(.trash)
+                            } else if rawString.contains("\\Inbox") {
+                                result.insert(.inbox)
+                            }
+                            // Ignore any other attributes for now
                     }
                 }
 
@@ -350,12 +350,12 @@ extension Array where Element == Mailbox.Info {
     public var specialFolders: [Element] {
         filter { mailbox in
             mailbox.attributes.contains(.inbox) ||
-            mailbox.attributes.contains(.sent) ||
-            mailbox.attributes.contains(.drafts) ||
-            mailbox.attributes.contains(.trash) ||
-            mailbox.attributes.contains(.junk) ||
-            mailbox.attributes.contains(.archive) ||
-            mailbox.attributes.contains(.flagged)
+                mailbox.attributes.contains(.sent) ||
+                mailbox.attributes.contains(.drafts) ||
+                mailbox.attributes.contains(.trash) ||
+                mailbox.attributes.contains(.junk) ||
+                mailbox.attributes.contains(.archive) ||
+                mailbox.attributes.contains(.flagged)
         }
     }
 }

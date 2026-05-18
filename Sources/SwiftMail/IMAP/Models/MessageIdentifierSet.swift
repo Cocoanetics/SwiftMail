@@ -283,7 +283,7 @@ extension MessageIdentifierSet {
     /// This method uses type constraints to determine the correct NIO type
     internal func toNIOSet<NIOType>() -> NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOType> {
 
-		precondition(!self.isEmpty, "Cannot convert an empty set to NIO")
+        precondition(!self.isEmpty, "Cannot convert an empty set to NIO")
 
         // Create an empty NIO set
         var nioSet = NIOIMAPCore.MessageIdentifierSet<NIOType>()
@@ -301,7 +301,7 @@ extension MessageIdentifierSet {
                 let nioRange = NIOIMAPCore.MessageIdentifierRange(startSeq...endSeq)
                 nioSet.formUnion(NIOIMAPCore.MessageIdentifierSet<NIOType>(nioRange as! NIOIMAPCore.MessageIdentifierRange<NIOType>))
             } else {
-				preconditionFailure("Unsupported type combination")
+                preconditionFailure("Unsupported type combination")
             }
         }
 
@@ -362,28 +362,28 @@ extension MessageIdentifierSet where Identifier == SequenceNumber {
 // MARK: - Example Usage
 
 /*
-// Create a set with a single UID
-var uidSet = UIDSet(UID(1))
+ // Create a set with a single UID
+ var uidSet = UIDSet(UID(1))
 
-// Create a set with a range of UIDs
-let rangeSet = UIDSet(UID(1)...UID(10))
+ // Create a set with a range of UIDs
+ let rangeSet = UIDSet(UID(1)...UID(10))
 
-// Create a set with multiple ranges
-let multiRangeSet = UIDSet(ranges: 1...3, 5...10)
+ // Create a set with multiple ranges
+ let multiRangeSet = UIDSet(ranges: 1...3, 5...10)
 
-// Create a set from a string
-if let setFromString = UIDSet(string: "1-3,5-10") {
-    // Use the set
-}
+ // Create a set from a string
+ if let setFromString = UIDSet(string: "1-3,5-10") {
+     // Use the set
+ }
 
-// Add a UID to the set
-uidSet.insert(UID(4))
+ // Add a UID to the set
+ uidSet.insert(UID(4))
 
-// Add a range of UIDs
-uidSet.insert(range: UID(5)...UID(10))
+ // Add a range of UIDs
+ uidSet.insert(range: UID(5)...UID(10))
 
-// Convert to NIO MessageIdentifierSetNonEmpty for use with the IMAP library
-if let nioSet = uidSet.toNIOSet() {
-    // Use with NIO IMAP library
-}
-*/ 
+ // Convert to NIO MessageIdentifierSetNonEmpty for use with the IMAP library
+ if let nioSet = uidSet.toNIOSet() {
+     // Use with NIO IMAP library
+ }
+ */ 

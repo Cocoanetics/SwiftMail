@@ -70,9 +70,9 @@ struct ProblematicMessageTests {
             // The content should have reasonable space count and very few equals signs
             #expect(spaceCount > 0, "Decoded content should contain spaces")
             // HTML content naturally contains many equals signs for attributes, so we don't check this for HTML parts
-           if !part.contentType.contains("text/html") {
-               #expect(equalsCount < 10, "Decoded content should have very few equals signs (found \(equalsCount))")
-           }
+            if !part.contentType.contains("text/html") {
+                #expect(equalsCount < 10, "Decoded content should have very few equals signs (found \(equalsCount))")
+            }
         }
     }
 

@@ -39,52 +39,52 @@ final class AuthHandlerStateMachine {
     ///   - response: The SMTP response to process
     ///   - sendCredential: Closure to send credentials when needed
     /// - Returns: A tuple with a boolean indicating if auth is complete and the result if complete
-	func processResponse(_ response: SMTPResponse,
-                               sendCredential: (String) -> Void) -> (isComplete: Bool, result: AuthResult?) {
+    func processResponse(_ response: SMTPResponse,
+                         sendCredential: (String) -> Void) -> (isComplete: Bool, result: AuthResult?) {
         switch method {
-        case .plain, .xoauth2:
-            // For PLAIN and XOAUTH2 auth, we should get a success response immediately
-            if response.code >= 200 && response.code < 300 {
-                return (true, AuthResult(method: method, success: true))
-            } else if response.code >= 400 {
-                return (true, AuthResult(method: method, success: false, errorMessage: response.message))
-            }
-
-        case .login:
-            // For LOGIN auth, we need to handle multiple steps
-            switch state {
-            case .initial:
-                // Initial response should be a challenge for the username
-                if response.code == 334 {
-                    // Send the username (base64 encoded)
-                    sendCredential(username)
-                    state = .usernameProvided
-                    return (false, nil) // Not complete yet
-                } else if response.code >= 400 {
-                    // Error response
-                    return (true, AuthResult(method: method, success: false, errorMessage: response.message))
-                }
-
-            case .usernameProvided:
-                // After username, should be a challenge for the password
-                if response.code == 334 {
-                    // Send the password (base64 encoded)
-                    sendCredential(password)
-                    state = .completed
-                    return (false, nil) // Still need the final response
-                } else if response.code >= 400 {
-                    // Error response
-                    return (true, AuthResult(method: method, success: false, errorMessage: response.message))
-                }
-
-            case .completed:
-                // Final response after password
+            case .plain, .xoauth2:
+                // For PLAIN and XOAUTH2 auth, we should get a success response immediately
                 if response.code >= 200 && response.code < 300 {
                     return (true, AuthResult(method: method, success: true))
-                } else {
+                } else if response.code >= 400 {
                     return (true, AuthResult(method: method, success: false, errorMessage: response.message))
                 }
-            }
+
+            case .login:
+                // For LOGIN auth, we need to handle multiple steps
+                switch state {
+                    case .initial:
+                        // Initial response should be a challenge for the username
+                        if response.code == 334 {
+                            // Send the username (base64 encoded)
+                            sendCredential(username)
+                            state = .usernameProvided
+                            return (false, nil) // Not complete yet
+                        } else if response.code >= 400 {
+                            // Error response
+                            return (true, AuthResult(method: method, success: false, errorMessage: response.message))
+                        }
+
+                    case .usernameProvided:
+                        // After username, should be a challenge for the password
+                        if response.code == 334 {
+                            // Send the password (base64 encoded)
+                            sendCredential(password)
+                            state = .completed
+                            return (false, nil) // Still need the final response
+                        } else if response.code >= 400 {
+                            // Error response
+                            return (true, AuthResult(method: method, success: false, errorMessage: response.message))
+                        }
+
+                    case .completed:
+                        // Final response after password
+                        if response.code >= 200 && response.code < 300 {
+                            return (true, AuthResult(method: method, success: true))
+                        } else {
+                            return (true, AuthResult(method: method, success: false, errorMessage: response.message))
+                        }
+                }
         }
 
         return (false, nil) // Not yet complete
