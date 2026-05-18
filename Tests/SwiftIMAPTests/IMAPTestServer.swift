@@ -228,7 +228,8 @@ final class IMAPTestServer {
     ) -> String {
         switch command {
             case "CAPABILITY":
-                return "* CAPABILITY IMAP4rev1 AUTH=PLAIN LITERAL+ ID NAMESPACE UIDPLUS IDLE\r\n\(tag) OK CAPABILITY completed\r\n"
+                return "* CAPABILITY IMAP4rev1 AUTH=PLAIN LITERAL+ ID NAMESPACE UIDPLUS IDLE\r\n"
+                    + "\(tag) OK CAPABILITY completed\r\n"
             case "LOGIN":
                 authenticated = true
                 return "\(tag) OK LOGIN completed\r\n"
@@ -238,7 +239,13 @@ final class IMAPTestServer {
                 selectedMailbox = mailbox
                 let count = messages.count
                 let uidnext = (messages.last?.uid ?? 0) + 1
-                return "* \(count) EXISTS\r\n* 0 RECENT\r\n* OK [UIDVALIDITY 1] UIDs valid\r\n* OK [UIDNEXT \(uidnext)] Predicted next UID\r\n* FLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft)\r\n* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)] Flags permitted\r\n\(tag) OK [READ-WRITE] SELECT completed\r\n"
+                return "* \(count) EXISTS\r\n* 0 RECENT\r\n"
+                    + "* OK [UIDVALIDITY 1] UIDs valid\r\n"
+                    + "* OK [UIDNEXT \(uidnext)] Predicted next UID\r\n"
+                    + "* FLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft)\r\n"
+                    + "* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)]"
+                    + " Flags permitted\r\n"
+                    + "\(tag) OK [READ-WRITE] SELECT completed\r\n"
             case "UID":
                 guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
                 return handleUID(tag: tag, args: args)

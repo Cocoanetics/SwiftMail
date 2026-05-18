@@ -230,7 +230,8 @@ public struct EMLParser {
             )]
         }
 
-        guard let bodyString = String(data: bodyData, encoding: .utf8) ?? String(data: bodyData, encoding: .ascii) else {
+        guard let bodyString = String(data: bodyData, encoding: .utf8)
+            ?? String(data: bodyData, encoding: .ascii) else {
             return []
         }
 
@@ -396,7 +397,8 @@ public struct EMLParser {
         if let filename = extractHeaderParam(from: header, named: "filename*") {
             // Strip encoding prefix like "UTF-8''filename.txt"
             if let idx = filename.range(of: "''") {
-                return String(filename[idx.upperBound...]).removingPercentEncoding ?? String(filename[idx.upperBound...])
+                let suffix = String(filename[idx.upperBound...])
+                return suffix.removingPercentEncoding ?? suffix
             }
             return filename
         }
