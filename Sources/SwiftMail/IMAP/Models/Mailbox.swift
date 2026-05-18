@@ -104,6 +104,9 @@ public enum Mailbox {
 
         /// Initialize from NIOIMAPCore.MailboxInfo
         internal init(nio info: NIOIMAPCore.MailboxInfo) {
+            // Mailbox names may use non-UTF-8 modified-UTF-7 encoding; lossy decoding
+            // preserves the bytes (with replacement characters) rather than failing.
+            // swiftlint:disable:next optional_data_string_conversion
             self.name = String(decoding: info.path.name.bytes, as: UTF8.self)
             self.attributes = Attributes(from: Array(info.attributes))
             self.hierarchyDelimiter = info.path.pathSeparator.map(String.init)

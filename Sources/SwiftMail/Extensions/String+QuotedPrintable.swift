@@ -207,6 +207,9 @@ extension String {
             }
         }
 
+        // Fall back to lossy UTF-8 decoding so callers get a best-effort string
+        // even when the bytes don't match the declared encoding.
+        // swiftlint:disable:next optional_data_string_conversion
         return String(data: bytes, encoding: enc) ?? String(decoding: bytes, as: UTF8.self)
     }
 

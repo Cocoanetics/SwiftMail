@@ -2370,7 +2370,11 @@ extension IMAPServer {
         // 5. Send via SMTP
         try await smtp.sendRawMessage(rawMessageData, from: sender, to: recipients)
 
-        // 6. Append to Sent folder with \Seen flag
+        // 6. Append to Sent folder with \Seen flag.
+        // Lossy decoding is intentional: raw message bytes may contain non-UTF-8
+        // sequences (8-bit or binary content), and we'd rather preserve the message
+        // with replacement characters than fail the append.
+        // swiftlint:disable:next optional_data_string_conversion
         var rawMessageString = String(decoding: rawMessageData, as: UTF8.self)
         rawMessageString = canonicalizeCRLF(rawMessageString)
         if !rawMessageString.hasSuffix("\r\n") {
