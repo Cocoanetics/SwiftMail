@@ -2,10 +2,10 @@
 // Handler for IMAP MOVE command
 
 import Foundation
-import NIO
-import NIOConcurrencyHelpers
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
+import NIO
+import NIOConcurrencyHelpers
 
 /** Handler for IMAP MOVE command */
 final class MoveHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
@@ -22,7 +22,7 @@ final class MoveHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
         let baseHandled = super.processResponse(response)
 
         // Check if this is our tagged response
-        if case let .tagged(taggedResponse) = response, taggedResponse.tag == commandTag {
+        if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
             if case .ok = taggedResponse.state {
                 // The move was successful
                 succeedWithResult(())

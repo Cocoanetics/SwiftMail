@@ -42,25 +42,25 @@ struct AuthCommand: SMTPCommand {
      */
     func toCommandString() -> String {
         switch method {
-            case .plain:
-                // For PLAIN auth, format is: \0username\0password
-                let credentials = "\0\(username)\0\(password)"
-                let encoded = Data(credentials.utf8).base64EncodedString()
-                return "AUTH PLAIN \(encoded)"
-            case .login:
-                // For LOGIN auth, the initial command doesn't include credentials
-                return "AUTH LOGIN"
-            case .xoauth2:
-                // XOAUTH2 format: user=<email>\x01auth=Bearer <token>\x01\x01
-                var data = Data()
-                data.append(contentsOf: "user=".utf8)
-                data.append(contentsOf: username.utf8)
-                data.append(0x01)
-                data.append(contentsOf: "auth=Bearer ".utf8)
-                data.append(contentsOf: password.utf8)
-                data.append(0x01)
-                data.append(0x01)
-                return "AUTH XOAUTH2 \(data.base64EncodedString())"
+        case .plain:
+            // For PLAIN auth, format is: \0username\0password
+            let credentials = "\0\(username)\0\(password)"
+            let encoded = Data(credentials.utf8).base64EncodedString()
+            return "AUTH PLAIN \(encoded)"
+        case .login:
+            // For LOGIN auth, the initial command doesn't include credentials
+            return "AUTH LOGIN"
+        case .xoauth2:
+            // XOAUTH2 format: user=<email>\x01auth=Bearer <token>\x01\x01
+            var data = Data()
+            data.append(contentsOf: "user=".utf8)
+            data.append(contentsOf: username.utf8)
+            data.append(0x01)
+            data.append(contentsOf: "auth=Bearer ".utf8)
+            data.append(contentsOf: password.utf8)
+            data.append(0x01)
+            data.append(0x01)
+            return "AUTH XOAUTH2 \(data.base64EncodedString())"
         }
     }
 

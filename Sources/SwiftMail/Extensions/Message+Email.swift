@@ -3,7 +3,7 @@
 
 import Foundation
 
-public extension Message {
+extension Message {
     /// Initialize a `Message` from an `Email` for local preview or storage.
     ///
     /// Part data is stored as raw bytes with a matching non-transforming encoding
@@ -11,7 +11,7 @@ public extension Message {
     /// `MessagePart.decodedData()` returns the bytes unchanged.
     ///
     /// - Parameter email: The email to convert.
-    init(email: Email) {
+    public init(email: Email) {
         var parts: [MessagePart] = []
         var nextSection = 1
 
@@ -56,9 +56,9 @@ public extension Message {
             sequenceNumber: SequenceNumber(0),
             subject: email.subject,
             from: email.sender.description,
-            to: email.recipients.map(\.description),
-            cc: email.ccRecipients.map(\.description),
-            bcc: email.bccRecipients.map(\.description),
+            to: email.recipients.map { $0.description },
+            cc: email.ccRecipients.map { $0.description },
+            bcc: email.bccRecipients.map { $0.description },
             messageId: email.messageID,
             additionalFields: email.additionalHeaders
         )

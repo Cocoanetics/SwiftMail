@@ -10,7 +10,7 @@ import NIOIMAPCore
  sequence numbers or UIDs. The command returns a set of identifiers matching
  all supplied criteria.
  */
-struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand {
+struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
     /// The type returned by the command handler.
     typealias ResultType = MessageIdentifierSet<T>
     /// The handler used to process the command's responses.
@@ -30,9 +30,7 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     let calendar: Calendar
 
     /// Timeout in seconds for the search operation.
-    var timeoutSeconds: Int {
-        60
-    }
+    var timeoutSeconds: Int { return 60 }
 
     /**
      Create a new search command.
@@ -65,9 +63,7 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         guard !useSort || !sortCriteria.isEmpty else {
             throw IMAPError.invalidArgument("Sort criteria cannot be empty when SORT is enabled")
         }
-        for criterion in criteria {
-            try criterion.validate()
-        }
+        for criterion in criteria { try criterion.validate() }
     }
 
     /**
@@ -91,10 +87,7 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand {
 
         if useSort {
             if T.self == UID.self {
-                return TaggedCommand(
-                    tag: tag,
-                    command: .uidSort(criteria: sortCriteria, charset: sortCharset, key: key)
-                )
+                return TaggedCommand(tag: tag, command: .uidSort(criteria: sortCriteria, charset: sortCharset, key: key))
             } else {
                 return TaggedCommand(tag: tag, command: .sort(criteria: sortCriteria, charset: sortCharset, key: key))
             }

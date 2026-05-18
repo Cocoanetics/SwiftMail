@@ -3,25 +3,25 @@
 
 import Foundation
 import Logging
-import NIO
-import NIOConcurrencyHelpers
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
+import NIO
+import NIOConcurrencyHelpers
 
 /// Handler for IMAP CAPABILITY command
 final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected capabilities
     private var capabilities: [Capability] = []
 
-    /// Handle a tagged OK response by succeeding the promise with the capabilities
-    /// - Parameter response: The tagged response
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        // Call super to handle CLIENTBUG warnings
-        super.handleTaggedOKResponse(response)
+    	/// Handle a tagged OK response by succeeding the promise with the capabilities
+	/// - Parameter response: The tagged response
+	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
 
-        let caps = lock.withLock { self.capabilities }
-        succeedWithResult(caps)
-    }
+		let caps = lock.withLock { self.capabilities }
+		succeedWithResult(caps)
+	}
 
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
@@ -33,7 +33,7 @@ final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommand
     /// - Parameter response: The untagged response
     /// - Returns: Whether the response was handled by this handler
     override func handleUntaggedResponse(_ response: Response) -> Bool {
-        if case let .untagged(.capabilityData(capabilities)) = response {
+        if case .untagged(.capabilityData(let capabilities)) = response {
             lock.withLock {
                 self.capabilities = capabilities
             }
@@ -50,6 +50,7 @@ final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommand
 
 /// Handler for IMAP COPY command
 final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
+
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
@@ -68,6 +69,7 @@ final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
 
 /// Handler for IMAP STORE command
 final class StoreHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
+
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
@@ -86,6 +88,7 @@ final class StoreHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unc
 
 /// Handler for IMAP EXPUNGE command
 final class ExpungeHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
+
     /// Handle a tagged OK response by succeeding the promise
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {

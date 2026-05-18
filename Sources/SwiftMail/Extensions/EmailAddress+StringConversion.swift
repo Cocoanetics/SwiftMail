@@ -12,7 +12,7 @@ extension EmailAddress: LosslessStringConvertible {
      */
     public init?(_ description: String) {
         // Simple email address without a name
-        if description.contains("@"), !description.contains("<") {
+        if description.contains("@") && !description.contains("<") {
             self.init(address: description)
             return
         }
@@ -22,8 +22,7 @@ extension EmailAddress: LosslessStringConvertible {
         let namePattern = "(?:\"([^\"]+)\"|([^<]*))\\s*<([^>]+)>"
         let nameRegex = try? NSRegularExpression(pattern: namePattern, options: [])
 
-        let searchRange = NSRange(location: 0, length: description.count)
-        if let match = nameRegex?.firstMatch(in: description, options: [], range: searchRange) {
+        if let match = nameRegex?.firstMatch(in: description, options: [], range: NSRange(location: 0, length: description.count)) {
             let nameRange1 = match.range(at: 1)
             let nameRange2 = match.range(at: 2)
             let emailRange = match.range(at: 3)
@@ -54,20 +53,20 @@ extension EmailAddress: LosslessStringConvertible {
         return nil
     }
 
-    /**
-     Get the string representation of the email address
-     This uses the formatted representation which includes the name if available
-     */
-    public var description: String {
-        if let name, !name.isEmpty {
-            // Use quotes if the name contains special characters
-            if name.contains(where: { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }) {
-                "\"\(name)\" <\(address)>"
-            } else {
-                "\(name) <\(address)>"
-            }
-        } else {
-            address
-        }
-    }
+	/**
+	 Get the string representation of the email address
+	 This uses the formatted representation which includes the name if available
+	 */
+	public var description: String {
+		if let name = name, !name.isEmpty {
+			// Use quotes if the name contains special characters
+			if name.contains(where: { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }) {
+				return "\"\(name)\" <\(address)>"
+			} else {
+				return "\(name) <\(address)>"
+			}
+		} else {
+			return address
+		}
+	}
 }

@@ -19,12 +19,12 @@ struct EHLOCommand: SMTPCommand {
 
     /// Initialize a new EHLO command
     /// - Parameter hostname: The hostname to use for the EHLO command
-    init(hostname: String) {
+   init(hostname: String) {
         self.hostname = hostname
     }
 
     /// Convert the command to a string that can be sent to the server
     func toCommandString() -> String {
-        "EHLO \(hostname)"
+        return "EHLO \(hostname)"
     }
 }

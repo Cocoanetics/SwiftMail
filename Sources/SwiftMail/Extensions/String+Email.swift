@@ -3,10 +3,10 @@
 
 import Foundation
 
-public extension String {
+extension String {
     /// Validates if the string is a valid email address format according to RFC 5322
     /// - Returns: True if the string matches email format
-    func isValidEmail() -> Bool {
+    public func isValidEmail() -> Bool {
         let pattern = #"""
         ^(?:[a-zA-Z0-9](?:[a-zA-Z0-9._%+-]{0,61}[a-zA-Z0-9])?@
         [a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?
@@ -16,15 +16,15 @@ public extension String {
 
         do {
             let regex = try NSRegularExpression(pattern: pattern, options: [.allowCommentsAndWhitespace])
-            let range = NSRange(location: 0, length: utf16.count)
+            let range = NSRange(location: 0, length: self.utf16.count)
             return regex.firstMatch(in: self, options: [], range: range) != nil
         } catch {
             // If regex creation fails (which shouldn't happen with a valid pattern),
             // fall back to a very basic check
-            return contains("@") &&
-                split(separator: "@").count == 2 &&
-                !hasPrefix("@") &&
-                !hasSuffix("@")
+            return self.contains("@") &&
+                   self.split(separator: "@").count == 2 &&
+                   !self.hasPrefix("@") &&
+                   !self.hasSuffix("@")
         }
     }
 }

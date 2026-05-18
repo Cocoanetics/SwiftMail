@@ -1,6 +1,6 @@
 import Foundation
-import NIO
 import NIOIMAP
+import NIO
 
 /// Command to list all available mailboxes
 struct ListCommand: IMAPTaggedCommand {
@@ -9,10 +9,10 @@ struct ListCommand: IMAPTaggedCommand {
 
     let timeoutSeconds: Int = 30
 
-    /// Wildcard to use when listing mailboxes ("*" by default)
+    // Wildcard to use when listing mailboxes ("*" by default)
     private let wildcard: String
 
-    /// Return options for the LIST command
+    // Return options for the LIST command
     private let returnOptions: [ReturnOption]
 
     /// Initialize a new LIST command

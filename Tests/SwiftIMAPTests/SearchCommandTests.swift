@@ -3,18 +3,19 @@ import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
 private typealias UID = SwiftMail.UID
 private typealias SequenceNumber = SwiftMail.SequenceNumber
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SearchCommandTests {
+
     // MARK: - Wire format: identifierSet scope key
 
     @Test
-    func identifierSetScopeIncludedInUIDSearch() async throws {
+    func testIdentifierSetScopeIncludedInUIDSearch() async throws {
         let channel = NIOAsyncTestingChannel()
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -35,7 +36,7 @@ struct SearchCommandTests {
     }
 
     @Test
-    func uIDSortWireFormatUsesSortCommand() async throws {
+    func testUIDSortWireFormatUsesSortCommand() async throws {
         let channel = NIOAsyncTestingChannel()
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -63,7 +64,7 @@ struct SearchCommandTests {
     }
 
     @Test
-    func noIdentifierSetSearchesEntireMailbox() async throws {
+    func testNoIdentifierSetSearchesEntireMailbox() async throws {
         let channel = NIOAsyncTestingChannel()
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -83,7 +84,7 @@ struct SearchCommandTests {
     }
 
     @Test
-    func identifierSetScopeIncludedInSequenceNumberSearch() async throws {
+    func testIdentifierSetScopeIncludedInSequenceNumberSearch() async throws {
         let channel = NIOAsyncTestingChannel()
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
@@ -105,7 +106,7 @@ struct SearchCommandTests {
     }
 
     @Test
-    func uIDExpungeUsesUIDCommandWireFormat() async throws {
+    func testUIDExpungeUsesUIDCommandWireFormat() async throws {
         let channel = NIOAsyncTestingChannel()
         try await channel.pipeline.addHandler(IMAPClientHandler())
 

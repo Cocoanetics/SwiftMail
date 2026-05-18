@@ -1,6 +1,6 @@
 import SwiftMail
 
-/// Create an IMAP server instance
+// Create an IMAP server instance
 let imapServer = IMAPServer(host: "imap.example.com", port: 993)
 
 // Connect to the IMAP server

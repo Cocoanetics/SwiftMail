@@ -1,15 +1,12 @@
 import Foundation
 import NIO
 import NIOIMAPCore
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPNamedConnectionTests {
-    private func makeConnection(
-        name: String = "test",
-        authenticate: @escaping @Sendable (IMAPConnection) async throws -> Void = { _ in }
-    ) -> IMAPNamedConnection {
+    private func makeConnection(name: String = "test", authenticate: @escaping @Sendable (IMAPConnection) async throws -> Void = { _ in }) -> IMAPNamedConnection {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let connection = IMAPConnection(
             host: "localhost",
@@ -78,7 +75,7 @@ struct IMAPNamedConnectionTests {
             try await named.expunge(messages: UIDSet(UID(7)))
             Issue.record("Expected UID EXPUNGE to require UIDPLUS")
         } catch let error as IMAPError {
-            guard case let .commandNotSupported(message) = error else {
+            guard case .commandNotSupported(let message) = error else {
                 Issue.record("Expected commandNotSupported, got \(error)")
                 return
             }
@@ -112,14 +109,10 @@ struct IMAPNamedConnectionTests {
         let named = IMAPNamedConnection(name: "test", connection: connection, authenticateOnConnection: { _ in })
 
         do {
-            let result: ExtendedSearchResult<SwiftMail.UID> = try await named.extendedSearch(
-                criteria: [.all],
-                sortCriteria: [.descending(.date)]
-            )
-            _ = result
+            _ = try await named.extendedSearch(criteria: [.all], sortCriteria: [.descending(.date)]) as ExtendedSearchResult<SwiftMail.UID>
             Issue.record("Expected SORT to require server support")
         } catch let error as IMAPError {
-            guard case let .commandNotSupported(message) = error else {
+            guard case .commandNotSupported(let message) = error else {
                 Issue.record("Expected commandNotSupported, got \(error)")
                 return
             }

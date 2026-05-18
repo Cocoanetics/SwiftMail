@@ -1,21 +1,22 @@
 import Foundation
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct DataUtilitiesTests {
+
     // MARK: - Preview Tests
 
     @Test
     func testPreview() {
         // Test text data preview
         let textString = "This is a sample text for testing the preview function"
-        let textData = Data(textString.utf8)
+        let textData = textString.data(using: .utf8)!
         #expect(textData.preview() == textString)
 
         // Test truncation for long text
         let longText = String(repeating: "A", count: 1000)
-        let longData = Data(longText.utf8)
+        let longData = longText.data(using: .utf8)!
         let preview = longData.preview()
         #expect(preview.count <= 500)
         // The implementation might not add "..." at the end
@@ -26,7 +27,7 @@ struct DataUtilitiesTests {
 
         // Test custom max length
         let customMaxText = String(repeating: "B", count: 200)
-        let customMaxData = Data(customMaxText.utf8)
+        let customMaxData = customMaxText.data(using: .utf8)!
         let customPreview = customMaxData.preview(maxLength: 100)
         #expect(customPreview.count <= 100)
         // The implementation might not add "..." at the end
@@ -43,15 +44,15 @@ struct DataUtilitiesTests {
     @Test
     func testIsTextContent() {
         // Test plain text
-        let plainText = Data("This is plain text".utf8)
+        let plainText = "This is plain text".data(using: .utf8)!
         #expect(plainText.isTextContent() == true)
 
         // Test HTML content
-        let htmlContent = Data("<html><body>This is HTML</body></html>".utf8)
+        let htmlContent = "<html><body>This is HTML</body></html>".data(using: .utf8)!
         #expect(htmlContent.isTextContent() == true)
 
         // Test JSON content
-        let jsonContent = Data("{\"key\": \"value\"}".utf8)
+        let jsonContent = "{\"key\": \"value\"}".data(using: .utf8)!
         #expect(jsonContent.isTextContent() == true)
 
         // Test binary data (JPEG signature)
@@ -65,7 +66,7 @@ struct DataUtilitiesTests {
         #expect(pngData.isTextContent() == false)
 
         // Test binary data (PDF signature)
-        let pdfSignature = Data("%PDF-1.5".utf8)
+        let pdfSignature = "%PDF-1.5".data(using: .utf8)!
         #expect(pdfSignature.isTextContent() == false)
 
         // Test empty data

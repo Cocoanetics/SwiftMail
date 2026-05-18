@@ -3,13 +3,13 @@ import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct WithinSearchTests {
     @Test
-    func youngerSearchKeyWireFormat() async throws {
+    func testYoungerSearchKeyWireFormat() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -30,7 +30,7 @@ struct WithinSearchTests {
     }
 
     @Test
-    func olderSearchKeyWireFormat() async throws {
+    func testOlderSearchKeyWireFormat() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -51,15 +51,12 @@ struct WithinSearchTests {
     }
 
     @Test
-    func withinCriteriaWithExtendedSearch() async throws {
+    func testWithinCriteriaWithExtendedSearch() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
-        let command = ExtendedSearchCommand<SwiftMail.UID>(
-            criteria: [SearchCriteria.younger(seconds: 600)],
-            useEsearch: true
-        )
+        let command = ExtendedSearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.younger(seconds: 600)], useEsearch: true)
         let tagged = command.toTaggedCommand(tag: "W003")
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
@@ -76,14 +73,12 @@ struct WithinSearchTests {
     }
 
     @Test
-    func combinedWithinAndOtherCriteria() async throws {
+    func testCombinedWithinAndOtherCriteria() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
-        let command = SearchCommand<SwiftMail.UID>(
-            criteria: [SearchCriteria.younger(seconds: 3600), SearchCriteria.unseen]
-        )
+        let command = SearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.younger(seconds: 3600), SearchCriteria.unseen])
         let tagged = command.toTaggedCommand(tag: "W004")
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
@@ -100,7 +95,7 @@ struct WithinSearchTests {
     }
 
     @Test
-    func zeroIntervalThrows() throws {
+    func testZeroIntervalThrows() async throws {
         #expect(throws: (any Error).self) {
             try SearchCriteria.younger(seconds: 0).validate()
         }
@@ -110,7 +105,7 @@ struct WithinSearchTests {
     }
 
     @Test
-    func negativeIntervalThrows() throws {
+    func testNegativeIntervalThrows() async throws {
         #expect(throws: (any Error).self) {
             try SearchCriteria.younger(seconds: -100).validate()
         }

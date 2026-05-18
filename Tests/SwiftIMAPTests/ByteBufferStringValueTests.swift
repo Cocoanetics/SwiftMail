@@ -1,10 +1,11 @@
 import Foundation
+import Testing
 import NIO
 @testable import SwiftMail
-import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct ByteBufferStringValueTests {
+
     // MARK: - String Value Tests
 
     @Test

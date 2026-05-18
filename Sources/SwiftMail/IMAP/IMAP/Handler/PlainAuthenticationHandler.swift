@@ -23,22 +23,22 @@ final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IM
         expectsChallenge: Bool
     ) {
         self.credentials = credentials
-        shouldSendOnChallenge = expectsChallenge
-        sentInlineInitialResponse = !expectsChallenge
+        self.shouldSendOnChallenge = expectsChallenge
+        self.sentInlineInitialResponse = !expectsChallenge
         super.init(commandTag: commandTag, promise: promise)
     }
 
-    override init(commandTag _: String, promise _: EventLoopPromise<[Capability]>) {
+    override init(commandTag: String, promise: EventLoopPromise<[Capability]>) {
         fatalError("Use init(commandTag:promise:credentials:expectsChallenge:) instead")
     }
 
     override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
 
-        if case let .authenticationChallenge(challenge) = response {
+        if case .authenticationChallenge(let challenge) = response {
             let challengeIsEmpty = challenge.readableBytes == 0 ||
                 (challenge.getString(at: challenge.readerIndex, length: challenge.readableBytes) ?? "")
-                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
             let sendCredentials = lock.withLock { () -> Bool in
                 if shouldSendOnChallenge {
@@ -48,7 +48,7 @@ final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IM
 
                 // Compatibility fallback: some servers advertise SASL-IR but still emit an
                 // empty continuation before consuming credentials. Allow one retry.
-                if sentInlineInitialResponse, !fallbackContinuationSent, challengeIsEmpty {
+                if sentInlineInitialResponse && !fallbackContinuationSent && challengeIsEmpty {
                     fallbackContinuationSent = true
                     return true
                 }
@@ -73,9 +73,9 @@ final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IM
         let capabilities = lock.withLock { collectedCapabilities }
         if !capabilities.isEmpty {
             succeedWithResult(capabilities)
-        } else if case let .ok(responseText) = response.state,
+        } else if case .ok(let responseText) = response.state,
                   let code = responseText.code,
-                  case let .capability(caps) = code {
+                  case .capability(let caps) = code {
             succeedWithResult(caps)
         } else {
             succeedWithResult([])
@@ -96,10 +96,10 @@ final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IM
         }
 
         switch response {
-            case let .untagged(.capabilityData(capabilities)):
-                lock.withLock { collectedCapabilities = capabilities }
-            default:
-                break
+        case .untagged(.capabilityData(let capabilities)):
+            lock.withLock { collectedCapabilities = capabilities }
+        default:
+            break
         }
 
         return false

@@ -1,5 +1,5 @@
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct NamespaceResolutionTests {

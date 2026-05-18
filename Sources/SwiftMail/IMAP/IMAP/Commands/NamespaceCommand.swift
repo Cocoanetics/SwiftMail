@@ -1,6 +1,6 @@
 import Foundation
-import NIO
 import NIOIMAP
+import NIO
 
 /// Command to fetch namespace information
 struct NamespaceCommand: IMAPTaggedCommand {
@@ -8,6 +8,6 @@ struct NamespaceCommand: IMAPTaggedCommand {
     typealias HandlerType = NamespaceHandler
 
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        TaggedCommand(tag: tag, command: .namespace)
+        return TaggedCommand(tag: tag, command: .namespace)
     }
 }

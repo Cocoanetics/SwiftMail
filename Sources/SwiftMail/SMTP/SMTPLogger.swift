@@ -4,8 +4,8 @@
 import Foundation
 import Logging
 import NIO
-import NIOConcurrencyHelpers
 import NIOCore
+import NIOConcurrencyHelpers
 
 /// A channel handler that logs both outgoing and incoming SMTP messages
 final class SMTPLogger: MailLogger, @unchecked Sendable {
@@ -13,7 +13,7 @@ final class SMTPLogger: MailLogger, @unchecked Sendable {
     typealias InboundOut = String
 
     /// Log outgoing commands and forward them to the next handler
-    override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+	override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         // Try to extract the command from the data
         let command = unwrapOutboundIn(data)
 
@@ -31,10 +31,8 @@ final class SMTPLogger: MailLogger, @unchecked Sendable {
         context.write(data, promise: promise)
     }
 
-    /// Log incoming responses and forward them to the next handler.
-    /// SMTPLogger sits in the pipeline after the line decoder, so InboundIn is always String.
-    override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        // swiftlint:disable:next force_cast
+    /// Log incoming responses and forward them to the next handler
+	override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let responseString = unwrapInboundIn(data) as! String
 
         bufferInboundResponse(responseString)

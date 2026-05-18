@@ -2,15 +2,15 @@
 // A specialized handler for IMAP fetch part operations
 
 import Foundation
-import NIO
-import NIOConcurrencyHelpers
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
+import NIO
+import NIOConcurrencyHelpers
 
 /// Handler for IMAP FETCH PART command
 final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, @unchecked Sendable {
     /// Collected message part data
-    private var partData: Data = .init()
+    private var partData: Data = Data()
 
     private var parts: [MessagePart]?
 
@@ -23,16 +23,16 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
     /// Whether we've already finished collecting our requested part
     private var didFinishPart = false
 
-    /// Handle a tagged OK response by succeeding the promise with the collected data
-    /// - Parameter response: The tagged response
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        // Call super to handle CLIENTBUG warnings
-        super.handleTaggedOKResponse(response)
+    	/// Handle a tagged OK response by succeeding the promise with the collected data
+	/// - Parameter response: The tagged response
+	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
 
-        // Succeed with the collected data
-        let collectedPartData = lock.withLock { self.partData }
-        succeedWithResult(collectedPartData)
-    }
+		// Succeed with the collected data
+		let collectedPartData = lock.withLock { self.partData }
+		succeedWithResult(collectedPartData)
+	}
 
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
@@ -48,7 +48,7 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
         let handled = super.processResponse(response)
 
         // Process fetch responses
-        if case let .fetch(fetchResponse) = response {
+        if case .fetch(let fetchResponse) = response {
             processFetchResponse(fetchResponse)
         }
 
@@ -59,29 +59,39 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
     /// Process a fetch response
     /// - Parameter fetchResponse: The fetch response to process
     private func processFetchResponse(_ fetchResponse: FetchResponse) {
-        // Once we've finished collecting our requested part, ignore further responses.
-        guard !didFinishPart else { return }
-
         switch fetchResponse {
-            case let .start(seq):
+            case .start(let seq):
                 // Only record the first sequence number and reset the buffer
-                currentSequence = SequenceNumber(seq.rawValue)
-                lock.withLock { self.partData.removeAll(keepingCapacity: true) }
+                if !didFinishPart {
+                    currentSequence = SequenceNumber(seq.rawValue)
+                    lock.withLock { self.partData.removeAll(keepingCapacity: true) }
+                }
 
-            case let .simpleAttribute(attribute):
-                processMessageAttribute(attribute)
+            case .simpleAttribute(let attribute):
+                // Process simple attributes only for the current sequence
+                if !didFinishPart {
+                    processMessageAttribute(attribute)
+                }
 
-            case let .streamingBegin(_, byteCount):
-                expectedByteCount = byteCount
+            case .streamingBegin(_, let byteCount):
+                // Store the expected byte count
+                if !didFinishPart {
+                    expectedByteCount = byteCount
+                }
 
-            case let .streamingBytes(data):
-                lock.withLock {
-                    self.partData.append(Data(data.readableBytesView))
+            case .streamingBytes(let data):
+                // Collect the streaming body data
+                if !didFinishPart {
+                    lock.withLock {
+                        self.partData.append(Data(data.readableBytesView))
+                    }
                 }
 
             case .finish:
                 // Mark that we've finished collecting the requested part
-                didFinishPart = true
+                if !didFinishPart {
+                    didFinishPart = true
+                }
 
             default:
                 break
@@ -92,10 +102,10 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
     /// - Parameter attribute: The attribute to process
     private func processMessageAttribute(_ attribute: MessageAttribute) {
         switch attribute {
-            case let .body(bodyStructure, _):
-                if case let .valid(structure) = bodyStructure {
+            case .body(let bodyStructure, _):
+                if case .valid(let structure) = bodyStructure {
                     lock.withLock {
-                        self.parts = .init(structure)
+						self.parts = .init(structure)
                     }
                 }
 

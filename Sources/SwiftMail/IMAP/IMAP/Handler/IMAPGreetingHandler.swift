@@ -3,23 +3,24 @@
 
 import Foundation
 import Logging
-import NIO
-import NIOConcurrencyHelpers
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
+import NIO
+import NIOConcurrencyHelpers
 
 /// Handler for IMAP server greeting
 final class IMAPGreetingHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler, @unchecked Sendable {
+
     /// Process untagged responses to look for the server greeting
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override func handleUntaggedResponse(_ response: Response) -> Bool {
         // Server greeting is typically an untagged OK response
-        if case let .untagged(untaggedResponse) = response {
-            if case let .conditionalState(state) = untaggedResponse {
-                if case let .ok(responseText) = state {
+        if case .untagged(let untaggedResponse) = response {
+            if case .conditionalState(let state) = untaggedResponse {
+                if case .ok(let responseText) = state {
                     // Check if the OK response contains capabilities
-                    if let code = responseText.code, case let .capability(capabilities) = code {
+                    if let code = responseText.code, case .capability(let capabilities) = code {
                         // Succeed the promise with the capabilities
                         succeedWithResult(capabilities)
                         return true

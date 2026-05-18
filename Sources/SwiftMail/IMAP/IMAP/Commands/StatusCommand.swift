@@ -11,6 +11,11 @@ struct StatusCommand: IMAPTaggedCommand {
     let attributes: [NIOIMAPCore.MailboxAttribute]
     let timeoutSeconds: Int = 30
 
+    init(mailboxName: String, attributes: [NIOIMAPCore.MailboxAttribute]) {
+        self.mailboxName = mailboxName
+        self.attributes = attributes
+    }
+
     func validate() throws {
         guard !mailboxName.isEmpty else {
             throw IMAPError.invalidArgument("Mailbox name cannot be empty")
@@ -21,7 +26,7 @@ struct StatusCommand: IMAPTaggedCommand {
     }
 
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        TaggedCommand(tag: tag, command: .status(
+        return TaggedCommand(tag: tag, command: .status(
             MailboxName(ByteBuffer(string: mailboxName)),
             attributes
         ))

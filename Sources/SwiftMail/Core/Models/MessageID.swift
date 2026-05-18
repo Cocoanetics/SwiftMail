@@ -28,45 +28,42 @@ public struct MessageID: Sendable, Hashable, LosslessStringConvertible, Codable 
     }
 }
 
-public extension MessageID {
+extension MessageID {
     /// Auto-generate a Message-ID with a UUID local part.
-    static func generate(domain: String) -> MessageID {
+    public static func generate(domain: String) -> MessageID {
         MessageID(localPart: UUID().uuidString, domain: domain)
     }
 
     /// Parse a Message-ID string in `<localPart@domain>` format.
     /// Returns `nil` if the string doesn't match the expected format.
-    init?(_ string: String) {
+    public init?(_ string: String) {
         // Trim whitespace first — IMAP ENVELOPE can return " <id@domain>" with leading space
-        var trimmed = string.trimmingCharacters(in: .whitespaces)
+        var s = string.trimmingCharacters(in: .whitespaces)
         // Strip optional angle brackets
-        if trimmed.hasPrefix("<") { trimmed.removeFirst() }
-        if trimmed.hasSuffix(">") { trimmed.removeLast() }
-        guard let atIndex = trimmed.lastIndex(of: "@") else { return nil }
-        let local = String(trimmed[trimmed.startIndex ..< atIndex])
-        let domain = String(trimmed[trimmed.index(after: atIndex)...])
+        if s.hasPrefix("<") { s.removeFirst() }
+        if s.hasSuffix(">") { s.removeLast() }
+        guard let atIndex = s.lastIndex(of: "@") else { return nil }
+        let local = String(s[s.startIndex..<atIndex])
+        let domain = String(s[s.index(after: atIndex)...])
         guard !local.isEmpty, !domain.isEmpty else { return nil }
-        localPart = local
+        self.localPart = local
         self.domain = domain
     }
 }
 
 // MARK: - Codable (single string value)
 
-public extension MessageID {
-    init(from decoder: Decoder) throws {
+extension MessageID {
+    public init(from decoder: Decoder) throws {
         let container = try decoder.singleValueContainer()
         let string = try container.decode(String.self)
         guard let parsed = MessageID(string) else {
-            throw DecodingError.dataCorruptedError(
-                in: container,
-                debugDescription: "Invalid Message-ID format: \(string)"
-            )
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid Message-ID format: \(string)")
         }
         self = parsed
     }
 
-    func encode(to encoder: Encoder) throws {
+    public func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         try container.encode(description)
     }

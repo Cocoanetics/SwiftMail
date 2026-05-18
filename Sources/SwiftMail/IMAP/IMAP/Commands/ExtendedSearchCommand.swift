@@ -9,7 +9,7 @@ import NIOIMAPCore
 ///
 /// The generic parameter ``T`` selects sequence numbers vs. UIDs, mirroring
 /// ``SearchCommand``.
-struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand {
+struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
     typealias ResultType = ExtendedSearchResult<T>
     typealias HandlerType = ExtendedSearchHandler<T>
 
@@ -31,9 +31,7 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     /// When non-nil, `PARTIAL` is requested instead of `ALL`.
     let partialRange: NIOIMAPCore.PartialRange?
 
-    var timeoutSeconds: Int {
-        60
-    }
+    var timeoutSeconds: Int { return 60 }
 
     init(
         identifierSet: MessageIdentifierSet<T>? = nil,
@@ -62,9 +60,7 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         guard !useSort || !sortCriteria.isEmpty else {
             throw IMAPError.invalidArgument("Sort criteria cannot be empty when SORT is enabled")
         }
-        for criterion in criteria {
-            try criterion.validate()
-        }
+        for criterion in criteria { try criterion.validate() }
     }
 
     func toTaggedCommand(tag: String) -> TaggedCommand {
@@ -81,38 +77,23 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand {
 
         let key = SearchKey.and(nioCriteria)
 
-        let returnOptions: [SearchReturnOption] = if useEsearch {
+        let returnOptions: [SearchReturnOption]
+        if useEsearch {
             if let range = partialRange {
                 // PARTIAL and ALL are mutually exclusive; use PARTIAL for paged results.
-                [.count, .min, .max, .partial(range)]
+                returnOptions = [.count, .min, .max, .partial(range)]
             } else {
-                [.count, .min, .max, .all]
+                returnOptions = [.count, .min, .max, .all]
             }
         } else {
-            []
+            returnOptions = []
         }
 
         if useSort {
             if T.self == UID.self {
-                return TaggedCommand(
-                    tag: tag,
-                    command: .uidSort(
-                        criteria: sortCriteria,
-                        charset: sortCharset,
-                        key: key,
-                        returnOptions: returnOptions
-                    )
-                )
+                return TaggedCommand(tag: tag, command: .uidSort(criteria: sortCriteria, charset: sortCharset, key: key, returnOptions: returnOptions))
             } else {
-                return TaggedCommand(
-                    tag: tag,
-                    command: .sort(
-                        criteria: sortCriteria,
-                        charset: sortCharset,
-                        key: key,
-                        returnOptions: returnOptions
-                    )
-                )
+                return TaggedCommand(tag: tag, command: .sort(criteria: sortCriteria, charset: sortCharset, key: key, returnOptions: returnOptions))
             }
         } else if T.self == UID.self {
             return TaggedCommand(tag: tag, command: .uidSearch(key: key, returnOptions: returnOptions))

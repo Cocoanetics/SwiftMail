@@ -22,13 +22,13 @@ final class IMAPCommandQueue {
     private var depth = 0
     private var waiters: [Waiter] = []
 
-    func run<T>(_ operation: () async throws -> T) async rethrows -> T {
+    func run<T>(_ op: () async throws -> T) async rethrows -> T {
         let token = IMAPCommandQueueTaskContext.ownerToken ?? UUID()
 
         return try await IMAPCommandQueueTaskContext.$ownerToken.withValue(token) {
             await acquire(ownerToken: token)
             defer { release(ownerToken: token) }
-            return try await operation()
+            return try await op()
         }
     }
 

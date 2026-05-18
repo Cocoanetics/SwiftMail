@@ -13,14 +13,14 @@ public struct StoreData {
         case replace
 
         /// Convert to NIO StoreType
-        func toNIO() -> NIOIMAPCore.StoreOperation {
+        internal func toNIO() -> NIOIMAPCore.StoreOperation {
             switch self {
-                case .add:
-                    .add
-                case .remove:
-                    .remove
-                case .replace:
-                    .replace
+            case .add:
+                return .add
+            case .remove:
+                return .remove
+            case .replace:
+                return .replace
             }
         }
     }
@@ -46,7 +46,7 @@ public struct StoreData {
     ///   - storeType: The type of store operation
     /// - Returns: A new StoreData instance
     public static func flags(_ flags: [Flag], _ storeType: StoreType) -> StoreData {
-        StoreData(flags: flags, storeType: storeType)
+        return StoreData(flags: flags, storeType: storeType)
     }
 
     /// Convert to NIOIMAPCore.StoreData
@@ -56,13 +56,14 @@ public struct StoreData {
 
         // Create and return NIOIMAPCore.StoreData with the appropriate operation and flags
         // Using the proper factory methods on StoreFlags
-        let storeFlags = switch storeType {
-            case .add:
-                NIOIMAPCore.StoreFlags.add(silent: false, list: nioFlags)
-            case .remove:
-                NIOIMAPCore.StoreFlags.remove(silent: false, list: nioFlags)
-            case .replace:
-                NIOIMAPCore.StoreFlags.replace(silent: false, list: nioFlags)
+        let storeFlags: NIOIMAPCore.StoreFlags
+        switch storeType {
+        case .add:
+            storeFlags = NIOIMAPCore.StoreFlags.add(silent: false, list: nioFlags)
+        case .remove:
+            storeFlags = NIOIMAPCore.StoreFlags.remove(silent: false, list: nioFlags)
+        case .replace:
+            storeFlags = NIOIMAPCore.StoreFlags.replace(silent: false, list: nioFlags)
         }
         return .flags(storeFlags)
     }

@@ -1,6 +1,6 @@
 import Foundation
-import NIO
 import NIOIMAPCore
+import NIO
 
 /** Command to create a new mailbox */
 struct CreateMailboxCommand: IMAPTaggedCommand {

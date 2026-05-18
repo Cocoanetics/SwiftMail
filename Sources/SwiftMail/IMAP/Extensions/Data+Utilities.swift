@@ -11,8 +11,8 @@ extension Data {
         if let text = String(data: self, encoding: .utf8) {
             let truncated = text.prefix(maxLength)
             return String(truncated)
-        } else if count > 0 {
-            return "<Binary data: \(count.formattedFileSize())>"
+        } else if self.count > 0 {
+            return "<Binary data: \(self.count.formattedFileSize())>"
         } else {
             return "<Empty data>"
         }
@@ -22,13 +22,13 @@ extension Data {
     /// - Returns: True if the data appears to be text, false otherwise
     func isTextContent() -> Bool {
         // Check if the data can be converted to a string
-        guard String(data: self, encoding: .utf8) != nil else {
+        guard let _ = String(data: self, encoding: .utf8) else {
             return false
         }
 
         // Check for common binary file signatures
-        if count >= 4 {
-            let bytes = [UInt8](prefix(4))
+        if self.count >= 4 {
+            let bytes = [UInt8](self.prefix(4))
 
             // Check for common binary file signatures
             if bytes.starts(with: [0xFF, 0xD8, 0xFF]) { // JPEG

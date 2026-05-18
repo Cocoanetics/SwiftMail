@@ -1,18 +1,19 @@
-// String+FileSystem.swift
+// String+Utilities.swift
 // General utility extensions for String
 
 import Foundation
 
-public extension String {
+extension String {
     /// Sanitize a filename to ensure it's valid for most file systems.
     ///
     /// This removes disallowed characters while leaving all whitespace
     /// untouched so that a filename such as "my document.pdf" remains user
     /// friendly.
     /// - Returns: A sanitized filename that is safe to write to disk
-    func sanitizedFileName() -> String {
+    public func sanitizedFileName() -> String {
         let invalidCharacters = CharacterSet(charactersIn: ":/\\?%*|\"<>")
-        return components(separatedBy: invalidCharacters)
+        return self
+            .components(separatedBy: invalidCharacters)
             .joined()
     }
 }

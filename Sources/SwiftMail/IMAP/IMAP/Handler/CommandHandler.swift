@@ -3,9 +3,9 @@
 
 import Foundation
 import Logging
-import NIO
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
+import NIO
 
 /// Protocol for command-specific IMAP handlers
 /// These handlers are added to the pipeline when a command is sent and removed when the response is received
@@ -32,17 +32,17 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
     /// Whether this handler has completed processing
     private(set) var isCompleted: Bool = false
 
-    /// Lock for thread-safe access to mutable properties
-    let lock = NSRecursiveLock()
+    	/// Lock for thread-safe access to mutable properties
+	let lock = NSRecursiveLock()
 
-    /// Logger for command operations
-    let logger = Logger(label: "com.swiftmail.imap.command")
+	/// Logger for command operations
+	let logger = Logger(label: "com.swiftmail.imap.command")
 
-    /// Buffer for logging during command processing
-    var logBuffer: [String] = []
+	/// Buffer for logging during command processing
+	var logBuffer: [String] = []
 
-    /// Promise for the command result
-    let promise: EventLoopPromise<ResultType>
+	/// Promise for the command result
+	let promise: EventLoopPromise<ResultType>
 
     /// Collected untagged responses during command execution
     private(set) var untaggedResponses: [Response] = []
@@ -99,13 +99,14 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     func processResponse(_ response: Response) -> Bool {
+
         // If commandTag is nil, we're only interested in untagged responses
         if commandTag == nil {
             return handleUntaggedResponse(response)
         }
 
         // Check if this is a tagged response that matches our command tag
-        if case let .tagged(taggedResponse) = response, taggedResponse.tag == commandTag {
+        if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
             // Check the response status
             if case .ok = taggedResponse.state {
                 // Subclasses should override handleTaggedOKResponse to handle the OK response
@@ -118,32 +119,32 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
         }
 
         // Not our tagged response, see if subclasses want to handle untagged responses
-        return handleUntaggedResponse(response)
+        let handled = handleUntaggedResponse(response)
+        return handled
     }
 
-    /// Handle a tagged OK response
-    /// Subclasses should override this method to handle successful responses
-    /// - Parameter response: The tagged response
-    func handleTaggedOKResponse(_ response: TaggedResponse) {
-        // Check for client bug warnings in the response
-        if case let .ok(responseText) = response.state {
-            if let code = responseText.code {
-                // Check for CLIENTBUG response code
-                if case .clientBug = code {
-                    logger.warning("CLIENTBUG warning: \(responseText.text)")
-                }
-            }
-        }
+    	/// Handle a tagged OK response
+	/// Subclasses should override this method to handle successful responses
+	/// - Parameter response: The tagged response
+	func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Check for client bug warnings in the response
+		if case .ok(let responseText) = response.state {
+			if let code = responseText.code {
+				// Check for CLIENTBUG response code
+				if case .clientBug = code {
+					logger.warning("CLIENTBUG warning: \(responseText.text)")
+				}
+			}
+		}
 
-        // Default implementation succeeds with Void for handlers that don't need a result.
-        // The guard above ensures ResultType == Void, so the force-cast is safe.
-        if ResultType.self == Void.self {
-            // swiftlint:disable:next force_cast
-            succeedWithResult(() as! ResultType)
-        }
-        // For non-Void result types, subclasses must override this method
-        // but we don't call fatalError here to allow them to call super for CLIENTBUG checking
-    }
+		// Default implementation succeeds with Void for handlers that don't need a result
+		// This only works for ResultType == Void, otherwise subclasses must override
+		if ResultType.self == Void.self {
+			succeedWithResult(() as! ResultType)
+		}
+		// For non-Void result types, subclasses must override this method
+		// but we don't call fatalError here to allow them to call super for CLIENTBUG checking
+	}
 
     /// Handle a tagged error response
     /// Subclasses can override this method to handle error responses differently
@@ -162,16 +163,16 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
         untaggedResponses.append(response)
 
         // Check for BYE responses which can come at any time and terminate the connection
-        if case let .untagged(payload) = response,
-           case let .conditionalState(status) = payload,
-           case let .bye(text) = status {
+        if case .untagged(let payload) = response,
+           case .conditionalState(let status) = payload,
+           case .bye(let text) = status {
             // Fail the current command - executeCommand will handle disconnection
             failWithError(IMAPError.connectionFailed("Server terminated connection: \(text.text)"))
             return true
         }
 
         // Check for FATAL responses which also terminate the connection
-        if case let .fatal(text) = response {
+        if case .fatal(let text) = response {
             // Fail the current command - executeCommand will handle disconnection
             failWithError(IMAPError.connectionFailed("Server fatal error: \(text.text)"))
             return true
@@ -196,7 +197,6 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
         // Always forward the response to the next handler
         context.fireChannelRead(data)
     }
-
     /// Channel inactive method from ChannelInboundHandler
     func channelInactive(context: ChannelHandlerContext) {
         let shouldFail = lock.withLock { !isCompleted }

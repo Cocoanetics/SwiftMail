@@ -1,9 +1,10 @@
 import Foundation
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IntUtilitiesTests {
+
     // MARK: - Formatted File Size Tests
 
     @Test
@@ -21,12 +22,12 @@ struct IntUtilitiesTests {
         #expect(kbFormatted == "1.5 kB")
 
         // Test megabytes
-        let megabytes = 1_500_000
+        let megabytes = 1500000
         let mbFormatted = megabytes.formattedFileSize(locale: enUSLocale)
         #expect(mbFormatted == "1.5 MB")
 
         // Test gigabytes
-        let gigabytes = 1_500_000_000
+        let gigabytes = 1500000000
         let gbFormatted = gigabytes.formattedFileSize(locale: enUSLocale)
         #expect(gbFormatted == "1.5 GB")
 
@@ -44,7 +45,7 @@ struct IntUtilitiesTests {
         let defaultKbFormatted = defaultKilobytes.formattedFileSize()
         #expect(!defaultKbFormatted.isEmpty)
 
-        let defaultMegabytes = 1_500_000
+        let defaultMegabytes = 1500000
         let defaultMbFormatted = defaultMegabytes.formattedFileSize()
         #expect(!defaultMbFormatted.isEmpty)
     }

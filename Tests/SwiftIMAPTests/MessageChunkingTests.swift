@@ -1,8 +1,9 @@
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
 @Suite("MessageIdentifierSet Chunking", .serialized, .timeLimit(.minutes(1)))
 struct MessageChunkingTests {
+
     // MARK: - Empty Set
 
     @Test("Empty set produces no chunks")
@@ -27,7 +28,7 @@ struct MessageChunkingTests {
 
     @Test("Set smaller than chunk size produces one chunk")
     func smallerThanChunkSize() {
-        let uids = (1 ... 5).map { SwiftMail.UID(UInt32($0)) }
+        let uids = (1...5).map { SwiftMail.UID(UInt32($0)) }
         let set = MessageIdentifierSet<SwiftMail.UID>(uids)
         let chunks = set.chunked(size: 10)
         #expect(chunks.count == 1)
@@ -38,7 +39,7 @@ struct MessageChunkingTests {
 
     @Test("Set exactly equal to chunk size produces one chunk")
     func exactlyChunkSize() {
-        let uids = (1 ... 10).map { SwiftMail.UID(UInt32($0)) }
+        let uids = (1...10).map { SwiftMail.UID(UInt32($0)) }
         let set = MessageIdentifierSet<SwiftMail.UID>(uids)
         let chunks = set.chunked(size: 10)
         #expect(chunks.count == 1)
@@ -49,7 +50,7 @@ struct MessageChunkingTests {
 
     @Test("Set larger than chunk size produces correct number of chunks")
     func largerThanChunkSize() {
-        let uids = (1 ... 25).map { SwiftMail.UID(UInt32($0)) }
+        let uids = (1...25).map { SwiftMail.UID(UInt32($0)) }
         let set = MessageIdentifierSet<SwiftMail.UID>(uids)
         let chunks = set.chunked(size: 10)
         #expect(chunks.count == 3)
@@ -60,7 +61,7 @@ struct MessageChunkingTests {
 
     @Test("All original elements are present across chunks")
     func allElementsPreserved() {
-        let uids = (1 ... 23).map { SwiftMail.UID(UInt32($0)) }
+        let uids = (1...23).map { SwiftMail.UID(UInt32($0)) }
         let set = MessageIdentifierSet<SwiftMail.UID>(uids)
         let chunks = set.chunked(size: 7)
 
@@ -79,8 +80,8 @@ struct MessageChunkingTests {
     func nonContiguousUIDs() {
         // UIDs: 1, 2, 3, 10, 11, 12, 50, 51
         var set = MessageIdentifierSet<SwiftMail.UID>()
-        set.insert(range: SwiftMail.UID(1) ... SwiftMail.UID(3))
-        set.insert(range: SwiftMail.UID(10) ... SwiftMail.UID(12))
+        set.insert(range: SwiftMail.UID(1)...SwiftMail.UID(3))
+        set.insert(range: SwiftMail.UID(10)...SwiftMail.UID(12))
         set.insert(SwiftMail.UID(50))
         set.insert(SwiftMail.UID(51))
         #expect(set.count == 8)
@@ -105,7 +106,7 @@ struct MessageChunkingTests {
 
     @Test("Works with SequenceNumber identifiers")
     func sequenceNumbers() {
-        let seqs = (1 ... 12).map { SwiftMail.SequenceNumber(UInt32($0)) }
+        let seqs = (1...12).map { SwiftMail.SequenceNumber(UInt32($0)) }
         let set = MessageIdentifierSet<SwiftMail.SequenceNumber>(seqs)
         let chunks = set.chunked(size: 5)
         #expect(chunks.count == 3)
@@ -118,7 +119,7 @@ struct MessageChunkingTests {
 
     @Test("Zero chunk size returns single chunk with all elements")
     func zeroChunkSize() {
-        let uids = (1 ... 10).map { SwiftMail.UID(UInt32($0)) }
+        let uids = (1...10).map { SwiftMail.UID(UInt32($0)) }
         let set = MessageIdentifierSet<SwiftMail.UID>(uids)
         let chunks = set.chunked(size: 0)
         #expect(chunks.count == 1)
@@ -127,7 +128,7 @@ struct MessageChunkingTests {
 
     @Test("Negative chunk size returns single chunk with all elements")
     func negativeChunkSize() {
-        let uids = (1 ... 10).map { SwiftMail.UID(UInt32($0)) }
+        let uids = (1...10).map { SwiftMail.UID(UInt32($0)) }
         let set = MessageIdentifierSet<SwiftMail.UID>(uids)
         let chunks = set.chunked(size: -5)
         #expect(chunks.count == 1)
@@ -138,7 +139,7 @@ struct MessageChunkingTests {
 
     @Test("Chunk size of 1 produces one chunk per element")
     func chunkSizeOne() {
-        let uids = (1 ... 4).map { SwiftMail.UID(UInt32($0)) }
+        let uids = (1...4).map { SwiftMail.UID(UInt32($0)) }
         let set = MessageIdentifierSet<SwiftMail.UID>(uids)
         let chunks = set.chunked(size: 1)
         #expect(chunks.count == 4)

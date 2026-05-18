@@ -3,15 +3,16 @@ import NIO
 import NIOEmbedded
 @preconcurrency import NIOIMAP
 @preconcurrency import NIOIMAPCore
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct PlainAuthenticationTests {
+
     // MARK: - Credential buffer format
 
     @Test
-    func plainCredentialBufferFormat() throws {
+    func testPlainCredentialBufferFormat() async throws {
         // RFC 4616: message = [authzid] UTF8NUL authcid UTF8NUL passwd
         // We use empty authzid, so: \0 username \0 password
         let channel = NIOAsyncTestingChannel()
@@ -26,7 +27,7 @@ struct PlainAuthenticationTests {
         #expect(bytes.first == 0x00)
 
         // Find second NUL
-        let secondNulIndex = try #require(bytes.dropFirst().firstIndex(of: 0x00))
+        let secondNulIndex = bytes.dropFirst().firstIndex(of: 0x00)!
         let username = String(bytes: bytes[bytes.startIndex + 1 ..< secondNulIndex], encoding: .utf8)
         let password = String(bytes: bytes[secondNulIndex + 1 ..< bytes.endIndex], encoding: .utf8)
 
@@ -37,7 +38,7 @@ struct PlainAuthenticationTests {
     // MARK: - Handler tests
 
     @Test
-    func handlerSucceedsOnTaggedOK() async throws {
+    func testHandlerSucceedsOnTaggedOK() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())
@@ -67,7 +68,7 @@ struct PlainAuthenticationTests {
     }
 
     @Test
-    func handlerFailsOnTaggedNO() async throws {
+    func testHandlerFailsOnTaggedNO() async throws {
         let channel = NIOAsyncTestingChannel()
 
         try await channel.pipeline.addHandler(IMAPClientHandler())

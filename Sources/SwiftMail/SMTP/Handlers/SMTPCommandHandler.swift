@@ -1,6 +1,6 @@
 import Foundation
-import Logging
 import NIOCore
+import Logging
 
 /// Protocol for SMTP command handlers
 protocol SMTPCommandHandler: ChannelInboundHandler, Sendable where ResultType: Sendable {

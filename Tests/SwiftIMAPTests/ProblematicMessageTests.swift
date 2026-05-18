@@ -1,13 +1,14 @@
 import Foundation
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
 @Suite("Problematic Message Tests", .serialized, .timeLimit(.minutes(1)))
 struct ProblematicMessageTests {
+
     // MARK: - Test Resources
 
     func getResourceURL(for name: String, withExtension ext: String) -> URL? {
-        Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Resources")
+        return Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Resources")
     }
 
     func loadResourceContent(name: String, withExtension ext: String) throws -> String {
@@ -23,7 +24,7 @@ struct ProblematicMessageTests {
     }
 
     @Test("Test problematic message 6068 - no undecoded quoted-printable characters")
-    func problematicMessage6068() throws {
+    func testProblematicMessage6068() throws {
         let jsonString = try loadResourceContent(name: "problematic_message_6068", withExtension: "json")
         guard let jsonData = jsonString.data(using: .utf8) else {
             throw TestFailure("Failed to convert JSON string to UTF-8 data")
@@ -43,17 +44,19 @@ struct ProblematicMessageTests {
 
             // Check for undecoded quoted-printable sequences
             let problematicSequences = [
-                "=20", // Space
-                "=A0", // Non-breaking space
-                "=A9", // Copyright symbol
-                "=3D", // Equals sign
-                "=0D", // Carriage return
-                "=0A" // Line feed
+                "=20",  // Space
+                "=A0",  // Non-breaking space
+                "=A9",  // Copyright symbol
+                "=3D",  // Equals sign
+                "=0D",  // Carriage return
+                "=0A"  // Line feed
             ]
 
             var foundProblems: [String] = []
-            for sequence in problematicSequences where decodedString.contains(sequence) {
-                foundProblems.append(sequence)
+            for sequence in problematicSequences {
+                if decodedString.contains(sequence) {
+                    foundProblems.append(sequence)
+                }
             }
 
             if !foundProblems.isEmpty {
@@ -67,14 +70,14 @@ struct ProblematicMessageTests {
             // The content should have reasonable space count and very few equals signs
             #expect(spaceCount > 0, "Decoded content should contain spaces")
             // HTML content naturally contains many equals signs for attributes, so we don't check this for HTML parts
-            if !part.contentType.contains("text/html") {
-                #expect(equalsCount < 10, "Decoded content should have very few equals signs (found \(equalsCount))")
-            }
+           if !part.contentType.contains("text/html") {
+               #expect(equalsCount < 10, "Decoded content should have very few equals signs (found \(equalsCount))")
+           }
         }
     }
 
     @Test("Inline PDFs are included in attachments (issue #142)")
-    func inlinePDFsCountedAsAttachments() throws {
+    func testInlinePDFsCountedAsAttachments() throws {
         guard let url = getResourceURL(for: "Italki_invoices_Sylvia", withExtension: "eml") else {
             throw TestFailure("Failed to locate Italki_invoices_Sylvia.eml resource")
         }
@@ -89,16 +92,16 @@ struct ProblematicMessageTests {
     }
 
     @Test("Test specific quoted-printable decoding patterns")
-    func quotedPrintablePatterns() throws {
+    func testQuotedPrintablePatterns() throws {
         // Test specific patterns that appear in the problematic message
         let testCases = [
-            ("=20", " "), // Space
-            ("=A0", " "), // Non-breaking space (U+00A0) - note: this is different from regular space
-            ("=A9", "©"), // Copyright symbol
-            ("=3D", "="), // Equals sign
-            ("=0D", "\r"), // Carriage return
-            ("=0A", "\n"), // Line feed
-            ("=20=20=20", "   "), // Multiple spaces
+            ("=20", " "),           // Space
+            ("=A0", " "),           // Non-breaking space (U+00A0) - note: this is different from regular space
+            ("=A9", "©"),           // Copyright symbol
+            ("=3D", "="),           // Equals sign
+            ("=0D", "\r"),          // Carriage return
+            ("=0A", "\n"),          // Line feed
+            ("=20=20=20", "   "),   // Multiple spaces
             ("Hello=20World", "Hello World"), // Word with space
             ("fami=20liar", "fami liar") // Split word with space
         ]
@@ -109,14 +112,10 @@ struct ProblematicMessageTests {
             // Special handling for non-breaking space comparison
             if encoded == "=A0" {
                 // =A0 decodes to non-breaking space (U+00A0), not regular space (U+0020)
-                let nonBreakingSpace = try Character(#require(UnicodeScalar(0x00A0)))
-                let nbspMessage = "Failed to decode '\(encoded)' to non-breaking space, "
-                    + "got '\(decoded ?? "nil")'"
-                #expect(decoded == String(nonBreakingSpace), Comment(rawValue: nbspMessage))
+                let nonBreakingSpace = Character(UnicodeScalar(0x00A0)!)
+                #expect(decoded == String(nonBreakingSpace), "Failed to decode '\(encoded)' to non-breaking space, got '\(decoded ?? "nil")'")
             } else {
-                let message = "Failed to decode '\(encoded)' to '\(expected)', "
-                    + "got '\(decoded ?? "nil")'"
-                #expect(decoded == expected, Comment(rawValue: message))
+                #expect(decoded == expected, "Failed to decode '\(encoded)' to '\(expected)', got '\(decoded ?? "nil")'")
             }
         }
     }

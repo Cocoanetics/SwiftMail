@@ -1,11 +1,12 @@
 // String+UtilitiesTests.swift
 // Tests for general String utilities
 
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
 @Suite("String Utilities Tests", .serialized, .timeLimit(.minutes(1)))
 struct StringUtilitiesTests {
+
     @Test("Sanitized file name validation")
     func sanitizedFileName() {
         // Test valid filenames remain unchanged

@@ -1,6 +1,6 @@
 import Foundation
-import Logging
 import NIO
+import Logging
 
 /**
  Handler for SMTP STARTTLS command responses
@@ -29,7 +29,7 @@ final class StartTLSHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
      Handle a successful response
      - Parameter response: The parsed SMTP response
      */
-    override func handleSuccess(response _: SMTPResponse) {
+    override func handleSuccess(response: SMTPResponse) {
         promise.succeed(true)
     }
 

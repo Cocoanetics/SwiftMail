@@ -30,11 +30,9 @@ protocol IMAPTaggedCommand: IMAPCommand {
     func toTaggedCommand(tag: String) -> TaggedCommand
 }
 
-/// Provide reasonable defaults.
+// Provide reasonable defaults.
 extension IMAPCommand {
-    var timeoutSeconds: Int {
-        5
-    }
+    var timeoutSeconds: Int { return 5 }
 
     func validate() throws {
         // Default implementation does no validation

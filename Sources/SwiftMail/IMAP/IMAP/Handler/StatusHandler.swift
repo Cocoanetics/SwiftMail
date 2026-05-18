@@ -1,19 +1,19 @@
 import Foundation
 import Logging
-import NIO
-import NIOConcurrencyHelpers
 import NIOIMAP
 import NIOIMAPCore
+import NIO
+import NIOConcurrencyHelpers
 
 /// Handler for IMAP STATUS command
 final class StatusHandler: BaseIMAPCommandHandler<NIOIMAPCore.MailboxStatus>, IMAPCommandHandler, @unchecked Sendable {
     /// The type of result this handler produces
     typealias ResultType = NIOIMAPCore.MailboxStatus
 
-    /// The mailbox status being built
-    private var mailboxInfo = NIOIMAPCore.MailboxStatus()
+    	/// The mailbox status being built
+	private var mailboxInfo = NIOIMAPCore.MailboxStatus()
 
-    /// Initialize a new status handler
+	/// Initialize a new status handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the status completes
@@ -23,15 +23,15 @@ final class StatusHandler: BaseIMAPCommandHandler<NIOIMAPCore.MailboxStatus>, IM
         super.init(commandTag: commandTag, promise: promise)
     }
 
-    /// Handle a tagged OK response by succeeding the promise with the mailbox info
-    /// - Parameter response: The tagged response
-    override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        // Call super to handle CLIENTBUG warnings
-        super.handleTaggedOKResponse(response)
+    	/// Handle a tagged OK response by succeeding the promise with the mailbox info
+	/// - Parameter response: The tagged response
+	override func handleTaggedOKResponse(_ response: TaggedResponse) {
+		// Call super to handle CLIENTBUG warnings
+		super.handleTaggedOKResponse(response)
 
-        // Succeed with the mailbox info
-        succeedWithResult(mailboxInfo)
-    }
+		// Succeed with the mailbox info
+		succeedWithResult(mailboxInfo)
+	}
 
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
@@ -44,13 +44,13 @@ final class StatusHandler: BaseIMAPCommandHandler<NIOIMAPCore.MailboxStatus>, IM
     /// - Returns: Whether the response was handled by this handler
     override func handleUntaggedResponse(_ response: Response) -> Bool {
         // Process untagged responses for mailbox information
-        if case let .untagged(untaggedResponse) = response {
+        if case .untagged(let untaggedResponse) = response {
             // Extract mailbox information from untagged responses
             switch untaggedResponse {
-                case let .mailboxData(mailboxData):
+                case .mailboxData(let mailboxData):
                     // Extract mailbox information from mailbox data
                     switch mailboxData {
-                        case let .status(_, statusData):
+                        case .status(_, let statusData):
                             // The statusData is already a NIOIMAPCore.MailboxStatus
                             lock.withLock {
                                 mailboxInfo = statusData

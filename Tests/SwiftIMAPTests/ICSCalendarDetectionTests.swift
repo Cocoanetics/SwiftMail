@@ -1,12 +1,13 @@
 import Foundation
-import NIO
-import NIOIMAPCore
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
+import NIOIMAPCore
+import NIO
 
 /// Tests for ICS/text/calendar detection, body filtering, and suggestedFilename.
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct ICSCalendarDetectionTests {
+
     // MARK: - Helpers
 
     private func emptyFields() -> BodyStructure.Fields {
@@ -48,11 +49,7 @@ struct ICSCalendarDetectionTests {
         // text/calendar without explicit "attachment" disposition should still be an attachment
         let header = MessageInfo(sequenceNumber: SequenceNumber(1))
         let plainPart = MessagePart(section: Section([1]), contentType: "text/plain")
-        let calendarPart = MessagePart(
-            section: Section([2]),
-            contentType: "text/calendar; method=REQUEST",
-            filename: "invite.ics"
-        )
+        let calendarPart = MessagePart(section: Section([2]), contentType: "text/calendar; method=REQUEST", filename: "invite.ics")
         let message = Message(header: header, parts: [plainPart, calendarPart])
 
         let attachments = message.attachments

@@ -7,6 +7,7 @@ import Foundation
  Error types for SMTP operations
  */
 public enum SMTPError: Error {
+
     /// Connection to the server failed
     case connectionFailed(String)
 
@@ -35,35 +36,33 @@ public enum SMTPError: Error {
     case unexpectedResponse(SMTPResponse)
 }
 
-/// LocalizedError so .localizedDescription returns the real message (not just "error N")
+// LocalizedError so .localizedDescription returns the real message (not just "error N")
 extension SMTPError: LocalizedError {
-    public var errorDescription: String? {
-        description
-    }
+    public var errorDescription: String? { description }
 }
 
-/// Add CustomStringConvertible conformance for better error messages
+// Add CustomStringConvertible conformance for better error messages
 extension SMTPError: CustomStringConvertible {
     public var description: String {
         switch self {
-            case let .connectionFailed(reason):
-                "SMTP connection failed: \(reason)"
-            case let .invalidResponse(reason):
-                "SMTP invalid response: \(reason)"
-            case let .sendFailed(reason):
-                "SMTP send failed: \(reason)"
-            case let .authenticationFailed(reason):
-                "SMTP authentication failed: \(reason)"
-            case let .commandFailed(reason):
-                "SMTP command failed: \(reason)"
-            case let .invalidEmailAddress(reason):
-                "SMTP invalid email address: \(reason)"
-            case let .tlsFailed(reason):
-                "SMTP TLS failed: \(reason)"
-            case let .messageTooLarge(messageSizeOctets, maximumMessageSizeOctets):
-                "SMTP message too large: \(messageSizeOctets) bytes exceeds \(maximumMessageSizeOctets) byte limit"
-            case let .unexpectedResponse(response):
-                "SMTP unexpected response: \(response.code) \(response.message)"
+        case .connectionFailed(let reason):
+            return "SMTP connection failed: \(reason)"
+        case .invalidResponse(let reason):
+            return "SMTP invalid response: \(reason)"
+        case .sendFailed(let reason):
+            return "SMTP send failed: \(reason)"
+        case .authenticationFailed(let reason):
+            return "SMTP authentication failed: \(reason)"
+        case .commandFailed(let reason):
+            return "SMTP command failed: \(reason)"
+        case .invalidEmailAddress(let reason):
+            return "SMTP invalid email address: \(reason)"
+        case .tlsFailed(let reason):
+            return "SMTP TLS failed: \(reason)"
+        case .messageTooLarge(let messageSizeOctets, let maximumMessageSizeOctets):
+            return "SMTP message too large: \(messageSizeOctets) bytes exceeds \(maximumMessageSizeOctets) byte limit"
+        case .unexpectedResponse(let response):
+            return "SMTP unexpected response: \(response.code) \(response.message)"
         }
     }
 }

@@ -1,6 +1,6 @@
 import Foundation
-import Logging
 import NIOCore
+import Logging
 
 /// Handler for SMTP authentication
 final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
@@ -30,14 +30,14 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// - Parameters:
     ///   - commandTag: Optional tag for the command
     ///   - promise: The promise to fulfill when the command completes
-    required convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
+   required convenience init(commandTag: String?, promise: EventLoopPromise<AuthResult>) {
         // These will be set in the designated initializer
         self.init(commandTag: commandTag, promise: promise, method: .plain, username: "", password: "", channel: nil)
     }
 
     /// Designated initializer
     init(commandTag: String?, promise: EventLoopPromise<AuthResult>,
-         method: AuthMethod, username: String, password: String, channel: Channel?) {
+               method: AuthMethod, username: String, password: String, channel: Channel?) {
         self.method = method
         self.username = username
         self.password = password
@@ -49,69 +49,66 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
     /// - Parameter response: The response line to process
     /// - Returns: Whether the handler is complete
     override func processResponse(_ response: SMTPResponse) -> Bool {
+        // Handle authentication based on the method and current state
         switch method {
-            case .plain, .xoauth2:
-                processImmediateResponse(response)
-            case .login:
-                processLoginResponse(response)
-        }
-    }
+        case .plain, .xoauth2:
+            // For PLAIN and XOAUTH2 auth, we should get a success response immediately
+            if response.code >= 200 && response.code < 300 {
+                promise.succeed(AuthResult(method: method, success: true))
+                return true
+            } else if response.code >= 400 {
+                promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
+                return true
+            }
 
-    /// Handle the single-shot response for methods (PLAIN, XOAUTH2) that complete in one round-trip.
-    private func processImmediateResponse(_ response: SMTPResponse) -> Bool {
-        if response.code >= 200, response.code < 300 {
-            promise.succeed(AuthResult(method: method, success: true))
-            return true
-        } else if response.code >= 400 {
-            promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
-            return true
-        }
-        return false
-    }
-
-    /// Handle a response for the LOGIN auth flow, advancing the state machine and sending credentials as needed.
-    private func processLoginResponse(_ response: SMTPResponse) -> Bool {
-        switch state {
+        case .login:
+            // For LOGIN auth, we need to handle multiple steps
+            switch state {
             case .initial:
-                advanceLoginState(response, sending: username, nextState: .usernameProvided)
+                // Initial response should be a challenge for the username
+                if response.code == 334 {
+                    // Send the username (base64 encoded)
+                    sendLoginCredential(username)
+                    state = .usernameProvided
+                    return false // Not complete yet
+                } else if response.code >= 400 {
+                    // Error response
+                    promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
+                    return true
+                }
+
             case .usernameProvided:
-                advanceLoginState(response, sending: password, nextState: .completed)
+                // After username, should be a challenge for the password
+                if response.code == 334 {
+                    // Send the password (base64 encoded)
+                    sendLoginCredential(password)
+                    state = .completed
+                    return false // Still need the final response
+                } else if response.code >= 400 {
+                    // Error response
+                    promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
+                    return true
+                }
+
             case .completed:
-                finalizeLogin(response)
+                // Final response after password
+                if response.code >= 200 && response.code < 300 {
+                    promise.succeed(AuthResult(method: method, success: true))
+                    return true
+                } else {
+                    promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
+                    return true
+                }
+            }
         }
-    }
 
-    /// Send a credential in response to a 334 challenge, advancing to `nextState`, or fail on a 4xx/5xx response.
-    private func advanceLoginState(
-        _ response: SMTPResponse,
-        sending credential: String,
-        nextState: AuthState
-    ) -> Bool {
-        if response.code == 334 {
-            sendLoginCredential(credential)
-            state = nextState
-            return false
-        } else if response.code >= 400 {
-            promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
-            return true
-        }
-        return false
-    }
-
-    /// Resolve the LOGIN flow after the password has been sent: success on 2xx, failure otherwise.
-    private func finalizeLogin(_ response: SMTPResponse) -> Bool {
-        if response.code >= 200, response.code < 300 {
-            promise.succeed(AuthResult(method: method, success: true))
-        } else {
-            promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
-        }
-        return true
+        return false // Not yet complete
     }
 
     /// Send a credential for LOGIN authentication
     /// - Parameter credential: The credential to send (username or password)
     private func sendLoginCredential(_ credential: String) {
-        guard let channel else {
+        guard let channel = channel else {
             promise.fail(SMTPError.connectionFailed("Channel is nil"))
             return
         }

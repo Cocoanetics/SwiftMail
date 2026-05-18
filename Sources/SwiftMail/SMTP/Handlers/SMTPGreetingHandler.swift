@@ -1,6 +1,6 @@
 import Foundation
-import Logging
 import NIOCore
+import Logging
 
 /// Handler for processing the initial greeting from the SMTP server
 final class SMTPGreetingHandler: BaseSMTPHandler<SMTPGreeting>, @unchecked Sendable {
@@ -15,13 +15,13 @@ final class SMTPGreetingHandler: BaseSMTPHandler<SMTPGreeting>, @unchecked Senda
 /// Structure representing an SMTP server greeting
 struct SMTPGreeting {
     /// The response code (usually 220)
-    let code: Int
+	let code: Int
 
     /// The greeting message from the server
-    let message: String
+	let message: String
 
     /// Whether the server advertises ESMTP support in the greeting
-    var supportsESMTP: Bool {
-        message.contains("ESMTP")
+	var supportsESMTP: Bool {
+        return message.contains("ESMTP")
     }
 }

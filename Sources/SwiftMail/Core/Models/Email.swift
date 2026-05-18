@@ -90,26 +90,17 @@ public struct Email: Sendable {
      - htmlBody: The HTML body of the email (optional)
      - attachments: Optional attachments for the email
      */
-    public init(
-        senderName: String?,
-        senderAddress: String,
-        recipientNames: [String]?,
-        recipientAddresses: [String],
-        subject: String,
-        textBody: String,
-        htmlBody: String? = nil,
-        attachments: [Attachment]? = nil
-    ) {
+    public init(senderName: String?, senderAddress: String, recipientNames: [String]?, recipientAddresses: [String], subject: String, textBody: String, htmlBody: String? = nil, attachments: [Attachment]? = nil) {
         // Create sender EmailAddress
         let sender = EmailAddress(name: senderName, address: senderAddress)
 
         // Create recipient EmailAddress objects
         var recipients: [EmailAddress] = []
 
-        if let recipientNames, recipientNames.count == recipientAddresses.count {
+        if let recipientNames = recipientNames, recipientNames.count == recipientAddresses.count {
             // If recipient names are provided and count matches addresses
-            for index in 0 ..< recipientAddresses.count {
-                let recipient = EmailAddress(name: recipientNames[index], address: recipientAddresses[index])
+            for i in 0..<recipientAddresses.count {
+                let recipient = EmailAddress(name: recipientNames[i], address: recipientAddresses[i])
                 recipients.append(recipient)
             }
         } else {
@@ -121,14 +112,7 @@ public struct Email: Sendable {
         }
 
         // Initialize with the created objects
-        self.init(
-            sender: sender,
-            recipients: recipients,
-            subject: subject,
-            textBody: textBody,
-            htmlBody: htmlBody,
-            attachments: attachments
-        )
+        self.init(sender: sender, recipients: recipients, subject: subject, textBody: textBody, htmlBody: htmlBody, attachments: attachments)
     }
 
     /**
@@ -136,8 +120,8 @@ public struct Email: Sendable {
      - Returns: An array of inline attachments, or an empty array if none
      */
     public var inlineAttachments: [Attachment] {
-        guard let attachments else { return [] }
-        return attachments.filter(\.isInline)
+        guard let attachments = attachments else { return [] }
+        return attachments.filter { $0.isInline }
     }
 
     /**
@@ -145,7 +129,7 @@ public struct Email: Sendable {
      - Returns: An array of regular attachments, or an empty array if none
      */
     public var regularAttachments: [Attachment] {
-        guard let attachments else { return [] }
+        guard let attachments = attachments else { return [] }
         return attachments.filter { !$0.isInline }
     }
 
@@ -154,6 +138,6 @@ public struct Email: Sendable {
      - Returns: An array of all recipients
      */
     public var allRecipients: [EmailAddress] {
-        recipients + ccRecipients + bccRecipients
+        return recipients + ccRecipients + bccRecipients
     }
 }

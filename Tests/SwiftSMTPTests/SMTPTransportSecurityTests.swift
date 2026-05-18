@@ -1,8 +1,8 @@
 import NIO
 import NIOEmbedded
 import NIOSSL
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SMTPTransportSecurityTests {
@@ -109,7 +109,7 @@ struct SMTPTransportSecurityTests {
             )
             Issue.record("Expected missing STARTTLS capability failure")
         } catch let error as SMTPError {
-            if case let .tlsFailed(message) = error {
+            if case .tlsFailed(let message) = error {
                 #expect(message.contains("STARTTLS required but not advertised"))
             } else {
                 Issue.record("Expected tlsFailed error, got \(error)")
@@ -139,7 +139,7 @@ struct SMTPTransportSecurityTests {
             )
             Issue.record("Expected STARTTLS upgrade failure")
         } catch let error as SMTPError {
-            if case let .tlsFailed(message) = error {
+            if case .tlsFailed(let message) = error {
                 #expect(message.contains("STARTTLS upgrade failed"))
             } else {
                 Issue.record("Expected tlsFailed error, got \(error)")

@@ -21,9 +21,7 @@ protocol MailCommand where ResultType: Sendable {
 
 /// Default implementation for common command behaviors
 extension MailCommand {
-    var timeoutSeconds: Int {
-        10
-    }
+    var timeoutSeconds: Int { return 10 }
 
     func validate() throws {
         // Default implementation does no validation
@@ -46,7 +44,7 @@ protocol MailCommandHandler: Sendable where ResultType: Sendable {
     /// called with a response type that may need to be cast to the specific type the handler expects.
     /// - Parameter response: The response to process (any type)
     /// - Returns: Whether the handler is complete
-    func processResponse(_ response: some Any) -> Bool
+    func processResponse<T>(_ response: T) -> Bool
 
     /// Required initializer for creating handler instances
     /// - Parameters:

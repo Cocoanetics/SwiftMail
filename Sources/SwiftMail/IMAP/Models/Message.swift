@@ -10,47 +10,47 @@ public struct Message: Codable, Sendable {
 
     /// The UID of the message
     public var uid: UID? {
-        header.uid
+        return header.uid
     }
 
     /// The sequence number of the message
     public var sequenceNumber: SequenceNumber {
-        header.sequenceNumber
+        return header.sequenceNumber
     }
 
     /// The subject of the message
     public var subject: String? {
-        header.subject
+        return header.subject
     }
 
     /// The sender of the message
     public var from: String? {
-        header.from
+        return header.from
     }
 
     /// The recipients of the message
     public var to: [String] {
-        header.to
+        return header.to
     }
 
     /// The CC recipients of the message
     public var cc: [String] {
-        header.cc
+        return header.cc
     }
 
     /// The BCC recipients of the message
     public var bcc: [String] {
-        header.bcc
+        return header.bcc
     }
 
     /// The date of the message
     public var date: Date? {
-        header.date
+        return header.date
     }
 
     /// The flags of the message
     public var flags: [Flag] {
-        header.flags
+        return header.flags
     }
 
     /// All message parts
@@ -58,18 +58,18 @@ public struct Message: Codable, Sendable {
 
     /// The plain text body of the email (if available)
     public var textBody: String? {
-        bodyContent(for: "text/plain")
+        return bodyContent(for: "text/plain")
     }
 
     /// The HTML body of the email (if available)
     public var htmlBody: String? {
-        bodyContent(for: "text/html")
+        return bodyContent(for: "text/html")
     }
 
     /// All attachments in the email
     public var attachments: [MessagePart] {
-        parts.filter { part in
-            let contentType = part.contentType.lowercased()
+        return parts.filter { part in
+            let ct = part.contentType.lowercased()
             let disposition = part.disposition?.lowercased()
             let hasFilename = !(part.filename?.isEmpty ?? true)
             let isExplicitAttachment = disposition == "attachment"
@@ -79,30 +79,27 @@ public struct Message: Codable, Sendable {
             // they are typically embedded via cid: references (logos, signatures).
             let isInlineNonImage = disposition == "inline"
                 && hasFilename
-                && !contentType.hasPrefix("image/")
+                && !ct.hasPrefix("image/")
             let isCidOnly = part.contentId != nil && !isExplicitAttachment
             // text/calendar (ICS invites) are attachments even without explicit
             // disposition or filename.
-            let isCalendar = contentType.hasPrefix("text/calendar")
-            return isExplicitAttachment
-                || (hasFileNotInline && !isCidOnly)
-                || (isInlineNonImage && !isCidOnly)
-                || isCalendar
+            let isCalendar = ct.hasPrefix("text/calendar")
+            return isExplicitAttachment || (hasFileNotInline && !isCidOnly) || (isInlineNonImage && !isCidOnly) || isCalendar
         }
     }
 
     /// All inline content referenced by Content-ID (CID)
     public var cids: [MessagePart] {
-        parts.filter { $0.contentId != nil }
+        return parts.filter { $0.contentId != nil }
     }
 
     /// All body parts in the email (text and HTML)
     public var bodies: [MessagePart] {
-        parts.filter { part in
+        return parts.filter { part in
             // Only text/plain and text/html are displayable body content.
             // Other text/* types (text/calendar, text/csv, etc.) are attachments.
-            let contentType = part.contentType.lowercased()
-            return (contentType.hasPrefix("text/plain") || contentType.hasPrefix("text/html"))
+            let ct = part.contentType.lowercased()
+            return (ct.hasPrefix("text/plain") || ct.hasPrefix("text/html"))
                 && part.disposition?.lowercased() != "attachment"
         }
     }
@@ -144,8 +141,8 @@ public struct Message: Codable, Sendable {
 }
 
 // MARK: - Helper Methods
-
 private extension Message {
+
     /// Find body content of a specific type.
     /// Returns the first matching body part's text content.
     /// For emails with nested message/rfc822 parts, callers should iterate
@@ -161,17 +158,16 @@ private extension Message {
 }
 
 // MARK: - Public Body Finding Extensions
-
 public extension Message {
     /// Find the text body part
     /// - Returns: The text body part, or `nil` if not found
     func findTextBodyPart() -> MessagePart? {
-        bodies.first { $0.contentType.lowercased().hasPrefix("text/plain") }
+        return bodies.first { $0.contentType.lowercased().hasPrefix("text/plain") }
     }
 
     /// Find the HTML body part
     /// - Returns: The HTML body part, or `nil` if not found
     func findHtmlBodyPart() -> MessagePart? {
-        bodies.first { $0.contentType.lowercased().hasPrefix("text/html") }
+        return bodies.first { $0.contentType.lowercased().hasPrefix("text/html") }
     }
 }

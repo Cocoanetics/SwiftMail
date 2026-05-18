@@ -13,9 +13,7 @@ struct AppendCommand: IMAPCommand {
     let flags: [Flag]
     let internalDate: ServerMessageDate?
 
-    var timeoutSeconds: Int {
-        30
-    }
+    var timeoutSeconds: Int { return 30 }
 
     func validate() throws {
         guard !mailboxName.isEmpty else {

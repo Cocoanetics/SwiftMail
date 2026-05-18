@@ -37,7 +37,7 @@ struct LoginAuthCommand: SMTPCommand {
      */
     func toCommandString() -> String {
         // For LOGIN auth, the initial command doesn't include credentials
-        "AUTH LOGIN"
+        return "AUTH LOGIN"
     }
 
     /**

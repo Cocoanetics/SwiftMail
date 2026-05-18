@@ -1,12 +1,13 @@
 import Foundation
-import NIO
-import NIOIMAPCore
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
+import NIOIMAPCore
+import NIO
 
 /// Tests for Array<MessagePart> init from BodyStructure — rfc822 recursion and embedded MessageInfo.
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct MessagePartBodyStructureTests {
+
     // MARK: - Helpers
 
     /// Minimal Fields with no parameters, no ID, no encoding.
@@ -34,13 +35,7 @@ struct MessagePartBodyStructureTests {
     }
 
     /// Create a minimal Envelope with subject and from address.
-    private func envelope(
-        subject: String? = nil,
-        fromName: String? = nil,
-        fromMailbox: String = "user",
-        fromHost: String = "example.com",
-        date: String? = nil
-    ) -> Envelope {
+    private func envelope(subject: String? = nil, fromName: String? = nil, fromMailbox: String = "user", fromHost: String = "example.com", date: String? = nil) -> Envelope {
         let subjectBuf: ByteBuffer? = subject.map { buffer($0) }
         let fromAddr = EmailAddress(
             personName: fromName.map { buffer($0) },
@@ -232,12 +227,8 @@ struct MessagePartBodyStructureTests {
     func bodyContentReturnsFirstMatch() {
         // Message with two text/plain parts (e.g., from nested rfc822)
         let header = MessageInfo(sequenceNumber: SequenceNumber(1))
-        let part1 = MessagePart(section: Section([1]), contentType: "text/plain", data: Data("First body".utf8))
-        let part2 = MessagePart(
-            section: Section([2]),
-            contentType: "text/plain",
-            data: Data("Second body".utf8)
-        )
+        let part1 = MessagePart(section: Section([1]), contentType: "text/plain", data: "First body".data(using: .utf8))
+        let part2 = MessagePart(section: Section([2]), contentType: "text/plain", data: "Second body".data(using: .utf8))
         let message = Message(header: header, parts: [part1, part2])
 
         // textBody should return only the first match, not concatenation
@@ -245,7 +236,7 @@ struct MessagePartBodyStructureTests {
     }
 
     @Test
-    func embeddedMessageInfoEnvelopeDate() throws {
+    func embeddedMessageInfoEnvelopeDate() {
         // Test that envelope date is parsed correctly
         let env = envelope(date: "Tue, 15 Oct 2024 09:30:00 +0000")
         let structure = rfc822Singlepart(envelope: env, nestedBody: textPlainBody())
@@ -256,10 +247,7 @@ struct MessagePartBodyStructureTests {
 
         // Verify the parsed date components
         let calendar = Calendar(identifier: .gregorian)
-        let components = try calendar.dateComponents(
-            in: #require(TimeZone(secondsFromGMT: 0)),
-            from: #require(info?.date)
-        )
+        let components = calendar.dateComponents(in: TimeZone(secondsFromGMT: 0)!, from: info!.date!)
         #expect(components.year == 2024)
         #expect(components.month == 10)
         #expect(components.day == 15)

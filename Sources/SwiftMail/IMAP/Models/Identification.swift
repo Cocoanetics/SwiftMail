@@ -43,35 +43,35 @@ public struct Identification: Sendable {
     }
 
     /// Create an Identification from raw parameters received from NIOIMAP.
-    init(parameters: OrderedDictionary<String, String?>) {
-        name = parameters["name"] ?? nil
-        version = parameters["version"] ?? nil
-        os = parameters["os"] ?? nil
-        osVersion = parameters["os-version"] ?? nil
-        vendor = parameters["vendor"] ?? nil
-        supportURL = parameters["support-url"] ?? nil
+    internal init(parameters: OrderedDictionary<String, String?>) {
+        self.name = parameters["name"] ?? nil
+        self.version = parameters["version"] ?? nil
+        self.os = parameters["os"] ?? nil
+        self.osVersion = parameters["os-version"] ?? nil
+        self.vendor = parameters["vendor"] ?? nil
+        self.supportURL = parameters["support-url"] ?? nil
         var other: [String: String?] = [:]
         for (key, value) in parameters where !Self.knownKeys.contains(key) {
             other[key] = value
         }
-        additional = other
+        self.additional = other
     }
 
     /// Access a parameter by key.
     public subscript(key: String) -> String? {
         switch key {
-            case "name": name
-            case "version": version
-            case "os": os
-            case "os-version": osVersion
-            case "vendor": vendor
-            case "support-url": supportURL
-            default: additional[key] ?? nil
+        case "name": return name
+        case "version": return version
+        case "os": return os
+        case "os-version": return osVersion
+        case "vendor": return vendor
+        case "support-url": return supportURL
+        default: return additional[key] ?? nil
         }
     }
 
     /// Convert this Identification into the ordered dictionary format expected by NIOIMAP.
-    var nioParameters: OrderedDictionary<String, String?> {
+    internal var nioParameters: OrderedDictionary<String, String?> {
         var params: OrderedDictionary<String, String?> = [:]
         params["name"] = name
         params["version"] = version
@@ -79,8 +79,8 @@ public struct Identification: Sendable {
         params["os-version"] = osVersion
         params["vendor"] = vendor
         params["support-url"] = supportURL
-        for (key, value) in additional {
-            params[key] = value
+        for (k, v) in additional {
+            params[k] = v
         }
         return params
     }

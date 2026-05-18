@@ -1,9 +1,10 @@
+import Testing
 import NIOIMAPCore
 @testable import SwiftMail
-import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct AppendLimitTests {
+
     // MARK: - globalAppendLimit extraction
 
     @Test("Returns nil when capability set is empty")

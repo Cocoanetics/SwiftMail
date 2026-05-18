@@ -12,10 +12,10 @@ public enum ConversionError: Error, Equatable, CustomStringConvertible {
 
     public var description: String {
         switch self {
-            case .missingSender:
-                "Message has no sender (from field is nil)"
-            case let .unparsableSender(raw):
-                "Could not parse sender address: \(raw)"
+        case .missingSender:
+            return "Message has no sender (from field is nil)"
+        case .unparsableSender(let raw):
+            return "Could not parse sender address: \(raw)"
         }
     }
 }
@@ -38,35 +38,11 @@ extension Email {
         let ccRecipients = message.cc.compactMap { EmailAddress($0) }
         let bccRecipients = message.bcc.compactMap { EmailAddress($0) }
 
-        let allAttachments = Self.collectAttachments(from: message)
-
-        // Skip standard headers already captured via dedicated fields
-        let standardHeaders: Set = [
-            "Subject", "From", "To", "Cc", "Bcc",
-            "Message-ID", "References", "In-Reply-To", "Date"
-        ]
-        let additionalHeaders = message.header.additionalFields?
-            .filter { !standardHeaders.contains($0.key) }
-
-        self.init(
-            sender: sender,
-            recipients: recipients,
-            ccRecipients: ccRecipients,
-            bccRecipients: bccRecipients,
-            subject: message.subject ?? "",
-            textBody: message.textBody ?? "",
-            htmlBody: message.htmlBody,
-            attachments: allAttachments.isEmpty ? nil : allAttachments
-        )
-        messageID = message.header.messageId
-        self.additionalHeaders = (additionalHeaders?.isEmpty == false) ? additionalHeaders : nil
-    }
-
-    /// Collect attachments from an IMAP message: explicit attachment parts plus any CID-referenced
-    /// inline parts not already represented in the attachment list.
-    private static func collectAttachments(from message: Message) -> [Attachment] {
+        // Explicit attachments from the message
         let attachmentParts = message.attachments
-        let attachmentSections = Set(attachmentParts.map(\.section))
+
+        // CID-referenced inline parts not already in the attachments list
+        let attachmentSections = Set(attachmentParts.map { $0.section })
         let cidParts = message.cids.filter { !attachmentSections.contains($0.section) }
 
         var allAttachments: [Attachment] = []
@@ -93,6 +69,25 @@ extension Email {
             ))
         }
 
-        return allAttachments
+        // Skip standard headers already captured via dedicated fields
+        let standardHeaders: Set<String> = [
+            "Subject", "From", "To", "Cc", "Bcc",
+            "Message-ID", "References", "In-Reply-To", "Date"
+        ]
+        let additionalHeaders = message.header.additionalFields?
+            .filter { !standardHeaders.contains($0.key) }
+
+        self.init(
+            sender: sender,
+            recipients: recipients,
+            ccRecipients: ccRecipients,
+            bccRecipients: bccRecipients,
+            subject: message.subject ?? "",
+            textBody: message.textBody ?? "",
+            htmlBody: message.htmlBody,
+            attachments: allAttachments.isEmpty ? nil : allAttachments
+        )
+        self.messageID = message.header.messageId
+        self.additionalHeaders = (additionalHeaders?.isEmpty == false) ? additionalHeaders : nil
     }
 }

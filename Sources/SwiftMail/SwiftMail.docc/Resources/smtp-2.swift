@@ -1,6 +1,6 @@
 import SwiftMail
 
-/// Create an SMTP server instance
+// Create an SMTP server instance
 let smtpServer = SMTPServer(host: "smtp.example.com", port: 587)
 
 // Connect to the SMTP server

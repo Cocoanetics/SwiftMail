@@ -1,16 +1,17 @@
 // EMLTests.swift
 // Tests for EML parsing and serialization
 
+import Testing
 import Foundation
 @testable import SwiftMail
-import Testing
 
 @Suite("EML Parser Tests", .serialized, .tags(.mime), .timeLimit(.minutes(1)))
 struct EMLParserTests {
+
     // MARK: - Simple Plain Text
 
     @Test("Parse simple plain text message")
-    func parsePlainText() throws {
+    func testParsePlainText() throws {
         let eml = """
         From: sender@example.com\r
         To: recipient@example.com\r
@@ -40,7 +41,7 @@ struct EMLParserTests {
     // MARK: - Multipart Alternative
 
     @Test("Parse multipart/alternative message")
-    func parseMultipartAlternative() throws {
+    func testParseMultipartAlternative() throws {
         let eml = """
         From: sender@example.com\r
         To: recipient@example.com\r
@@ -73,7 +74,7 @@ struct EMLParserTests {
     // MARK: - Multipart Mixed with Attachment
 
     @Test("Parse multipart/mixed with attachment")
-    func parseMultipartMixed() throws {
+    func testParseMultipartMixed() throws {
         let eml = """
         From: sender@example.com\r
         To: recipient@example.com\r
@@ -96,9 +97,7 @@ struct EMLParserTests {
         let data = Data(eml.utf8)
         let message = try Message(emlData: data)
 
-        let partsDescription = message.parts.map { "\($0.section): \($0.contentType)" }
-        let requireMessage = "Expected 2 parts, got \(message.parts.count): \(partsDescription)"
-        try #require(message.parts.count == 2, Comment(rawValue: requireMessage))
+        try #require(message.parts.count == 2, "Expected 2 parts, got \(message.parts.count): \(message.parts.map { "\($0.section): \($0.contentType)" })")
         #expect(message.parts[1].filename == "report.pdf")
         #expect(message.parts[1].disposition == "attachment")
         #expect(message.parts[1].encoding == "base64")
@@ -108,7 +107,7 @@ struct EMLParserTests {
     // MARK: - RFC 2047 Encoded Subject
 
     @Test("Parse RFC 2047 encoded subject")
-    func rFC2047Subject() throws {
+    func testRFC2047Subject() throws {
         let eml = """
         From: sender@example.com\r
         To: recipient@example.com\r
@@ -127,7 +126,7 @@ struct EMLParserTests {
     // MARK: - Address Parsing
 
     @Test("Parse display name addresses")
-    func addressParsing() throws {
+    func testAddressParsing() throws {
         let eml = """
         From: "Oliver Drobnik" <oliver@example.com>\r
         To: "Alice" <alice@example.com>, bob@example.com\r
@@ -147,7 +146,7 @@ struct EMLParserTests {
     // MARK: - Date Parsing
 
     @Test("Parse various date formats")
-    func dateParsing() {
+    func testDateParsing() {
         let formats = [
             "Mon, 16 Feb 2026 10:30:00 +0100",
             "16 Feb 2026 10:30:00 +0100",
@@ -163,7 +162,7 @@ struct EMLParserTests {
     // MARK: - Boundary Extraction
 
     @Test("Extract boundary from Content-Type")
-    func boundaryExtraction() {
+    func testBoundaryExtraction() {
         let ct1 = "multipart/mixed; boundary=\"abc123\""
         #expect(EMLParser.extractBoundary(from: ct1) == "abc123")
 
@@ -177,8 +176,9 @@ struct EMLParserTests {
 
 @Suite("EML Serializer Tests", .serialized, .tags(.mime), .timeLimit(.minutes(1)))
 struct EMLSerializerTests {
+
     @Test("Serialize and re-parse round trip")
-    func roundTrip() throws {
+    func testRoundTrip() throws {
         let eml = """
         From: sender@example.com\r
         To: recipient@example.com\r
@@ -207,7 +207,7 @@ struct EMLSerializerTests {
     }
 
     @Test("Serialized output contains required headers")
-    func serializedHeaders() throws {
+    func testSerializedHeaders() throws {
         let header = MessageInfo(
             sequenceNumber: SequenceNumber(0),
             subject: "Test Subject",
@@ -225,7 +225,7 @@ struct EMLSerializerTests {
 
         let message = Message(header: header, parts: [part])
         let serialized = try message.emlData()
-        let str = try #require(String(data: serialized, encoding: .utf8))
+        let str = String(data: serialized, encoding: .utf8)!
 
         #expect(str.contains("From: sender@example.com"))
         #expect(str.contains("To: recipient@example.com"))
@@ -235,7 +235,7 @@ struct EMLSerializerTests {
     }
 
     @Test("Multipart serialization includes boundaries")
-    func multipartSerialization() throws {
+    func testMultipartSerialization() throws {
         let header = MessageInfo(
             sequenceNumber: SequenceNumber(0),
             subject: "Multi",
@@ -258,7 +258,7 @@ struct EMLSerializerTests {
 
         let message = Message(header: header, parts: [textPart, htmlPart])
         let serialized = try message.emlData()
-        let str = try #require(String(data: serialized, encoding: .utf8))
+        let str = String(data: serialized, encoding: .utf8)!
 
         #expect(str.contains("multipart/"))
         #expect(str.contains("boundary="))

@@ -1,7 +1,7 @@
 import Foundation
-import NIO
 import NIOIMAP
 import NIOIMAPCore
+import NIO
 
 /// Command that fetches quota information for a quota root.
 struct GetQuotaCommand: IMAPTaggedCommand {
@@ -32,10 +32,11 @@ struct GetQuotaRootCommand: IMAPTaggedCommand {
     }
 
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        let mailbox: MailboxName = if let name = mailboxName {
-            MailboxName(ByteBuffer(string: name))
+        let mailbox: MailboxName
+        if let name = mailboxName {
+            mailbox = MailboxName(ByteBuffer(string: name))
         } else {
-            .inbox
+            mailbox = .inbox
         }
         return TaggedCommand(tag: tag, command: .getQuotaRoot(mailbox))
     }

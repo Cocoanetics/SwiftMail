@@ -1,10 +1,10 @@
 // String+EmailTests.swift
 // Tests for email validation String extension
 
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
-/// Use existing tag definitions
+// Use existing tag definitions
 extension Tag {
     @Tag static var validation: Self
     @Tag static var security: Self
@@ -19,19 +19,19 @@ struct StringEmailTests {
         "user@subdomain.example.com",
         "123@example.com",
         "user@example.co.uk",
-        "a@b.cc", // Minimal length
+        "a@b.cc",  // Minimal length
         "disposable.style.email.with+symbol@example.com",
         "other.email-with-hyphen@example.com",
         "fully-qualified-domain@example.com",
         "user.name+tag+sorting@example.com",
-        "x@example.com", // One-letter local-part
+        "x@example.com",  // One-letter local-part
         "example-indeed@strange-example.com",
-        "example@s.example", // Short but valid domain
+        "example@s.example",  // Short but valid domain
         "test.email.with+symbol@example.com",
         "user123@test-domain.org",
-        "user@mail.some-company.com", // Hyphens in intermediate domain labels
-        "user@sub1.sub-2.example.com", // Multiple hyphenated subdomains
-        "user@a1-b2.c3-d4.example.org" // Digits + hyphens in subdomains
+        "user@mail.some-company.com",  // Hyphens in intermediate domain labels
+        "user@sub1.sub-2.example.com",   // Multiple hyphenated subdomains
+        "user@a1-b2.c3-d4.example.org"   // Digits + hyphens in subdomains
     ]
 
     private let invalidEmails = [
@@ -41,17 +41,17 @@ struct StringEmailTests {
         "user@.com",
         "user@example",
         "user.example.com",
-        "user@exam ple.com", // Space in domain
-        "user@@example.com", // Double @
-        ".user@example.com", // Leading dot
-        "user.@example.com", // Trailing dot
-        "user@example..com", // Double dot
-        "user@-example.com", // Leading hyphen in domain
-        "user@example-.com", // Trailing hyphen in domain
-        "user@.example.com", // Leading dot in domain
-        "user@example.", // Trailing dot in domain
-        "user@ex*ample.com", // Invalid character
-        "user@example.c", // TLD too short
+        "user@exam ple.com",  // Space in domain
+        "user@@example.com",  // Double @
+        ".user@example.com",  // Leading dot
+        "user.@example.com",  // Trailing dot
+        "user@example..com",  // Double dot
+        "user@-example.com",  // Leading hyphen in domain
+        "user@example-.com",  // Trailing hyphen in domain
+        "user@.example.com",  // Leading dot in domain
+        "user@example.",      // Trailing dot in domain
+        "user@ex*ample.com",  // Invalid character
+        "user@example.c",     // TLD too short
         "user name@example.com", // Space in local part
         "user<script>@example.com", // Security: HTML injection attempt
         "user@example.com; DROP TABLE users;", // Security: SQL injection attempt
@@ -103,15 +103,15 @@ struct StringEmailTests {
         let maliciousInputs = [
             "user<script>alert('xss')</script>@example.com",
             "user'; DROP TABLE users; --@example.com",
-            "user@example.com\\r\\nBCC: evil@hacker.com",
-            "user@example.com\\nSubject: Spam",
-            "user\\u{0000}@example.com", // Null byte injection
-            "user@exam\\u{0000}ple.com"
+                         "user@example.com\\r\\nBCC: evil@hacker.com",
+             "user@example.com\\nSubject: Spam",
+                         "user\\u{0000}@example.com", // Null byte injection
+             "user@exam\\u{0000}ple.com"
         ]
 
         for maliciousEmail in maliciousInputs {
             #expect(!maliciousEmail.isValidEmail(),
-                    "Malicious input '\(maliciousEmail)' should be rejected")
+                   "Malicious input '\(maliciousEmail)' should be rejected")
         }
     }
 

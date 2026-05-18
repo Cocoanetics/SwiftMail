@@ -23,7 +23,7 @@ final class AppendHandler: BaseIMAPCommandHandler<AppendResult>, IMAPCommandHand
 
 private extension AppendHandler {
     func extractAppendResult(from response: TaggedResponse) -> AppendResult {
-        guard case let .ok(text) = response.state else {
+        guard case .ok(let text) = response.state else {
             return AppendResult(uidValidity: nil, uids: [])
         }
 
@@ -32,12 +32,12 @@ private extension AppendHandler {
         }
 
         switch code {
-            case let .uidAppend(data):
-                let validity = UIDValidity(nio: data.uidValidity)
-                let assigned = data.uids.set.map { UID(nio: $0) }
-                return AppendResult(uidValidity: validity, uids: assigned)
-            default:
-                return AppendResult(uidValidity: nil, uids: [])
+        case .uidAppend(let data):
+            let validity = UIDValidity(nio: data.uidValidity)
+            let assigned = data.uids.set.map { UID(nio: $0) }
+            return AppendResult(uidValidity: validity, uids: assigned)
+        default:
+            return AppendResult(uidValidity: nil, uids: [])
         }
     }
 }

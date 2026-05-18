@@ -11,15 +11,12 @@ import NIOIMAPCore
 
 /// A channel handler that logs both outgoing and incoming IMAP messages
 final class IMAPLogger: MailLogger, @unchecked Sendable {
-    typealias InboundIn = Response
-    typealias InboundOut = Response
+	typealias InboundIn = Response
+	typealias InboundOut = Response
 
-    // Regular expressions for redacting sensitive information.
-    // Patterns are compile-time constants; the force-try cannot fail at runtime.
-    // swiftlint:disable force_try
+    // Regular expressions for redacting sensitive information
     private let loginRegex = try! NSRegularExpression(pattern: "^[A-Za-z0-9]+ LOGIN", options: [])
     private let authRegex = try! NSRegularExpression(pattern: "^[A-Za-z0-9]+ AUTH", options: [])
-    // swiftlint:enable force_try
     private let contextPrefix: String
 
     init(outboundLogger: Logging.Logger, inboundLogger: Logging.Logger, contextPrefix: String = "") {
@@ -33,7 +30,7 @@ final class IMAPLogger: MailLogger, @unchecked Sendable {
     }
 
     /// Process outgoing IMAP commands
-    override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+	override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
         let command = unwrapOutboundIn(data)
 
         // Get string representation of the command
@@ -57,14 +54,15 @@ final class IMAPLogger: MailLogger, @unchecked Sendable {
     }
 
     /// Process incoming IMAP responses
-    override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+	override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
 
         // Get log message, abbreviating FETCH responses if needed
-        let logMessage: String = if let resp = response as? Response {
-            abbreviateResponse(resp)
+        let logMessage: String
+        if let resp = response as? Response {
+            logMessage = abbreviateResponse(resp)
         } else {
-            String(describing: response)
+            logMessage = String(describing: response)
         }
 
         // Add the response to the buffer
@@ -77,9 +75,9 @@ final class IMAPLogger: MailLogger, @unchecked Sendable {
     /// Abbreviate FETCH responses containing large body data
     private func abbreviateResponse(_ response: Response) -> String {
         // Check if this is a FETCH response
-        if case let .fetch(fetchResponse) = response {
+        if case .fetch(let fetchResponse) = response {
             // Check if it's streaming bytes (large body data)
-            if case let .streamingBytes(buffer) = fetchResponse {
+            if case .streamingBytes(let buffer) = fetchResponse {
                 let size = buffer.readableBytes
                 if size > 256 {
                     // Truncate to first 256 bytes and show size

@@ -1,8 +1,8 @@
 import Foundation
-@testable import SwiftMail
 import Testing
+@testable import SwiftMail
 
-/// Use existing tag definitions and add new ones
+// Use existing tag definitions and add new ones
 extension Tag {
     @Tag static var encoding: Self
     @Tag static var decoding: Self
@@ -15,10 +15,11 @@ extension Tag {
 
 @Suite("Quoted-Printable Encoding Tests", .serialized, .tags(.imap, .encoding, .decoding), .timeLimit(.minutes(1)))
 struct QuotedPrintableTests {
+
     // MARK: - Test Resources
 
     func getResourceURL(for name: String, withExtension ext: String) -> URL? {
-        Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Resources")
+        return Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Resources")
     }
 
     func loadResourceContent(name: String, withExtension ext: String) throws -> String {
@@ -34,7 +35,7 @@ struct QuotedPrintableTests {
     }
 
     func normalizedLF(_ value: String) -> String {
-        value
+        return value
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
     }
@@ -122,8 +123,7 @@ struct QuotedPrintableTests {
         #expect(isoContent.detectCharsetEncoding() == .isoLatin1)
 
         // Test UTF-8 encoding detection
-        let utf8Header = "Content-Type: text/plain; charset=utf-8\r\n\r\n"
-        let utf8Content = utf8Header + "This has UTF-8 chars: =C3=A4=C3=B6=C3=BC=C3=9F"
+        let utf8Content = "Content-Type: text/plain; charset=utf-8\r\n\r\nThis has UTF-8 chars: =C3=A4=C3=B6=C3=BC=C3=9F"
         #expect(utf8Content.detectCharsetEncoding() == .utf8)
 
         // Test meta tag charset detection
@@ -170,7 +170,6 @@ struct QuotedPrintableTests {
 
     @Test("Real-world subject decoding", .tags(.decoding, .mime))
     func realWorldSubjectDecoding() {
-        // swiftlint:disable:next line_length
         let raw = "=?UTF-8?Q?=5B_Last_Chance_-_10=25_OFF_=5D_=F0=9F=8E=93_Hot_Deal=3A_Top_On?= =?UTF-8?Q?line_Courses_Starting_at_just_=249_=E2=80=93_Don=E2=80=99t_Miss?= =?UTF-8?Q?_Out?="
         let expected = "[ Last Chance - 10% OFF ] 🎓 Hot Deal: Top Online Courses Starting at just $9 – Don’t Miss Out"
         #expect(raw.decodeMIMEHeader() == expected)
@@ -178,7 +177,6 @@ struct QuotedPrintableTests {
 
     @Test("MIME header concatenates adjacent base64 encoded-words before UTF-8 decoding", .tags(.decoding, .mime))
     func mimeHeaderConcatenatesAdjacentBase64EncodedWords() {
-        // swiftlint:disable:next line_length
         let raw = "=?utf-8?B?0A==?=\r\n =?utf-8?B?o9Cy0LXQtNC+0LzQu9C10L3QuNC1INC+INC90L7QstC+0Lwg0YHQvtC+0LHRidC10L3QuNC4INC+0YIg0JjQstCw0L3QvtCy0LAg0J/QtdGC0YDQsCA=?=\r\n =?utf-8?B?0KHQtdGA0LPQtdC10LLQuNGH0LA=?="
         let expected = "Уведомление о новом сообщении от Иванова Петра Сергеевича"
 
@@ -260,7 +258,7 @@ struct QuotedPrintableTests {
         #expect("Plain text".decodeQuotedPrintable() == "Plain text")
 
         // Test malformed encoding (incomplete hex) - should return nil for invalid input
-        let malformed = "Hello=2World" // Missing second hex digit
+        let malformed = "Hello=2World"  // Missing second hex digit
         let result = malformed.decodeQuotedPrintable()
         #expect(result == nil, "Should return nil for malformed input")
 
@@ -272,10 +270,7 @@ struct QuotedPrintableTests {
         // Test = followed by only one character (previously crashed with String index out of bounds)
         let equalsOneChar = "Hello=X"
         #expect(equalsOneChar.decodeQuotedPrintable() == nil, "Should return nil for = with only one trailing char")
-        #expect(
-            equalsOneChar.decodeQuotedPrintableLossy() == "Hello=X",
-            "Lossy should preserve = with one trailing char"
-        )
+        #expect(equalsOneChar.decodeQuotedPrintableLossy() == "Hello=X", "Lossy should preserve = with one trailing char")
 
         // Test = as the very last character
         let trailingEquals = "Hello="
@@ -315,14 +310,11 @@ struct QuotedPrintableTests {
         // Test that decoding completes without hanging
         let decoded = largeContent.decodeQuotedPrintable()
         #expect(decoded != nil, "Should decode large content successfully")
-        #expect(
-            decoded?.contains("This is a test string with spaces") ?? false,
-            "Should contain expected decoded content"
-        )
+        #expect(decoded?.contains("This is a test string with spaces") ?? false, "Should contain expected decoded content")
     }
 }
 
-/// Custom error type for test failures
+// Custom error type for test failures
 struct TestFailure: Error, CustomStringConvertible {
     let description: String
 
