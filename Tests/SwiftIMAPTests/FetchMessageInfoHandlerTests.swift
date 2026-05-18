@@ -175,6 +175,58 @@ struct FetchMessageInfoHandlerTests {
         #expect(date == nil)
     }
 
+    @Test
+    func testParseEnvelopeDateAcceptsNamedUSTimeZones() {
+        // RFC 5322 §4.3 obsolete named US time zones — common in historical mailboxes.
+        let est = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 31 Jan 2018 15:02:22 EST")
+        let estExpected = Self.makeDate(year: 2018, month: 1, day: 31, hour: 20, minute: 2, second: 22)
+        #expect(est == estExpected)
+
+        let pst = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 31 Jan 2018 15:02:22 PST")
+        let pstExpected = Self.makeDate(year: 2018, month: 1, day: 31, hour: 23, minute: 2, second: 22)
+        #expect(pst == pstExpected)
+
+        let gmt = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 31 Jan 2018 15:02:22 GMT")
+        let gmtExpected = Self.makeDate(year: 2018, month: 1, day: 31, hour: 15, minute: 2, second: 22)
+        #expect(gmt == gmtExpected)
+    }
+
+    @Test
+    func testParseEnvelopeDateLeavesUnknownZoneTokensAlone() {
+        // Unknown trailing tokens shouldn't be rewritten — falls through to format trial and fails.
+        let date = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 31 Jan 2018 15:02:22 ZZT")
+        #expect(date == nil)
+    }
+
+    @Test
+    func testHeaderFieldsStreamingPopulatesAdditionalFieldsAndReferences() async throws {
+        // BODY[HEADER.FIELDS (...)] uses a different streaming kind than BODY[HEADER];
+        // the handler must collect both so HEADER.FIELDS-targeted fetches still parse.
+        let headerBlock = """
+        List-Unsubscribe: <https://example.com/unsubscribe>\r
+        List-ID: <announcements.example.com>\r
+        References: <root@example.com> <child@example.com>\r
+        \r
+        """
+
+        let infos = try await executeFetch(
+            [
+                fetchResponse(
+                    sequenceNumber: 1,
+                    envelope: envelopeAttribute(messageId: "<msg@example.com>"),
+                    headerFields: ["List-Unsubscribe", "List-ID", "References"],
+                    headerBlock: headerBlock
+                ),
+                "A001 OK FETCH completed\r\n",
+            ]
+        )
+
+        #expect(infos.count == 1)
+        #expect(infos[0].additionalFields?["list-unsubscribe"] == "<https://example.com/unsubscribe>")
+        #expect(infos[0].additionalFields?["list-id"] == "<announcements.example.com>")
+        #expect(infos[0].references == [MessageID("<root@example.com>")!, MessageID("<child@example.com>")!])
+    }
+
     private static func makeDate(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Date? {
         var components = DateComponents()
         components.year = year
@@ -211,6 +263,11 @@ struct FetchMessageInfoHandlerTests {
 
     private func fetchResponse(sequenceNumber: Int, envelope: String, headerBlock: String) -> String {
         "* \(sequenceNumber) FETCH (ENVELOPE \(envelope) BODY[HEADER] {\(headerBlock.utf8.count)}\r\n\(headerBlock))\r\n"
+    }
+
+    private func fetchResponse(sequenceNumber: Int, envelope: String, headerFields: [String], headerBlock: String) -> String {
+        let fieldsList = headerFields.joined(separator: " ")
+        return "* \(sequenceNumber) FETCH (ENVELOPE \(envelope) BODY[HEADER.FIELDS (\(fieldsList))] {\(headerBlock.utf8.count)}\r\n\(headerBlock))\r\n"
     }
 
     private func envelopeAttribute(messageId: String, inReplyTo: String? = nil) -> String {

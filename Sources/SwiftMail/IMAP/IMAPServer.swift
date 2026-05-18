@@ -492,6 +492,40 @@ public actor IMAPServer {
     }
 
     /**
+     Delete an existing mailbox on the server.
+
+     - Parameter mailboxName: The name of the mailbox to delete.
+     - Throws:
+     - `IMAPError.deleteFailed` if the server refuses the request (e.g. the mailbox does not exist
+       or still contains messages — most servers refuse to delete a non-empty mailbox; move or
+       expunge messages first when desired).
+     - `IMAPError.connectionFailed` if not connected.
+     */
+    public func deleteMailbox(_ mailboxName: String) async throws {
+        let command = DeleteMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
+        try await executeCommand(command)
+    }
+
+    /**
+     Rename an existing mailbox on the server.
+
+     - Parameters:
+        - source: The current name of the mailbox.
+        - destination: The new name of the mailbox.
+     - Throws:
+     - `IMAPError.renameFailed` if the server refuses the request (e.g. the destination already
+       exists or the source does not).
+     - `IMAPError.connectionFailed` if not connected.
+     */
+    public func renameMailbox(from source: String, to destination: String) async throws {
+        let command = RenameMailboxCommand(
+            from: resolveMailboxPath(source),
+            to: resolveMailboxPath(destination)
+        )
+        try await executeCommand(command)
+    }
+
+    /**
      Select a mailbox
 
      This method selects a mailbox and makes it the current mailbox for subsequent

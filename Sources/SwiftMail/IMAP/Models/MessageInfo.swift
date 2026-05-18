@@ -50,6 +50,10 @@ public struct MessageInfo: Codable, Sendable {
     /// Additional header fields
     public var additionalFields: [String: String]?
 
+    /// The total size of the message in bytes, from `RFC822.SIZE`. Only populated when the fetch
+    /// request asks for it.
+    public var size: Int?
+
     private enum CodingKeys: String, CodingKey {
         case sequenceNumber
         case uid
@@ -66,6 +70,7 @@ public struct MessageInfo: Codable, Sendable {
         case flags
         case parts
         case additionalFields
+        case size
     }
     
     /// Initialize a new email header
@@ -82,6 +87,7 @@ public struct MessageInfo: Codable, Sendable {
     ///   - flags: The flags of the message
     ///   - parts: The message parts
     ///   - additionalFields: Additional header fields
+    ///   - size: The total size of the message in bytes (RFC822.SIZE)
     public init(
         sequenceNumber: SequenceNumber,
         uid: SwiftMail.UID? = nil,
@@ -97,7 +103,8 @@ public struct MessageInfo: Codable, Sendable {
         references: [MessageID]? = nil,
         flags: [Flag] = [],
         parts: [MessagePart] = [],
-        additionalFields: [String: String]? = nil
+        additionalFields: [String: String]? = nil,
+        size: Int? = nil
     ) {
         self.sequenceNumber = sequenceNumber
         self.uid = uid
@@ -114,6 +121,7 @@ public struct MessageInfo: Codable, Sendable {
         self.flags = flags
         self.parts = parts
         self.additionalFields = additionalFields
+        self.size = size
     }
 }
 
@@ -165,6 +173,7 @@ public extension MessageInfo {
         let flags = try container.decodeIfPresent([Flag].self, forKey: .flags) ?? []
         let parts = try container.decodeIfPresent([MessagePart].self, forKey: .parts) ?? []
         let additionalFields = try container.decodeIfPresent([String: String].self, forKey: .additionalFields)
+        let size = try container.decodeIfPresent(Int.self, forKey: .size)
 
         self.init(
             sequenceNumber: sequenceNumber,
@@ -181,7 +190,8 @@ public extension MessageInfo {
             references: references,
             flags: flags,
             parts: parts,
-            additionalFields: additionalFields
+            additionalFields: additionalFields,
+            size: size
         )
     }
 }
