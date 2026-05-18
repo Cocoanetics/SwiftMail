@@ -203,97 +203,135 @@ public indirect enum SearchCriteria: Sendable {
         NIOIMAPCore.Flag.Keyword(str) ?? NIOIMAPCore.Flag.Keyword("CUSTOM")!
     }
 
-    // swiftlint:disable cyclomatic_complexity function_body_length
     /** Converts the SwiftMail search criteria to the NIO IMAP search key format.
-     *   Big switch over the SearchCriteria enum's ~30 cases — inherent complexity.
      * - Parameter calendar: The calendar used for date-to-day conversions. Defaults to the Gregorian
      *   calendar in the device's current timezone.
      * - Returns: The equivalent NIOIMAP.SearchKey for this search criteria.
      */
     func toNIO(calendar: Calendar = Calendar(identifier: .gregorian)) -> NIOIMAP.SearchKey {
+        // Dispatch through small per-group helpers so neither this method nor
+        // any one helper trips function_body_length / cyclomatic_complexity.
+        if let flagKey = flagSearchKey() {
+            return flagKey
+        }
+        if let textKey = textSearchKey() {
+            return textKey
+        }
+        if let dateKey = dateSearchKey(calendar: calendar) {
+            return dateKey
+        }
+        if let sizeKey = sizeSearchKey() {
+            return sizeKey
+        }
+        return compositeSearchKey(calendar: calendar)
+    }
+
+    /// Boolean / keyword criteria. Split across three helpers so each one stays
+    /// under the complexity bar — `positiveFlagKey` for affirmative flags,
+    /// `negativeFlagKey` for the `un*` set, `keywordSearchKey` for the
+    /// keyword/unkeyword pair (which carries a string payload).
+    private func flagSearchKey() -> NIOIMAP.SearchKey? {
+        if let key = positiveFlagKey() { return key }
+        if let key = negativeFlagKey() { return key }
+        return keywordSearchKey()
+    }
+
+    private func positiveFlagKey() -> NIOIMAP.SearchKey? {
         switch self {
-            case .all:
-                return .all
-            case .and(let criterias):
-                return .and(criterias.map { $0.toNIO(calendar: calendar) })
-            case .answered:
-                return .answered
-            case .bcc(let value):
-                return .bcc(stringToBuffer(value))
-            case .before(let date):
-                return .before(dateToCalendarDay(date, calendar: calendar))
-            case .body(let value):
-                return .body(stringToBuffer(value))
-            case .cc(let value):
-                return .cc(stringToBuffer(value))
-            case .deleted:
-                return .deleted
-            case .draft:
-                return .draft
-            case .flagged:
-                return .flagged
-            case .from(let value):
-                return .from(stringToBuffer(value))
+            case .all:        return .all
+            case .answered:   return .answered
+            case .deleted:    return .deleted
+            case .draft:      return .draft
+            case .flagged:    return .flagged
+            case .new:        return .new
+            case .old:        return .old
+            case .recent:     return .recent
+            case .seen:       return .seen
+            default:          return nil
+        }
+    }
+
+    private func negativeFlagKey() -> NIOIMAP.SearchKey? {
+        switch self {
+            case .unanswered: return .unanswered
+            case .undeleted:  return .undeleted
+            case .undraft:    return .undraft
+            case .unflagged:  return .unflagged
+            case .unseen:     return .unseen
+            default:          return nil
+        }
+    }
+
+    private func keywordSearchKey() -> NIOIMAP.SearchKey? {
+        switch self {
+            case .keyword(let value):   return .keyword(stringToKeyword(value))
+            case .unkeyword(let value): return .unkeyword(stringToKeyword(value))
+            default:                    return nil
+        }
+    }
+
+    /// Free-text matchers against envelope/body fields.
+    private func textSearchKey() -> NIOIMAP.SearchKey? {
+        switch self {
+            case .bcc(let value):     return .bcc(stringToBuffer(value))
+            case .body(let value):    return .body(stringToBuffer(value))
+            case .cc(let value):      return .cc(stringToBuffer(value))
+            case .from(let value):    return .from(stringToBuffer(value))
+            case .subject(let value): return .subject(stringToBuffer(value))
+            case .text(let value):    return .text(stringToBuffer(value))
+            case .to(let value):      return .to(stringToBuffer(value))
             case .header(let field, let value):
                 return .header(field, stringToBuffer(value))
-            case .keyword(let value):
-                return .keyword(stringToKeyword(value))
-            case .larger(let size):
-                return .messageSizeLarger(size)
-            case .modSeq(let searchModificationSequence):
-                return .modificationSequence(searchModificationSequence)
-            case .new:
-                return .new
+            default: return nil
+        }
+    }
+
+    /// Date-based matchers; routed through `dateToCalendarDay` for the shared
+    /// per-calendar conversion.
+    private func dateSearchKey(calendar: Calendar) -> NIOIMAP.SearchKey? {
+        switch self {
+            case .before(let date):     return .before(dateToCalendarDay(date, calendar: calendar))
+            case .on(let date):         return .on(dateToCalendarDay(date, calendar: calendar))
+            case .since(let date):      return .since(dateToCalendarDay(date, calendar: calendar))
+            case .sentBefore(let date): return .sentBefore(dateToCalendarDay(date, calendar: calendar))
+            case .sentOn(let date):     return .sentOn(dateToCalendarDay(date, calendar: calendar))
+            case .sentSince(let date):  return .sentSince(dateToCalendarDay(date, calendar: calendar))
+            default: return nil
+        }
+    }
+
+    /// Size and WITHIN (relative-age) matchers.
+    private func sizeSearchKey() -> NIOIMAP.SearchKey? {
+        switch self {
+            case .larger(let size):     return .messageSizeLarger(size)
+            case .smaller(let size):    return .messageSizeSmaller(size)
+            case .older(let seconds):   return .older(seconds)
+            case .younger(let seconds): return .younger(seconds)
+            default: return nil
+        }
+    }
+
+    /// Composite criteria (`AND`, `OR`, `NOT`), plus the remaining one-offs
+    /// (`UID` set, `MODSEQ`).
+    private func compositeSearchKey(calendar: Calendar) -> NIOIMAP.SearchKey {
+        switch self {
+            case .and(let criterias):
+                return .and(criterias.map { $0.toNIO(calendar: calendar) })
             case .not(let criteria):
                 return .not(criteria.toNIO(calendar: calendar))
-            case .old:
-                return .old
-            case .on(let date):
-                return .on(dateToCalendarDay(date, calendar: calendar))
-            case .or(let criteria1, let criteria2):
-                return .or(criteria1.toNIO(calendar: calendar), criteria2.toNIO(calendar: calendar))
-            case .recent:
-                return .recent
-            case .seen:
-                return .seen
-            case .sentBefore(let date):
-                return .sentBefore(dateToCalendarDay(date, calendar: calendar))
-            case .sentOn(let date):
-                return .sentOn(dateToCalendarDay(date, calendar: calendar))
-            case .sentSince(let date):
-                return .sentSince(dateToCalendarDay(date, calendar: calendar))
-            case .since(let date):
-                return .since(dateToCalendarDay(date, calendar: calendar))
-            case .smaller(let size):
-                return .messageSizeSmaller(size)
-            case .subject(let value):
-                return .subject(stringToBuffer(value))
-            case .text(let value):
-                return .text(stringToBuffer(value))
-            case .to(let value):
-                return .to(stringToBuffer(value))
+            case .or(let lhs, let rhs):
+                return .or(lhs.toNIO(calendar: calendar), rhs.toNIO(calendar: calendar))
+            case .modSeq(let sequence):
+                return .modificationSequence(sequence)
             case .uid(let value):
                 let uid = NIOIMAPCore.UID(rawValue: UInt32(value))
                 let range = NIOIMAPCore.MessageIdentifierRange<NIOIMAPCore.UID>(uid)
                 let set = NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOIMAPCore.UID>(range: range)
                 return .uid(.set(set))
-            case .unanswered:
-                return .unanswered
-            case .undeleted:
-                return .undeleted
-            case .undraft:
-                return .undraft
-            case .unflagged:
-                return .unflagged
-            case .unkeyword(let value):
-                return .unkeyword(stringToKeyword(value))
-            case .unseen:
-                return .unseen
-            case .older(let seconds):
-                return .older(seconds)
-            case .younger(let seconds):
-                return .younger(seconds)
+            default:
+                // Unreachable: every SearchCriteria case is dispatched by one of
+                // flag/text/date/size or by this composite helper.
+                preconditionFailure("SearchCriteria.toNIO: unhandled case \(self)")
         }
     }
-    // swiftlint:enable cyclomatic_complexity function_body_length
 }
