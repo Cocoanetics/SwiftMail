@@ -4,11 +4,9 @@ import Foundation
     import FoundationNetworking
 #endif
 import SwiftMail
+
 extension Email {
-    // swiftlint:disable function_body_length
-    /// Creates a demo email with Swift logo embedded inline. Contains the full
-    /// multi-line HTML email template and attachment-download flow inline; not
-    /// split because it's a one-off example.
+    /// Creates a demo email with Swift logo embedded inline.
     /// - Parameters:
     ///   - sender: The email sender
     ///   - recipient: The primary recipient
@@ -23,17 +21,45 @@ extension Email {
         bccRecipient: EmailAddress? = nil,
         username: String
     ) async throws -> Email {
-        // Download Swift logo at runtime
-        print("Downloading Swift logo...")
-        let logoURL = URL(string: "https://developer.apple.com/swift/images/swift-logo.svg")!
-        let mimeType = String.mimeType(for: logoURL.pathExtension)
         let logoContentID = "swift-logo"
         let logoFilename = "swift-logo.svg"
+        let logoData = try await downloadSwiftLogo()
 
-        // Download the image data using a cross-platform approach
-        // Create a URLSession configuration that works on all platforms
-        let config = URLSessionConfiguration.default
-        let session = URLSession(configuration: config)
+        var email = Email(
+            sender: sender,
+            recipients: [recipient],
+            ccRecipients: ccRecipient.map { [$0] } ?? [],
+            bccRecipients: bccRecipient.map { [$0] } ?? [],
+            subject: "HTML Email with Swift Logo from SwiftSMTPCLI",
+            textBody: "This is a test email sent from the SwiftSMTPCLI application."
+                + " This is the plain text version for email clients that don't support HTML."
+        )
+        email.htmlBody = htmlTemplate(
+            logoContentID: logoContentID,
+            recipient: recipient,
+            ccRecipient: ccRecipient,
+            bccRecipient: bccRecipient
+        )
+        email.attachments = [
+            Attachment(
+                filename: logoFilename,
+                mimeType: String.mimeType(for: "svg"),
+                data: logoData,
+                contentID: logoContentID,
+                isInline: true
+            )
+        ]
+
+        print("Created HTML email with embedded Swift logo")
+        return email
+    }
+
+    /// Download the Swift logo SVG over HTTPS, throwing if the response isn't a
+    /// 200 OK.
+    private static func downloadSwiftLogo() async throws -> Data {
+        print("Downloading Swift logo...")
+        let logoURL = URL(string: "https://developer.apple.com/swift/images/swift-logo.svg")!
+        let session = URLSession(configuration: .default)
         let (imageData, response) = try await session.data(from: logoURL)
 
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -43,34 +69,31 @@ extension Email {
                 userInfo: [NSLocalizedDescriptionKey: "Invalid response type"]
             )
         }
-
         guard httpResponse.statusCode == 200 else {
             throw NSError(
                 domain: "com.cocoanetics.SwiftSMTPCLI",
                 code: 1,
                 userInfo: [
-                    NSLocalizedDescriptionKey: "Failed to download Swift logo, status code: \(httpResponse.statusCode)"
+                    NSLocalizedDescriptionKey:
+                        "Failed to download Swift logo, status code: \(httpResponse.statusCode)"
                 ]
             )
         }
-
         print("Swift logo downloaded successfully (\(imageData.count) bytes)")
+        return imageData
+    }
 
-        // Create the email with both text and HTML content
-        var email = Email(
-            sender: sender,
-            recipients: [recipient],
-            ccRecipients: ccRecipient != nil ? [ccRecipient!] : [],
-            bccRecipients: bccRecipient != nil ? [bccRecipient!] : [],
-            subject: "HTML Email with Swift Logo from SwiftSMTPCLI",
-            textBody: "This is a test email sent from the SwiftSMTPCLI application."
-                + " This is the plain text version for email clients that don't support HTML."
-        )
-
-        // Add HTML body with the Swift logo.
-        // Long CSS/HTML lines below would otherwise trigger line_length warnings.
-        // swiftlint:disable line_length
-        let htmlBody = """
+    // Long CSS/HTML lines below would otherwise trigger line_length warnings;
+    // the disable is scoped to this helper.
+    // swiftlint:disable line_length
+    /// Build the HTML body for the demo email.
+    private static func htmlTemplate(
+        logoContentID: String,
+        recipient: EmailAddress,
+        ccRecipient: EmailAddress?,
+        bccRecipient: EmailAddress?
+    ) -> String {
+        """
         <!DOCTYPE html>
         <html>
         <head>
@@ -102,10 +125,8 @@ extension Email {
                 <p>This email demonstrates CC and BCC functionality:</p>
                 <ul>
                     <li>Primary recipient: \(recipient.description)</li>
-                    \(ccRecipient != nil ? "<li>CC recipient: \(ccRecipient!.description)</li>" : "")
-                    \(
-                        bccRecipient != nil ? "<li>BCC recipient: \(bccRecipient!.description) (not visible in headers)</li>" : ""
-                    )
+                    \(ccRecipient.map { "<li>CC recipient: \($0.description)</li>" } ?? "")
+                    \(bccRecipient.map { "<li>BCC recipient: \($0.description) (not visible in headers)</li>" } ?? "")
                 </ul>
             </div>
             <div class="footer">
@@ -114,26 +135,8 @@ extension Email {
         </body>
         </html>
         """
-        // swiftlint:enable line_length
-
-        // Create a custom attachment with inline disposition
-        let attachment = Attachment(
-            filename: logoFilename,
-            mimeType: mimeType,
-            data: imageData,
-            contentID: logoContentID,
-            isInline: true
-        )
-
-        // Add HTML body and inline image attachment
-        email.htmlBody = htmlBody
-        email.attachments = [attachment]
-
-        print("Created HTML email with embedded Swift logo")
-
-        return email
     }
-    // swiftlint:enable function_body_length
+    // swiftlint:enable line_length
 }
 
 // Helper function to format the current date in a compatible way

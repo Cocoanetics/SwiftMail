@@ -279,39 +279,23 @@ public typealias SequenceNumberSet = MessageIdentifierSet<SequenceNumber>
 // MARK: - NIO Conversion Extensions
 
 extension MessageIdentifierSet {
-    /// Converts to NIO MessageIdentifierSetNonEmpty
-    /// This method uses type constraints to determine the correct NIO type
+    /// Converts to a NIO `MessageIdentifierSetNonEmpty` whose generic argument
+    /// matches the SwiftMail `Identifier` type. Internally dispatches to the
+    /// concrete-typed overloads on `MessageIdentifierSet<UID>` /
+    /// `MessageIdentifierSet<SequenceNumber>`, so it never needs to bridge
+    /// across a runtime-erased generic parameter.
     internal func toNIOSet<NIOType>() -> NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOType> {
-
         precondition(!self.isEmpty, "Cannot convert an empty set to NIO")
 
-        // Create an empty NIO set
-        var nioSet = NIOIMAPCore.MessageIdentifierSet<NIOType>()
-
-        // Convert each range to a NIO range and add it to the set
-        for range in self.ranges {
-            if Identifier.self == UID.self && NIOType.self == NIOIMAPCore.UID.self {
-                let startUID = NIOIMAPCore.UID(rawValue: UInt32(range.lowerBound))
-                let endUID = NIOIMAPCore.UID(rawValue: UInt32(range.upperBound))
-                let nioRange = NIOIMAPCore.MessageIdentifierRange(startUID...endUID)
-                // Cast is safe: guarded by the type-equality checks on the line above.
-                // swiftlint:disable:next force_cast
-                let typedRange = nioRange as! NIOIMAPCore.MessageIdentifierRange<NIOType>
-                nioSet.formUnion(NIOIMAPCore.MessageIdentifierSet<NIOType>(typedRange))
-            } else if Identifier.self == SequenceNumber.self && NIOType.self == NIOIMAPCore.SequenceNumber.self {
-                let startSeq = NIOIMAPCore.SequenceNumber(rawValue: UInt32(range.lowerBound))
-                let endSeq = NIOIMAPCore.SequenceNumber(rawValue: UInt32(range.upperBound))
-                let nioRange = NIOIMAPCore.MessageIdentifierRange(startSeq...endSeq)
-                // Cast is safe: guarded by the type-equality checks on the line above.
-                // swiftlint:disable:next force_cast
-                let typedRange = nioRange as! NIOIMAPCore.MessageIdentifierRange<NIOType>
-                nioSet.formUnion(NIOIMAPCore.MessageIdentifierSet<NIOType>(typedRange))
-            } else {
-                preconditionFailure("Unsupported type combination")
-            }
+        if let uidSelf = self as? MessageIdentifierSet<UID>,
+           let nioSet = uidSelf.toNIOSet() as? NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOType> {
+            return nioSet
         }
-
-        return NIOIMAPCore.MessageIdentifierSetNonEmpty(set: nioSet)!
+        if let seqSelf = self as? MessageIdentifierSet<SequenceNumber>,
+           let nioSet = seqSelf.toNIOSet() as? NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOType> {
+            return nioSet
+        }
+        preconditionFailure("Unsupported type combination: \(Identifier.self) -> \(NIOType.self)")
     }
 }
 
