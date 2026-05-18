@@ -56,64 +56,14 @@ final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandH
         failWithError(IMAPProtocolError.unexpectedTaggedResponse(String(describing: response.state)))
     }
 
-    // Nested switch over ResponsePayload and MailboxData enum cases — inherent complexity.
-    // swiftlint:disable:next cyclomatic_complexity function_body_length
     private func handleUntagged(_ payload: ResponsePayload) {
         switch payload {
             case .mailboxData(let data):
-                switch data {
-                    case .exists(let count):
-                        events.append(.exists(Int(count)))
-                    case .recent(let count):
-                        events.append(.recent(Int(count)))
-                    case .flags(let nioFlags):
-                        // Permanent flags of the selected mailbox have changed
-                        let flags = nioFlags.map { Flag(nio: $0) }
-                        events.append(.flags(flags))
-                    case .status(let mailboxName, _):
-                        let name = String(bytes: mailboxName.bytes, encoding: .utf8) ?? "<unknown>"
-                        noopLogger.debug("NoopHandler: ignoring unsolicited STATUS for mailbox '\(name)'")
-                    case .search:
-                        noopLogger.debug("NoopHandler: ignoring unsolicited SEARCH response")
-                    case .sort:
-                        noopLogger.debug("NoopHandler: ignoring unsolicited SORT response")
-                    case .list:
-                        noopLogger.debug("NoopHandler: ignoring unsolicited LIST response")
-                    case .lsub:
-                        noopLogger.debug("NoopHandler: ignoring unsolicited LSUB response")
-                    case .extendedSearch:
-                        noopLogger.debug("NoopHandler: ignoring unsolicited ESEARCH response")
-                    case .namespace:
-                        noopLogger.debug("NoopHandler: ignoring unsolicited NAMESPACE response")
-                    case .uidBatches:
-                        noopLogger.debug("NoopHandler: ignoring unsolicited UIDBATCHES response")
-                }
+                handleMailboxData(data)
             case .messageData(let data):
-                switch data {
-                    case .expunge(let num):
-                        events.append(.expunge(SequenceNumber(num.rawValue)))
-                    case .vanished(let nioUIDSet):
-                        // RFC 7162 CONDSTORE: server reports expunged UIDs directly
-                        let uidSet = UIDSet(nio: nioUIDSet)
-                        events.append(.vanished(uidSet))
-                    case .vanishedEarlier(let nioUIDSet):
-                        noopLogger.debug("NoopHandler: ignoring VANISHED (EARLIER) for \(nioUIDSet) UIDs")
-                    case .generateAuthorizedURL:
-                        noopLogger.debug("NoopHandler: ignoring unsolicited GENURLAUTH")
-                    case .urlFetch:
-                        noopLogger.debug("NoopHandler: ignoring unsolicited URLFETCH")
-                }
+                handleMessageData(data)
             case .conditionalState(let status):
-                switch status {
-                    case .ok(let text):
-                        if text.code == .alert {
-                            events.append(.alert(text.text))
-                        }
-                    case .bye(let text):
-                        events.append(.bye(text.text))
-                    default:
-                        break
-                }
+                handleConditionalState(status)
             case .capabilityData(let caps):
                 events.append(.capability(caps.map { String($0) }))
             case .enableData(let caps):
@@ -128,6 +78,54 @@ final class NoopHandler: BaseIMAPCommandHandler<[IMAPServerEvent]>, IMAPCommandH
                 noopLogger.debug("NoopHandler: ignoring unsolicited METADATA")
             case .jmapAccess:
                 noopLogger.debug("NoopHandler: ignoring unsolicited JMAPACCESS")
+        }
+    }
+
+    private func handleMailboxData(_ data: MailboxData) {
+        switch data {
+            case .exists(let count):
+                events.append(.exists(Int(count)))
+            case .recent(let count):
+                events.append(.recent(Int(count)))
+            case .flags(let nioFlags):
+                // Permanent flags of the selected mailbox have changed
+                events.append(.flags(nioFlags.map { Flag(nio: $0) }))
+            case .status(let mailboxName, _):
+                let name = String(bytes: mailboxName.bytes, encoding: .utf8) ?? "<unknown>"
+                noopLogger.debug("NoopHandler: ignoring unsolicited STATUS for mailbox '\(name)'")
+            default:
+                // search/sort/list/lsub/extendedSearch/namespace/uidBatches —
+                // valid IMAP responses, but not events NOOP cares about.
+                noopLogger.debug("NoopHandler: ignoring unsolicited \(data) response")
+        }
+    }
+
+    private func handleMessageData(_ data: MessageData) {
+        switch data {
+            case .expunge(let num):
+                events.append(.expunge(SequenceNumber(num.rawValue)))
+            case .vanished(let nioUIDSet):
+                // RFC 7162 CONDSTORE: server reports expunged UIDs directly
+                events.append(.vanished(UIDSet(nio: nioUIDSet)))
+            case .vanishedEarlier(let nioUIDSet):
+                noopLogger.debug("NoopHandler: ignoring VANISHED (EARLIER) for \(nioUIDSet) UIDs")
+            case .generateAuthorizedURL:
+                noopLogger.debug("NoopHandler: ignoring unsolicited GENURLAUTH")
+            case .urlFetch:
+                noopLogger.debug("NoopHandler: ignoring unsolicited URLFETCH")
+        }
+    }
+
+    private func handleConditionalState(_ status: UntaggedStatus) {
+        switch status {
+            case .ok(let text):
+                if text.code == .alert {
+                    events.append(.alert(text.text))
+                }
+            case .bye(let text):
+                events.append(.bye(text.text))
+            default:
+                break
         }
     }
 

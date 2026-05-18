@@ -67,70 +67,14 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
         return false
     }
 
-    // Nested switch over ResponsePayload and MailboxData enum cases — inherent complexity.
-    // swiftlint:disable:next cyclomatic_complexity function_body_length
     private func handlePayload(_ payload: ResponsePayload) -> Bool {
         switch payload {
             case .mailboxData(let mailboxData):
-                switch mailboxData {
-                    case .exists(let count):
-                        continuation.yield(.exists(Int(count)))
-                    case .recent(let count):
-                        continuation.yield(.recent(Int(count)))
-                    case .flags(let nioFlags):
-                        // Permanent flags of the selected mailbox have changed
-                        let flags = nioFlags.map { Flag(nio: $0) }
-                        continuation.yield(.flags(flags))
-                    case .status(let mailboxName, _):
-                        // Unsolicited STATUS — log and ignore (not a selected-mailbox event)
-                        let name = String(bytes: mailboxName.bytes, encoding: .utf8) ?? "<unknown>"
-                        idleLogger.debug("IdleHandler: ignoring unsolicited STATUS for mailbox '\(name)'")
-                    case .search:
-                        idleLogger.debug("IdleHandler: ignoring unsolicited SEARCH response during IDLE")
-                    case .sort:
-                        idleLogger.debug("IdleHandler: ignoring unsolicited SORT response during IDLE")
-                    case .list:
-                        idleLogger.debug("IdleHandler: ignoring unsolicited LIST response during IDLE")
-                    case .lsub:
-                        idleLogger.debug("IdleHandler: ignoring unsolicited LSUB response during IDLE")
-                    case .extendedSearch:
-                        idleLogger.debug("IdleHandler: ignoring unsolicited ESEARCH response during IDLE")
-                    case .namespace:
-                        idleLogger.debug("IdleHandler: ignoring unsolicited NAMESPACE response during IDLE")
-                    case .uidBatches:
-                        idleLogger.debug("IdleHandler: ignoring unsolicited UIDBATCHES response during IDLE")
-                }
+                handleMailboxData(mailboxData)
             case .messageData(let messageData):
-                switch messageData {
-                    case .expunge(let seq):
-                        continuation.yield(.expunge(SequenceNumber(seq.rawValue)))
-                    case .vanished(let nioUIDSet):
-                        // RFC 7162 CONDSTORE: server reports expunged UIDs directly
-                        let uidSet = UIDSet(nio: nioUIDSet)
-                        continuation.yield(.vanished(uidSet))
-                    case .vanishedEarlier(let nioUIDSet):
-                        // VANISHED (EARLIER) is a historic-sync response, not a real-time event
-                        idleLogger.debug("IdleHandler: ignoring VANISHED (EARLIER) for \(nioUIDSet) UIDs")
-                    case .generateAuthorizedURL:
-                        idleLogger.debug("IdleHandler: ignoring unsolicited GENURLAUTH during IDLE")
-                    case .urlFetch:
-                        idleLogger.debug("IdleHandler: ignoring unsolicited URLFETCH during IDLE")
-                }
+                handleMessageData(messageData)
             case .conditionalState(let status):
-                switch status {
-                    case .ok(let text):
-                        if text.code == .alert {
-                            continuation.yield(.alert(text.text))
-                        }
-                    case .bye(let text):
-                        continuation.yield(.bye(text.text))
-                        // Server-initiated termination - complete the IDLE session
-                        succeedWithResult(())
-                        continuation.finish()
-                        return true  // Indicate this response was fully handled
-                    default:
-                        break
-                }
+                return handleConditionalState(status)
             case .capabilityData(let caps):
                 continuation.yield(.capability(caps.map { String($0) }))
             case .enableData(let caps):
@@ -147,6 +91,63 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
                 idleLogger.debug("IdleHandler: ignoring unsolicited JMAPACCESS during IDLE")
         }
         return false  // Most responses are handled but don't terminate the command
+    }
+
+    private func handleMailboxData(_ mailboxData: MailboxData) {
+        switch mailboxData {
+            case .exists(let count):
+                continuation.yield(.exists(Int(count)))
+            case .recent(let count):
+                continuation.yield(.recent(Int(count)))
+            case .flags(let nioFlags):
+                // Permanent flags of the selected mailbox have changed
+                continuation.yield(.flags(nioFlags.map { Flag(nio: $0) }))
+            case .status(let mailboxName, _):
+                // Unsolicited STATUS — log and ignore (not a selected-mailbox event)
+                let name = String(bytes: mailboxName.bytes, encoding: .utf8) ?? "<unknown>"
+                idleLogger.debug("IdleHandler: ignoring unsolicited STATUS for mailbox '\(name)'")
+            default:
+                // search/sort/list/lsub/extendedSearch/namespace/uidBatches — valid
+                // IMAP responses but not real-time events IDLE cares about.
+                idleLogger.debug("IdleHandler: ignoring unsolicited \(mailboxData) response during IDLE")
+        }
+    }
+
+    private func handleMessageData(_ messageData: MessageData) {
+        switch messageData {
+            case .expunge(let seq):
+                continuation.yield(.expunge(SequenceNumber(seq.rawValue)))
+            case .vanished(let nioUIDSet):
+                // RFC 7162 CONDSTORE: server reports expunged UIDs directly
+                continuation.yield(.vanished(UIDSet(nio: nioUIDSet)))
+            case .vanishedEarlier(let nioUIDSet):
+                // VANISHED (EARLIER) is a historic-sync response, not a real-time event
+                idleLogger.debug("IdleHandler: ignoring VANISHED (EARLIER) for \(nioUIDSet) UIDs")
+            case .generateAuthorizedURL:
+                idleLogger.debug("IdleHandler: ignoring unsolicited GENURLAUTH during IDLE")
+            case .urlFetch:
+                idleLogger.debug("IdleHandler: ignoring unsolicited URLFETCH during IDLE")
+        }
+    }
+
+    /// Returns `true` if the response was fully handled and the IDLE session should end
+    /// (e.g. on a server `BYE`).
+    private func handleConditionalState(_ status: UntaggedStatus) -> Bool {
+        switch status {
+            case .ok(let text):
+                if text.code == .alert {
+                    continuation.yield(.alert(text.text))
+                }
+            case .bye(let text):
+                continuation.yield(.bye(text.text))
+                // Server-initiated termination - complete the IDLE session
+                succeedWithResult(())
+                continuation.finish()
+                return true
+            default:
+                break
+        }
+        return false
     }
 
     private func handleFetch(_ fetch: FetchResponse) {

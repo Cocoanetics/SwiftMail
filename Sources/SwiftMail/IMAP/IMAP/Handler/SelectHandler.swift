@@ -41,92 +41,56 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPComman
         failWithError(IMAPError.selectFailed(String(describing: response.state)))
     }
 
-    // swiftlint:disable cyclomatic_complexity function_body_length
-    /// Handle untagged responses to extract mailbox information — nested switch
-    /// over Response and ResponseCode enum cases gives inherent complexity.
+    /// Handle untagged responses to extract mailbox information.
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override func handleUntaggedResponse(_ response: Response) -> Bool {
-        // Process untagged responses for mailbox information
-        if case .untagged(let untaggedResponse) = response {
-            // Extract mailbox information from untagged responses
-            switch untaggedResponse {
-                case .conditionalState(let status):
-                    // Handle OK responses with response text
-                    if case .ok(let responseText) = status {
-                        // Check for response codes in the response text
-                        if let responseCode = responseText.code {
-                            switch responseCode {
-                                case .unseen(let firstUnseen):
-                                    lock.withLock {
-                                        mailboxInfo.firstUnseen = Int(firstUnseen)
-                                    }
-
-                                case .uidValidity(let validity):
-                                    lock.withLock {
-                                        mailboxInfo.uidValidity = UIDValidity(nio: validity)
-                                    }
-
-                                case .uidNext(let next):
-                                    // Convert NIOIMAPCore.UID to SwiftIMAP.UID
-                                    lock.withLock {
-                                        mailboxInfo.uidNext = UID(UInt32(next))
-                                    }
-
-                                case .permanentFlags(let flags):
-                                    lock.withLock {
-                                        mailboxInfo.permanentFlags = flags.map(self.convertFlag)
-                                    }
-
-                                case .readOnly:
-                                    lock.withLock {
-                                        mailboxInfo.isReadOnly = true
-                                    }
-
-                                case .readWrite:
-                                    lock.withLock {
-                                        mailboxInfo.isReadOnly = false
-                                    }
-
-                                default:
-                                    break
-                            }
-                        }
-                    }
-
-                case .mailboxData(let mailboxData):
-                    // Extract mailbox information from mailbox data
-                    switch mailboxData {
-                        case .exists(let count):
-                            lock.withLock {
-                                mailboxInfo.messageCount = Int(count)
-                            }
-
-                        case .recent(let count):
-                            lock.withLock {
-                                mailboxInfo.recentCount = Int(count)
-                            }
-
-                        case .flags(let flags):
-                            lock.withLock {
-                                mailboxInfo.availableFlags = flags.map(self.convertFlag)
-                            }
-
-                        default:
-                            break
-                    }
-
-                default:
-                    break
-            }
-
-            // We've processed the untagged response, but we're not done yet
-            return false
+        guard case .untagged(let untaggedResponse) = response else { return false }
+        switch untaggedResponse {
+            case .conditionalState(.ok(let responseText)):
+                if let code = responseText.code {
+                    applyResponseCode(code)
+                }
+            case .mailboxData(let mailboxData):
+                applyMailboxData(mailboxData)
+            default:
+                break
         }
-
         return false
     }
-    // swiftlint:enable cyclomatic_complexity function_body_length
+
+    private func applyResponseCode(_ code: ResponseTextCode) {
+        switch code {
+            case .unseen(let firstUnseen):
+                lock.withLock { mailboxInfo.firstUnseen = Int(firstUnseen) }
+            case .uidValidity(let validity):
+                lock.withLock { mailboxInfo.uidValidity = UIDValidity(nio: validity) }
+            case .uidNext(let next):
+                // Convert NIOIMAPCore.UID to SwiftIMAP.UID
+                lock.withLock { mailboxInfo.uidNext = UID(UInt32(next)) }
+            case .permanentFlags(let flags):
+                lock.withLock { mailboxInfo.permanentFlags = flags.map(self.convertFlag) }
+            case .readOnly:
+                lock.withLock { mailboxInfo.isReadOnly = true }
+            case .readWrite:
+                lock.withLock { mailboxInfo.isReadOnly = false }
+            default:
+                break
+        }
+    }
+
+    private func applyMailboxData(_ mailboxData: MailboxData) {
+        switch mailboxData {
+            case .exists(let count):
+                lock.withLock { mailboxInfo.messageCount = Int(count) }
+            case .recent(let count):
+                lock.withLock { mailboxInfo.recentCount = Int(count) }
+            case .flags(let flags):
+                lock.withLock { mailboxInfo.availableFlags = flags.map(self.convertFlag) }
+            default:
+                break
+        }
+    }
 
     /// Convert a NIOIMAPCore.Flag to our MessageFlag type
     private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {

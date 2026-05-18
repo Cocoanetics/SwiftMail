@@ -64,8 +64,11 @@ enum IMAPResilientIdleRunner {
         var state = IdleCycleState(configuration: context.configuration)
 
         let configuration = context.configuration
-        // swiftlint:disable:next line_length
-        context.logger.info("Idle reliability task started for mailbox '\(context.mailbox)' (postIdleNoop=\(configuration.postIdleNoopEnabled) noopInterval=\(configuration.noopInterval)s renewal=\(configuration.renewalInterval)s)")
+        let startInfo = "Idle reliability task started for mailbox '\(context.mailbox)'"
+            + " (postIdleNoop=\(configuration.postIdleNoopEnabled)"
+            + " noopInterval=\(configuration.noopInterval)s"
+            + " renewal=\(configuration.renewalInterval)s)"
+        context.logger.info("\(startInfo)")
 
         while !Task.isCancelled {
             do {

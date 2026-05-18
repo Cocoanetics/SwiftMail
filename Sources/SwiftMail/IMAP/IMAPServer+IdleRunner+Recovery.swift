@@ -97,8 +97,10 @@ extension IMAPResilientIdleRunner {
                 attempt: state.reconnectAttempt,
                 configuration: context.configuration
             )
-            // swiftlint:disable:next line_length
-            context.logger.info("Cycle \(state.cycleCount): routine reconnect failed after server close '\(String(describing: error))'; retry \(state.reconnectAttempt) in \(delay)s")
+            let errorDescription = String(describing: error)
+            let info = "Cycle \(state.cycleCount): routine reconnect failed after server close"
+                + " '\(errorDescription)'; retry \(state.reconnectAttempt) in \(delay)s"
+            context.logger.info("\(info)")
             if delay > 0 {
                 try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             }
@@ -113,8 +115,10 @@ extension IMAPResilientIdleRunner {
     ) async {
         state.reconnectAttempt += 1
         let delay = reconnectDelay(attempt: state.reconnectAttempt, configuration: context.configuration)
-        // swiftlint:disable:next line_length
-        context.logger.warning("Cycle \(state.cycleCount): encountered error '\(String(describing: error))'; reconnect attempt \(state.reconnectAttempt) in \(delay)s")
+        let errorDescription = String(describing: error)
+        let warning = "Cycle \(state.cycleCount): encountered error '\(errorDescription)';"
+            + " reconnect attempt \(state.reconnectAttempt) in \(delay)s"
+        context.logger.warning("\(warning)")
 
         if delay > 0 {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -134,8 +138,10 @@ extension IMAPResilientIdleRunner {
             state.resetAfterReconnect(configuration: context.configuration)
             context.logger.info("Reconnected IDLE session for mailbox '\(context.mailbox)'")
         } catch {
-            // swiftlint:disable:next line_length
-            context.logger.error("Reconnect attempt \(state.reconnectAttempt) failed for mailbox '\(context.mailbox)': \(String(describing: error))")
+            let errorDescription = String(describing: error)
+            let errorMessage = "Reconnect attempt \(state.reconnectAttempt) failed for mailbox"
+                + " '\(context.mailbox)': \(errorDescription)"
+            context.logger.error("\(errorMessage)")
         }
     }
 }
