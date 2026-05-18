@@ -53,46 +53,44 @@ public enum Mailbox {
             /// The mailbox is the primary inbox
             public static let inbox = Attributes(rawValue: 1 << 11)
 
-            // Switch over MailboxInfo.Attribute enum cases — inherent complexity.
-            // swiftlint:disable:next cyclomatic_complexity
             init(from attributes: [NIOIMAPCore.MailboxInfo.Attribute]) {
                 var result: Attributes = []
-
                 for attribute in attributes {
-                    switch attribute {
-                        case .noSelect:
-                            result.insert(.noSelect)
-                        case .hasChildren:
-                            result.insert(.hasChildren)
-                        case .hasNoChildren:
-                            result.insert(.hasNoChildren)
-                        case .marked:
-                            result.insert(.marked)
-                        case .unmarked:
-                            result.insert(.unmarked)
-                        default:
-                            // Check for special-use attributes in the raw value
-                            let rawString = String(describing: attribute)
-                            if rawString.contains("\\Archive") {
-                                result.insert(.archive)
-                            } else if rawString.contains("\\Drafts") {
-                                result.insert(.drafts)
-                            } else if rawString.contains("\\Flagged") {
-                                result.insert(.flagged)
-                            } else if rawString.contains("\\Junk") {
-                                result.insert(.junk)
-                            } else if rawString.contains("\\Sent") {
-                                result.insert(.sent)
-                            } else if rawString.contains("\\Trash") {
-                                result.insert(.trash)
-                            } else if rawString.contains("\\Inbox") {
-                                result.insert(.inbox)
-                            }
-                            // Ignore any other attributes for now
-                    }
+                    result.formUnion(Self.attribute(for: attribute))
                 }
-
                 self = result
+            }
+
+            /// Map one NIOIMAPCore attribute to its SwiftMail equivalent.
+            private static func attribute(for nioAttribute: NIOIMAPCore.MailboxInfo.Attribute) -> Attributes {
+                switch nioAttribute {
+                    case .noSelect:     return .noSelect
+                    case .hasChildren:  return .hasChildren
+                    case .hasNoChildren: return .hasNoChildren
+                    case .marked:       return .marked
+                    case .unmarked:     return .unmarked
+                    default:
+                        // Special-use attributes (RFC 6154) reach us as raw strings;
+                        // match the trailing token.
+                        return specialUseAttribute(for: String(describing: nioAttribute))
+                }
+            }
+
+            private static let specialUseTokens: [(String, Attributes)] = [
+                ("\\Archive", .archive),
+                ("\\Drafts", .drafts),
+                ("\\Flagged", .flagged),
+                ("\\Junk", .junk),
+                ("\\Sent", .sent),
+                ("\\Trash", .trash),
+                ("\\Inbox", .inbox)
+            ]
+
+            private static func specialUseAttribute(for raw: String) -> Attributes {
+                for (token, value) in specialUseTokens where raw.contains(token) {
+                    return value
+                }
+                return []
             }
         }
 

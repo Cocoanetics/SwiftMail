@@ -173,85 +173,68 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         }
     }
 
-    // swiftlint:disable cyclomatic_complexity
-    /// Update an email header with information from a message attribute —
-    /// switch over MessageAttribute enum gives inherent complexity.
+    /// Update an email header with information from a message attribute.
     /// - Parameters:
     ///   - header: The header to update
     ///   - attribute: The attribute containing the information
     private func updateHeader(_ header: inout MessageInfo, with attribute: MessageAttribute) {
         switch attribute {
             case .envelope(let envelope):
-                // Extract information from envelope
-                if let subject = envelope.subject?.stringValue {
-                    header.subject = subject.decodeMIMEHeader()
-                }
-
-                // Handle from addresses - check if array is not empty
-                if !envelope.from.isEmpty {
-                    header.from = formatAddress(envelope.from[0])
-                }
-
-                // Handle to addresses - capture all recipients
-                header.to = envelope.to.map { formatAddress($0) }
-
-                // Handle cc addresses - capture all recipients
-                header.cc = envelope.cc.map { formatAddress($0) }
-
-                // Handle bcc addresses - capture all recipients
-                header.bcc = envelope.bcc.map { formatAddress($0) }
-
-                if let date = envelope.date {
-                    let dateString = String(date)
-                    if let parsedDate = Self.parseEnvelopeDate(dateString) {
-                        header.date = parsedDate
-                    }
-                    // If parsing fails we silently fall through. Callers can use `internalDate`
-                    // (the server's receipt timestamp) as a stable fallback. We don't log here:
-                    // a large mailbox with many unparsable dates would flood stderr.
-                }
-
-                if let messageID = envelope.messageID {
-                    header.messageId = MessageID(String(messageID))
-                }
-
-                if let inReplyTo = envelope.inReplyTo {
-                    header.inReplyTo = MessageID(String(inReplyTo))
-                }
-
+                applyEnvelope(envelope, to: &header)
             case .uid(let uid):
                 header.uid = UID(nio: uid)
-
             case .internalDate(let serverDate):
-                let components = serverDate.components
-                var dateComponents = DateComponents()
-                dateComponents.year = components.year
-                dateComponents.month = components.month
-                dateComponents.day = components.day
-                dateComponents.hour = components.hour
-                dateComponents.minute = components.minute
-                dateComponents.second = components.second
-                dateComponents.timeZone = Foundation.TimeZone(secondsFromGMT: components.zoneMinutes * 60)
-                if let date = Calendar(identifier: .gregorian).date(from: dateComponents) {
-                    header.internalDate = date
-                }
-
+                header.internalDate = Self.date(from: serverDate)
             case .flags(let flags):
                 header.flags = flags.map(self.convertFlag)
-
-            case .body(let bodyStructure, _):
-                if case .valid(let structure) = bodyStructure {
-                    header.parts = [MessagePart](structure)
-                }
-
+            case .body(.valid(let structure), _):
+                header.parts = [MessagePart](structure)
             case .rfc822Size(let size):
                 header.size = size
-
             default:
                 break
         }
     }
-    // swiftlint:enable cyclomatic_complexity
+
+    /// Pull envelope fields (subject, addresses, date, ids) onto a header in one
+    /// shot so the top-level switch stays shallow.
+    private func applyEnvelope(_ envelope: Envelope, to header: inout MessageInfo) {
+        if let subject = envelope.subject?.stringValue {
+            header.subject = subject.decodeMIMEHeader()
+        }
+        if !envelope.from.isEmpty {
+            header.from = formatAddress(envelope.from[0])
+        }
+        header.to = envelope.to.map { formatAddress($0) }
+        header.cc = envelope.cc.map { formatAddress($0) }
+        header.bcc = envelope.bcc.map { formatAddress($0) }
+        if let date = envelope.date, let parsed = Self.parseEnvelopeDate(String(date)) {
+            header.date = parsed
+            // If parsing fails we silently fall through. Callers can use `internalDate`
+            // (the server's receipt timestamp) as a stable fallback. We don't log here:
+            // a large mailbox with many unparsable dates would flood stderr.
+        }
+        if let messageID = envelope.messageID {
+            header.messageId = MessageID(String(messageID))
+        }
+        if let inReplyTo = envelope.inReplyTo {
+            header.inReplyTo = MessageID(String(inReplyTo))
+        }
+    }
+
+    /// Build a Foundation `Date` from the server's typed `ServerMessageDate`.
+    private static func date(from serverDate: ServerMessageDate) -> Date? {
+        let components = serverDate.components
+        var dateComponents = DateComponents()
+        dateComponents.year = components.year
+        dateComponents.month = components.month
+        dateComponents.day = components.day
+        dateComponents.hour = components.hour
+        dateComponents.minute = components.minute
+        dateComponents.second = components.second
+        dateComponents.timeZone = Foundation.TimeZone(secondsFromGMT: components.zoneMinutes * 60)
+        return Calendar(identifier: .gregorian).date(from: dateComponents)
+    }
 
     /// Convert a NIOIMAPCore.Flag to our MessageFlag type
     private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {
