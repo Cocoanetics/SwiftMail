@@ -137,7 +137,8 @@ private func authenticate(server: IMAPServer, using environment: IMAPEnvironment
                 )
             }
             print(
-                "Authenticating using XOAUTH2 as \(environment.username) (IMAP_AUTH_METHOD=\(environment.authMethodLabel))..."
+                "Authenticating using XOAUTH2 as \(environment.username)"
+                + " (IMAP_AUTH_METHOD=\(environment.authMethodLabel))..."
             )
             try await server.authenticateXOAUTH2(email: environment.username, accessToken: accessToken)
             print("Authentication OK (XOAUTH2).")
@@ -295,7 +296,8 @@ struct Fetch: ParsableCommand {
                             ext = "txt"
                         }
 
-                        let filename = safeSubject.map { "\(msgUID.value)-\($0).\(ext)" } ?? "message-\(msgUID.value).\(ext)"
+                        let filename = safeSubject.map { "\(msgUID.value)-\($0).\(ext)" }
+                            ?? "message-\(msgUID.value).\(ext)"
                         let destination = outputURL.appendingPathComponent(filename)
                         try content.write(to: destination, atomically: true, encoding: .utf8)
                         print("Saved \(destination.path)")
@@ -596,7 +598,9 @@ struct Search: ParsableCommand {
                     key = .displayTo
                 default:
                     throw ValidationError(
-                        "Unsupported --sort value: \(rawValue). Supported values: arrival, cc, date, from, size, subject, to, displayfrom, displayto. Prefix with '-' for descending."
+                        "Unsupported --sort value: \(rawValue)."
+                        + " Supported values: arrival, cc, date, from, size, subject, to,"
+                        + " displayfrom, displayto. Prefix with '-' for descending."
                     )
             }
 

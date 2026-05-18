@@ -123,7 +123,8 @@ struct QuotedPrintableTests {
         #expect(isoContent.detectCharsetEncoding() == .isoLatin1)
 
         // Test UTF-8 encoding detection
-        let utf8Content = "Content-Type: text/plain; charset=utf-8\r\n\r\nThis has UTF-8 chars: =C3=A4=C3=B6=C3=BC=C3=9F"
+        let utf8Content = "Content-Type: text/plain; charset=utf-8\r\n\r\n"
+            + "This has UTF-8 chars: =C3=A4=C3=B6=C3=BC=C3=9F"
         #expect(utf8Content.detectCharsetEncoding() == .utf8)
 
         // Test meta tag charset detection
@@ -170,14 +171,19 @@ struct QuotedPrintableTests {
 
     @Test("Real-world subject decoding", .tags(.decoding, .mime))
     func realWorldSubjectDecoding() {
-        let raw = "=?UTF-8?Q?=5B_Last_Chance_-_10=25_OFF_=5D_=F0=9F=8E=93_Hot_Deal=3A_Top_On?= =?UTF-8?Q?line_Courses_Starting_at_just_=249_=E2=80=93_Don=E2=80=99t_Miss?= =?UTF-8?Q?_Out?="
+        let raw = "=?UTF-8?Q?=5B_Last_Chance_-_10=25_OFF_=5D_=F0=9F=8E=93_Hot_Deal=3A_Top_On?="
+            + " =?UTF-8?Q?line_Courses_Starting_at_just_=249_=E2=80=93_Don=E2=80=99t_Miss?="
+            + " =?UTF-8?Q?_Out?="
         let expected = "[ Last Chance - 10% OFF ] 🎓 Hot Deal: Top Online Courses Starting at just $9 – Don’t Miss Out"
         #expect(raw.decodeMIMEHeader() == expected)
     }
 
     @Test("MIME header concatenates adjacent base64 encoded-words before UTF-8 decoding", .tags(.decoding, .mime))
     func mimeHeaderConcatenatesAdjacentBase64EncodedWords() {
-        let raw = "=?utf-8?B?0A==?=\r\n =?utf-8?B?o9Cy0LXQtNC+0LzQu9C10L3QuNC1INC+INC90L7QstC+0Lwg0YHQvtC+0LHRidC10L3QuNC4INC+0YIg0JjQstCw0L3QvtCy0LAg0J/QtdGC0YDQsCA=?=\r\n =?utf-8?B?0KHQtdGA0LPQtdC10LLQuNGH0LA=?="
+        let raw = "=?utf-8?B?0A==?=\r\n"
+            + " =?utf-8?B?o9Cy0LXQtNC+0LzQu9C10L3QuNC1INC+INC90L7QstC+0Lwg0YHQvtC+0LHRidC10"
+            + "L3QuNC4INC+0YIg0JjQstCw0L3QvtCy0LAg0J/QtdGC0YDQsCA=?=\r\n"
+            + " =?utf-8?B?0KHQtdGA0LPQtdC10LLQuNGH0LA=?="
         let expected = "Уведомление о новом сообщении от Иванова Петра Сергеевича"
 
         #expect(raw.decodeMIMEHeader() == expected)

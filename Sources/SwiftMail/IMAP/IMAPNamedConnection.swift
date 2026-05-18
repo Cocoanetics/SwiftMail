@@ -153,9 +153,9 @@ public actor IMAPNamedConnection {
     }
 
     /// Fetch message metadata in a single FETCH/UID FETCH command.
-    public func fetchMessageInfosBulk<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) async throws -> [
-        MessageInfo
-    ] {
+    public func fetchMessageInfosBulk<T: MessageIdentifier>(
+        using identifierSet: MessageIdentifierSet<T>
+    ) async throws -> [MessageInfo] {
         let command = FetchMessageInfoCommand(identifierSet: identifierSet)
         return try await executeCommand(command)
     }
@@ -408,7 +408,9 @@ public actor IMAPNamedConnection {
     }
 
     @discardableResult
-    private func executeCommand<CommandType: IMAPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+    private func executeCommand<CommandType: IMAPCommand>(
+        _ command: CommandType
+    ) async throws -> CommandType.ResultType {
         try await ensureAuthenticated()
         let result = try await connection.executeCommand(command)
         lastActivity = Date()
@@ -426,7 +428,9 @@ public actor IMAPNamedConnection {
         try await executeCommand(command)
     }
 
-    private func expungeMoveFallback<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+    private func expungeMoveFallback<T: MessageIdentifier>(
+        messages identifierSet: MessageIdentifierSet<T>
+    ) async throws {
         if T.self == UID.self && capabilities.contains(.uidPlus) {
             let uidSet = UIDSet(identifierSet.toArray().map { UID($0.value) })
             try await expunge(messages: uidSet)

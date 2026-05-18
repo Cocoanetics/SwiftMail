@@ -49,7 +49,21 @@ struct StringHostnameTests {
         let ipv4Pattern = "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
 
         // Simple IPv6 validation (allows abbreviated format)
-        let ipv6Pattern = "^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:)|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]+|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9])|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}(25[0-5]|(2[0-4]|1?[0-9])?[0-9]))$"
+        let ipv6Pattern =
+            "^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}"
+            + "|([0-9a-fA-F]{1,4}:){1,7}:"
+            + "|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}"
+            + "|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}"
+            + "|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}"
+            + "|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}"
+            + "|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}"
+            + "|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})"
+            + "|:((:[0-9a-fA-F]{1,4}){1,7}|:)"
+            + "|fe80:(:[0-9a-fA-F]{0,4}){0,4}%[0-9a-zA-Z]+"
+            + "|::(ffff(:0{1,4})?:)?((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}"
+            + "(25[0-5]|(2[0-4]|1?[0-9])?[0-9])"
+            + "|([0-9a-fA-F]{1,4}:){1,4}:((25[0-5]|(2[0-4]|1?[0-9])?[0-9])\\.){3}"
+            + "(25[0-5]|(2[0-4]|1?[0-9])?[0-9]))$"
 
         let ipv4Regex = try! NSRegularExpression(pattern: ipv4Pattern)
         let ipv6Regex = try! NSRegularExpression(pattern: ipv6Pattern)
@@ -61,7 +75,9 @@ struct StringHostnameTests {
 
     private func isValidHostname(_ hostname: String) -> Bool {
         // RFC 1123 strict validation (no underscores)
-        let strictPattern = "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$"
+        let strictPattern =
+            "^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\\-]*[a-zA-Z0-9])\\.)*"
+            + "([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\\-]*[A-Za-z0-9])$"
         let strictRegex = try! NSRegularExpression(pattern: strictPattern)
         let range = NSRange(hostname.startIndex..<hostname.endIndex, in: hostname)
         if strictRegex.firstMatch(in: hostname, range: range) != nil {
@@ -69,7 +85,9 @@ struct StringHostnameTests {
         }
         // Allow common macOS/mDNS local hostnames which may include underscores
         if hostname.hasSuffix(".local") {
-            let relaxedPattern = "^(([A-Za-z0-9_]|[A-Za-z0-9_][A-Za-z0-9_\\-]*[A-Za-z0-9_])\\.)*([A-Za-z0-9_]|[A-Za-z0-9_][A-Za-z0-9_\\-]*[A-Za-z0-9_])$"
+            let relaxedPattern =
+                "^(([A-Za-z0-9_]|[A-Za-z0-9_][A-Za-z0-9_\\-]*[A-Za-z0-9_])\\.)*"
+                + "([A-Za-z0-9_]|[A-Za-z0-9_][A-Za-z0-9_\\-]*[A-Za-z0-9_])$"
             let relaxedRegex = try! NSRegularExpression(pattern: relaxedPattern)
             return relaxedRegex.firstMatch(in: hostname, range: range) != nil
         }

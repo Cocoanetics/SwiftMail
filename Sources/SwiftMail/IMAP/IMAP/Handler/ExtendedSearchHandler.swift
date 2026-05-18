@@ -10,7 +10,10 @@ import NIOIMAPCore
 /// ``ExtendedSearchResult``.
 ///
 /// The generic parameter T specifies the MessageIdentifier type (UID or SequenceNumber).
-final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<ExtendedSearchResult<T>>, IMAPCommandHandler, @unchecked Sendable {
+final class ExtendedSearchHandler<T: MessageIdentifier>:
+    BaseIMAPCommandHandler<ExtendedSearchResult<T>>,
+    IMAPCommandHandler,
+    @unchecked Sendable {
     typealias ResultType = ExtendedSearchResult<T>
     typealias InboundIn = Response
     typealias InboundOut = Never
@@ -138,9 +141,9 @@ final class ExtendedSearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<
     // MARK: - Private helpers
 
     /// Convert a NIOIMAPCore ``MessageIdentifierSet<UnknownMessageIdentifier>`` to a SwiftMail ``MessageIdentifierSet<T>``.
-    private func convertNIOSet(_ source: NIOIMAPCore.MessageIdentifierSet<NIOIMAPCore.UnknownMessageIdentifier>) -> MessageIdentifierSet<
-        T
-    > {
+    private func convertNIOSet(
+        _ source: NIOIMAPCore.MessageIdentifierSet<NIOIMAPCore.UnknownMessageIdentifier>
+    ) -> MessageIdentifierSet<T> {
         var result = MessageIdentifierSet<T>()
         for nioRange in source.ranges {
             let lower = T(UInt32(nioRange.range.lowerBound))

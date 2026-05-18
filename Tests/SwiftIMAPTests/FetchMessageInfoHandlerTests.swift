@@ -261,13 +261,27 @@ struct FetchMessageInfoHandlerTests {
         return try await promise.futureResult.get()
     }
 
-    private func fetchResponse(sequenceNumber: Int, envelope: String, headerBlock: String) -> String {
-        "* \(sequenceNumber) FETCH (ENVELOPE \(envelope) BODY[HEADER] {\(headerBlock.utf8.count)}\r\n\(headerBlock))\r\n"
+    private func fetchResponse(
+        sequenceNumber: Int,
+        envelope: String,
+        headerBlock: String
+    ) -> String {
+        let count = headerBlock.utf8.count
+        return "* \(sequenceNumber) FETCH (ENVELOPE \(envelope) BODY[HEADER] {\(count)}\r\n"
+            + "\(headerBlock))\r\n"
     }
 
-    private func fetchResponse(sequenceNumber: Int, envelope: String, headerFields: [String], headerBlock: String) -> String {
+    private func fetchResponse(
+        sequenceNumber: Int,
+        envelope: String,
+        headerFields: [String],
+        headerBlock: String
+    ) -> String {
         let fieldsList = headerFields.joined(separator: " ")
-        return "* \(sequenceNumber) FETCH (ENVELOPE \(envelope) BODY[HEADER.FIELDS (\(fieldsList))] {\(headerBlock.utf8.count)}\r\n\(headerBlock))\r\n"
+        let count = headerBlock.utf8.count
+        return "* \(sequenceNumber) FETCH (ENVELOPE \(envelope)"
+            + " BODY[HEADER.FIELDS (\(fieldsList))] {\(count)}\r\n"
+            + "\(headerBlock))\r\n"
     }
 
     private func envelopeAttribute(messageId: String, inReplyTo: String? = nil) -> String {
