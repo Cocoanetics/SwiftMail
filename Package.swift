@@ -24,15 +24,15 @@ let package = Package(
             targets: ["SwiftSMTPCLI"])
     ],
     dependencies: [
-        .package(url: "https://github.com/thebarndog/swift-dotenv.git", from: "2.1.0"),
+        .package(url: "https://github.com/thebarndog/swift-dotenv", from: "2.1.0"),
 		.package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-nio.git", from: "2.0.0"),
-        .package(url: "https://github.com/odrobnik/swift-nio-imap.git", exact: "0.3.0-pre"),
-        .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.0.0"),
+        .package(url: "https://github.com/apple/swift-nio", from: "2.0.0"),
+        .package(url: "https://github.com/odrobnik/swift-nio-imap", exact: "0.3.0-pre"),
+        .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.0.0"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-testing.git", exact: "0.12.0"),
-        .package(url: "https://github.com/apple/swift-docc-plugin.git", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
+        .package(url: "https://github.com/apple/swift-testing", exact: "0.12.0"),
+        .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     ],
     targets: [
         .target(
@@ -42,7 +42,7 @@ let package = Package(
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "NIOIMAP", package: "swift-nio-imap"),
-                .product(name: "OrderedCollections", package: "swift-collections")
+                .product(name: "OrderedCollections", package: "swift-collections"),
             ]
         ),
         .executableTarget(
@@ -50,7 +50,7 @@ let package = Package(
             dependencies: [
                 "SwiftMail",
                 .product(name: "SwiftDotenv", package: "swift-dotenv"),
-                .product(name: "ArgumentParser", package: "swift-argument-parser")
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ],
 			path: "Demos/SwiftIMAPCLI"
         ),
@@ -58,7 +58,7 @@ let package = Package(
             name: "SwiftSMTPCLI",
             dependencies: [
                 "SwiftMail",
-                .product(name: "SwiftDotenv", package: "swift-dotenv")
+                .product(name: "SwiftDotenv", package: "swift-dotenv"),
             ],
 			path: "Demos/SwiftSMTPCLI"
         ),
@@ -90,6 +90,6 @@ let package = Package(
                 "SwiftMail",
                 .product(name: "Testing", package: "swift-testing")
             ]
-        )
+        ),
     ]
 )
