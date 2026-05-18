@@ -11,7 +11,10 @@ import NIOIMAPCore
 
  The generic parameter T specifies the exact MessageIdentifier type to be collected.
  */
-final class SearchHandler<T: MessageIdentifier>: BaseIMAPCommandHandler<MessageIdentifierSet<T>>, IMAPCommandHandler, @unchecked Sendable {
+final class SearchHandler<T: MessageIdentifier>:
+    BaseIMAPCommandHandler<MessageIdentifierSet<T>>,
+    IMAPCommandHandler,
+    @unchecked Sendable {
     typealias ResultType = MessageIdentifierSet<T>
     typealias InboundIn = Response
     typealias InboundOut = Never

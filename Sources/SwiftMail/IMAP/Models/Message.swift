@@ -84,7 +84,10 @@ public struct Message: Codable, Sendable {
             // text/calendar (ICS invites) are attachments even without explicit
             // disposition or filename.
             let isCalendar = ct.hasPrefix("text/calendar")
-            return isExplicitAttachment || (hasFileNotInline && !isCidOnly) || (isInlineNonImage && !isCidOnly) || isCalendar
+            return isExplicitAttachment
+                || (hasFileNotInline && !isCidOnly)
+                || (isInlineNonImage && !isCidOnly)
+                || isCalendar
         }
     }
 

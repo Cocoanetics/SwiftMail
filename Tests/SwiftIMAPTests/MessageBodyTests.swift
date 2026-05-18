@@ -179,7 +179,8 @@ func testGetTextContentFromPart() throws {
 func testIso88591QuotedPrintableDecodesUmlauts() throws {
     // Body bytes are transfer-encoded quoted-printable text in ISO-8859-1.
     // The ä/ö/ü bytes (E4/F6/FC) must survive transfer decoding before charset decoding.
-    let qpHTML = "<html><head><meta charset=\"iso-8859-1\"></head><body><p>Gr=FC=DFe aus K=F6ln: =E4=F6=FC</p></body></html>"
+    let qpHTML = "<html><head><meta charset=\"iso-8859-1\"></head>"
+        + "<body><p>Gr=FC=DFe aus K=F6ln: =E4=F6=FC</p></body></html>"
     let htmlPart = MessagePart(
         section: Section([1]),
         contentType: "text/html; charset=iso-8859-1",

@@ -124,7 +124,8 @@ public func stringEncoding(for rawCharset: String) -> String.Encoding? {
     }
 
     // 5) Try CoreFoundation's IANA name -> CFStringEncoding -> NSStringEncoding
-    // This covers the majority of charsets, including windows-125x, iso-2022-jp, euc-kr, gbk, gb18030, big5, koi8-r, etc.
+    // This covers the majority of charsets, including windows-125x, iso-2022-jp,
+    // euc-kr, gbk, gb18030, big5, koi8-r, etc.
     #if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
         let cfEnc = CFStringConvertIANACharSetNameToEncoding(label as CFString)
         if cfEnc != kCFStringEncodingInvalidId {

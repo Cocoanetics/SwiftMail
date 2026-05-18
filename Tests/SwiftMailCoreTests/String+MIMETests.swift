@@ -35,9 +35,9 @@ struct StringMIMETests {
 
             // Test Office document types
             #expect(String.fileExtension(for: "application/msword") == "doc")
-            #expect(
-                String.fileExtension(for: "application/vnd.openxmlformats-officedocument.wordprocessingml.document") == "docx"
-            )
+            let docxMime =
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            #expect(String.fileExtension(for: docxMime) == "docx")
             #expect(String.fileExtension(for: "application/vnd.ms-excel") == "xls")
         #endif
 

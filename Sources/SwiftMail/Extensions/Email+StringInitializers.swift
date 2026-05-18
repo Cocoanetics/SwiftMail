@@ -1,5 +1,6 @@
 // Email+StringInitializers.swift
-// Extension to Email to add convenience initializers and methods for working with string representations of email addresses
+// Extension to Email to add convenience initializers and methods for working
+// with string representations of email addresses
 
 import Foundation
 

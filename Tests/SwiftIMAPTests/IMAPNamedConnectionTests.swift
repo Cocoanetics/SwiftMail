@@ -112,9 +112,10 @@ struct IMAPNamedConnectionTests {
         let named = IMAPNamedConnection(name: "test", connection: connection, authenticateOnConnection: { _ in })
 
         do {
-            _ = try await named.extendedSearch(criteria: [.all], sortCriteria: [.descending(.date)]) as ExtendedSearchResult<
-                SwiftMail.UID
-            >
+            _ = try await named.extendedSearch(
+                criteria: [.all],
+                sortCriteria: [.descending(.date)]
+            ) as ExtendedSearchResult<SwiftMail.UID>
             Issue.record("Expected SORT to require server support")
         } catch let error as IMAPError {
             guard case .commandNotSupported(let message) = error else {

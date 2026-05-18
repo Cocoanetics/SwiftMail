@@ -60,7 +60,8 @@ extension SMTPError: CustomStringConvertible {
             case .tlsFailed(let reason):
                 return "SMTP TLS failed: \(reason)"
             case .messageTooLarge(let messageSizeOctets, let maximumMessageSizeOctets):
-                return "SMTP message too large: \(messageSizeOctets) bytes exceeds \(maximumMessageSizeOctets) byte limit"
+                return "SMTP message too large: \(messageSizeOctets) bytes"
+                    + " exceeds \(maximumMessageSizeOctets) byte limit"
             case .unexpectedResponse(let response):
                 return "SMTP unexpected response: \(response.code) \(response.message)"
         }

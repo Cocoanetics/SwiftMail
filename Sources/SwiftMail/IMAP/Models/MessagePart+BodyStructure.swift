@@ -142,10 +142,14 @@ extension Array where Element == MessagePart {
                             // Sanitize subject for filename: remove characters invalid in filenames
                             let invalidChars = try? NSRegularExpression(pattern: "[/\\\\:*?\"<>|]")
                             let range = NSRange(subject.startIndex..., in: subject)
-                            let sanitized = (
-                                invalidChars?.stringByReplacingMatches(in: subject, range: range, withTemplate: "-") ?? subject
+                            let replaced = invalidChars?.stringByReplacingMatches(
+                                in: subject,
+                                range: range,
+                                withTemplate: "-"
+                            ) ?? subject
+                            let sanitized = replaced.trimmingCharacters(
+                                in: CharacterSet.whitespacesAndNewlines
                             )
-                                .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
                             filename = sanitized.isEmpty ? "message.eml" : "\(sanitized).eml"
                         } else {
                             filename = "message.eml"

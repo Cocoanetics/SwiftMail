@@ -31,7 +31,9 @@ extension NIOIMAPCore.BodyStructure: @retroactive CustomStringConvertible {
 
         // Format this node
         let (contentType, _) = formatDescription(partPath: partPath)
-        let partNumberInfo = includePartNumbers && !partPath.isEmpty ? " ← part \(partPath.map(String.init).joined(separator: "."))" : ""
+        let partNumberInfo = includePartNumbers && !partPath.isEmpty
+            ? " ← part \(partPath.map(String.init).joined(separator: "."))"
+            : ""
         let wholePart = partPath.isEmpty ? " ← part: (entire message, unnumbered)" : partNumberInfo
 
         lines.append("\(indent)\(connector)\(contentType)\(wholePart)")

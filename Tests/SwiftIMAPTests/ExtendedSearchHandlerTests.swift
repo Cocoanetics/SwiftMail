@@ -336,7 +336,13 @@ struct ExtendedSearchHandlerTests {
         try await channel.pipeline.addHandler(handler)
 
         let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1...100))
-        try await sendSearchCommand(on: channel, tag: "A007", useUID: true, useEsearch: true, partialRange: partialRange)
+        try await sendSearchCommand(
+            on: channel,
+            tag: "A007",
+            useUID: true,
+            useEsearch: true,
+            partialRange: partialRange
+        )
 
         var esearchResponse = channel.allocator.buffer(capacity: 64)
         esearchResponse.writeString("* ESEARCH (TAG \"A007\") UID COUNT 3 PARTIAL (1:100 4,7,10)\r\n")

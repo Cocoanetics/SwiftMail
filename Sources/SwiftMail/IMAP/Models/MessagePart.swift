@@ -98,7 +98,8 @@ public struct MessagePart: Sendable {
         } else {
             // Create a filename based on section number and content type.
             // Strip parameters (e.g., "; charset=utf-8") before MIME lookup.
-            let baseType = contentType.components(separatedBy: ";").first?.trimmingCharacters(in: .whitespaces) ?? contentType
+            let baseType = contentType.components(separatedBy: ";").first?
+                .trimmingCharacters(in: .whitespaces) ?? contentType
             let fileExtension = String.fileExtension(for: baseType) ?? "dat"
 
             return "part_\(section.description.replacingOccurrences(of: ".", with: "_")).\(fileExtension)"

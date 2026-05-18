@@ -120,7 +120,10 @@ struct ProblematicMessageTests {
                     "Failed to decode '\(encoded)' to non-breaking space, got '\(decoded ?? "nil")'"
                 )
             } else {
-                #expect(decoded == expected, "Failed to decode '\(encoded)' to '\(expected)', got '\(decoded ?? "nil")'")
+                #expect(
+                    decoded == expected,
+                    "Failed to decode '\(encoded)' to '\(expected)', got '\(decoded ?? "nil")'"
+                )
             }
         }
     }
