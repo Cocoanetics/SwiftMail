@@ -586,11 +586,6 @@ public actor IMAPServer {
         try await executeCommand(command)
     }
 
-    /// Send a NOOP command and collect unsolicited responses.
-    public func noop() async throws -> [IMAPServerEvent] {
-        try await primaryConnection.noop()
-    }
-
     /**
      Logout from the IMAP server
      

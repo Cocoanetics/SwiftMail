@@ -66,295 +66,16 @@ extension IMAPServer {
             try await authentication.authenticate(on: connection)
             _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: resolvedMailbox))
 
-            var continuationRef: AsyncStream<IMAPServerEvent>.Continuation!
-            let wrappedEvents = AsyncStream<IMAPServerEvent> { continuation in
-                continuationRef = continuation
-            }
-
-            let continuation = continuationRef!
-            let serverHost = self.host
-            let serverPort = self.port
-
-            let cycleTask = Task.detached { [idleGroup] in
-                enum CycleTrigger: String {
-                    case noop
-                    case renewal
-                }
-
-                enum CycleResult {
-                    case timer(CycleTrigger)
-                    case streamEnded(sawBye: Bool, byeMessage: String?)
-                }
-
-                let cycleLoggerLabel = "com.cocoanetics.SwiftMail.IdleCycle.\(connection.identifier)"
-                var cycleLogger = Logger(label: cycleLoggerLabel)
-                cycleLogger[metadataKey: "imap.host"] = .string(serverHost)
-                cycleLogger[metadataKey: "imap.port"] = .stringConvertible(serverPort)
-                cycleLogger[metadataKey: "imap.mailbox"] = .string(resolvedMailbox)
-                cycleLogger[metadataKey: "imap.connection_id"] = .string(connection.identifier)
-                cycleLogger[metadataKey: "imap.connection_role"] = .string(connection.role)
-
-                let reconnectDelay: (Int) -> TimeInterval = { attempt in
-                    let exponent = min(max(attempt - 1, 0), 10)
-                    let multiplier = Double(1 << exponent)
-                    let baseDelay = min(
-                        idleConfiguration.reconnectBaseDelay * multiplier,
-                        idleConfiguration.reconnectMaxDelay
-                    )
-                    let jitterFactor = idleConfiguration.reconnectJitterFactor
-                    guard jitterFactor > 0 else { return baseDelay }
-                    let jittered = baseDelay * (1 + Double.random(in: -jitterFactor...jitterFactor))
-                    return max(0, jittered)
-                }
-
-                var cycleCount = 0
-                var reconnectAttempt = 0
-                var nextNoopAt: Date? = idleConfiguration.postIdleNoopEnabled
-                    ? Date().addingTimeInterval(idleConfiguration.noopInterval)
-                    : nil
-                var nextRenewalAt = Date().addingTimeInterval(idleConfiguration.renewalInterval)
-
-                let startInfo = "Idle reliability task started for mailbox '\(mailbox)'"
-                    + " (postIdleNoop=\(idleConfiguration.postIdleNoopEnabled)"
-                    + " noopInterval=\(idleConfiguration.noopInterval)s"
-                    + " renewal=\(idleConfiguration.renewalInterval)s)"
-                cycleLogger.info("\(startInfo)")
-
-                while !Task.isCancelled {
-                    do {
-                        cycleCount += 1
-                        cycleLogger.debug("Cycle \(cycleCount): starting IDLE")
-
-                        let idleStream = try await connection.idle()
-
-                        let now = Date()
-                        let secondsToNoop = nextNoopAt.map { max($0.timeIntervalSince(now), 0) } ?? .infinity
-                        let secondsToRenewal = max(nextRenewalAt.timeIntervalSince(now), 0)
-                        let trigger: CycleTrigger = secondsToRenewal <= secondsToNoop ? .renewal : .noop
-                        let waitSeconds = trigger == .renewal ? secondsToRenewal : secondsToNoop
-
-                        let cycleResult = await withTaskGroup(of: CycleResult.self) { group -> CycleResult in
-                            group.addTask {
-                                var sawBye = false
-                                var byeMessage: String?
-                                for await event in idleStream {
-                                    continuation.yield(event)
-                                    if case .bye(let message) = event {
-                                        sawBye = true
-                                        byeMessage = message
-                                        break
-                                    }
-                                }
-                                return .streamEnded(sawBye: sawBye, byeMessage: byeMessage)
-                            }
-
-                            group.addTask {
-                                if waitSeconds > 0 {
-                                    try? await Task.sleep(nanoseconds: UInt64(waitSeconds * 1_000_000_000))
-                                }
-                                return .timer(trigger)
-                            }
-
-                            let first = await group.next() ?? .streamEnded(sawBye: false, byeMessage: nil)
-                            group.cancelAll()
-                            return first
-                        }
-
-                        if Task.isCancelled { break }
-
-                        switch cycleResult {
-                            case .streamEnded(let sawBye, let byeMessage):
-                                if sawBye {
-                                    let message = byeMessage ?? "<no message>"
-                                    cycleLogger.info("Cycle \(cycleCount): Server closed connection: \(message)")
-
-                                    do {
-                                        try? await connection.disconnect()
-
-                                        try await connection.connect()
-                                        try await authentication.authenticate(on: connection)
-                                        _ = try await connection.executeCommand(
-                                            SelectMailboxCommand(mailboxName: resolvedMailbox)
-                                        )
-
-                                        let reconnectedAt = Date()
-                                        nextNoopAt = idleConfiguration.postIdleNoopEnabled
-                                            ? reconnectedAt.addingTimeInterval(idleConfiguration.noopInterval)
-                                            : nil
-                                        nextRenewalAt = reconnectedAt.addingTimeInterval(
-                                            idleConfiguration.renewalInterval
-                                        )
-                                        reconnectAttempt = 0
-
-                                        cycleLogger.info("Reconnected IDLE session for mailbox '\(mailbox)'")
-                                        continue
-                                    } catch {
-                                        reconnectAttempt += 1
-                                        let delay = reconnectDelay(reconnectAttempt)
-                                        let errorDescription = String(describing: error)
-                                        let info = "Cycle \(cycleCount): routine reconnect failed"
-                                            + " after server close '\(errorDescription)';"
-                                            + " retry \(reconnectAttempt) in \(delay)s"
-                                        cycleLogger.info("\(info)")
-
-                                        if delay > 0 {
-                                            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                                        }
-                                        continue
-                                    }
-                                } else {
-                                    cycleLogger.warning(
-                                        "Cycle \(cycleCount): IDLE stream ended unexpectedly; reconnecting"
-                                    )
-                                }
-                                throw IMAPConnectionError.disconnected
-
-                            case .timer(let checkpoint):
-                                let debugMessage = "Cycle \(cycleCount):"
-                                    + " checkpoint=\(checkpoint.rawValue), sending DONE"
-                                cycleLogger.debug("\(debugMessage)")
-                                try await connection.done(timeoutSeconds: idleConfiguration.doneTimeout)
-
-                                var noopEvents: [IMAPServerEvent] = []
-                                if idleConfiguration.postIdleNoopEnabled {
-                                    if idleConfiguration.postIdleNoopDelay > 0 {
-                                        try? await Task.sleep(
-                                            nanoseconds: UInt64(idleConfiguration.postIdleNoopDelay * 1_000_000_000)
-                                        )
-                                    }
-                                    cycleLogger.debug("Cycle \(cycleCount): sending NOOP")
-                                    noopEvents = try await connection.noop()
-                                    if !noopEvents.isEmpty {
-                                        cycleLogger.debug(
-                                            "Cycle \(cycleCount): NOOP returned \(noopEvents.count) event(s)"
-                                        )
-                                    }
-                                } else {
-                                    cycleLogger.debug("Cycle \(cycleCount): post-IDLE NOOP probe disabled")
-                                }
-                                for event in noopEvents {
-                                    continuation.yield(event)
-                                }
-
-                                let bufferedEvents = connection.drainBufferedEvents()
-                                if !bufferedEvents.isEmpty {
-                                    cycleLogger.debug(
-                                        "Cycle \(cycleCount): drained \(bufferedEvents.count) buffered event(s)"
-                                    )
-                                }
-                                for event in bufferedEvents {
-                                    continuation.yield(event)
-                                }
-
-                                let sawByeEvent = (noopEvents + bufferedEvents).contains { event in
-                                    if case .bye = event { return true }
-                                    return false
-                                }
-                                if sawByeEvent {
-                                    let byeMessage = (noopEvents + bufferedEvents).compactMap { event -> String? in
-                                        guard case .bye(let message) = event else { return nil }
-                                        return message ?? "<no message>"
-                                    }.first ?? "<no message>"
-                                    cycleLogger.info("Cycle \(cycleCount): Server closed connection: \(byeMessage)")
-
-                                    do {
-                                        try? await connection.disconnect()
-
-                                        try await connection.connect()
-                                        try await authentication.authenticate(on: connection)
-                                        _ = try await connection.executeCommand(
-                                            SelectMailboxCommand(mailboxName: resolvedMailbox)
-                                        )
-
-                                        let reconnectedAt = Date()
-                                        nextNoopAt = idleConfiguration.postIdleNoopEnabled
-                                            ? reconnectedAt.addingTimeInterval(idleConfiguration.noopInterval)
-                                            : nil
-                                        nextRenewalAt = reconnectedAt.addingTimeInterval(
-                                            idleConfiguration.renewalInterval
-                                        )
-                                        reconnectAttempt = 0
-
-                                        cycleLogger.info("Reconnected IDLE session for mailbox '\(mailbox)'")
-                                        continue
-                                    } catch {
-                                        reconnectAttempt += 1
-                                        let delay = reconnectDelay(reconnectAttempt)
-                                        let errorDescription = String(describing: error)
-                                        let info = "Cycle \(cycleCount): routine reconnect failed"
-                                            + " after server close '\(errorDescription)';"
-                                            + " retry \(reconnectAttempt) in \(delay)s"
-                                        cycleLogger.info("\(info)")
-
-                                        if delay > 0 {
-                                            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                                        }
-                                        continue
-                                    }
-                                }
-
-                                let resumedAt = Date()
-                                nextNoopAt = idleConfiguration.postIdleNoopEnabled
-                                    ? resumedAt.addingTimeInterval(idleConfiguration.noopInterval)
-                                    : nil
-                                if checkpoint == .renewal || resumedAt >= nextRenewalAt {
-                                    nextRenewalAt = resumedAt.addingTimeInterval(idleConfiguration.renewalInterval)
-                                    cycleLogger.debug("Cycle \(cycleCount): renewed IDLE window")
-                                }
-
-                                reconnectAttempt = 0
-                        }
-                    } catch {
-                        if Task.isCancelled { break }
-
-                        reconnectAttempt += 1
-                        let delay = reconnectDelay(reconnectAttempt)
-                        let errorDescription = String(describing: error)
-                        let warning = "Cycle \(cycleCount): encountered error '\(errorDescription)';"
-                            + " reconnect attempt \(reconnectAttempt) in \(delay)s"
-                        cycleLogger.warning("\(warning)")
-
-                        if delay > 0 {
-                            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-                        }
-
-                        if Task.isCancelled { break }
-
-                        do {
-                            try? await connection.done(timeoutSeconds: idleConfiguration.doneTimeout)
-                            try? await connection.disconnect()
-
-                            try await connection.connect()
-                            try await authentication.authenticate(on: connection)
-                            _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: resolvedMailbox))
-
-                            let reconnectedAt = Date()
-                            nextNoopAt = idleConfiguration.postIdleNoopEnabled
-                                ? reconnectedAt.addingTimeInterval(idleConfiguration.noopInterval)
-                                : nil
-                            nextRenewalAt = reconnectedAt.addingTimeInterval(idleConfiguration.renewalInterval)
-
-                            cycleLogger.info("Reconnected IDLE session for mailbox '\(mailbox)'")
-                        } catch {
-                            let errorDescription = String(describing: error)
-                            let errorMessage = "Reconnect attempt \(reconnectAttempt)"
-                                + " failed for mailbox '\(mailbox)': \(errorDescription)"
-                            cycleLogger.error("\(errorMessage)")
-                        }
-                    }
-                }
-
-                continuation.finish()
-                try? await idleGroup.shutdownGracefully()
-            }
-
-            let session = IMAPIdleSession(events: wrappedEvents) { [weak self] in
-                cycleTask.cancel()
-                guard let self else { return }
-                try await self.endIdleSession(id: sessionID)
-            }
-
-            return session
+            let request = IdleSessionRequest(
+                sessionID: sessionID,
+                mailbox: mailbox,
+                resolvedMailbox: resolvedMailbox,
+                connection: connection,
+                idleGroup: idleGroup,
+                configuration: idleConfiguration,
+                authentication: authentication
+            )
+            return startResilientIdleSession(request: request)
         } catch {
             idleConnections[sessionID] = nil
             try? await connection.disconnect()
@@ -386,4 +107,61 @@ extension IMAPServer {
     public func done() async throws {
         try await primaryConnection.done()
     }
+
+    /// Send a NOOP command and collect unsolicited responses.
+    public func noop() async throws -> [IMAPServerEvent] {
+        try await primaryConnection.noop()
+    }
+
+    /// Wire up the AsyncStream + detached cycle task for a resilient IDLE session.
+    func startResilientIdleSession(request: IdleSessionRequest) -> IMAPIdleSession {
+        var continuationRef: AsyncStream<IMAPServerEvent>.Continuation!
+        let wrappedEvents = AsyncStream<IMAPServerEvent> { continuation in
+            continuationRef = continuation
+        }
+
+        let continuation = continuationRef!
+
+        let cycleLogger = IMAPResilientIdleRunner.makeCycleLogger(
+            connection: request.connection,
+            host: self.host,
+            port: self.port,
+            mailbox: request.resolvedMailbox
+        )
+
+        let context = IdleCycleContext(
+            connection: request.connection,
+            mailbox: request.mailbox,
+            resolvedMailbox: request.resolvedMailbox,
+            configuration: request.configuration,
+            authentication: request.authentication,
+            continuation: continuation,
+            logger: cycleLogger
+        )
+
+        let idleGroup = request.idleGroup
+        let sessionID = request.sessionID
+        let cycleTask = Task.detached { [idleGroup] in
+            await IMAPResilientIdleRunner.run(context: context)
+            continuation.finish()
+            try? await idleGroup.shutdownGracefully()
+        }
+
+        return IMAPIdleSession(events: wrappedEvents) { [weak self] in
+            cycleTask.cancel()
+            guard let self else { return }
+            try await self.endIdleSession(id: sessionID)
+        }
+    }
+}
+
+/// Bundled parameters for starting a resilient IDLE session.
+struct IdleSessionRequest {
+    let sessionID: UUID
+    let mailbox: String
+    let resolvedMailbox: String
+    let connection: IMAPConnection
+    let idleGroup: EventLoopGroup
+    let configuration: IMAPIdleConfiguration
+    let authentication: IMAPServer.Authentication
 }
