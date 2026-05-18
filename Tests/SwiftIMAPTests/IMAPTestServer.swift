@@ -102,8 +102,8 @@ final class IMAPTestServer {
             self?.acceptClient()
         }
         source.setCancelHandler { [weak self] in
-            if let fd = self?.listenFd, fd >= 0 {
-                close(fd)
+            if let fileDescriptor = self?.listenFd, fileDescriptor >= 0 {
+                close(fileDescriptor)
                 self?.listenFd = -1
             }
         }
@@ -114,8 +114,8 @@ final class IMAPTestServer {
     func stop() {
         acceptSource?.cancel()
         acceptSource = nil
-        for fd in clientFds {
-            close(fd)
+        for fileDescriptor in clientFds {
+            close(fileDescriptor)
         }
         clientFds.removeAll()
     }
@@ -139,9 +139,9 @@ final class IMAPTestServer {
         }
     }
 
-    private func handleClient(fd: Int32) {
+    private func handleClient(fd fileDescriptor: Int32) {
         // Send greeting
-        sendLine(fd: fd, "* OK IMAP test server ready\r\n")
+        sendLine(fd: fileDescriptor, "* OK IMAP test server ready\r\n")
 
         var buffer = Data()
         var authenticated = false
@@ -152,9 +152,9 @@ final class IMAPTestServer {
         var idleTag: String?  // non-nil while in IDLE state
 
         while true {
-            let n = read(fd, readBuf, 65536)
-            if n <= 0 { break }
-            buffer.append(readBuf, count: n)
+            let bytesRead = read(fileDescriptor, readBuf, 65536)
+            if bytesRead <= 0 { break }
+            buffer.append(readBuf, count: bytesRead)
 
             while let crlfRange = buffer.range(of: Data("\r\n".utf8)) {
                 let lineData = buffer[buffer.startIndex..<crlfRange.lowerBound]
@@ -164,14 +164,14 @@ final class IMAPTestServer {
 
                 // Handle DONE (untagged) while in IDLE state
                 if let tag = idleTag, line.uppercased() == "DONE" {
-                    sendLine(fd: fd, "\(tag) OK IDLE terminated\r\n")
+                    sendLine(fd: fileDescriptor, "\(tag) OK IDLE terminated\r\n")
                     idleTag = nil
                     continue
                 }
 
                 let parts = line.split(separator: " ", maxSplits: 2).map(String.init)
                 guard parts.count >= 2 else {
-                    sendLine(fd: fd, "* BAD Invalid command\r\n")
+                    sendLine(fd: fileDescriptor, "* BAD Invalid command\r\n")
                     continue
                 }
 
@@ -180,7 +180,7 @@ final class IMAPTestServer {
                 let args = parts.count > 2 ? parts[2] : ""
 
                 if command == "IDLE" {
-                    sendLine(fd: fd, "+ idling\r\n")
+                    sendLine(fd: fileDescriptor, "+ idling\r\n")
                     idleTag = tag
                     continue
                 }
@@ -192,27 +192,27 @@ final class IMAPTestServer {
                     authenticated: &authenticated,
                     selectedMailbox: &selectedMailbox
                 )
-                sendLine(fd: fd, response)
+                sendLine(fd: fileDescriptor, response)
 
                 if command == "LOGOUT" {
-                    close(fd)
+                    close(fileDescriptor)
                     return
                 }
             }
         }
 
-        close(fd)
+        close(fileDescriptor)
     }
 
-    private func sendLine(fd: Int32, _ text: String) {
+    private func sendLine(fd fileDescriptor: Int32, _ text: String) {
         guard let data = text.data(using: .utf8) else { return }
         data.withUnsafeBytes { buf in
             guard let ptr = buf.baseAddress else { return }
             var sent = 0
             while sent < data.count {
-                let n = write(fd, ptr + sent, data.count - sent)
-                if n <= 0 { return }
-                sent += n
+                let bytesWritten = write(fileDescriptor, ptr + sent, data.count - sent)
+                if bytesWritten <= 0 { return }
+                sent += bytesWritten
             }
         }
     }
@@ -410,8 +410,8 @@ final class IMAPTestServer {
     }
 
     private func buildBodystructure(_ msg: Message) -> String {
-        let ct = msg.contentType
-        let parts = ct.split(separator: "/")
+        let contentType = msg.contentType
+        let parts = contentType.split(separator: "/")
         let maintype = parts.first.map(String.init)?.uppercased() ?? "TEXT"
         let subtype = parts.count > 1 ? String(parts[1]).uppercased() : "PLAIN"
         let charset = msg.charset.uppercased()
@@ -420,8 +420,10 @@ final class IMAPTestServer {
         return "(\"\(maintype)\" \"\(subtype)\" (\"CHARSET\" \"\(charset)\") NIL NIL \"7BIT\" \(size) \(lines))"
     }
 
-    private func quote(_ s: String) -> String {
-        let escaped = s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+    private func quote(_ value: String) -> String {
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
         return "\"\(escaped)\""
     }
 
@@ -489,19 +491,19 @@ final class IMAPTestServer {
             return String(headers[range]).trimmingCharacters(in: .whitespacesAndNewlines)
         }
 
-        let contentType = header("Content-Type")
-        let ct: String
+        let rawContentType = header("Content-Type")
+        let mediaType: String
         let charset: String
-        if contentType.contains(";") {
-            let ctParts = contentType.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
-            ct = ctParts[0]
+        if rawContentType.contains(";") {
+            let ctParts = rawContentType.split(separator: ";").map { $0.trimmingCharacters(in: .whitespaces) }
+            mediaType = ctParts[0]
             if let charsetPart = ctParts.first(where: { $0.lowercased().hasPrefix("charset=") }) {
                 charset = String(charsetPart.dropFirst("charset=".count))
             } else {
                 charset = "utf-8"
             }
         } else {
-            ct = contentType.isEmpty ? "text/plain" : contentType
+            mediaType = rawContentType.isEmpty ? "text/plain" : rawContentType
             charset = "utf-8"
         }
 
@@ -529,7 +531,7 @@ final class IMAPTestServer {
             date: dateStr,
             internalDate: internalDate,
             messageID: header("Message-ID"),
-            contentType: ct,
+            contentType: mediaType,
             charset: charset,
             body: body,
             headerData: headerData
