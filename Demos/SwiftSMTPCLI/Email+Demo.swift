@@ -95,14 +95,14 @@ extension Email {
                 <p>This is a test email demonstrating HTML formatting and embedded images using Swift's email capabilities.</p>
                 <p>Here's a simple Swift code example:</p>
                 <pre><code>let message = "Hello, Swift!"\nprint(message)</code></pre>
-
+        
                 <p>This email demonstrates CC and BCC functionality:</p>
                 <ul>
                     <li>Primary recipient: \(recipient.description)</li>
                     \(ccRecipient != nil ? "<li>CC recipient: \(ccRecipient!.description)</li>" : "")
                     \(
-            bccRecipient != nil ? "<li>BCC recipient: \(bccRecipient!.description) (not visible in headers)</li>" : ""
-        )
+                        bccRecipient != nil ? "<li>BCC recipient: \(bccRecipient!.description) (not visible in headers)</li>" : ""
+                    )
                 </ul>
             </div>
             <div class="footer">
