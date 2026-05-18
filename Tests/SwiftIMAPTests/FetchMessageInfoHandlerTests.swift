@@ -227,6 +227,9 @@ struct FetchMessageInfoHandlerTests {
         #expect(infos[0].references == [MessageID("<root@example.com>")!, MessageID("<child@example.com>")!])
     }
 
+    // Test helper builds a Date from explicit components; 6 named ints reads
+    // more clearly at call sites than a wrapper struct.
+    // swiftlint:disable:next function_parameter_count
     private static func makeDate(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Date? {
         var components = DateComponents()
         components.year = year

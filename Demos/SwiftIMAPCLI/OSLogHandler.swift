@@ -39,7 +39,8 @@ import Logging
             self.log = log
         }
 
-        // Required method for LogHandler protocol
+        // Required method for LogHandler protocol — signature dictated by swift-log.
+        // swiftlint:disable:next function_parameter_count
         func log(
             level: Logging.Logger.Level,
             message: Logging.Logger.Message,
