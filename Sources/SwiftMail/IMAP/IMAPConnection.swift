@@ -1278,6 +1278,8 @@ final class IMAPConnection {
             // Create promises and handlers for each request.
             // Handlers are kept in an array so timeout/error can fail them safely
             // through their double-resolve guards (never call promise.fail directly).
+            // 3-tuple is fine here — internal pipelined-request bookkeeping.
+            // swiftlint:disable:next large_tuple
             var tagToRequest: [(tag: String, uid: UID, section: Section)] = []
             var handlers: [PipelinedFetchPartHandler] = []
             var futures: [EventLoopFuture<Data>] = []

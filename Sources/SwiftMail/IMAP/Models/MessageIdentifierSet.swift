@@ -294,16 +294,18 @@ extension MessageIdentifierSet {
                 let startUID = NIOIMAPCore.UID(rawValue: UInt32(range.lowerBound))
                 let endUID = NIOIMAPCore.UID(rawValue: UInt32(range.upperBound))
                 let nioRange = NIOIMAPCore.MessageIdentifierRange(startUID...endUID)
-                nioSet.formUnion(
-                    NIOIMAPCore.MessageIdentifierSet<NIOType>(nioRange as! NIOIMAPCore.MessageIdentifierRange<NIOType>)
-                )
+                // Cast is safe: guarded by the type-equality checks on the line above.
+                // swiftlint:disable:next force_cast
+                let typedRange = nioRange as! NIOIMAPCore.MessageIdentifierRange<NIOType>
+                nioSet.formUnion(NIOIMAPCore.MessageIdentifierSet<NIOType>(typedRange))
             } else if Identifier.self == SequenceNumber.self && NIOType.self == NIOIMAPCore.SequenceNumber.self {
                 let startSeq = NIOIMAPCore.SequenceNumber(rawValue: UInt32(range.lowerBound))
                 let endSeq = NIOIMAPCore.SequenceNumber(rawValue: UInt32(range.upperBound))
                 let nioRange = NIOIMAPCore.MessageIdentifierRange(startSeq...endSeq)
-                nioSet.formUnion(
-                    NIOIMAPCore.MessageIdentifierSet<NIOType>(nioRange as! NIOIMAPCore.MessageIdentifierRange<NIOType>)
-                )
+                // Cast is safe: guarded by the type-equality checks on the line above.
+                // swiftlint:disable:next force_cast
+                let typedRange = nioRange as! NIOIMAPCore.MessageIdentifierRange<NIOType>
+                nioSet.formUnion(NIOIMAPCore.MessageIdentifierSet<NIOType>(typedRange))
             } else {
                 preconditionFailure("Unsupported type combination")
             }

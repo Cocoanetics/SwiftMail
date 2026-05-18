@@ -5,7 +5,10 @@ import NIOIMAPCore
 public enum Mailbox {
     /// Information about a mailbox from a LIST command
     public struct Info: Codable, Sendable {
-        /// Attributes of a mailbox from a LIST command
+        /// Attributes of a mailbox from a LIST command.
+        /// Nested under `Mailbox.Info.Attributes` because the type is part of
+        /// the public API surface and flattening would break consumers.
+        // swiftlint:disable:next nesting
         public struct Attributes: OptionSet, Codable, Sendable {
             public let rawValue: UInt16
 

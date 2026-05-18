@@ -1678,10 +1678,8 @@ public actor IMAPServer {
                     if let disp = dispAndLang.disposition {
                         disposition = String(describing: disp)
 
-                        for (key, value) in disp.parameters {
-                            if key.lowercased() == "filename" {
-                                filename = value
-                            }
+                        for (key, value) in disp.parameters where key.lowercased() == "filename" {
+                            filename = value
                         }
                     }
                 }

@@ -140,7 +140,8 @@ final class ExtendedSearchHandler<T: MessageIdentifier>:
 
     // MARK: - Private helpers
 
-    /// Convert a NIOIMAPCore ``MessageIdentifierSet<UnknownMessageIdentifier>`` to a SwiftMail ``MessageIdentifierSet<T>``.
+    /// Convert a NIOIMAPCore ``MessageIdentifierSet<UnknownMessageIdentifier>``
+    /// to a SwiftMail ``MessageIdentifierSet<T>``.
     private func convertNIOSet(
         _ source: NIOIMAPCore.MessageIdentifierSet<NIOIMAPCore.UnknownMessageIdentifier>
     ) -> MessageIdentifierSet<T> {

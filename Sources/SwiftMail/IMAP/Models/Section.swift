@@ -53,10 +53,8 @@ extension Section: Comparable {
         // Compare each component in order until we find a difference
         let maxLength = min(lhs.components.count, rhs.components.count)
 
-        for index in 0..<maxLength {
-            if lhs.components[index] != rhs.components[index] {
-                return lhs.components[index] < rhs.components[index]
-            }
+        for index in 0..<maxLength where lhs.components[index] != rhs.components[index] {
+            return lhs.components[index] < rhs.components[index]
         }
 
         // If all components match up to the shorter length,

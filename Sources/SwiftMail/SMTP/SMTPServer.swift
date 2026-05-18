@@ -683,11 +683,15 @@ public actor SMTPServer {
         // Create the handler using standard initialization
         let handler: any SMTPCommandHandler
 
-        // Special case for LoginAuthHandler which needs the command parameters
+        // Special case for LoginAuthHandler which needs the command parameters.
+        // The cast is safe: LoginAuthCommand declares ResultType = AuthResult, so the
+        // generic resultPromise produced for this command has the expected element type.
         if let loginCommand = command as? LoginAuthCommand {
+            // swiftlint:disable:next force_cast
+            let authPromise = resultPromise as! EventLoopPromise<AuthResult>
             handler = LoginAuthHandler(
                 commandTag: commandTag,
-                promise: resultPromise as! EventLoopPromise<AuthResult>,
+                promise: authPromise,
                 command: loginCommand
             )
         } else {

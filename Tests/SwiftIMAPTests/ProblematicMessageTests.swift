@@ -53,10 +53,8 @@ struct ProblematicMessageTests {
             ]
 
             var foundProblems: [String] = []
-            for sequence in problematicSequences {
-                if decodedString.contains(sequence) {
-                    foundProblems.append(sequence)
-                }
+            for sequence in problematicSequences where decodedString.contains(sequence) {
+                foundProblems.append(sequence)
             }
 
             if !foundProblems.isEmpty {

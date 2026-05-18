@@ -310,6 +310,8 @@ struct XOAUTH2AuthenticationHandlerTests {
         }
     }
 
+    // 3-tuple return is fine for a test helper.
+    // swiftlint:disable:next large_tuple
     private func setUpChannel(
         tag: String,
         expectsChallenge: Bool,
