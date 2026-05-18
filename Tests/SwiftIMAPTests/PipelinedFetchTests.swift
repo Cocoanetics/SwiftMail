@@ -124,19 +124,19 @@ struct PipelinedCommandDispatcherTests {
 
         #expect(dispatcher.pendingCount == 0)
 
-        let p1 = eventLoop.makePromise(of: Data.self)
-        let h1 = PipelinedFetchPartHandler(promise: p1)
-        dispatcher.register(tag: "A001", handler: h1)
+        let promise1 = eventLoop.makePromise(of: Data.self)
+        let handler1 = PipelinedFetchPartHandler(promise: promise1)
+        dispatcher.register(tag: "A001", handler: handler1)
         #expect(dispatcher.pendingCount == 1)
 
-        let p2 = eventLoop.makePromise(of: Data.self)
-        let h2 = PipelinedFetchPartHandler(promise: p2)
-        dispatcher.register(tag: "A002", handler: h2)
+        let promise2 = eventLoop.makePromise(of: Data.self)
+        let handler2 = PipelinedFetchPartHandler(promise: promise2)
+        dispatcher.register(tag: "A002", handler: handler2)
         #expect(dispatcher.pendingCount == 2)
 
         // Clean up — resolve promises to avoid NIO "leaking promise" fatal error
-        h1.fail(IMAPError.timeout)
-        h2.fail(IMAPError.timeout)
+        handler1.fail(IMAPError.timeout)
+        handler2.fail(IMAPError.timeout)
     }
 
     @Test("Registered handlers can be failed individually")
@@ -144,30 +144,30 @@ struct PipelinedCommandDispatcherTests {
         let eventLoop = makeEventLoop()
         let dispatcher = PipelinedCommandDispatcher()
 
-        let p1 = eventLoop.makePromise(of: Data.self)
-        let h1 = PipelinedFetchPartHandler(promise: p1)
-        let p2 = eventLoop.makePromise(of: Data.self)
-        let h2 = PipelinedFetchPartHandler(promise: p2)
+        let promise1 = eventLoop.makePromise(of: Data.self)
+        let handler1 = PipelinedFetchPartHandler(promise: promise1)
+        let promise2 = eventLoop.makePromise(of: Data.self)
+        let handler2 = PipelinedFetchPartHandler(promise: promise2)
 
-        dispatcher.register(tag: "A001", handler: h1)
-        dispatcher.register(tag: "A002", handler: h2)
+        dispatcher.register(tag: "A001", handler: handler1)
+        dispatcher.register(tag: "A002", handler: handler2)
 
-        // Fail h1 only
-        h1.fail(IMAPError.timeout)
+        // Fail handler1 only
+        handler1.fail(IMAPError.timeout)
 
         do {
-            _ = try await p1.futureResult.get()
-            Issue.record("h1 should have failed")
+            _ = try await promise1.futureResult.get()
+            Issue.record("handler1 should have failed")
         } catch {
             // Expected
         }
 
-        // h2 should still be pending — fail it too
-        h2.fail(IMAPError.connectionFailed("test"))
+        // handler2 should still be pending — fail it too
+        handler2.fail(IMAPError.connectionFailed("test"))
 
         do {
-            _ = try await p2.futureResult.get()
-            Issue.record("h2 should have failed")
+            _ = try await promise2.futureResult.get()
+            Issue.record("handler2 should have failed")
         } catch {
             // Expected
         }
