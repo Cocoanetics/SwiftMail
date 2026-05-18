@@ -14,15 +14,15 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - name: Verify Swift version
         run: swift --version
       - name: Build (macOS)
-        run: swift build --build-tests -v
+        run: swift build --build-tests
       - name: Test (macOS)
-        run: swift test -v --skip-build
+        run: swift test --skip-build
 
   build-ios:
     runs-on: macos-latest
