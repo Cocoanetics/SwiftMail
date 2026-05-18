@@ -6,7 +6,6 @@ import Foundation
 import NIOIMAPCore
 
 extension Array where Element == MessagePart {
-    // swiftlint:disable cyclomatic_complexity function_body_length
     /**
      Initialize an array of message parts from a BodyStructure
 
@@ -19,194 +18,193 @@ extension Array where Element == MessagePart {
      - Parameter sectionPath: Path representing the section numbering, default is empty
      */
     public init(_ structure: BodyStructure, sectionPath: [Int] = []) {
-        // Initialize with empty array
         self = []
-
         switch structure {
             case .singlepart(let part):
-                // Determine the part number as Section type for IMAP
-                let section = Section(sectionPath.isEmpty ? [1] : sectionPath)
-
-                // Extract content type and other metadata
-                var contentType = ""
-
-                switch part.kind {
-                    case .basic(let mediaType):
-                        contentType = "\(String(mediaType.topLevel))/\(String(mediaType.sub))"
-                    case .text(let text):
-                        contentType = "text/\(String(text.mediaSubtype))"
-                    case .message(let message):
-                        contentType = "message/\(String(message.message))"
-                }
-
-                // Add charset parameter if present
-                if let charset = part.fields.parameters.first(where: { $0.key.lowercased() == "charset" })?.value {
-                    contentType += "; charset=\(charset)"
-                }
-
-                // Extract disposition and filename if available
-                var disposition: String?
-                var filename: String?
-                let encoding: String? = part.fields.encoding?.debugDescription
-
-                // Check Content-Type parameters for filename or name first
-                for (key, value) in part.fields.parameters {
-                    let lowerKey = key.lowercased()
-                    if lowerKey == "filename" || lowerKey == "name", !value.isEmpty {
-                        filename = value
-                        break
-                    }
-                }
-
-                // Then check Content-Disposition (which overrides Content-Type filename if present)
-                if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage {
-                    if let disp = dispAndLang.disposition {
-                        // Extract just the disposition kind (attachment, inline, etc.)
-                        disposition = String(disp.kind.rawValue)
-
-                        for (key, value) in disp.parameters {
-                            if key.lowercased() == "filename" && !value.isEmpty {
-                                filename = value
-                                break
-                            }
-                        }
-                    }
-                }
-
-                // Default filename for text/calendar parts (Outlook often omits filename)
-                if filename == nil, contentType.lowercased().hasPrefix("text/calendar") {
-                    filename = "invite.ics"
-                }
-
-                // Fallback: If still no filename and we have a content ID, use it.
-                // Skip for message/rfc822 — those get filename from envelope subject instead.
-                let isMessageKind: Bool = {
-                    if case .message = part.kind { return true }
-                    return false
-                }()
-                if !isMessageKind, filename == nil, let contentId = part.fields.id {
-                    let idString = String(contentId)
-                    if !idString.isEmpty {
-                        // Remove angle brackets if present (common in Content-ID)
-                        let cleanId = idString.trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
-                        if !cleanId.isEmpty {
-                            // Use the content ID directly as the filename
-                            filename = cleanId
-                        }
-                    }
-                }
-
-                // Decode any MIME-encoded filename
-                if let name = filename {
-                    let decoded = name.decodeMIMEHeader()
-                    if !decoded.isEmpty {
-                        filename = decoded
-                    }
-                }
-
-                // Set content ID if available
-                let contentId: String? = part.fields.id.map {
-                    let str = String($0)
-                    return str.isEmpty ? nil : str
-                } ?? nil
-
-                // For message/rfc822: extract envelope into MessageInfo, derive filename from subject
-                var embeddedMessageInfo: MessageInfo?
-                if case .message(let message) = part.kind {
-                    let envelope = message.envelope
-                    let subject: String? = {
-                        guard let buf = envelope.subject else { return nil }
-                        let raw = buf.stringValue
-                        guard !raw.isEmpty else { return nil }
-                        let decoded = raw.decodeMIMEHeader()
-                        return decoded.isEmpty ? raw : decoded
-                    }()
-                    let from: String? = {
-                        guard !envelope.from.isEmpty else { return nil }
-                        return Self.formatEnvelopeAddress(envelope.from[0])
-                    }()
-                    let to = Self.formatEnvelopeAddressesArray(envelope.to)
-                    let cc = Self.formatEnvelopeAddressesArray(envelope.cc)
-                    let date = Self.parseEnvelopeDate(envelope.date)
-                    embeddedMessageInfo = MessageInfo(
-                        sequenceNumber: SequenceNumber(0), // Not available for embedded messages
-                        subject: subject,
-                        from: from,
-                        to: to,
-                        cc: cc,
-                        date: date
-                    )
-
-                    // Use envelope subject as filename (matching TB behavior), fall back to "message.eml"
-                    if filename == nil {
-                        if let subject, !subject.isEmpty {
-                            // Sanitize subject for filename: remove characters invalid in filenames
-                            let invalidChars = try? NSRegularExpression(pattern: "[/\\\\:*?\"<>|]")
-                            let range = NSRange(subject.startIndex..., in: subject)
-                            let replaced = invalidChars?.stringByReplacingMatches(
-                                in: subject,
-                                range: range,
-                                withTemplate: "-"
-                            ) ?? subject
-                            let sanitized = replaced.trimmingCharacters(
-                                in: CharacterSet.whitespacesAndNewlines
-                            )
-                            filename = sanitized.isEmpty ? "message.eml" : "\(sanitized).eml"
-                        } else {
-                            filename = "message.eml"
-                        }
-                    }
-                }
-
-                // Create a message part with empty data
-                let messagePart = MessagePart(
-                    section: section,
-                    contentType: contentType,
-                    disposition: disposition,
-                    encoding: encoding?.isEmpty == true ? nil : encoding,
-                    filename: filename,
-                    contentId: contentId,
-                    data: nil,
-                    embeddedMessageInfo: embeddedMessageInfo
-                )
-
-                // Append to our result
-                self.append(messagePart)
-
-                // For message/rfc822, recurse into the nested body structure to extract
-                // inner parts (text/html, text/plain, nested attachments).
-                // Section numbering per RFC 3501: parts within a message/rfc822 at section N
-                // are addressed as N.1, N.2, etc. — regardless of whether the nested body
-                // is multipart or singlepart (singlepart content is part 1).
-                if case .message(let message) = part.kind {
-                    let parentPath = sectionPath.isEmpty ? [1] : sectionPath
-                    switch message.body {
-                        case .multipart:
-                            // Multipart children: parent.1, parent.2, etc. — handled by multipart case
-                            let nestedParts = [MessagePart](message.body, sectionPath: parentPath)
-                            self.append(contentsOf: nestedParts)
-                        case .singlepart:
-                            // Single-part content is at parent.1 per RFC 3501
-                            let nestedParts = [MessagePart](message.body, sectionPath: parentPath + [1])
-                            self.append(contentsOf: nestedParts)
-                    }
-                }
-
+                appendSinglepart(part, sectionPath: sectionPath)
             case .multipart(let multipart):
-                // For multipart messages, process each child part and collect results
-                for (index, childPart) in multipart.parts.enumerated() {
-                    // Create a new section path array by appending the current index + 1
-                    let childSectionPath = sectionPath.isEmpty ? [index + 1] : sectionPath + [index + 1]
-
-                    // Recursively process child parts
-                    let childParts = [MessagePart](childPart, sectionPath: childSectionPath)
-
-                    // Append all child parts to our result
-                    self.append(contentsOf: childParts)
-                }
+                appendMultipart(multipart, sectionPath: sectionPath)
         }
     }
-    // swiftlint:enable cyclomatic_complexity function_body_length
+
+    /// Build the `MessagePart` for one ``BodyStructure.Singlepart`` and append
+    /// it, then recurse into the embedded body of any `message/rfc822` part.
+    private mutating func appendSinglepart(
+        _ part: BodyStructure.Singlepart,
+        sectionPath: [Int]
+    ) {
+        let section = Section(sectionPath.isEmpty ? [1] : sectionPath)
+        let contentType = Self.contentType(for: part)
+        let encoding = part.fields.encoding?.debugDescription
+        let dispositionAndFilename = Self.dispositionAndFilename(for: part, contentType: contentType)
+        var filename = dispositionAndFilename.filename
+        let disposition = dispositionAndFilename.disposition
+        let contentId: String? = part.fields.id.map { String($0) }.flatMap { $0.isEmpty ? nil : $0 }
+
+        // message/rfc822: extract envelope metadata and derive a filename
+        // from the subject when one isn't already set.
+        var embeddedMessageInfo: MessageInfo?
+        if case .message(let message) = part.kind {
+            embeddedMessageInfo = Self.embeddedMessageInfo(from: message.envelope)
+            if filename == nil {
+                filename = Self.filename(forEmbeddedSubject: embeddedMessageInfo?.subject)
+            }
+        }
+
+        self.append(MessagePart(
+            section: section,
+            contentType: contentType,
+            disposition: disposition,
+            encoding: encoding?.isEmpty == true ? nil : encoding,
+            filename: filename,
+            contentId: contentId,
+            data: nil,
+            embeddedMessageInfo: embeddedMessageInfo
+        ))
+
+        if case .message(let message) = part.kind {
+            appendEmbeddedRFC822(message.body, sectionPath: sectionPath)
+        }
+    }
+
+    /// Recursively walk a multipart structure, numbering children per RFC 3501.
+    private mutating func appendMultipart(
+        _ multipart: BodyStructure.Multipart,
+        sectionPath: [Int]
+    ) {
+        for (index, childPart) in multipart.parts.enumerated() {
+            let childSectionPath = sectionPath.isEmpty ? [index + 1] : sectionPath + [index + 1]
+            self.append(contentsOf: [MessagePart](childPart, sectionPath: childSectionPath))
+        }
+    }
+
+    /// For message/rfc822, append the nested body's parts. Section numbering
+    /// per RFC 3501: multipart children get parent.N; a singlepart inner body
+    /// is at parent.1.
+    private mutating func appendEmbeddedRFC822(
+        _ body: BodyStructure,
+        sectionPath: [Int]
+    ) {
+        let parentPath = sectionPath.isEmpty ? [1] : sectionPath
+        switch body {
+            case .multipart:
+                self.append(contentsOf: [MessagePart](body, sectionPath: parentPath))
+            case .singlepart:
+                self.append(contentsOf: [MessagePart](body, sectionPath: parentPath + [1]))
+        }
+    }
+
+    /// Render the MIME content-type string (`type/subtype[; charset=...]`)
+    /// from a singlepart's typed `kind`.
+    private static func contentType(for part: BodyStructure.Singlepart) -> String {
+        var contentType: String
+        switch part.kind {
+            case .basic(let mediaType):
+                contentType = "\(String(mediaType.topLevel))/\(String(mediaType.sub))"
+            case .text(let text):
+                contentType = "text/\(String(text.mediaSubtype))"
+            case .message(let message):
+                contentType = "message/\(String(message.message))"
+        }
+        if let charset = part.fields.parameters.first(where: { $0.key.lowercased() == "charset" })?.value {
+            contentType += "; charset=\(charset)"
+        }
+        return contentType
+    }
+
+    /// Pull the disposition and filename out of a singlepart's Content-Type
+    /// parameters, Content-Disposition extension, content-id fallback, and
+    /// the text/calendar default. Returns the resolved values; the
+    /// message/rfc822 envelope path is handled separately.
+    private static func dispositionAndFilename(
+        for part: BodyStructure.Singlepart,
+        contentType: String
+    ) -> (disposition: String?, filename: String?) {
+        var filename = filenameFromContentTypeParameters(part)
+        var disposition: String?
+
+        if let ext = part.extension, let disp = ext.dispositionAndLanguage?.disposition {
+            disposition = String(disp.kind.rawValue)
+            // Content-Disposition's filename overrides Content-Type's filename/name.
+            for (key, value) in disp.parameters where key.lowercased() == "filename" && !value.isEmpty {
+                filename = value
+                break
+            }
+        }
+
+        // Default filename for text/calendar parts (Outlook often omits filename).
+        if filename == nil, contentType.lowercased().hasPrefix("text/calendar") {
+            filename = "invite.ics"
+        }
+
+        // Content-ID fallback (skip for message/rfc822 — that uses the envelope subject).
+        let isMessageKind: Bool = {
+            if case .message = part.kind { return true }
+            return false
+        }()
+        if !isMessageKind, filename == nil, let contentId = part.fields.id {
+            let cleanId = String(contentId).trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
+            if !cleanId.isEmpty {
+                filename = cleanId
+            }
+        }
+
+        // Decode any MIME-encoded filename (=?UTF-8?Q?...?=).
+        if let name = filename {
+            let decoded = name.decodeMIMEHeader()
+            if !decoded.isEmpty {
+                filename = decoded
+            }
+        }
+        return (disposition, filename)
+    }
+
+    private static func filenameFromContentTypeParameters(_ part: BodyStructure.Singlepart) -> String? {
+        for (key, value) in part.fields.parameters {
+            let lowerKey = key.lowercased()
+            if (lowerKey == "filename" || lowerKey == "name") && !value.isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
+
+    /// Build the embedded `MessageInfo` for a `message/rfc822` part from its envelope.
+    private static func embeddedMessageInfo(from envelope: Envelope) -> MessageInfo {
+        let subject: String? = {
+            guard let raw = envelope.subject?.stringValue, !raw.isEmpty else { return nil }
+            let decoded = raw.decodeMIMEHeader()
+            return decoded.isEmpty ? raw : decoded
+        }()
+        let from: String? = envelope.from.isEmpty
+            ? nil
+            : Self.formatEnvelopeAddress(envelope.from[0])
+        return MessageInfo(
+            sequenceNumber: SequenceNumber(0), // Not available for embedded messages
+            subject: subject,
+            from: from,
+            to: Self.formatEnvelopeAddressesArray(envelope.to),
+            cc: Self.formatEnvelopeAddressesArray(envelope.cc),
+            date: Self.parseEnvelopeDate(envelope.date)
+        )
+    }
+
+    /// Derive an `.eml` filename for an embedded `message/rfc822` part from its
+    /// envelope subject (sanitising filesystem-invalid characters); falls back
+    /// to `"message.eml"` when there's no usable subject.
+    private static func filename(forEmbeddedSubject subject: String?) -> String {
+        guard let subject, !subject.isEmpty else { return "message.eml" }
+        // Sanitize subject for filename: remove characters invalid in filenames
+        let invalidChars = try? NSRegularExpression(pattern: "[/\\\\:*?\"<>|]")
+        let range = NSRange(subject.startIndex..., in: subject)
+        let replaced = invalidChars?.stringByReplacingMatches(
+            in: subject,
+            range: range,
+            withTemplate: "-"
+        ) ?? subject
+        let sanitized = replaced.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        return sanitized.isEmpty ? "message.eml" : "\(sanitized).eml"
+    }
 
     // MARK: - Envelope Helpers
 
