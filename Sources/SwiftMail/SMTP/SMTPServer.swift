@@ -237,24 +237,15 @@ public actor SMTPServer {
         }
     }
 
-    /// Build the handler for the given command, applying special-case wiring for `LoginAuthCommand`.
+    /// Build the handler for the given command. Commands with extra setup
+    /// (e.g. LoginAuthCommand needs credentials) override `makeHandler` on
+    /// SMTPCommand; the default just calls the handler's required init.
     private func makeCommandHandler<CommandType: SMTPCommand>(
         for command: CommandType,
         commandTag: String,
         resultPromise: EventLoopPromise<CommandType.ResultType>
-    ) -> any SMTPCommandHandler {
-        // Special case for LoginAuthHandler which needs the command parameters.
-        // LoginAuthCommand's result type is AuthResult, so this cast is guaranteed.
-        if let loginCommand = command as? LoginAuthCommand {
-            // swiftlint:disable:next force_cast
-            let authPromise = resultPromise as! EventLoopPromise<AuthResult>
-            return LoginAuthHandler(
-                commandTag: commandTag,
-                promise: authPromise,
-                command: loginCommand
-            )
-        }
-        return CommandType.HandlerType(commandTag: commandTag, promise: resultPromise)
+    ) -> CommandType.HandlerType {
+        command.makeHandler(commandTag: commandTag, promise: resultPromise)
     }
 
     /**

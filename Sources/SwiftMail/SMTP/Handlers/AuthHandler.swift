@@ -51,68 +51,68 @@ final class AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable {
         super.init(commandTag: commandTag, promise: promise)
     }
 
-    // swiftlint:disable cyclomatic_complexity
-    /// Process a response line from the server — switch over auth method ×
-    /// response code combinations gives inherent complexity.
+    /// Process a response line from the server.
     /// - Parameter response: The response line to process
     /// - Returns: Whether the handler is complete
     override func processResponse(_ response: SMTPResponse) -> Bool {
-        // Handle authentication based on the method and current state
         switch method {
             case .plain, .xoauth2:
-                // For PLAIN and XOAUTH2 auth, we should get a success response immediately
-                if response.code >= 200 && response.code < 300 {
-                    promise.succeed(AuthResult(method: method, success: true))
-                    return true
-                } else if response.code >= 400 {
-                    promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
-                    return true
-                }
-
+                return processOneShotResponse(response)
             case .login:
-                // For LOGIN auth, we need to handle multiple steps
-                switch state {
-                    case .initial:
-                        // Initial response should be a challenge for the username
-                        if response.code == 334 {
-                            // Send the username (base64 encoded)
-                            sendLoginCredential(username)
-                            state = .usernameProvided
-                            return false // Not complete yet
-                        } else if response.code >= 400 {
-                            // Error response
-                            promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
-                            return true
-                        }
-
-                    case .usernameProvided:
-                        // After username, should be a challenge for the password
-                        if response.code == 334 {
-                            // Send the password (base64 encoded)
-                            sendLoginCredential(password)
-                            state = .completed
-                            return false // Still need the final response
-                        } else if response.code >= 400 {
-                            // Error response
-                            promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
-                            return true
-                        }
-
-                    case .completed:
-                        // Final response after password
-                        if response.code >= 200 && response.code < 300 {
-                            promise.succeed(AuthResult(method: method, success: true))
-                            return true
-                        } else {
-                            promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
-                            return true
-                        }
-                }
+                return processLoginResponse(response)
         }
-
-        return false // Not yet complete
     }
-    // swiftlint:enable cyclomatic_complexity
+
+    /// PLAIN/XOAUTH2: a single response decides success or failure.
+    private func processOneShotResponse(_ response: SMTPResponse) -> Bool {
+        if response.code >= 200 && response.code < 300 {
+            promise.succeed(AuthResult(method: method, success: true))
+            return true
+        }
+        if response.code >= 400 {
+            promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
+            return true
+        }
+        return false
+    }
+
+    /// LOGIN: multi-step state machine driven by 334 challenges.
+    private func processLoginResponse(_ response: SMTPResponse) -> Bool {
+        switch state {
+            case .initial:
+                return advanceLogin(after: response, credential: username, nextState: .usernameProvided)
+            case .usernameProvided:
+                return advanceLogin(after: response, credential: password, nextState: .completed)
+            case .completed:
+                let success = response.code >= 200 && response.code < 300
+                let result = AuthResult(
+                    method: method,
+                    success: success,
+                    errorMessage: success ? nil : response.message
+                )
+                promise.succeed(result)
+                return true
+        }
+    }
+
+    /// Shared transition logic for `.initial` and `.usernameProvided` — both
+    /// expect a 334 challenge and respond with a credential.
+    private func advanceLogin(
+        after response: SMTPResponse,
+        credential: String,
+        nextState: AuthState
+    ) -> Bool {
+        if response.code == 334 {
+            sendLoginCredential(credential)
+            state = nextState
+            return false
+        }
+        if response.code >= 400 {
+            promise.succeed(AuthResult(method: method, success: false, errorMessage: response.message))
+            return true
+        }
+        return false
+    }
 
     /// Send a credential for LOGIN authentication
     /// - Parameter credential: The credential to send (username or password)

@@ -53,4 +53,10 @@ struct LoginAuthCommand: SMTPCommand {
             throw SMTPError.authenticationFailed("Password cannot be empty")
         }
     }
+
+    /// LoginAuthHandler needs to read username/password off the command, so route
+    /// around the default factory that only knows about commandTag/promise.
+    func makeHandler(commandTag: String?, promise: EventLoopPromise<AuthResult>) -> LoginAuthHandler {
+        LoginAuthHandler(commandTag: commandTag, promise: promise, command: self)
+    }
 }

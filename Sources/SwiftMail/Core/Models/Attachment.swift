@@ -39,10 +39,8 @@ public struct Attachment: Codable, Sendable {
         self.isInline = isInline
     }
 
-    // swiftlint:disable cyclomatic_complexity
     /**
-     Initialize a new attachment from a file URL — complexity is inherent from
-     the file-extension -> MIME-type if/else chain.
+     Initialize a new attachment from a file URL.
 
      - Parameters:
      - fileURL: The URL of the file to attach
@@ -52,47 +50,34 @@ public struct Attachment: Codable, Sendable {
      - Throws: An error if the file cannot be read
      */
     public init(fileURL: URL, mimeType: String? = nil, contentID: String? = nil, isInline: Bool = false) throws {
-        // Get the filename from the URL
         self.filename = fileURL.lastPathComponent
-
-        // Determine MIME type if not provided
-        if let providedMimeType = mimeType {
-            self.mimeType = providedMimeType
-        } else {
-            // Try to determine MIME type from file extension
-            let pathExtension = fileURL.pathExtension.lowercased()
-            switch pathExtension {
-                case "jpg", "jpeg":
-                    self.mimeType = "image/jpeg"
-                case "png":
-                    self.mimeType = "image/png"
-                case "gif":
-                    self.mimeType = "image/gif"
-                case "svg":
-                    self.mimeType = "image/svg+xml"
-                case "pdf":
-                    self.mimeType = "application/pdf"
-                case "txt":
-                    self.mimeType = "text/plain"
-                case "html", "htm":
-                    self.mimeType = "text/html"
-                case "doc", "docx":
-                    self.mimeType = "application/msword"
-                case "xls", "xlsx":
-                    self.mimeType = "application/vnd.ms-excel"
-                case "zip":
-                    self.mimeType = "application/zip"
-                default:
-                    self.mimeType = "application/octet-stream"
-            }
-        }
-
-        // Read the file data
+        self.mimeType = mimeType ?? Self.mimeType(for: fileURL.pathExtension.lowercased())
         self.data = try Data(contentsOf: fileURL)
-
-        // Set content ID and inline flag
         self.contentID = contentID
         self.isInline = isInline
     }
-    // swiftlint:enable cyclomatic_complexity
+
+    /// Small built-in lookup table for the file extensions most commonly used as
+    /// email attachments. Falls back to `application/octet-stream` for anything
+    /// not listed — callers can always pass `mimeType:` explicitly.
+    private static let mimeTypesByExtension: [String: String] = [
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "svg": "image/svg+xml",
+        "pdf": "application/pdf",
+        "txt": "text/plain",
+        "html": "text/html",
+        "htm": "text/html",
+        "doc": "application/msword",
+        "docx": "application/msword",
+        "xls": "application/vnd.ms-excel",
+        "xlsx": "application/vnd.ms-excel",
+        "zip": "application/zip"
+    ]
+
+    private static func mimeType(for pathExtension: String) -> String {
+        mimeTypesByExtension[pathExtension] ?? "application/octet-stream"
+    }
 }

@@ -137,15 +137,12 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
             }
         }
 
-        // Default implementation succeeds with Void for handlers that don't need a result
-        // This only works for ResultType == Void, otherwise subclasses must override
-        if ResultType.self == Void.self {
-            // Cast is safe: guarded by the ResultType.self == Void.self check above.
-            // swiftlint:disable:next force_cast
-            succeedWithResult(() as! ResultType)
+        // Default implementation succeeds with Void for handlers that don't need a result.
+        // Subclasses must override for non-Void result types; the runtime conditional
+        // cast handles the Void case without resorting to `as!`.
+        if let voidResult = () as Any as? ResultType {
+            succeedWithResult(voidResult)
         }
-        // For non-Void result types, subclasses must override this method
-        // but we don't call fatalError here to allow them to call super for CLIENTBUG checking
     }
 
     /// Handle a tagged error response

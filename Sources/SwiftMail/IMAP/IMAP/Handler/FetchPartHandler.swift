@@ -56,49 +56,34 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
         return handled
     }
 
-    // swiftlint:disable cyclomatic_complexity
-    /// Process a fetch response — complexity 11 from FetchResponse-case switch.
+    /// Process a fetch response. Hoist the `didFinishPart` guard above the
+    /// switch so each case stays single-purpose.
     /// - Parameter fetchResponse: The fetch response to process
     private func processFetchResponse(_ fetchResponse: FetchResponse) {
+        guard !didFinishPart else { return }
         switch fetchResponse {
             case .start(let seq):
-                // Only record the first sequence number and reset the buffer
-                if !didFinishPart {
-                    currentSequence = SequenceNumber(seq.rawValue)
-                    lock.withLock { self.partData.removeAll(keepingCapacity: true) }
-                }
+                currentSequence = SequenceNumber(seq.rawValue)
+                lock.withLock { self.partData.removeAll(keepingCapacity: true) }
 
             case .simpleAttribute(let attribute):
-                // Process simple attributes only for the current sequence
-                if !didFinishPart {
-                    processMessageAttribute(attribute)
-                }
+                processMessageAttribute(attribute)
 
             case .streamingBegin(_, let byteCount):
-                // Store the expected byte count
-                if !didFinishPart {
-                    expectedByteCount = byteCount
-                }
+                expectedByteCount = byteCount
 
             case .streamingBytes(let data):
-                // Collect the streaming body data
-                if !didFinishPart {
-                    lock.withLock {
-                        self.partData.append(Data(data.readableBytesView))
-                    }
+                lock.withLock {
+                    self.partData.append(Data(data.readableBytesView))
                 }
 
             case .finish:
-                // Mark that we've finished collecting the requested part
-                if !didFinishPart {
-                    didFinishPart = true
-                }
+                didFinishPart = true
 
             default:
                 break
         }
     }
-    // swiftlint:enable cyclomatic_complexity
 
     /// Process a message attribute
     /// - Parameter attribute: The attribute to process

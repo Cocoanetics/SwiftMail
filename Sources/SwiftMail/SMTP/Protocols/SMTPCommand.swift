@@ -26,6 +26,12 @@ protocol SMTPCommand where ResultType: Sendable {
 
     /// Custom timeout for this operation
     var timeoutSeconds: Int { get }
+
+    /// Build the handler that will process responses for this command.
+    /// Commands whose handler needs extra context (e.g. credentials for
+    /// LoginAuthCommand) override this; the default just calls the
+    /// handler's required `init(commandTag:promise:)`.
+    func makeHandler(commandTag: String?, promise: EventLoopPromise<ResultType>) -> HandlerType
 }
 
 /// Default implementation for common command behaviors
@@ -33,6 +39,11 @@ extension SMTPCommand {
     /// Default validation (no-op, can be overridden by specific commands)
     func validate() throws {
         // No validation by default
+    }
+
+    /// Default handler factory just calls the required initializer.
+    func makeHandler(commandTag: String?, promise: EventLoopPromise<ResultType>) -> HandlerType {
+        HandlerType(commandTag: commandTag, promise: promise)
     }
 
     /// Default implementation encodes the command string as UTF-8 data
