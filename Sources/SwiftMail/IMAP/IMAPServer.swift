@@ -125,7 +125,8 @@ public actor IMAPServer {
      - Parameters:
      - host: The hostname of the IMAP server
      - port: The port number of the IMAP server (typically 993 for SSL)
-     - transportSecurity: The transport security policy to use. `.automatic` infers from standard IMAP ports; explicit values override that inference.
+     - transportSecurity: The transport security policy to use. `.automatic` infers from
+       standard IMAP ports; explicit values override that inference.
      - certificateVerificationPolicy: The certificate verification policy to use for TLS connections.
      - numberOfThreads: The number of threads to use for the event loop group
      
@@ -286,7 +287,8 @@ public actor IMAPServer {
     /// - Parameters:
     ///   - email: The full mailbox address to authenticate as.
     ///   - accessToken: The OAuth 2.0 access token.
-    /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise XOAUTH2 or ``IMAPError.authFailed`` when authentication fails.
+    /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise XOAUTH2
+    ///   or ``IMAPError.authFailed`` when authentication fails.
     public func authenticateXOAUTH2(email: String, accessToken: String) async throws {
         try await primaryConnection.authenticateXOAUTH2(email: email, accessToken: accessToken)
         authentication = .xoauth2(email: email, accessTokenProvider: { accessToken })
@@ -305,7 +307,8 @@ public actor IMAPServer {
     /// Identify the client to the server using the `ID` command.
     /// - Parameter identification: Information describing the client. Pass the default value to send no information.
     /// - Returns: Information returned by the server.
-    /// - Throws: ``IMAPError.commandNotSupported`` if the server does not support the command or ``IMAPError.commandFailed`` on failure.
+    /// - Throws: ``IMAPError.commandNotSupported`` if the server does not support the command
+    ///   or ``IMAPError.commandFailed`` on failure.
     public func id(_ identification: Identification = Identification()) async throws -> Identification {
         guard capabilities.contains(.id) else {
             throw IMAPError.commandNotSupported("ID command not supported by server")
@@ -536,7 +539,8 @@ public actor IMAPServer {
      - `IMAPError.selectFailed` if the mailbox cannot be selected
      - `IMAPError.connectionFailed` if not connected
      - Note: Logs mailbox selection at debug level
-     - Important: The returned status does not include an unseen count, as this is not provided by the IMAP SELECT command.
+     - Important: The returned status does not include an unseen count, as this is not
+       provided by the IMAP SELECT command.
      To get the count of unseen messages, use `mailboxStatus("INBOX").unseenCount` instead.
      */
     @discardableResult public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
@@ -619,7 +623,10 @@ public actor IMAPServer {
     ///   counts and sequence numbers accurate across connections.
     /// - Parameter mailbox: The mailbox to watch for changes.
     /// - Parameter configuration: Reliability tuning for IDLE renewal/heartbeat/reconnect.
-    public func idle(on mailbox: String, configuration: IMAPIdleConfiguration = .default) async throws -> IMAPIdleSession {
+    public func idle(
+        on mailbox: String,
+        configuration: IMAPIdleConfiguration = .default
+    ) async throws -> IMAPIdleSession {
         let idleConfiguration = try configuration.validated()
 
         guard let authentication = authentication else {
@@ -688,9 +695,11 @@ public actor IMAPServer {
                     : nil
                 var nextRenewalAt = Date().addingTimeInterval(idleConfiguration.renewalInterval)
 
-                cycleLogger.info(
-                    "Idle reliability task started for mailbox '\(mailbox)' (postIdleNoop=\(idleConfiguration.postIdleNoopEnabled) noopInterval=\(idleConfiguration.noopInterval)s renewal=\(idleConfiguration.renewalInterval)s)"
-                )
+                let startInfo = "Idle reliability task started for mailbox '\(mailbox)'"
+                    + " (postIdleNoop=\(idleConfiguration.postIdleNoopEnabled)"
+                    + " noopInterval=\(idleConfiguration.noopInterval)s"
+                    + " renewal=\(idleConfiguration.renewalInterval)s)"
+                cycleLogger.info("\(startInfo)")
 
                 while !Task.isCancelled {
                     do {
@@ -763,9 +772,11 @@ public actor IMAPServer {
                                     } catch {
                                         reconnectAttempt += 1
                                         let delay = reconnectDelay(reconnectAttempt)
-                                        cycleLogger.info(
-                                            "Cycle \(cycleCount): routine reconnect failed after server close '\(String(describing: error))'; retry \(reconnectAttempt) in \(delay)s"
-                                        )
+                                        let errorDescription = String(describing: error)
+                                        let info = "Cycle \(cycleCount): routine reconnect failed"
+                                            + " after server close '\(errorDescription)';"
+                                            + " retry \(reconnectAttempt) in \(delay)s"
+                                        cycleLogger.info("\(info)")
 
                                         if delay > 0 {
                                             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -780,7 +791,9 @@ public actor IMAPServer {
                                 throw IMAPConnectionError.disconnected
 
                             case .timer(let checkpoint):
-                                cycleLogger.debug("Cycle \(cycleCount): checkpoint=\(checkpoint.rawValue), sending DONE")
+                                let debugMessage = "Cycle \(cycleCount):"
+                                    + " checkpoint=\(checkpoint.rawValue), sending DONE"
+                                cycleLogger.debug("\(debugMessage)")
                                 try await connection.done(timeoutSeconds: idleConfiguration.doneTimeout)
 
                                 var noopEvents: [IMAPServerEvent] = []
@@ -848,9 +861,11 @@ public actor IMAPServer {
                                     } catch {
                                         reconnectAttempt += 1
                                         let delay = reconnectDelay(reconnectAttempt)
-                                        cycleLogger.info(
-                                            "Cycle \(cycleCount): routine reconnect failed after server close '\(String(describing: error))'; retry \(reconnectAttempt) in \(delay)s"
-                                        )
+                                        let errorDescription = String(describing: error)
+                                        let info = "Cycle \(cycleCount): routine reconnect failed"
+                                            + " after server close '\(errorDescription)';"
+                                            + " retry \(reconnectAttempt) in \(delay)s"
+                                        cycleLogger.info("\(info)")
 
                                         if delay > 0 {
                                             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -875,9 +890,10 @@ public actor IMAPServer {
 
                         reconnectAttempt += 1
                         let delay = reconnectDelay(reconnectAttempt)
-                        cycleLogger.warning(
-                            "Cycle \(cycleCount): encountered error '\(String(describing: error))'; reconnect attempt \(reconnectAttempt) in \(delay)s"
-                        )
+                        let errorDescription = String(describing: error)
+                        let warning = "Cycle \(cycleCount): encountered error '\(errorDescription)';"
+                            + " reconnect attempt \(reconnectAttempt) in \(delay)s"
+                        cycleLogger.warning("\(warning)")
 
                         if delay > 0 {
                             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -901,9 +917,10 @@ public actor IMAPServer {
 
                             cycleLogger.info("Reconnected IDLE session for mailbox '\(mailbox)'")
                         } catch {
-                            cycleLogger.error(
-                                "Reconnect attempt \(reconnectAttempt) failed for mailbox '\(mailbox)': \(String(describing: error))"
-                            )
+                            let errorDescription = String(describing: error)
+                            let errorMessage = "Reconnect attempt \(reconnectAttempt)"
+                                + " failed for mailbox '\(mailbox)': \(errorDescription)"
+                            cycleLogger.error("\(errorMessage)")
                         }
                     }
                 }
@@ -1134,9 +1151,9 @@ public actor IMAPServer {
 
     /// Fetch message infos for an identifier set in a **single IMAP FETCH**.
     /// This is important for UID ranges like `123:*` which must not be expanded into individual UIDs.
-    public func fetchMessageInfosBulk<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) async throws -> [
-        MessageInfo
-    ] {
+    public func fetchMessageInfosBulk<T: MessageIdentifier>(
+        using identifierSet: MessageIdentifierSet<T>
+    ) async throws -> [MessageInfo] {
         let command = FetchMessageInfoCommand(identifierSet: identifierSet)
         return try await executeCommand(command)
     }
@@ -1171,10 +1188,9 @@ public actor IMAPServer {
     ///
     /// - Parameter identifierSet: The set of message identifiers to fetch
     /// - Returns: An AsyncThrowingStream yielding MessageInfo one at a time
-    public nonisolated func fetchMessageInfos<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) -> AsyncThrowingStream<
-        MessageInfo,
-        Error
-    > {
+    public nonisolated func fetchMessageInfos<T: MessageIdentifier>(
+        using identifierSet: MessageIdentifierSet<T>
+    ) -> AsyncThrowingStream<MessageInfo, Error> {
 
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -1216,10 +1232,9 @@ public actor IMAPServer {
     ///
     /// - Parameter identifierSet: The set of message identifiers to fetch
     /// - Returns: An `AsyncThrowingStream` yielding `Message` instances with all parts
-    public nonisolated func fetchMessages<T: MessageIdentifier>(using identifierSet: MessageIdentifierSet<T>) -> AsyncThrowingStream<
-        Message,
-        Error
-    > {
+    public nonisolated func fetchMessages<T: MessageIdentifier>(
+        using identifierSet: MessageIdentifierSet<T>
+    ) -> AsyncThrowingStream<Message, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -1574,7 +1589,9 @@ public actor IMAPServer {
         try await executeCommand(command)
     }
 
-    private func expungeMoveFallback<T: MessageIdentifier>(messages identifierSet: MessageIdentifierSet<T>) async throws {
+    private func expungeMoveFallback<T: MessageIdentifier>(
+        messages identifierSet: MessageIdentifierSet<T>
+    ) async throws {
         if T.self == UID.self && capabilities.contains(.uidPlus) {
             let uidSet = UIDSet(identifierSet.toArray().map { UID($0.value) })
             try await expunge(messages: uidSet)
@@ -1625,9 +1642,11 @@ public actor IMAPServer {
      - Returns: An array of message parts
      - Throws: An error if the fetch operation fails
      */
-    private func recursivelyFetchParts<T: MessageIdentifier>(_ structure: BodyStructure, section: Section, identifier: T) async throws -> [
-        MessagePart
-    ] {
+    private func recursivelyFetchParts<T: MessageIdentifier>(
+        _ structure: BodyStructure,
+        section: Section,
+        identifier: T
+    ) async throws -> [MessagePart] {
         switch structure {
             case .singlepart(let part):
                 // Fetch the part content
@@ -1711,7 +1730,9 @@ public actor IMAPServer {
      - Returns: The result of executing the command
      - Throws: An error if the command execution fails
      */
-    private func executeCommand<CommandType: IMAPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
+    private func executeCommand<CommandType: IMAPCommand>(
+        _ command: CommandType
+    ) async throws -> CommandType.ResultType {
         if let authentication, !primaryConnection.isAuthenticated {
             logger.info("Primary connection not authenticated; re-authenticating before command")
             try await authentication.authenticate(on: primaryConnection)
@@ -1730,7 +1751,12 @@ public actor IMAPServer {
     ///   - internalDate: Optional internal date to store on the server.
     /// - Returns: ``AppendResult`` describing server-assigned identifiers.
     @discardableResult
-    public func append(rawMessage: String, to mailbox: String, flags: [Flag], internalDate: Date?) async throws -> AppendResult {
+    public func append(
+        rawMessage: String,
+        to mailbox: String,
+        flags: [Flag],
+        internalDate: Date?
+    ) async throws -> AppendResult {
         if let limit = capabilities.globalAppendLimit {
             let payloadSize = rawMessage.utf8.count
             if payloadSize > limit {
@@ -1904,34 +1930,27 @@ extension IMAPServer {
                 }
 
                 // Special case for Gmail's folders
-                if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/Trash") == .orderedSame || normalizedMailboxName(
-                    mailbox.name
-                ).caseInsensitiveCompare("Trash") == .orderedSame {
+                let normalizedName = normalizedMailboxName(mailbox.name)
+                func matchesGmailFolder(_ gmailPath: String, _ plain: String) -> Bool {
+                    normalizedName.caseInsensitiveCompare(gmailPath) == .orderedSame
+                        || normalizedName.caseInsensitiveCompare(plain) == .orderedSame
+                }
+                if matchesGmailFolder("[Gmail]/Trash", "Trash") {
                     attributes.insert(.trash)
                     hasSpecialUse = true
-                } else if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/Sent Mail") == .orderedSame || normalizedMailboxName(
-                    mailbox.name
-                ).caseInsensitiveCompare("Sent Mail") == .orderedSame {
+                } else if matchesGmailFolder("[Gmail]/Sent Mail", "Sent Mail") {
                     attributes.insert(.sent)
                     hasSpecialUse = true
-                } else if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/Drafts") == .orderedSame || normalizedMailboxName(
-                    mailbox.name
-                ).caseInsensitiveCompare("Drafts") == .orderedSame {
+                } else if matchesGmailFolder("[Gmail]/Drafts", "Drafts") {
                     attributes.insert(.drafts)
                     hasSpecialUse = true
-                } else if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/Spam") == .orderedSame || normalizedMailboxName(
-                    mailbox.name
-                ).caseInsensitiveCompare("Spam") == .orderedSame {
+                } else if matchesGmailFolder("[Gmail]/Spam", "Spam") {
                     attributes.insert(.junk)
                     hasSpecialUse = true
-                } else if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/All Mail") == .orderedSame || normalizedMailboxName(
-                    mailbox.name
-                ).caseInsensitiveCompare("All Mail") == .orderedSame {
+                } else if matchesGmailFolder("[Gmail]/All Mail", "All Mail") {
                     attributes.insert(.archive)
                     hasSpecialUse = true
-                } else if normalizedMailboxName(mailbox.name).caseInsensitiveCompare("[Gmail]/Starred") == .orderedSame || normalizedMailboxName(
-                    mailbox.name
-                ).caseInsensitiveCompare("Starred") == .orderedSame {
+                } else if matchesGmailFolder("[Gmail]/Starred", "Starred") {
                     attributes.insert(.flagged)
                     hasSpecialUse = true
                 }
@@ -2217,7 +2236,12 @@ extension IMAPServer {
      - Returns: ``AppendResult`` describing server-assigned identifiers.
      */
     @discardableResult
-    public func append(email: Email, to mailbox: String, flags: [Flag] = [], internalDate: Date? = nil) async throws -> AppendResult {
+    public func append(
+        email: Email,
+        to mailbox: String,
+        flags: [Flag] = [],
+        internalDate: Date? = nil
+    ) async throws -> AppendResult {
         guard !mailbox.isEmpty else {
             throw IMAPError.invalidArgument("Mailbox name must not be empty")
         }
@@ -2233,7 +2257,8 @@ extension IMAPServer {
     /**
      Create a brand-new draft message by appending the provided email to the drafts mailbox.
      
-     The method automatically sets the `\\Draft` flag and relies on the server's drafts mailbox if no custom mailbox is supplied.
+     The method automatically sets the `\\Draft` flag and relies on the server's drafts
+     mailbox if no custom mailbox is supplied.
      
      - Parameters:
         - email: The email content to store as a draft.
@@ -2405,7 +2430,8 @@ extension IMAPServer {
         return [parseSingleEmailAddress(from: trimmed)]
     }
 
-    /// Parse a single address string like `"Name <email@example.com>"` or `"email@example.com"` into an ``EmailAddress``.
+    /// Parse a single address string like `"Name <email@example.com>"` or
+    /// `"email@example.com"` into an ``EmailAddress``.
     private static func parseSingleEmailAddress(from addressString: String) -> EmailAddress {
         let trimmed = addressString.trimmingCharacters(in: .whitespaces)
 
