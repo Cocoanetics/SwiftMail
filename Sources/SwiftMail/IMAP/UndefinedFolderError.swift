@@ -39,6 +39,7 @@ public enum UndefinedFolderError: Error, CustomStringConvertible {
 			case .drafts: folderName = "Drafts"
 			case .junk: folderName = "Junk"
 		}
-		return "Standard folder '\(folderName)' is not defined. Call listSpecialUseMailboxes() first to detect special folders."
+		return "Standard folder '\(folderName)' is not defined."
+            + " Call listSpecialUseMailboxes() first to detect special folders."
 	}
 }

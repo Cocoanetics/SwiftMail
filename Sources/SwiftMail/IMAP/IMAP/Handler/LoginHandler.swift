@@ -25,7 +25,9 @@ final class LoginHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandl
 		if !collectedCapabilities.isEmpty {
 			// If we have collected capabilities from untagged responses, use those
 			succeedWithResult(collectedCapabilities)
-		} else if case .ok(let responseText) = response.state, let code = responseText.code, case .capability(let capabilities) = code {
+		} else if case .ok(let responseText) = response.state,
+                  let code = responseText.code,
+                  case .capability(let capabilities) = code {
 			// If the OK response contains capabilities, use those
 			succeedWithResult(capabilities)
 		} else {

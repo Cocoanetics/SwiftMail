@@ -22,7 +22,9 @@ extension Email: CustomDebugStringConvertible {
             for attachment in attachments {
                 let inlineStatus = attachment.isInline ? " (inline)" : ""
                 let contentIDInfo = attachment.contentID != nil ? " contentID: \(attachment.contentID!)" : ""
-                description += "    \(attachment.filename) (\(attachment.mimeType), \(attachment.data.count) bytes)\(inlineStatus)\(contentIDInfo)\n"
+                description += "    \(attachment.filename)"
+                    + " (\(attachment.mimeType), \(attachment.data.count) bytes)"
+                    + "\(inlineStatus)\(contentIDInfo)\n"
             }
             description += "  }\n"
         }

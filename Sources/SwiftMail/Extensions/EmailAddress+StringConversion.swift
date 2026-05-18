@@ -22,7 +22,8 @@ extension EmailAddress: LosslessStringConvertible {
         let namePattern = "(?:\"([^\"]+)\"|([^<]*))\\s*<([^>]+)>"
         let nameRegex = try? NSRegularExpression(pattern: namePattern, options: [])
 
-        if let match = nameRegex?.firstMatch(in: description, options: [], range: NSRange(location: 0, length: description.count)) {
+        let descriptionRange = NSRange(location: 0, length: description.count)
+        if let match = nameRegex?.firstMatch(in: description, options: [], range: descriptionRange) {
             let nameRange1 = match.range(at: 1)
             let nameRange2 = match.range(at: 2)
             let emailRange = match.range(at: 3)

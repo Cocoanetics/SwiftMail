@@ -14,9 +14,8 @@ struct IMAPConnectionTLSModeTests {
 
     @Test
     func infersOpportunisticSTARTTLSOnPort143() throws {
-        #expect(
-            try IMAPConnection.resolveTLSTransportMode(port: 143, useTLS: nil) == .startTLSIfAvailable(requireTLS: false)
-        )
+        let resolved = try IMAPConnection.resolveTLSTransportMode(port: 143, useTLS: nil)
+        #expect(resolved == .startTLSIfAvailable(requireTLS: false))
     }
 
     @Test

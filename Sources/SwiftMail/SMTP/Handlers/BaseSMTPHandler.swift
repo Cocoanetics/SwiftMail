@@ -3,7 +3,10 @@ import NIOCore
 import Logging
 
 /// Base class for SMTP command handlers that provides common functionality
-class BaseSMTPHandler<T: Sendable>: ChannelInboundHandler, RemovableChannelHandler, SMTPCommandHandler, @unchecked Sendable {
+class BaseSMTPHandler<T: Sendable>: ChannelInboundHandler,
+                                     RemovableChannelHandler,
+                                     SMTPCommandHandler,
+                                     @unchecked Sendable {
     typealias InboundIn = SMTPResponse
     typealias InboundOut = Never
     typealias ResultType = T
