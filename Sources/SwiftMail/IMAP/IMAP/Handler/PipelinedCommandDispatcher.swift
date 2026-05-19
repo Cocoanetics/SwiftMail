@@ -42,40 +42,40 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
 
         lock.withLock {
             switch response {
-            case .tagged(let taggedResponse):
-                // Route to the handler that owns this tag
-                if let idx = entries.firstIndex(where: { $0.tag == taggedResponse.tag }) {
-                    let handler = entries[idx].handler
-                    handler.processTaggedResponse(taggedResponse)
-                    entries.remove(at: idx)
-                }
+                case .tagged(let taggedResponse):
+                    // Route to the handler that owns this tag
+                    if let idx = entries.firstIndex(where: { $0.tag == taggedResponse.tag }) {
+                        let handler = entries[idx].handler
+                        handler.processTaggedResponse(taggedResponse)
+                        entries.remove(at: idx)
+                    }
 
-            case .fetch(let fetchResponse):
-                // RFC 3501: untagged FETCH responses belong to the oldest pending command
-                // (server processes commands in order, sends untagged data before tagged OK)
-                if let first = entries.first {
-                    first.handler.processFetchResponse(fetchResponse)
-                }
+                case .fetch(let fetchResponse):
+                    // RFC 3501: untagged FETCH responses belong to the oldest pending command
+                    // (server processes commands in order, sends untagged data before tagged OK)
+                    if let first = entries.first {
+                        first.handler.processFetchResponse(fetchResponse)
+                    }
 
-            case .untagged(let payload):
-                // BYE — server is terminating. Fail all pending handlers.
-                if case .conditionalState(let status) = payload, case .bye(let text) = status {
-                    let error = IMAPError.connectionFailed("Server terminated connection: \(text.text)")
+                case .untagged(let payload):
+                    // BYE — server is terminating. Fail all pending handlers.
+                    if case .conditionalState(let status) = payload, case .bye(let text) = status {
+                        let error = IMAPError.connectionFailed("Server terminated connection: \(text.text)")
+                        for entry in entries {
+                            entry.handler.fail(error)
+                        }
+                        entries.removeAll()
+                    }
+
+                case .fatal(let text):
+                    let error = IMAPError.connectionFailed("Server fatal error: \(text.text)")
                     for entry in entries {
                         entry.handler.fail(error)
                     }
                     entries.removeAll()
-                }
 
-            case .fatal(let text):
-                let error = IMAPError.connectionFailed("Server fatal error: \(text.text)")
-                for entry in entries {
-                    entry.handler.fail(error)
-                }
-                entries.removeAll()
-
-            default:
-                break
+                default:
+                    break
             }
         }
 

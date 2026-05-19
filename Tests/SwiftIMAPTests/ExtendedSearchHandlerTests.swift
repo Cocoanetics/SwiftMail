@@ -1,3 +1,7 @@
+// Splitting this test file was tried but introduced a macOS CI hang;
+// see the IMAPTestServer.swift comment for context.
+// swiftlint:disable file_length type_body_length
+
 import Foundation
 import NIO
 import NIOEmbedded
@@ -14,7 +18,13 @@ struct ExtendedSearchHandlerTests {
 
     // MARK: - Helpers
 
-    private func sendSearchCommand(on channel: NIOAsyncTestingChannel, tag: String, useUID: Bool, useEsearch: Bool, partialRange: NIOIMAPCore.PartialRange? = nil) async throws {
+    private func sendSearchCommand(
+        on channel: NIOAsyncTestingChannel,
+        tag: String,
+        useUID: Bool,
+        useEsearch: Bool,
+        partialRange: NIOIMAPCore.PartialRange? = nil
+    ) async throws {
         let key = NIOIMAPCore.SearchKey.all
         var returnOptions: [NIOIMAPCore.SearchReturnOption] = []
         if useEsearch {
@@ -330,7 +340,13 @@ struct ExtendedSearchHandlerTests {
         try await channel.pipeline.addHandler(handler)
 
         let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1...100))
-        try await sendSearchCommand(on: channel, tag: "A007", useUID: true, useEsearch: true, partialRange: partialRange)
+        try await sendSearchCommand(
+            on: channel,
+            tag: "A007",
+            useUID: true,
+            useEsearch: true,
+            partialRange: partialRange
+        )
 
         var esearchResponse = channel.allocator.buffer(capacity: 64)
         esearchResponse.writeString("* ESEARCH (TAG \"A007\") UID COUNT 3 PARTIAL (1:100 4,7,10)\r\n")
@@ -368,7 +384,11 @@ struct ExtendedSearchHandlerTests {
         try await channel.pipeline.addHandler(IMAPClientHandler())
 
         let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1...100))
-        let command = ExtendedSearchCommand<UID>(criteria: [SearchCriteria.unseen], useEsearch: true, partialRange: partialRange)
+        let command = ExtendedSearchCommand<UID>(
+            criteria: [SearchCriteria.unseen],
+            useEsearch: true,
+            partialRange: partialRange
+        )
         let tagged = command.toTaggedCommand(tag: "C007")
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
         try await channel.writeAndFlush(wrapped)
@@ -386,3 +406,4 @@ struct ExtendedSearchHandlerTests {
         #expect(!wireString.contains("ALL"))
     }
 }
+// swiftlint:enable file_length type_body_length

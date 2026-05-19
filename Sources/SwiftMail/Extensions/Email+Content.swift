@@ -6,6 +6,35 @@ extension Email {
         let messageSizeOctets: Int
     }
 
+    /// Bundled per-build state for ``constructContent`` and its helpers.
+    /// Selects encoding/text once and shares the three boundary tokens so the
+    /// writer helpers can stay closure-of-references.
+    private struct MIMEBuildContext {
+        let textEncoding: String
+        let textBody: String
+        let htmlBody: String?
+        let mainBoundary: String
+        let altBoundary: String
+        let relatedBoundary: String
+
+        init(email: Email, use8BitMIME: Bool) {
+            let safe8Bit = use8BitMIME && email.textBody.isSafe8BitContent()
+                && (email.htmlBody == nil || email.htmlBody!.isSafe8BitContent())
+            if safe8Bit {
+                self.textEncoding = "8bit"
+                self.textBody = email.textBody
+                self.htmlBody = email.htmlBody
+            } else {
+                self.textEncoding = "quoted-printable"
+                self.textBody = email.textBody.quotedPrintableEncoded()
+                self.htmlBody = email.htmlBody?.quotedPrintableEncoded()
+            }
+            self.mainBoundary = "SwiftSMTP-Boundary-\(UUID().uuidString)"
+            self.altBoundary = "SwiftSMTP-Alt-Boundary-\(UUID().uuidString)"
+            self.relatedBoundary = "SwiftSMTP-Related-Boundary-\(UUID().uuidString)"
+        }
+    }
+
     func preparedContent(use8BitMIME: Bool = false) -> PreparedContent {
         let content = constructContent(use8BitMIME: use8BitMIME)
         let contentData = Data(content.utf8)
@@ -31,227 +60,156 @@ extension Email {
      */
     public func constructContent(use8BitMIME: Bool = false) -> String {
         var content = ""
+        writeHeaders(into: &content)
+        writeBody(use8BitMIME: use8BitMIME, into: &content)
+        return content
+    }
 
+    /// Top-level RFC 5322 header block (`From`, `To`, `Cc`, `Subject`, `Date`,
+    /// `Message-Id`, `MIME-Version`) plus any caller-supplied additional
+    /// headers, suppressing a duplicate `Message-Id` when one is already set.
+    private func writeHeaders(into content: inout String) {
         content += "From: \(self.sender)\r\n"
-
         if !self.recipients.isEmpty {
             content += "To: \(self.recipients.map { $0.description }.joined(separator: ", "))\r\n"
         }
-
         if !self.ccRecipients.isEmpty {
             content += "Cc: \(self.ccRecipients.map { $0.description }.joined(separator: ", "))\r\n"
         }
-
         content += "Subject: \(self.subject)\r\n"
         content += "Date: \(Self.rfc2822Date())\r\n"
-        let resolvedAdditionalHeaderMessageID = resolvedMessageIDHeader()
-        let shouldSuppressAdditionalHeaderMessageID = self.messageID != nil || resolvedAdditionalHeaderMessageID != nil
 
-        if let msgID = self.messageID ?? resolvedAdditionalHeaderMessageID {
+        let resolvedHeaderID = resolvedMessageIDHeader()
+        let suppressAdditionalMessageID = self.messageID != nil || resolvedHeaderID != nil
+        if let msgID = self.messageID ?? resolvedHeaderID {
             content += "Message-Id: \(msgID)\r\n"
         } else if !hasMessageIDHeaderInAdditionalHeaders() {
-            let generatedMessageID = MessageID.generate(domain: Self.senderDomain(from: self.sender))
-            content += "Message-Id: \(generatedMessageID)\r\n"
+            let generated = MessageID.generate(domain: Self.senderDomain(from: self.sender))
+            content += "Message-Id: \(generated)\r\n"
         }
         content += "MIME-Version: 1.0\r\n"
 
         if let additionalHeaders {
             for (key, value) in additionalHeaders.sorted(by: { $0.key < $1.key }) {
-                if shouldSuppressAdditionalHeaderMessageID && Self.isMessageIDHeaderName(key) {
+                if suppressAdditionalMessageID && Self.isMessageIDHeaderName(key) {
                     continue
                 }
                 content += "\(key): \(value)\r\n"
             }
         }
+    }
 
-        let mainBoundary = "SwiftSMTP-Boundary-\(UUID().uuidString)"
-        let altBoundary = "SwiftSMTP-Alt-Boundary-\(UUID().uuidString)"
-        let relatedBoundary = "SwiftSMTP-Related-Boundary-\(UUID().uuidString)"
-
-        let textEncoding: String
-        let textBody: String
-        let htmlBody: String?
-
-        if use8BitMIME && self.textBody.isSafe8BitContent() &&
-           (self.htmlBody == nil || self.htmlBody!.isSafe8BitContent()) {
-            textEncoding = "8bit"
-            textBody = self.textBody
-            htmlBody = self.htmlBody
-        } else {
-            textEncoding = "quoted-printable"
-            textBody = self.textBody.quotedPrintableEncoded()
-            htmlBody = self.htmlBody?.quotedPrintableEncoded()
-        }
-
+    /// Dispatch to the correct multipart structure based on which body parts
+    /// and attachments are present, then emit it.
+    private func writeBody(use8BitMIME: Bool, into content: inout String) {
+        let context = MIMEBuildContext(email: self, use8BitMIME: use8BitMIME)
         let hasHtmlBody = self.htmlBody != nil
-        let hasInlineAttachments = !self.inlineAttachments.isEmpty
-        let hasRegularAttachments = !self.regularAttachments.isEmpty
+        let hasInline = !self.inlineAttachments.isEmpty
+        let hasRegular = !self.regularAttachments.isEmpty
 
-        // Determine the structure based on what we have
-        if hasRegularAttachments {
-            // If we have regular attachments, use multipart/mixed as the top level
-            content += "Content-Type: multipart/mixed; boundary=\"\(mainBoundary)\"\r\n\r\n"
+        if hasRegular {
+            writeMultipartMixed(context: context, hasHtmlBody: hasHtmlBody, hasInline: hasInline, into: &content)
+        } else if hasHtmlBody && hasInline {
+            content += "Content-Type: multipart/related; boundary=\"\(context.relatedBoundary)\"\r\n\r\n"
             content += "This is a multi-part message in MIME format.\r\n\r\n"
-            
-            // Start with the text/html part
-            if hasHtmlBody {
-                content += "--\(mainBoundary)\r\n"
-                
-                if hasInlineAttachments {
-                    // If we have inline attachments, use multipart/related for HTML and inline attachments
-                    content += "Content-Type: multipart/related; boundary=\"\(relatedBoundary)\"\r\n\r\n"
-                    
-                    // First add the multipart/alternative part
-                    content += "--\(relatedBoundary)\r\n"
-                    content += "Content-Type: multipart/alternative; boundary=\"\(altBoundary)\"\r\n\r\n"
-                    
-                    // Add text part
-                    content += "--\(altBoundary)\r\n"
-                    content += "Content-Type: text/plain; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
-                    content += "\(textBody)\r\n\r\n"
-                    
-                    // Add HTML part
-                    content += "--\(altBoundary)\r\n"
-                    content += "Content-Type: text/html; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
-                    content += "\(htmlBody ?? "")\r\n\r\n"
-                    
-                    // End alternative boundary
-                    content += "--\(altBoundary)--\r\n\r\n"
-                    
-                    // Add inline attachments
-                    for attachment in self.inlineAttachments {
-                        content += "--\(relatedBoundary)\r\n"
-                        content += "Content-Type: \(attachment.mimeType)"
-                        content += "; name=\"\(attachment.filename)\"\r\n"
-                        content += "Content-Transfer-Encoding: base64\r\n"
-                        
-                        if let contentID = attachment.contentID {
-                            content += "Content-ID: <\(contentID)>\r\n"
-                        }
-                        
-                        content += "Content-Disposition: inline; filename=\"\(attachment.filename)\"\r\n\r\n"
-                        
-                        // Encode attachment data as base64
-                        let base64Data = attachment.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn])
-                        content += "\(base64Data)\r\n\r\n"
-                    }
-                    
-                    // End related boundary
-                    content += "--\(relatedBoundary)--\r\n\r\n"
-                } else {
-                    // No inline attachments, just use multipart/alternative
-                    content += "Content-Type: multipart/alternative; boundary=\"\(altBoundary)\"\r\n\r\n"
-                    
-                    // Add text part
-                    content += "--\(altBoundary)\r\n"
-                    content += "Content-Type: text/plain; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
-                    content += "\(textBody)\r\n\r\n"
-                    
-                    // Add HTML part
-                    content += "--\(altBoundary)\r\n"
-                    content += "Content-Type: text/html; charset=UTF-8\r\n"
-                    content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
-                    content += "\(htmlBody ?? "")\r\n\r\n"
-                    
-                    // End alternative boundary
-                    content += "--\(altBoundary)--\r\n\r\n"
-                }
-            } else {
-                // Just text, no HTML
-                content += "--\(mainBoundary)\r\n"
-                content += "Content-Type: text/plain; charset=UTF-8\r\n"
-                content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
-                content += "\(textBody)\r\n\r\n"
-            }
-            
-            // Add regular attachments
-            for attachment in self.regularAttachments {
-                content += "--\(mainBoundary)\r\n"
-                content += "Content-Type: \(attachment.mimeType)\r\n"
-                content += "Content-Transfer-Encoding: base64\r\n"
-                content += "Content-Disposition: attachment; filename=\"\(attachment.filename)\"\r\n\r\n"
-                
-                // Encode attachment data as base64
-                let base64Data = attachment.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn])
-                content += "\(base64Data)\r\n\r\n"
-            }
-            
-            // End main boundary
-            content += "--\(mainBoundary)--\r\n"
-        } else if hasHtmlBody && hasInlineAttachments {
-            // HTML with inline attachments but no regular attachments - use multipart/related
-            content += "Content-Type: multipart/related; boundary=\"\(relatedBoundary)\"\r\n\r\n"
-            content += "This is a multi-part message in MIME format.\r\n\r\n"
-            
-            // First add the multipart/alternative part
-            content += "--\(relatedBoundary)\r\n"
-            content += "Content-Type: multipart/alternative; boundary=\"\(altBoundary)\"\r\n\r\n"
-            
-            // Add text part
-            content += "--\(altBoundary)\r\n"
-            content += "Content-Type: text/plain; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
-            content += "\(textBody)\r\n\r\n"
-            
-            // Add HTML part
-            content += "--\(altBoundary)\r\n"
-            content += "Content-Type: text/html; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
-            content += "\(htmlBody ?? "")\r\n\r\n"
-            
-            // End alternative boundary
-            content += "--\(altBoundary)--\r\n\r\n"
-            
-            // Add inline attachments
-            for attachment in self.inlineAttachments {
-                content += "--\(relatedBoundary)\r\n"
-                content += "Content-Type: \(attachment.mimeType)"
-                content += "; name=\"\(attachment.filename)\"\r\n"
-                content += "Content-Transfer-Encoding: base64\r\n"
-                
-                if let contentID = attachment.contentID {
-                    content += "Content-ID: <\(contentID)>\r\n"
-                }
-                
-                content += "Content-Disposition: inline; filename=\"\(attachment.filename)\"\r\n\r\n"
-                
-                // Encode attachment data as base64
-                let base64Data = attachment.data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn])
-                content += "\(base64Data)\r\n\r\n"
-            }
-            
-            // End related boundary
-            content += "--\(relatedBoundary)--\r\n"
+            writeHTMLWithInlineAttachments(context: context, into: &content, terminating: true)
         } else if hasHtmlBody {
-            // Only HTML, no attachments - use multipart/alternative
-            content += "Content-Type: multipart/alternative; boundary=\"\(altBoundary)\"\r\n\r\n"
+            content += "Content-Type: multipart/alternative; boundary=\"\(context.altBoundary)\"\r\n\r\n"
             content += "This is a multi-part message in MIME format.\r\n\r\n"
-            
-            // Add text part
-            content += "--\(altBoundary)\r\n"
-            content += "Content-Type: text/plain; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
-            content += "\(textBody)\r\n\r\n"
-            
-            // Add HTML part
-            content += "--\(altBoundary)\r\n"
-            content += "Content-Type: text/html; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
-            content += "\(htmlBody ?? "")\r\n\r\n"
-            
-            // End alternative boundary
-            content += "--\(altBoundary)--\r\n"
+            writeAlternativeTextAndHTML(context: context, into: &content, terminating: true)
         } else {
-            // Simple text email
             content += "Content-Type: text/plain; charset=UTF-8\r\n"
-            content += "Content-Transfer-Encoding: \(textEncoding)\r\n\r\n"
-            content += textBody
+            content += "Content-Transfer-Encoding: \(context.textEncoding)\r\n\r\n"
+            content += context.textBody
         }
-        
-        return content
+    }
+
+    /// Outer `multipart/mixed` envelope for any email that has regular (non-inline)
+    /// attachments. Wraps an inner multipart/related or multipart/alternative for
+    /// the bodies, then appends each regular attachment.
+    private func writeMultipartMixed(
+        context: MIMEBuildContext,
+        hasHtmlBody: Bool,
+        hasInline: Bool,
+        into content: inout String
+    ) {
+        content += "Content-Type: multipart/mixed; boundary=\"\(context.mainBoundary)\"\r\n\r\n"
+        content += "This is a multi-part message in MIME format.\r\n\r\n"
+
+        if hasHtmlBody {
+            content += "--\(context.mainBoundary)\r\n"
+            if hasInline {
+                content += "Content-Type: multipart/related; boundary=\"\(context.relatedBoundary)\"\r\n\r\n"
+                writeHTMLWithInlineAttachments(context: context, into: &content, terminating: false)
+            } else {
+                content += "Content-Type: multipart/alternative; boundary=\"\(context.altBoundary)\"\r\n\r\n"
+                writeAlternativeTextAndHTML(context: context, into: &content, terminating: false)
+            }
+        } else {
+            content += "--\(context.mainBoundary)\r\n"
+            content += "Content-Type: text/plain; charset=UTF-8\r\n"
+            content += "Content-Transfer-Encoding: \(context.textEncoding)\r\n\r\n"
+            content += "\(context.textBody)\r\n\r\n"
+        }
+
+        for attachment in self.regularAttachments {
+            content += "--\(context.mainBoundary)\r\n"
+            content += "Content-Type: \(attachment.mimeType)\r\n"
+            content += "Content-Transfer-Encoding: base64\r\n"
+            content += "Content-Disposition: attachment; filename=\"\(attachment.filename)\"\r\n\r\n"
+            content += encodedAttachmentBody(attachment.data) + "\r\n\r\n"
+        }
+        content += "--\(context.mainBoundary)--\r\n"
+    }
+
+    /// multipart/related body: a multipart/alternative bodies section followed by
+    /// each inline attachment. `terminating` controls whether to close the related
+    /// boundary or hand off to a caller (multipart/mixed).
+    private func writeHTMLWithInlineAttachments(
+        context: MIMEBuildContext,
+        into content: inout String,
+        terminating: Bool
+    ) {
+        content += "--\(context.relatedBoundary)\r\n"
+        content += "Content-Type: multipart/alternative; boundary=\"\(context.altBoundary)\"\r\n\r\n"
+        writeAlternativeTextAndHTML(context: context, into: &content, terminating: true)
+        content += "\r\n"
+
+        for attachment in self.inlineAttachments {
+            content += "--\(context.relatedBoundary)\r\n"
+            content += "Content-Type: \(attachment.mimeType); name=\"\(attachment.filename)\"\r\n"
+            content += "Content-Transfer-Encoding: base64\r\n"
+            if let contentID = attachment.contentID {
+                content += "Content-ID: <\(contentID)>\r\n"
+            }
+            content += "Content-Disposition: inline; filename=\"\(attachment.filename)\"\r\n\r\n"
+            content += encodedAttachmentBody(attachment.data) + "\r\n\r\n"
+        }
+
+        content += terminating ? "--\(context.relatedBoundary)--\r\n" : ""
+    }
+
+    /// Two-part text/plain + text/html body. `terminating` closes the alternative
+    /// boundary; set to `false` when the caller will append further parts (inline
+    /// attachments inside a multipart/related).
+    private func writeAlternativeTextAndHTML(
+        context: MIMEBuildContext,
+        into content: inout String,
+        terminating: Bool
+    ) {
+        content += "--\(context.altBoundary)\r\n"
+        content += "Content-Type: text/plain; charset=UTF-8\r\n"
+        content += "Content-Transfer-Encoding: \(context.textEncoding)\r\n\r\n"
+        content += "\(context.textBody)\r\n\r\n"
+        content += "--\(context.altBoundary)\r\n"
+        content += "Content-Type: text/html; charset=UTF-8\r\n"
+        content += "Content-Transfer-Encoding: \(context.textEncoding)\r\n\r\n"
+        content += "\(context.htmlBody ?? "")\r\n\r\n"
+        content += terminating ? "--\(context.altBoundary)--\r\n" : ""
+    }
+
+    private func encodedAttachmentBody(_ data: Data) -> String {
+        data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn])
     }
 
     /// Formats the current date in RFC 2822 format for the Date header.

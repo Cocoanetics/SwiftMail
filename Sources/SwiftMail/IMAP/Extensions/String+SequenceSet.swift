@@ -11,7 +11,7 @@ extension String {
     func toSequenceSet() throws -> NIOIMAPCore.MessageIdentifierSetNonEmpty<NIOIMAPCore.SequenceNumber> {
         // Split the range by colon
         let parts = self.split(separator: ":")
-        
+
         if parts.count == 1, let number = UInt32(parts[0]) {
             // Single number
             let sequenceNumber = SequenceNumber(number)
@@ -27,4 +27,4 @@ extension String {
             throw IMAPError.invalidArgument("Invalid sequence range: \(self)")
         }
     }
-} 
+}

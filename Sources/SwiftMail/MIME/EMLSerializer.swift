@@ -10,10 +10,10 @@ public enum EMLSerializerError: Error, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
-        case .missingPartData(let section):
-            return "Missing data for message part \(section.description)"
-        case .encodingFailed:
-            return "Failed to encode the message as UTF-8"
+            case .missingPartData(let section):
+                return "Missing data for message part \(section.description)"
+            case .encodingFailed:
+                return "Failed to encode the message as UTF-8"
         }
     }
 }
@@ -32,73 +32,58 @@ public struct EMLSerializer {
     /// - Returns: Raw RFC 822 bytes ready to be written to a `.eml` file or appended to IMAP.
     public static func serialize(_ message: Message) throws -> Data {
         var output = ""
+        writeHeaders(message.header, into: &output)
+        try writeBody(parts: message.parts, into: &output)
 
-        // Write standard headers
-        let header = message.header
-
-        if let from = header.from {
-            output += "From: \(from)\r\n"
+        guard let data = output.data(using: .utf8) else {
+            throw EMLSerializerError.encodingFailed
         }
+        return data
+    }
 
-        if !header.to.isEmpty {
-            output += "To: \(header.to.joined(separator: ", "))\r\n"
-        }
-
-        if !header.cc.isEmpty {
-            output += "Cc: \(header.cc.joined(separator: ", "))\r\n"
-        }
-
-        if !header.bcc.isEmpty {
-            output += "Bcc: \(header.bcc.joined(separator: ", "))\r\n"
-        }
-
-        if let subject = header.subject {
-            output += "Subject: \(subject)\r\n"
-        }
-
+    /// Emit the RFC 822 header block (`From:`, `To:`, …) and then `MIME-Version`.
+    private static func writeHeaders(_ header: MessageInfo, into output: inout String) {
+        appendHeaderIfPresent("From", header.from, into: &output)
+        appendListHeader("To", header.to, into: &output)
+        appendListHeader("Cc", header.cc, into: &output)
+        appendListHeader("Bcc", header.bcc, into: &output)
+        appendHeaderIfPresent("Subject", header.subject, into: &output)
         if let date = header.date {
             output += "Date: \(formatRFC2822Date(date))\r\n"
         }
-
         if let messageId = header.messageId {
             output += "Message-ID: \(messageId.description)\r\n"
         }
-
         output += "MIME-Version: 1.0\r\n"
 
-        // Write additional headers
-        if let additional = header.additionalFields {
-            for (key, value) in additional.sorted(by: { $0.key < $1.key }) {
-                // Capitalize the header name
-                let headerName = capitalizeHeaderName(key)
-                output += "\(headerName): \(value)\r\n"
-            }
+        for (key, value) in (header.additionalFields ?? [:]).sorted(by: { $0.key < $1.key }) {
+            output += "\(capitalizeHeaderName(key)): \(value)\r\n"
         }
+    }
 
-        // Determine structure from parts
-        let parts = message.parts
+    private static func appendHeaderIfPresent(_ name: String, _ value: String?, into output: inout String) {
+        guard let value else { return }
+        output += "\(name): \(value)\r\n"
+    }
 
+    private static func appendListHeader(_ name: String, _ values: [String], into output: inout String) {
+        guard !values.isEmpty else { return }
+        output += "\(name): \(values.joined(separator: ", "))\r\n"
+    }
+
+    /// Emit the body: empty placeholder, single-part inline, or multipart.
+    private static func writeBody(parts: [MessagePart], into output: inout String) throws {
         if parts.isEmpty {
-            // No parts — write an empty body
-            output += "Content-Type: text/plain; charset=UTF-8\r\n"
-            output += "\r\n"
+            output += "Content-Type: text/plain; charset=UTF-8\r\n\r\n"
         } else if parts.count == 1, let part = parts.first {
-            // Single part message
             output += serializePartHeaders(part)
             output += "\r\n"
             if let data = part.data {
                 output += stringFromData(data)
             }
         } else {
-            // Multipart message — determine the structure
             try serializeMultipart(parts: parts, output: &output)
         }
-
-        guard let data = output.data(using: .utf8) else {
-            throw EMLSerializerError.encodingFailed
-        }
-
-        return data
     }
 
     // MARK: - Multipart Serialization
@@ -139,11 +124,11 @@ public struct EMLSerializer {
     private static func serializePartHeaders(_ part: MessagePart) -> String {
         var headers = ""
 
-        var ct = part.contentType
+        var contentType = part.contentType
         if let filename = part.filename {
-            ct += "; name=\"\(filename)\""
+            contentType += "; name=\"\(filename)\""
         }
-        headers += "Content-Type: \(ct)\r\n"
+        headers += "Content-Type: \(contentType)\r\n"
 
         if let encoding = part.encoding {
             headers += "Content-Transfer-Encoding: \(encoding)\r\n"

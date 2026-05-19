@@ -14,40 +14,40 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     private var currentSequenceNumber: SequenceNumber?
     private var currentHeaderLiteral = Data()
     private var collectingThreadingHeaders = false
-    
+
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
         // Call super to handle CLIENTBUG warnings
         super.handleTaggedOKResponse(response)
-        
+
         // Succeed with the collected headers
         let collectedInfos = lock.withLock { self.messageInfos }
         succeedWithResult(collectedInfos)
     }
-    
+
     /// Handle a tagged error response
     /// - Parameter response: The tagged response
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.fetchFailed(String(describing: response.state)))
     }
-    
+
     /// Process an incoming response
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler
     override func processResponse(_ response: Response) -> Bool {
         // Call the base class implementation to buffer the response
         let handled = super.processResponse(response)
-        
+
         // Process fetch responses
         if case .fetch(let fetchResponse) = response {
             processFetchResponse(fetchResponse)
         }
-        
+
         // Return the result from the base class
         return handled
     }
-    
+
     /// Process a fetch response
     /// - Parameter fetchResponse: The fetch response to process
     private func processFetchResponse(_ fetchResponse: FetchResponse) {
@@ -55,7 +55,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             case .simpleAttribute(let attribute):
                 // Process simple attributes (no sequence number)
                 processMessageAttribute(attribute, sequenceNumber: nil)
-                
+
             case .start(let sequenceNumber):
                 // Create a new header for this sequence number
                 currentSequenceNumber = SequenceNumber(sequenceNumber.rawValue)
@@ -65,13 +65,13 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 lock.withLock {
                     self.messageInfos.append(messageInfo)
                 }
-                
+
             case .streamingBegin(let kind, _):
                 collectingThreadingHeaders = Self.shouldCollectThreadingHeaders(for: kind)
                 if collectingThreadingHeaders {
                     currentHeaderLiteral.removeAll(keepingCapacity: true)
                 }
-                
+
             case .streamingBytes(let data):
                 guard collectingThreadingHeaders else { break }
                 currentHeaderLiteral.append(contentsOf: data.readableBytesView)
@@ -86,19 +86,33 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 currentSequenceNumber = nil
                 collectingThreadingHeaders = false
                 currentHeaderLiteral.removeAll(keepingCapacity: true)
-                
+
             default:
                 break
         }
     }
 
     private func applyCollectedThreadingHeaders() {
-        guard let headerBlock = String(data: currentHeaderLiteral, encoding: .utf8) ?? String(data: currentHeaderLiteral, encoding: .ascii) else { return }
+        guard let headerBlock = String(data: currentHeaderLiteral, encoding: .utf8) ?? String(
+            data: currentHeaderLiteral,
+            encoding: .ascii
+        ) else { return }
 
         let allHeaders = EMLParser.parseHeaders(headerBlock)
 
         // Headers already exposed via ENVELOPE or stored in dedicated fields
-        let envelopeKeys: Set<String> = ["from", "to", "cc", "bcc", "subject", "date", "message-id", "in-reply-to", "references", "reply-to"]
+        let envelopeKeys: Set<String> = [
+            "from",
+            "to",
+            "cc",
+            "bcc",
+            "subject",
+            "date",
+            "message-id",
+            "in-reply-to",
+            "references",
+            "reply-to"
+        ]
 
         let referencesValue = allHeaders["references"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         let additionalHeaders = allHeaders.filter { !envelopeKeys.contains($0.key) }
@@ -125,7 +139,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
         return messageInfos.indices.last
     }
-    
+
     /// Process a message attribute and update the corresponding email header
     /// - Parameters:
     ///   - attribute: The message attribute to process
@@ -143,7 +157,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             }
             return
         }
-        
+
         // Find or create a header for this sequence number
         let seqNum = SequenceNumber(sequenceNumber.value)
         lock.withLock {
@@ -158,105 +172,91 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             }
         }
     }
-    
-    /// Update an email header with information from a message attribute
+
+    /// Update an email header with information from a message attribute.
     /// - Parameters:
     ///   - header: The header to update
     ///   - attribute: The attribute containing the information
     private func updateHeader(_ header: inout MessageInfo, with attribute: MessageAttribute) {
         switch attribute {
-        case .envelope(let envelope):
-            // Extract information from envelope
-            if let subject = envelope.subject?.stringValue {
-                header.subject = subject.decodeMIMEHeader()
-            }
-            
-            // Handle from addresses - check if array is not empty
-            if !envelope.from.isEmpty {
-                header.from = formatAddress(envelope.from[0])
-            }
-            
-            // Handle to addresses - capture all recipients
-            header.to = envelope.to.map { formatAddress($0) }
-
-            // Handle cc addresses - capture all recipients
-            header.cc = envelope.cc.map { formatAddress($0) }
-
-            // Handle bcc addresses - capture all recipients
-            header.bcc = envelope.bcc.map { formatAddress($0) }
-            
-            if let date = envelope.date {
-                let dateString = String(date)
-                if let parsedDate = Self.parseEnvelopeDate(dateString) {
-                    header.date = parsedDate
-                }
-                // If parsing fails we silently fall through. Callers can use `internalDate`
-                // (the server's receipt timestamp) as a stable fallback. We don't log here:
-                // a large mailbox with many unparsable dates would flood stderr.
-            }
-            
-            if let messageID = envelope.messageID {
-                header.messageId = MessageID(String(messageID))
-            }
-
-            if let inReplyTo = envelope.inReplyTo {
-                header.inReplyTo = MessageID(String(inReplyTo))
-            }
-
-        case .uid(let uid):
-				header.uid = UID(nio: uid)
-
-        case .internalDate(let serverDate):
-            let c = serverDate.components
-            var dc = DateComponents()
-            dc.year = c.year
-            dc.month = c.month
-            dc.day = c.day
-            dc.hour = c.hour
-            dc.minute = c.minute
-            dc.second = c.second
-            dc.timeZone = Foundation.TimeZone(secondsFromGMT: c.zoneMinutes * 60)
-            if let date = Calendar(identifier: .gregorian).date(from: dc) {
-                header.internalDate = date
-            }
-
-        case .flags(let flags):
-            header.flags = flags.map(self.convertFlag)
-            
-        case .body(let bodyStructure, _):
-            if case .valid(let structure) = bodyStructure {
-                header.parts = Array<MessagePart>(structure)
-            }
-
-        case .rfc822Size(let size):
-            header.size = size
-
-        default:
-            break
+            case .envelope(let envelope):
+                applyEnvelope(envelope, to: &header)
+            case .uid(let uid):
+                header.uid = UID(nio: uid)
+            case .internalDate(let serverDate):
+                header.internalDate = Self.date(from: serverDate)
+            case .flags(let flags):
+                header.flags = flags.map(self.convertFlag)
+            case .body(.valid(let structure), _):
+                header.parts = [MessagePart](structure)
+            case .rfc822Size(let size):
+                header.size = size
+            default:
+                break
         }
     }
-    
-	/// Convert a NIOIMAPCore.Flag to our MessageFlag type
-	private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {
-		let flagString = String(flag)
-		
-		switch flagString.uppercased() {
-			case "\\SEEN":
-				return .seen
-			case "\\ANSWERED":
-				return .answered
-			case "\\FLAGGED":
-				return .flagged
-			case "\\DELETED":
-				return .deleted
-			case "\\DRAFT":
-				return .draft
-			default:
-				// For any other flag, treat it as a custom flag
-				return .custom(flagString)
-		}
-	}
-    
+
+    /// Pull envelope fields (subject, addresses, date, ids) onto a header in one
+    /// shot so the top-level switch stays shallow.
+    private func applyEnvelope(_ envelope: Envelope, to header: inout MessageInfo) {
+        if let subject = envelope.subject?.stringValue {
+            header.subject = subject.decodeMIMEHeader()
+        }
+        if !envelope.from.isEmpty {
+            header.from = formatAddress(envelope.from[0])
+        }
+        header.to = envelope.to.map { formatAddress($0) }
+        header.cc = envelope.cc.map { formatAddress($0) }
+        header.bcc = envelope.bcc.map { formatAddress($0) }
+        if let date = envelope.date, let parsed = Self.parseEnvelopeDate(String(date)) {
+            header.date = parsed
+            // If parsing fails we silently fall through. Callers can use `internalDate`
+            // (the server's receipt timestamp) as a stable fallback. We don't log here:
+            // a large mailbox with many unparsable dates would flood stderr.
+        }
+        if let messageID = envelope.messageID {
+            header.messageId = MessageID(String(messageID))
+        }
+        if let inReplyTo = envelope.inReplyTo {
+            header.inReplyTo = MessageID(String(inReplyTo))
+        }
+    }
+
+    /// Build a Foundation `Date` from the server's typed `ServerMessageDate`.
+    private static func date(from serverDate: ServerMessageDate) -> Date? {
+        let components = serverDate.components
+        var dateComponents = DateComponents()
+        dateComponents.year = components.year
+        dateComponents.month = components.month
+        dateComponents.day = components.day
+        dateComponents.hour = components.hour
+        dateComponents.minute = components.minute
+        dateComponents.second = components.second
+        dateComponents.timeZone = Foundation.TimeZone(secondsFromGMT: components.zoneMinutes * 60)
+        return Calendar(identifier: .gregorian).date(from: dateComponents)
+    }
+
+    /// Convert a NIOIMAPCore.Flag to our MessageFlag type
+    private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {
+        let flagString = String(flag)
+
+        switch flagString.uppercased() {
+            case "\\SEEN":
+                return .seen
+            case "\\ANSWERED":
+                return .answered
+            case "\\FLAGGED":
+                return .flagged
+            case "\\DELETED":
+                return .deleted
+            case "\\DRAFT":
+                return .draft
+            default:
+                // For any other flag, treat it as a custom flag
+                return .custom(flagString)
+        }
+    }
+
     /// Format an address for display
     /// - Parameter address: The address to format
     /// - Returns: A formatted string representation of the address
@@ -266,13 +266,13 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 let name = emailAddress.personName?.stringValue.decodeMIMEHeader() ?? ""
                 let mailbox = emailAddress.mailbox?.stringValue ?? ""
                 let host = emailAddress.host?.stringValue ?? ""
-                
+
                 if !name.isEmpty {
                     return "\"\(name)\" <\(mailbox)@\(host)>"
                 } else {
                     return "\(mailbox)@\(host)"
                 }
-                
+
             case .group(let group):
                 let groupName = group.groupName.stringValue.decodeMIMEHeader()
                 let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
@@ -280,135 +280,4 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         }
     }
 
-    static func shouldCollectThreadingHeaders(for kind: StreamingKind) -> Bool {
-        switch kind.sectionSpecifier.kind {
-        case .header, .headerFields:
-            return true
-        default:
-            return false
-        }
-    }
-
-    /// Parse a date string from an IMAP envelope into a `Date`.
-    ///
-    /// Accepts the standard RFC 5322 forms and additionally tolerates several common
-    /// deviations seen in the wild: lowercase month or weekday abbreviations
-    /// (e.g. `29 apr 2026 02:14:25`), a missing timezone (interpreted as GMT),
-    /// and the obsolete RFC 5322 §4.3 named US time zones (`PST`, `EST`, `PDT`,
-    /// etc.) which `DateFormatter`'s `Z` token doesn't recognise.
-    ///
-    /// Out-of-range numeric fields (e.g. `99 Apr`) are still rejected — strict
-    /// parsing is used so corrupted dates surface as `nil` rather than silently
-    /// rolling over into a different valid timestamp.
-    static func parseEnvelopeDate(_ dateString: String) -> Date? {
-        // Strip trailing parenthetical comments such as " (UTC)"
-        var cleaned = dateString.replacingOccurrences(
-            of: "\\s*\\([^)]+\\)\\s*$",
-            with: "",
-            options: .regularExpression
-        )
-        // Substitute named US time zones with their numeric offsets so `Z` can parse them.
-        cleaned = normalizeNamedTimeZones(in: cleaned)
-
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-
-        let formats = [
-            "EEE, dd MMM yyyy HH:mm:ss Z",       // RFC 5322
-            "EEE, d MMM yyyy HH:mm:ss Z",        // single-digit day
-            "d MMM yyyy HH:mm:ss Z",             // no weekday
-            "dd MMM yyyy HH:mm:ss Z",            // no weekday, two-digit day
-            "EEE, dd MMM yy HH:mm:ss Z",         // two-digit year
-            "EEE, dd MMM yyyy HH:mm:ss",         // no timezone
-            "EEE, d MMM yyyy HH:mm:ss",
-            "d MMM yyyy HH:mm:ss",               // no weekday, no timezone
-            "dd MMM yyyy HH:mm:ss",
-        ]
-
-        if let date = parseEnvelopeDate(cleaned, formats: formats, formatter: formatter) {
-            return date
-        }
-
-        // Fallback: capitalize lowercase month/weekday tokens and retry. This
-        // handles the case-mismatch deviation without enabling lenient parsing,
-        // so out-of-range numeric fields still fail.
-        let normalized = normalizeMonthAndWeekdayCase(cleaned)
-        if normalized != cleaned {
-            return parseEnvelopeDate(normalized, formats: formats, formatter: formatter)
-        }
-        return nil
-    }
-
-    private static func parseEnvelopeDate(_ string: String, formats: [String], formatter: DateFormatter) -> Date? {
-        for format in formats {
-            formatter.dateFormat = format
-            if let date = formatter.date(from: string) {
-                return date
-            }
-        }
-        return nil
-    }
-
-    private static let monthAbbreviations: Set<String> = [
-        "jan", "feb", "mar", "apr", "may", "jun",
-        "jul", "aug", "sep", "oct", "nov", "dec",
-    ]
-
-    private static let weekdayAbbreviations: Set<String> = [
-        "mon", "tue", "wed", "thu", "fri", "sat", "sun",
-    ]
-
-    private static func normalizeMonthAndWeekdayCase(_ string: String) -> String {
-        let tokens = string.split(separator: " ", omittingEmptySubsequences: false).map(String.init)
-        let normalized: [String] = tokens.map { token in
-            let stripped = token.trimmingCharacters(in: CharacterSet(charactersIn: ","))
-            let lower = stripped.lowercased()
-            if monthAbbreviations.contains(lower) || weekdayAbbreviations.contains(lower) {
-                return token.capitalized
-            }
-            return token
-        }
-        return normalized.joined(separator: " ")
-    }
-
-    /// Parse a space/whitespace-separated list of Message-IDs from a References or similar header.
-    /// Extracts `<...>` bracketed IDs directly, which handles tabs, folded whitespace, and other
-    /// RFC 2822 folding whitespace between IDs.
-    static func parseMessageIDs(from value: String) -> [MessageID] {
-        // Extract all angle-bracketed tokens — this handles any whitespace between IDs
-        var results: [MessageID] = []
-        var searchRange = value.startIndex..<value.endIndex
-        while let openRange = value.range(of: "<", range: searchRange),
-              let closeRange = value.range(of: ">", range: openRange.upperBound..<value.endIndex) {
-            let token = String(value[openRange.lowerBound...closeRange.lowerBound])
-            if let id = MessageID(token) {
-                results.append(id)
-            }
-            searchRange = closeRange.upperBound..<value.endIndex
-        }
-        return results
-    }
-
-    // MARK: - RFC 5322 obsolete time zone names
-
-    private static let namedZoneOffsets: [String: String] = [
-        "UT": "+0000", "GMT": "+0000", "UTC": "+0000",
-        "EDT": "-0400", "EST": "-0500",
-        "CDT": "-0500", "CST": "-0600",
-        "MDT": "-0600", "MST": "-0700",
-        "PDT": "-0700", "PST": "-0800",
-        "AKDT": "-0800", "AKST": "-0900",
-        "HDT": "-0900", "HST": "-1000"
-    ]
-
-    /// Replace a trailing alphabetic time zone abbreviation (e.g. ` PST`) with its numeric offset
-    /// so DateFormatter's `Z` token can parse it. Returns the input unchanged if the trailing
-    /// token isn't a recognised abbreviation.
-    static func normalizeNamedTimeZones(in s: String) -> String {
-        guard let lastSpaceIndex = s.lastIndex(of: " ") else { return s }
-        let zone = String(s[s.index(after: lastSpaceIndex)...]).uppercased()
-        guard let offset = namedZoneOffsets[zone] else { return s }
-        return String(s[..<lastSpaceIndex]) + " " + offset
-    }
 }

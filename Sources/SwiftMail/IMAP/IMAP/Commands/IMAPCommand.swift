@@ -10,13 +10,13 @@ import NIOIMAPCore
 protocol IMAPCommand where ResultType: Sendable {
     /// The result type this command produces
     associatedtype ResultType
-    
+
     /// The handler type used to process this command
     associatedtype HandlerType: IMAPCommandHandler where HandlerType.ResultType == ResultType
-    
+
     /// Default timeout for this command type
     var timeoutSeconds: Int { get }
-    
+
     /// Check if the command is valid before execution
     func validate() throws
 
@@ -33,7 +33,7 @@ protocol IMAPTaggedCommand: IMAPCommand {
 // Provide reasonable defaults.
 extension IMAPCommand {
     var timeoutSeconds: Int { return 5 }
-    
+
     func validate() throws {
         // Default implementation does no validation
     }

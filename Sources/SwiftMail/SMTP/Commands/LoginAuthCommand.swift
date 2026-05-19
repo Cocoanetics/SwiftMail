@@ -7,19 +7,19 @@ import NIO
 struct LoginAuthCommand: SMTPCommand {
     /// The result type for this command
     typealias ResultType = AuthResult
-    
+
     /// The handler type for this command
     typealias HandlerType = LoginAuthHandler
-    
+
     /// Username for authentication
     let username: String
-    
+
     /// Password for authentication
     let password: String
-    
+
     /// Default timeout in seconds
     let timeoutSeconds: Int = 30
-    
+
     /**
      Initialize a new LOGIN authentication command
      - Parameters:
@@ -30,7 +30,7 @@ struct LoginAuthCommand: SMTPCommand {
         self.username = username
         self.password = password
     }
-    
+
     /**
      Convert the command to a string to send to the server
      - Returns: The command string
@@ -39,7 +39,7 @@ struct LoginAuthCommand: SMTPCommand {
         // For LOGIN auth, the initial command doesn't include credentials
         return "AUTH LOGIN"
     }
-    
+
     /**
      Validate that the command parameters are valid
      - Throws: SMTPError if validation fails
@@ -48,9 +48,15 @@ struct LoginAuthCommand: SMTPCommand {
         guard !username.isEmpty else {
             throw SMTPError.authenticationFailed("Username cannot be empty")
         }
-        
+
         guard !password.isEmpty else {
             throw SMTPError.authenticationFailed("Password cannot be empty")
         }
     }
-} 
+
+    /// LoginAuthHandler needs to read username/password off the command, so route
+    /// around the default factory that only knows about commandTag/promise.
+    func makeHandler(commandTag: String?, promise: EventLoopPromise<AuthResult>) -> LoginAuthHandler {
+        LoginAuthHandler(commandTag: commandTag, promise: promise, command: self)
+    }
+}

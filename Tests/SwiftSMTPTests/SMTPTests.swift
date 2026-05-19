@@ -1,3 +1,7 @@
+// Splitting this test file was tried but introduced a macOS CI hang;
+// see the IMAPTestServer.swift comment for context.
+// swiftlint:disable file_length type_body_length
+
 import Foundation
 import Testing
 @testable import SwiftMail
@@ -10,7 +14,7 @@ struct SMTPTests {
         // Once you implement SwiftSMTP functionality, replace with actual tests
         #expect(Bool(true))
     }
-    
+
     @Test
     func testSMTPServerInit() {
         // Test that we can initialize an SMTPServer
@@ -18,27 +22,27 @@ struct SMTPTests {
         // Since there's no API to check properties, just verify it's created
         #expect(Bool(true), "SMTPServer instance created")
     }
-    
+
     @Test
     func testEmailInit() {
         // Test email initialization
         let sender = EmailAddress(name: "Sender", address: "sender@example.com")
         let recipient1 = EmailAddress(address: "recipient1@example.com")
         let recipient2 = EmailAddress(name: "Recipient 2", address: "recipient2@example.com")
-        
+
         let email = Email(
             sender: sender,
             recipients: [recipient1, recipient2],
             subject: "Test Subject",
             textBody: "Test Body"
         )
-        
+
         #expect(email.sender.address == "sender@example.com", "Sender address should match")
         #expect(email.recipients.count == 2, "Should have 2 recipients")
         #expect(email.subject == "Test Subject", "Subject should match")
         #expect(email.textBody == "Test Body", "Text body should match")
     }
-    
+
     @Test
     func testEmailStringInit() {
         // Test the string-based initializer
@@ -50,7 +54,7 @@ struct SMTPTests {
             subject: "Test Subject",
             textBody: "Test Body"
         )
-        
+
         #expect(email.sender.name == "Test Sender", "Sender name should match")
         #expect(email.sender.address == "sender@example.com", "Sender address should match")
         #expect(email.recipients.count == 1, "Should have 1 recipient")
@@ -443,7 +447,7 @@ struct SMTPTests {
     @Test
     func testSendRawMessageRequiresAtLeastOneRecipient() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
-        let rawMessage = "Subject: Test\r\n\r\nBody".data(using: .utf8)!
+        let rawMessage = Data("Subject: Test\r\n\r\nBody".utf8)
         let sender = EmailAddress(address: "sender@example.com")
 
         await #expect(throws: SMTPError.self) {
@@ -454,7 +458,7 @@ struct SMTPTests {
     @Test
     func testSendRawMessageRequiresConnection() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
-        let rawMessage = "Subject: Test\r\n\r\nBody".data(using: .utf8)!
+        let rawMessage = Data("Subject: Test\r\n\r\nBody".utf8)
         let sender = EmailAddress(address: "sender@example.com")
         let recipient = EmailAddress(address: "recipient@example.com")
 
@@ -486,7 +490,7 @@ struct SMTPTests {
             Issue.record("Expected SMTPError, got: \(error)")
         }
     }
-    
+
     @Test
     func testSendRawMessage7BitContentDoesNotRequire8BitMIME() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
@@ -588,7 +592,10 @@ struct SMTPTests {
             (.commandFailed("550 denied"), "SMTP command failed: 550 denied"),
             (.invalidEmailAddress("bad@"), "SMTP invalid email address: bad@"),
             (.tlsFailed("handshake"), "SMTP TLS failed: handshake"),
-            (.messageTooLarge(messageSizeOctets: 100, maximumMessageSizeOctets: 50), "SMTP message too large: 100 bytes exceeds 50 byte limit"),
+            (
+                .messageTooLarge(messageSizeOctets: 100, maximumMessageSizeOctets: 50),
+                "SMTP message too large: 100 bytes exceeds 50 byte limit"
+            )
         ]
         for (error, expected) in cases {
             let asError: Error = error
@@ -596,3 +603,4 @@ struct SMTPTests {
         }
     }
 }
+// swiftlint:enable file_length type_body_length

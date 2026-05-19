@@ -26,7 +26,7 @@ struct FetchMessageInfoHandlerTests {
                     ),
                     headerBlock: headerBlock
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -62,7 +62,7 @@ struct FetchMessageInfoHandlerTests {
                     envelope: envelopeAttribute(messageId: "<reply-b@example.com>"),
                     headerBlock: secondHeader
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -88,7 +88,7 @@ struct FetchMessageInfoHandlerTests {
                     envelope: envelopeAttribute(messageId: "<loner@example.com>"),
                     headerBlock: headerBlock
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -120,7 +120,7 @@ struct FetchMessageInfoHandlerTests {
                     ),
                     headerBlock: headerBlock
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -144,14 +144,14 @@ struct FetchMessageInfoHandlerTests {
     func testParseEnvelopeDateAcceptsLowercaseMonth() {
         // Issue #157: senders sometimes emit lowercase month names.
         let date = FetchMessageInfoHandler.parseEnvelopeDate("29 apr 2026 02:14:25")
-        let expected = Self.makeDate(year: 2026, month: 4, day: 29, hour: 2, minute: 14, second: 25)
+        let expected = Self.makeDate(DateComponents(year: 2026, month: 4, day: 29, hour: 2, minute: 14, second: 25))
         #expect(date == expected)
     }
 
     @Test
     func testParseEnvelopeDateAcceptsLowercaseWeekday() {
         let date = FetchMessageInfoHandler.parseEnvelopeDate("wed, 29 Apr 2026 02:14:25 +0000")
-        let expected = Self.makeDate(year: 2026, month: 4, day: 29, hour: 2, minute: 14, second: 25)
+        let expected = Self.makeDate(DateComponents(year: 2026, month: 4, day: 29, hour: 2, minute: 14, second: 25))
         #expect(date == expected)
     }
 
@@ -179,15 +179,15 @@ struct FetchMessageInfoHandlerTests {
     func testParseEnvelopeDateAcceptsNamedUSTimeZones() {
         // RFC 5322 §4.3 obsolete named US time zones — common in historical mailboxes.
         let est = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 31 Jan 2018 15:02:22 EST")
-        let estExpected = Self.makeDate(year: 2018, month: 1, day: 31, hour: 20, minute: 2, second: 22)
+        let estExpected = Self.makeDate(DateComponents(year: 2018, month: 1, day: 31, hour: 20, minute: 2, second: 22))
         #expect(est == estExpected)
 
         let pst = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 31 Jan 2018 15:02:22 PST")
-        let pstExpected = Self.makeDate(year: 2018, month: 1, day: 31, hour: 23, minute: 2, second: 22)
+        let pstExpected = Self.makeDate(DateComponents(year: 2018, month: 1, day: 31, hour: 23, minute: 2, second: 22))
         #expect(pst == pstExpected)
 
         let gmt = FetchMessageInfoHandler.parseEnvelopeDate("Wed, 31 Jan 2018 15:02:22 GMT")
-        let gmtExpected = Self.makeDate(year: 2018, month: 1, day: 31, hour: 15, minute: 2, second: 22)
+        let gmtExpected = Self.makeDate(DateComponents(year: 2018, month: 1, day: 31, hour: 15, minute: 2, second: 22))
         #expect(gmt == gmtExpected)
     }
 
@@ -217,7 +217,7 @@ struct FetchMessageInfoHandlerTests {
                     headerFields: ["List-Unsubscribe", "List-ID", "References"],
                     headerBlock: headerBlock
                 ),
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -227,16 +227,14 @@ struct FetchMessageInfoHandlerTests {
         #expect(infos[0].references == [MessageID("<root@example.com>")!, MessageID("<child@example.com>")!])
     }
 
-    private static func makeDate(year: Int, month: Int, day: Int, hour: Int, minute: Int, second: Int) -> Date? {
-        var components = DateComponents()
-        components.year = year
-        components.month = month
-        components.day = day
-        components.hour = hour
-        components.minute = minute
-        components.second = second
-        components.timeZone = TimeZone(secondsFromGMT: 0)
-        return Calendar(identifier: .gregorian).date(from: components)
+    /// Build a `Date` from explicit Y/M/D + H/M/S components, anchored to UTC.
+    /// Folded into a single `DateComponents` parameter so the helper signature
+    /// stays under the 6-parameter swiftlint limit while keeping call sites
+    /// readable via the labelled `DateComponents` initializer.
+    private static func makeDate(_ components: DateComponents) -> Date? {
+        var resolved = components
+        resolved.timeZone = TimeZone(secondsFromGMT: 0)
+        return Calendar(identifier: .gregorian).date(from: resolved)
     }
 
     private func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
@@ -261,13 +259,27 @@ struct FetchMessageInfoHandlerTests {
         return try await promise.futureResult.get()
     }
 
-    private func fetchResponse(sequenceNumber: Int, envelope: String, headerBlock: String) -> String {
-        "* \(sequenceNumber) FETCH (ENVELOPE \(envelope) BODY[HEADER] {\(headerBlock.utf8.count)}\r\n\(headerBlock))\r\n"
+    private func fetchResponse(
+        sequenceNumber: Int,
+        envelope: String,
+        headerBlock: String
+    ) -> String {
+        let count = headerBlock.utf8.count
+        return "* \(sequenceNumber) FETCH (ENVELOPE \(envelope) BODY[HEADER] {\(count)}\r\n"
+            + "\(headerBlock))\r\n"
     }
 
-    private func fetchResponse(sequenceNumber: Int, envelope: String, headerFields: [String], headerBlock: String) -> String {
+    private func fetchResponse(
+        sequenceNumber: Int,
+        envelope: String,
+        headerFields: [String],
+        headerBlock: String
+    ) -> String {
         let fieldsList = headerFields.joined(separator: " ")
-        return "* \(sequenceNumber) FETCH (ENVELOPE \(envelope) BODY[HEADER.FIELDS (\(fieldsList))] {\(headerBlock.utf8.count)}\r\n\(headerBlock))\r\n"
+        let count = headerBlock.utf8.count
+        return "* \(sequenceNumber) FETCH (ENVELOPE \(envelope)"
+            + " BODY[HEADER.FIELDS (\(fieldsList))] {\(count)}\r\n"
+            + "\(headerBlock))\r\n"
     }
 
     private func envelopeAttribute(messageId: String, inReplyTo: String? = nil) -> String {

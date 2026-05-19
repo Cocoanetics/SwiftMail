@@ -38,7 +38,7 @@ struct IMAPTransportSecurityTests {
             certificateVerificationPolicy: .noVerification
         )
 
-        #expect(await server.primaryConnectionCertificateVerificationPolicyForTesting == .noVerification)
+        #expect(await server.certificatePolicyForTesting == .noVerification)
     }
 
     @Test

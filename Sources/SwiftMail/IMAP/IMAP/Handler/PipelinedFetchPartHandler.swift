@@ -40,23 +40,23 @@ final class PipelinedFetchPartHandler: PipelinedHandler, @unchecked Sendable {
         lock.withLock {
             guard !isCompleted, !didFinishPart else { return }
             switch response {
-            case .start:
-                partData.removeAll(keepingCapacity: true)
+                case .start:
+                    partData.removeAll(keepingCapacity: true)
 
-            case .streamingBegin:
-                break
+                case .streamingBegin:
+                    break
 
-            case .streamingBytes(let buffer):
-                partData.append(Data(buffer.readableBytesView))
+                case .streamingBytes(let buffer):
+                    partData.append(Data(buffer.readableBytesView))
 
-            case .finish:
-                didFinishPart = true
+                case .finish:
+                    didFinishPart = true
 
-            case .simpleAttribute:
-                break
+                case .simpleAttribute:
+                    break
 
-            default:
-                break
+                default:
+                    break
             }
         }
     }

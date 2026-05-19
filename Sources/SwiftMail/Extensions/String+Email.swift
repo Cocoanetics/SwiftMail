@@ -13,7 +13,7 @@ extension String {
         (?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*
         \.[a-zA-Z]{2,})$
         """#
-        
+
         do {
             let regex = try NSRegularExpression(pattern: pattern, options: [.allowCommentsAndWhitespace])
             let range = NSRange(location: 0, length: self.utf16.count)
@@ -22,9 +22,9 @@ extension String {
             // If regex creation fails (which shouldn't happen with a valid pattern),
             // fall back to a very basic check
             return self.contains("@") &&
-                   self.split(separator: "@").count == 2 &&
-                   !self.hasPrefix("@") &&
-                   !self.hasSuffix("@")
+                self.split(separator: "@").count == 2 &&
+                !self.hasPrefix("@") &&
+                !self.hasSuffix("@")
         }
     }
-} 
+}

@@ -7,11 +7,11 @@ public typealias SortCriterion = NIOIMAPCore.SortCriterion
 extension NIOIMAPCore.SortCriterion {
     var requiresDisplaySortCapability: Bool {
         switch self {
-        case .ascending(.displayFrom), .ascending(.displayTo),
-             .descending(.displayFrom), .descending(.displayTo):
-            return true
-        default:
-            return false
+            case .ascending(.displayFrom), .ascending(.displayTo),
+                 .descending(.displayFrom), .descending(.displayTo):
+                return true
+            default:
+                return false
         }
     }
 }

@@ -60,13 +60,13 @@ public struct Identification: Sendable {
     /// Access a parameter by key.
     public subscript(key: String) -> String? {
         switch key {
-        case "name": return name
-        case "version": return version
-        case "os": return os
-        case "os-version": return osVersion
-        case "vendor": return vendor
-        case "support-url": return supportURL
-        default: return additional[key] ?? nil
+            case "name": return name
+            case "version": return version
+            case "os": return os
+            case "os-version": return osVersion
+            case "vendor": return vendor
+            case "support-url": return supportURL
+            default: return additional[key] ?? nil
         }
     }
 
@@ -79,8 +79,8 @@ public struct Identification: Sendable {
         params["os-version"] = osVersion
         params["vendor"] = vendor
         params["support-url"] = supportURL
-        for (k, v) in additional {
-            params[k] = v
+        for (key, value) in additional {
+            params[key] = value
         }
         return params
     }

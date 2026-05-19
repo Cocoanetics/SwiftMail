@@ -1,6 +1,10 @@
 // EmailMessageConversionTests.swift
 // Tests for bidirectional Message ↔ Email conversion
 
+// Splitting this test file was tried but introduced a macOS CI hang;
+// see the IMAPTestServer.swift comment for context.
+// swiftlint:disable file_length
+
 import Testing
 import Foundation
 import SwiftMail
@@ -405,3 +409,4 @@ func testBidirectionalRoundTrip_emailToMessageToEmail() throws {
     #expect(restored.htmlBody == "<p>HTML round-trip</p>")
     #expect(restored.messageID == msgId)
 }
+// swiftlint:enable file_length

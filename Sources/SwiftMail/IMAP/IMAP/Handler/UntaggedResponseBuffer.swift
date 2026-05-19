@@ -40,18 +40,18 @@ final class UntaggedResponseBuffer: ChannelInboundHandler, RemovableChannelHandl
             guard !_hasActiveHandler else { return false }
 
             switch response {
-            case .untagged:
-                return true
-            case .fetch:
-                return true
-            case .fatal:
-                return true
-            case .tagged:
-                // Tagged responses should not arrive when no handler is active,
-                // but don't buffer them — let them flow.
-                return false
-            default:
-                return false
+                case .untagged:
+                    return true
+                case .fetch:
+                    return true
+                case .fatal:
+                    return true
+                case .tagged:
+                    // Tagged responses should not arrive when no handler is active,
+                    // but don't buffer them — let them flow.
+                    return false
+                default:
+                    return false
             }
         }
 

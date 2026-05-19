@@ -8,7 +8,9 @@ extension Message: CustomStringConvertible {
     public var description: String {
         let subjectStr = subject ?? "No subject"
         let fromStr = from ?? "No sender"
-        return "Email #\(sequenceNumber) | \(subjectStr.truncated(maxLength: 50)) | From: \(fromStr.truncated(maxLength: 30))"
+        let truncatedSubject = subjectStr.truncated(maxLength: 50)
+        let truncatedFrom = fromStr.truncated(maxLength: 30)
+        return "Email #\(sequenceNumber) | \(truncatedSubject) | From: \(truncatedFrom)"
     }
 }
 
@@ -21,4 +23,4 @@ private extension String {
         let endIndex = self.index(self.startIndex, offsetBy: maxLength - 3)
         return String(self[..<endIndex]) + "..."
     }
-} 
+}

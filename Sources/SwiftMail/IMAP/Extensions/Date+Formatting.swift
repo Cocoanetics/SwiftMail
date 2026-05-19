@@ -9,4 +9,4 @@ extension Date {
         formatter.locale = .current
         return formatter.string(from: self)
     }
-} 
+}

@@ -32,7 +32,7 @@ final class LogoutHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @un
     override func processResponse(_ response: Response) -> Bool {
         // Log the response
         let baseHandled = super.processResponse(response)
-        
+
         // First check if this is our tagged response
         if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
             if case .ok = taggedResponse.state {
@@ -42,8 +42,8 @@ final class LogoutHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @un
             }
             return true
         }
-        
+
         // Not our tagged response
         return baseHandled
     }
-} 
+}

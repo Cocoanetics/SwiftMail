@@ -34,11 +34,11 @@ enum MailTLSConfiguration {
     ) -> TLSConfiguration {
         var configuration = TLSConfiguration.makeClientConfiguration()
         switch certificateVerificationPolicy {
-        case .fullVerification:
-            configuration.certificateVerification = .fullVerification
-            configuration.trustRoots = .default
-        case .noVerification:
-            configuration.certificateVerification = .none
+            case .fullVerification:
+                configuration.certificateVerification = .fullVerification
+                configuration.trustRoots = .default
+            case .noVerification:
+                configuration.certificateVerification = .none
         }
         return configuration
     }

@@ -8,24 +8,30 @@ import Logging
 protocol SMTPCommand where ResultType: Sendable {
     /// The type of result this command returns
     associatedtype ResultType
-    
+
     /// The type of handler that will process responses for this command
     associatedtype HandlerType: SMTPCommandHandler where HandlerType.ResultType == ResultType
-    
+
     /// Convert this command to raw bytes that can be sent to the SMTP server.
     /// This is the primary method used by the transport layer.
     func toCommandData() -> Data
-    
+
     /// Convert this command to a string that can be sent to the SMTP server.
     /// - Note: Prefer `toCommandData()` for raw byte handling.
     func toCommandString() -> String
-    
+
     /// Validate that the command is correctly formed
     /// - Throws: An error if the command is invalid
     func validate() throws
-	
-	/// Custom timeout for this operation
-	var timeoutSeconds: Int { get }
+
+    /// Custom timeout for this operation
+    var timeoutSeconds: Int { get }
+
+    /// Build the handler that will process responses for this command.
+    /// Commands whose handler needs extra context (e.g. credentials for
+    /// LoginAuthCommand) override this; the default just calls the
+    /// handler's required `init(commandTag:promise:)`.
+    func makeHandler(commandTag: String?, promise: EventLoopPromise<ResultType>) -> HandlerType
 }
 
 /// Default implementation for common command behaviors
@@ -34,12 +40,17 @@ extension SMTPCommand {
     func validate() throws {
         // No validation by default
     }
-    
+
+    /// Default handler factory just calls the required initializer.
+    func makeHandler(commandTag: String?, promise: EventLoopPromise<ResultType>) -> HandlerType {
+        HandlerType(commandTag: commandTag, promise: promise)
+    }
+
     /// Default implementation encodes the command string as UTF-8 data
     func toCommandData() -> Data {
         return Data(toCommandString().utf8)
     }
-    
+
     /// Default implementation that calls toString with the hostname
     /// Subclasses should override this for commands that don't need a hostname
     func toCommandString() -> String {

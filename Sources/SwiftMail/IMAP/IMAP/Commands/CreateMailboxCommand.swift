@@ -9,12 +9,6 @@ struct CreateMailboxCommand: IMAPTaggedCommand {
 
     let mailboxName: String
 
-    /// Initialize a new CREATE command
-    /// - Parameter mailboxName: The name of the mailbox to create
-    init(mailboxName: String) {
-        self.mailboxName = mailboxName
-    }
-
     func toTaggedCommand(tag: String) -> TaggedCommand {
         let mailbox = MailboxName(ByteBuffer(string: mailboxName))
         return TaggedCommand(tag: tag, command: .create(mailbox, []))

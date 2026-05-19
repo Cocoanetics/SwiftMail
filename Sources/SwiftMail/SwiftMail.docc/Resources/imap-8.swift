@@ -14,7 +14,7 @@ let mailboxes = try await imapServer.listMailboxes()
 
 // Print mailbox names
 for mailbox in mailboxes {
-	print("📬 \(mailbox.name)")
+    print("📬 \(mailbox.name)")
 }
 
 // Select the INBOX mailbox
@@ -25,10 +25,10 @@ print("Mailbox contains \(mailboxInfo.messageCount) messages")
 
 // Get the latest 10 messages
 if let latestMessagesSet = mailboxInfo.latest(10) {
-        // Stream the messages one by one
-        for try await email in imapServer.fetchMessages(using: latestMessagesSet) {
-                print("\nFetched message #\(email.sequenceNumber)")
-        }
+    // Stream the messages one by one
+    for try await email in imapServer.fetchMessages(using: latestMessagesSet) {
+        print("\nFetched message #\(email.sequenceNumber)")
+    }
 }
 
 // Will store results using sequence numbers

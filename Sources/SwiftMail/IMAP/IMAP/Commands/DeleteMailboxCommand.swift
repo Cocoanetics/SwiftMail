@@ -9,10 +9,6 @@ struct DeleteMailboxCommand: IMAPTaggedCommand {
 
     let mailboxName: String
 
-    init(mailboxName: String) {
-        self.mailboxName = mailboxName
-    }
-
     func validate() throws {
         guard !mailboxName.isEmpty else {
             throw IMAPError.invalidArgument("Mailbox name must not be empty")

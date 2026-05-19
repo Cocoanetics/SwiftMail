@@ -5,7 +5,10 @@ import NIOIMAP
 import NIOIMAPCore
 
 /// Handler responsible for managing the IMAP XOAUTH2 authentication exchange.
-final class XOAUTH2AuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommandHandler, @unchecked Sendable {
+final class XOAUTH2AuthenticationHandler:
+    BaseIMAPCommandHandler<[Capability]>,
+    IMAPCommandHandler,
+    @unchecked Sendable {
     private var collectedCapabilities: [Capability] = []
     private var shouldSendCredentialsOnChallenge: Bool
     private var credentials: ByteBuffer
@@ -119,10 +122,10 @@ final class XOAUTH2AuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, 
         }
 
         switch response {
-        case .untagged(.capabilityData(let capabilities)):
-            lock.withLock { collectedCapabilities = capabilities }
-        default:
-            break
+            case .untagged(.capabilityData(let capabilities)):
+                lock.withLock { collectedCapabilities = capabilities }
+            default:
+                break
         }
 
         return false
