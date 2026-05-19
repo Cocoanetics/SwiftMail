@@ -38,37 +38,125 @@ extension IMAPNamedConnection {
     }
 
     /// Fetch message metadata for one identifier.
-    public func fetchMessageInfo<T: MessageIdentifier>(for identifier: T) async throws -> MessageInfo? {
+    /// - Parameters:
+    ///   - identifier: The message identifier to fetch.
+    ///   - options: Which attributes to request. Defaults to `.default`.
+    ///   - headerFields: Optional named header fields to request via `BODY.PEEK[HEADER.FIELDS (...)]`.
+    public func fetchMessageInfo<T: MessageIdentifier>(
+        for identifier: T,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
+    ) async throws -> MessageInfo? {
         let set = MessageIdentifierSet<T>(identifier)
-        let command = FetchMessageInfoCommand(identifierSet: set)
+        let command = FetchMessageInfoCommand(
+            identifierSet: set, options: options, headerFields: headerFields
+        )
         return try await executeCommand(command).first
     }
 
     /// Fetch message metadata in a single FETCH/UID FETCH command.
+    /// - Parameters:
+    ///   - identifierSet: The identifiers to fetch.
+    ///   - options: Which attributes to request. Defaults to `.default`.
+    ///   - headerFields: Optional named header fields. See `FetchMessageInfoOptions.newsletterHeaderFields`.
     public func fetchMessageInfosBulk<T: MessageIdentifier>(
-        using identifierSet: MessageIdentifierSet<T>
+        using identifierSet: MessageIdentifierSet<T>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
     ) async throws -> [MessageInfo] {
-        let command = FetchMessageInfoCommand(identifierSet: identifierSet)
+        let command = FetchMessageInfoCommand(
+            identifierSet: identifierSet, options: options, headerFields: headerFields
+        )
         return try await executeCommand(command)
     }
 
     /// Fetch message metadata for a UID range in a single command.
-    public func fetchMessageInfos(uidRange: PartialRangeFrom<UID>) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(using: UIDSet(uidRange))
+    public func fetchMessageInfos(
+        uidRange: PartialRangeFrom<UID>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
+    ) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(using: UIDSet(uidRange), options: options, headerFields: headerFields)
     }
 
     /// Fetch message metadata for a UID range in a single command.
-    public func fetchMessageInfos(uidRange: ClosedRange<UID>) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(using: UIDSet(uidRange))
+    public func fetchMessageInfos(
+        uidRange: ClosedRange<UID>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
+    ) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(using: UIDSet(uidRange), options: options, headerFields: headerFields)
     }
 
     /// Fetch message metadata for a sequence-number range in a single command.
-    public func fetchMessageInfos(sequenceRange: PartialRangeFrom<SequenceNumber>) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(using: SequenceNumberSet(sequenceRange))
+    public func fetchMessageInfos(
+        sequenceRange: PartialRangeFrom<SequenceNumber>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
+    ) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(
+            using: SequenceNumberSet(sequenceRange), options: options, headerFields: headerFields
+        )
     }
 
     /// Fetch message metadata for a sequence-number range in a single command.
-    public func fetchMessageInfos(sequenceRange: ClosedRange<SequenceNumber>) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(using: SequenceNumberSet(sequenceRange))
+    public func fetchMessageInfos(
+        sequenceRange: ClosedRange<SequenceNumber>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
+    ) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(
+            using: SequenceNumberSet(sequenceRange), options: options, headerFields: headerFields
+        )
+    }
+
+    /// Stream message metadata for a set of identifiers, auto-chunking large sets.
+    ///
+    /// Chunk size defaults to `options.suggestedChunkSize` — lighter per-message payloads
+    /// (e.g. `.uidFlagsOnly`, `.slim`) take larger chunks so the same total fetch needs
+    /// fewer round trips. Pass `chunkSize` to override.
+    ///
+    /// - Parameters:
+    ///   - identifierSet: The identifiers to fetch.
+    ///   - options: Which attributes to request. Defaults to `.default`.
+    ///   - headerFields: Optional named header fields.
+    ///   - chunkSize: Override for the auto-derived chunk size.
+    /// - Returns: An `AsyncThrowingStream` yielding `MessageInfo` one at a time.
+    public nonisolated func fetchMessageInfos<T: MessageIdentifier>(
+        using identifierSet: MessageIdentifierSet<T>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil,
+        chunkSize: Int? = nil
+    ) -> AsyncThrowingStream<MessageInfo, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard !identifierSet.isEmpty else {
+                        throw IMAPError.emptyIdentifierSet
+                    }
+
+                    let chunks = identifierSet.chunked(size: chunkSize ?? options.suggestedChunkSize)
+
+                    for chunk in chunks {
+                        try Task.checkCancellation()
+                        let command = FetchMessageInfoCommand(
+                            identifierSet: chunk, options: options, headerFields: headerFields
+                        )
+                        let result = try await executeCommand(command)
+                        for header in result {
+                            continuation.yield(header)
+                        }
+                    }
+
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
     }
 }

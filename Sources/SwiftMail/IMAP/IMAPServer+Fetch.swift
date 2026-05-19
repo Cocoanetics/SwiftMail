@@ -153,56 +153,101 @@ extension IMAPServer {
         }
     }
 
-    /// Fetch message info for a single identifier
-    /// - Parameter identifier: The message identifier to fetch
+    /// Fetch message info for a single identifier.
+    /// - Parameters:
+    ///   - identifier: The message identifier to fetch.
+    ///   - options: Which attributes to request. Defaults to `.default`.
+    ///   - headerFields: Optional named header fields to request via `BODY.PEEK[HEADER.FIELDS (...)]`.
     /// - Returns: The message info if available
-    public func fetchMessageInfo<T: MessageIdentifier>(for identifier: T) async throws -> MessageInfo? {
+    public func fetchMessageInfo<T: MessageIdentifier>(
+        for identifier: T,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
+    ) async throws -> MessageInfo? {
         let singleSet = MessageIdentifierSet<T>(identifier)
-        let command = FetchMessageInfoCommand(identifierSet: singleSet)
+        let command = FetchMessageInfoCommand(
+            identifierSet: singleSet, options: options, headerFields: headerFields
+        )
         return try await executeCommand(command).first
     }
 
     /// Fetch message infos for an identifier set in a **single IMAP FETCH**.
     /// This is important for UID ranges like `123:*` which must not be expanded into individual UIDs.
+    /// - Parameters:
+    ///   - identifierSet: The identifiers to fetch.
+    ///   - options: Which attributes to request. Defaults to `.default`.
+    ///   - headerFields: Optional named header fields. See `FetchMessageInfoOptions.newsletterHeaderFields`.
     public func fetchMessageInfosBulk<T: MessageIdentifier>(
-        using identifierSet: MessageIdentifierSet<T>
+        using identifierSet: MessageIdentifierSet<T>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
     ) async throws -> [MessageInfo] {
-        let command = FetchMessageInfoCommand(identifierSet: identifierSet)
+        let command = FetchMessageInfoCommand(
+            identifierSet: identifierSet, options: options, headerFields: headerFields
+        )
         return try await executeCommand(command)
     }
 
     // MARK: - Convenience overloads for ranges
 
     /// Fetch message infos for a UID range in a **single UID FETCH** (e.g. `11971:*`).
-    public func fetchMessageInfos(uidRange: PartialRangeFrom<UID>) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(using: UIDSet(uidRange))
+    public func fetchMessageInfos(
+        uidRange: PartialRangeFrom<UID>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
+    ) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(using: UIDSet(uidRange), options: options, headerFields: headerFields)
     }
 
     /// Fetch message infos for a UID range in a **single UID FETCH**.
-    public func fetchMessageInfos(uidRange: ClosedRange<UID>) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(using: UIDSet(uidRange))
+    public func fetchMessageInfos(
+        uidRange: ClosedRange<UID>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
+    ) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(using: UIDSet(uidRange), options: options, headerFields: headerFields)
     }
 
     /// Fetch message infos for a sequence number range in a single FETCH.
-    public func fetchMessageInfos(sequenceRange: PartialRangeFrom<SequenceNumber>) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(using: SequenceNumberSet(sequenceRange))
+    public func fetchMessageInfos(
+        sequenceRange: PartialRangeFrom<SequenceNumber>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
+    ) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(
+            using: SequenceNumberSet(sequenceRange), options: options, headerFields: headerFields
+        )
     }
 
     /// Fetch message infos for a sequence number range in a single FETCH.
-    public func fetchMessageInfos(sequenceRange: ClosedRange<SequenceNumber>) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(using: SequenceNumberSet(sequenceRange))
+    public func fetchMessageInfos(
+        sequenceRange: ClosedRange<SequenceNumber>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
+    ) async throws -> [MessageInfo] {
+        try await fetchMessageInfosBulk(
+            using: SequenceNumberSet(sequenceRange), options: options, headerFields: headerFields
+        )
     }
 
-    /// Stream message headers for a set of identifiers
+    /// Stream message metadata for a set of identifiers.
     ///
-    /// Large identifier sets are automatically split into chunks of
-    /// `defaultFetchChunkSize` so that no single IMAP FETCH command is
-    /// too large. Results are yielded one at a time as they arrive.
+    /// Large identifier sets are automatically split into chunks so that no single IMAP
+    /// FETCH command is too large. Chunk size defaults to a value derived from `options`
+    /// (smaller per-message payload → larger chunks); pass `chunkSize` to override.
+    /// Results are yielded one at a time as they arrive.
     ///
-    /// - Parameter identifierSet: The set of message identifiers to fetch
-    /// - Returns: An AsyncThrowingStream yielding MessageInfo one at a time
+    /// - Parameters:
+    ///   - identifierSet: The set of message identifiers to fetch.
+    ///   - options: Which attributes to request. Defaults to `.default`.
+    ///   - headerFields: Optional named header fields.
+    ///   - chunkSize: Override for the auto-derived chunk size.
+    /// - Returns: An `AsyncThrowingStream` yielding `MessageInfo` one at a time.
     public nonisolated func fetchMessageInfos<T: MessageIdentifier>(
-        using identifierSet: MessageIdentifierSet<T>
+        using identifierSet: MessageIdentifierSet<T>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil,
+        chunkSize: Int? = nil
     ) -> AsyncThrowingStream<MessageInfo, Error> {
 
         AsyncThrowingStream { continuation in
@@ -212,11 +257,13 @@ extension IMAPServer {
                         throw IMAPError.emptyIdentifierSet
                     }
 
-                    let chunks = identifierSet.chunked(size: defaultFetchChunkSize)
+                    let chunks = identifierSet.chunked(size: chunkSize ?? options.suggestedChunkSize)
 
                     for chunk in chunks {
                         try Task.checkCancellation()
-                        let command = FetchMessageInfoCommand(identifierSet: chunk)
+                        let command = FetchMessageInfoCommand(
+                            identifierSet: chunk, options: options, headerFields: headerFields
+                        )
                         let result = try await executeCommand(command)
                         for header in result {
                             continuation.yield(header)
@@ -279,114 +326,5 @@ extension IMAPServer {
                 task.cancel()
             }
         }
-    }
-}
-
-// MARK: - Body Structure Helpers
-
-extension IMAPServer {
-    /**
-     Process a body structure recursively to fetch all parts
-     - Parameters:
-     - structure: The body structure to process
-     - section: The section to process
-     - identifier: The message identifier (SequenceNumber or UID)
-     - Returns: An array of message parts
-     - Throws: An error if the fetch operation fails
-     */
-    func recursivelyFetchParts<T: MessageIdentifier>(
-        _ structure: BodyStructure,
-        section: Section,
-        identifier: T
-    ) async throws -> [MessagePart] {
-        switch structure {
-            case .singlepart(let part):
-                return [try await fetchSinglepart(part, section: section, identifier: identifier)]
-
-            case .multipart(let multipart):
-                return try await fetchMultipart(multipart, section: section, identifier: identifier)
-        }
-    }
-
-    /// Fetch and convert a singlepart body structure.
-    private func fetchSinglepart<T: MessageIdentifier>(
-        _ part: BodyStructure.Singlepart,
-        section: Section,
-        identifier: T
-    ) async throws -> MessagePart {
-        // Fetch the part content
-        let partData = try await fetchPart(section: section, of: identifier)
-
-        let contentType = singlepartContentType(part)
-        let (disposition, filename) = singlepartDispositionAndFilename(part)
-        let encoding: String? = part.fields.encoding?.debugDescription
-        let contentId = part.fields.id
-
-        return MessagePart(
-            section: section,
-            contentType: contentType,
-            disposition: disposition,
-            encoding: encoding,
-            filename: filename,
-            contentId: contentId,
-            data: partData
-        )
-    }
-
-    /// Recursively fetch each part of a multipart body structure.
-    private func fetchMultipart<T: MessageIdentifier>(
-        _ multipart: BodyStructure.Multipart,
-        section: Section,
-        identifier: T
-    ) async throws -> [MessagePart] {
-        var allParts: [MessagePart] = []
-
-        for (index, childPart) in multipart.parts.enumerated() {
-            // Create a new section by appending the current index + 1
-            let childSection = Section(section.components + [index + 1])
-            let childParts = try await recursivelyFetchParts(
-                childPart, section: childSection, identifier: identifier
-            )
-            allParts.append(contentsOf: childParts)
-        }
-
-        return allParts
-    }
-
-    /// Build the `Content-Type` string for a singlepart structure.
-    private func singlepartContentType(_ part: BodyStructure.Singlepart) -> String {
-        var contentType: String
-        switch part.kind {
-            case .basic(let mediaType):
-                contentType = "\(String(mediaType.topLevel))/\(String(mediaType.sub))"
-            case .text(let text):
-                contentType = "text/\(String(text.mediaSubtype))"
-            case .message(let message):
-                contentType = "message/\(String(message.message))"
-        }
-
-        if let charset = part.fields.parameters.first(where: { $0.key.lowercased() == "charset" })?.value {
-            contentType += "; charset=\(charset)"
-        }
-
-        return contentType
-    }
-
-    /// Extract disposition + filename from a singlepart structure's extension data.
-    private func singlepartDispositionAndFilename(
-        _ part: BodyStructure.Singlepart
-    ) -> (disposition: String?, filename: String?) {
-        var disposition: String?
-        var filename: String?
-
-        if let ext = part.extension, let dispAndLang = ext.dispositionAndLanguage, let disp = dispAndLang.disposition {
-            disposition = String(describing: disp)
-
-            for (key, value) in disp.parameters where key.lowercased() == "filename" {
-                filename = value
-            }
-        }
-
-        return (disposition, filename)
     }
 }
