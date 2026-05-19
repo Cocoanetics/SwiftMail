@@ -109,4 +109,54 @@ extension IMAPNamedConnection {
             using: SequenceNumberSet(sequenceRange), options: options, headerFields: headerFields
         )
     }
+
+    /// Stream message metadata for a set of identifiers, auto-chunking large sets.
+    ///
+    /// Chunk size defaults to `options.suggestedChunkSize` — lighter per-message payloads
+    /// (e.g. `.uidFlagsOnly`, `.slim`) take larger chunks so the same total fetch needs
+    /// fewer round trips. Pass `chunkSize` to override.
+    ///
+    /// - Parameters:
+    ///   - identifierSet: The identifiers to fetch.
+    ///   - options: Which attributes to request. Defaults to `.default`.
+    ///   - headerFields: Optional named header fields.
+    ///   - chunkSize: Override for the auto-derived chunk size.
+    /// - Returns: An `AsyncThrowingStream` yielding `MessageInfo` one at a time.
+    public nonisolated func fetchMessageInfos<T: MessageIdentifier>(
+        using identifierSet: MessageIdentifierSet<T>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil,
+        chunkSize: Int? = nil
+    ) -> AsyncThrowingStream<MessageInfo, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    guard !identifierSet.isEmpty else {
+                        throw IMAPError.emptyIdentifierSet
+                    }
+
+                    let chunks = identifierSet.chunked(size: chunkSize ?? options.suggestedChunkSize)
+
+                    for chunk in chunks {
+                        try Task.checkCancellation()
+                        let command = FetchMessageInfoCommand(
+                            identifierSet: chunk, options: options, headerFields: headerFields
+                        )
+                        let result = try await executeCommand(command)
+                        for header in result {
+                            continuation.yield(header)
+                        }
+                    }
+
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
 }
