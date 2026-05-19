@@ -112,11 +112,11 @@ extension Email {
         } else if hasHtmlBody && hasInline {
             content += "Content-Type: multipart/related; boundary=\"\(context.relatedBoundary)\"\r\n\r\n"
             content += "This is a multi-part message in MIME format.\r\n\r\n"
-            writeHTMLWithInlineAttachments(context: context, into: &content, terminating: true)
+            writeHTMLWithInlineAttachments(context: context, into: &content)
         } else if hasHtmlBody {
             content += "Content-Type: multipart/alternative; boundary=\"\(context.altBoundary)\"\r\n\r\n"
             content += "This is a multi-part message in MIME format.\r\n\r\n"
-            writeAlternativeTextAndHTML(context: context, into: &content, terminating: true)
+            writeAlternativeTextAndHTML(context: context, into: &content)
         } else {
             content += "Content-Type: text/plain; charset=UTF-8\r\n"
             content += "Content-Transfer-Encoding: \(context.textEncoding)\r\n\r\n"
@@ -140,11 +140,12 @@ extension Email {
             content += "--\(context.mainBoundary)\r\n"
             if hasInline {
                 content += "Content-Type: multipart/related; boundary=\"\(context.relatedBoundary)\"\r\n\r\n"
-                writeHTMLWithInlineAttachments(context: context, into: &content, terminating: false)
+                writeHTMLWithInlineAttachments(context: context, into: &content)
             } else {
                 content += "Content-Type: multipart/alternative; boundary=\"\(context.altBoundary)\"\r\n\r\n"
-                writeAlternativeTextAndHTML(context: context, into: &content, terminating: false)
+                writeAlternativeTextAndHTML(context: context, into: &content)
             }
+            content += "\r\n"
         } else {
             content += "--\(context.mainBoundary)\r\n"
             content += "Content-Type: text/plain; charset=UTF-8\r\n"
@@ -163,16 +164,14 @@ extension Email {
     }
 
     /// multipart/related body: a multipart/alternative bodies section followed by
-    /// each inline attachment. `terminating` controls whether to close the related
-    /// boundary or hand off to a caller (multipart/mixed).
+    /// each inline attachment, closed by the related boundary.
     private func writeHTMLWithInlineAttachments(
         context: MIMEBuildContext,
-        into content: inout String,
-        terminating: Bool
+        into content: inout String
     ) {
         content += "--\(context.relatedBoundary)\r\n"
         content += "Content-Type: multipart/alternative; boundary=\"\(context.altBoundary)\"\r\n\r\n"
-        writeAlternativeTextAndHTML(context: context, into: &content, terminating: true)
+        writeAlternativeTextAndHTML(context: context, into: &content)
         content += "\r\n"
 
         for attachment in self.inlineAttachments {
@@ -186,16 +185,13 @@ extension Email {
             content += encodedAttachmentBody(attachment.data) + "\r\n\r\n"
         }
 
-        content += terminating ? "--\(context.relatedBoundary)--\r\n" : ""
+        content += "--\(context.relatedBoundary)--\r\n"
     }
 
-    /// Two-part text/plain + text/html body. `terminating` closes the alternative
-    /// boundary; set to `false` when the caller will append further parts (inline
-    /// attachments inside a multipart/related).
+    /// Two-part text/plain + text/html body, closed by the alternative boundary.
     private func writeAlternativeTextAndHTML(
         context: MIMEBuildContext,
-        into content: inout String,
-        terminating: Bool
+        into content: inout String
     ) {
         content += "--\(context.altBoundary)\r\n"
         content += "Content-Type: text/plain; charset=UTF-8\r\n"
@@ -205,7 +201,7 @@ extension Email {
         content += "Content-Type: text/html; charset=UTF-8\r\n"
         content += "Content-Transfer-Encoding: \(context.textEncoding)\r\n\r\n"
         content += "\(context.htmlBody ?? "")\r\n\r\n"
-        content += terminating ? "--\(context.altBoundary)--\r\n" : ""
+        content += "--\(context.altBoundary)--\r\n"
     }
 
     private func encodedAttachmentBody(_ data: Data) -> String {

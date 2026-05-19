@@ -202,6 +202,63 @@ struct SMTPTests {
     }
 
     @Test
+    func testConstructContentClosesAlternativeBoundaryBeforeRegularAttachment() throws {
+        let regularAttachment = Attachment(
+            filename: "report.pdf",
+            mimeType: "application/pdf",
+            data: Data(repeating: 0x5A, count: 16)
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "HTML + regular",
+            textBody: "Hello",
+            htmlBody: "<p>Hello</p>",
+            attachments: [regularAttachment]
+        )
+
+        let content = email.constructContent()
+        let altBoundary = try #require(boundaryValue(in: content, named: "SwiftSMTP-Alt-Boundary-"))
+        let altClose = "--\(altBoundary)--\r\n"
+
+        let altCloseRange = try #require(content.range(of: altClose))
+        let pdfPartRange = try #require(content.range(of: "Content-Type: application/pdf"))
+        #expect(altCloseRange.upperBound < pdfPartRange.lowerBound)
+    }
+
+    @Test
+    func testConstructContentClosesRelatedBoundaryBeforeRegularAttachment() throws {
+        let inlineAttachment = Attachment(
+            filename: "inline.png",
+            mimeType: "image/png",
+            data: Data(repeating: 0x42, count: 16),
+            contentID: "inline-img",
+            isInline: true
+        )
+        let regularAttachment = Attachment(
+            filename: "report.pdf",
+            mimeType: "application/pdf",
+            data: Data(repeating: 0x5A, count: 16)
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "HTML + inline + regular",
+            textBody: "Hello",
+            htmlBody: "<p>Hello<img src=\"cid:inline-img\"></p>",
+            attachments: [inlineAttachment, regularAttachment]
+        )
+
+        let content = email.constructContent()
+        let relatedBoundary = try #require(boundaryValue(in: content, named: "SwiftSMTP-Related-Boundary-"))
+        let relatedClose = "--\(relatedBoundary)--\r\n"
+
+        let relatedCloseRange = try #require(content.range(of: relatedClose))
+        let pdfPartRange = try #require(content.range(of: "Content-Type: application/pdf"))
+        #expect(relatedCloseRange.upperBound < pdfPartRange.lowerBound)
+    }
+
+    @Test
     func testPrepareEmailForSendOmitsMailFromSizeWhenServerDoesNotAdvertiseSIZE() throws {
         let email = Email(
             sender: EmailAddress(address: "sender@example.com"),
@@ -601,6 +658,16 @@ struct SMTPTests {
             let asError: Error = error
             #expect(asError.localizedDescription == expected)
         }
+    }
+
+    /// Extract the boundary value that follows the given prefix (UUID is appended at runtime).
+    private func boundaryValue(in content: String, named prefix: String) -> String? {
+        let search = "boundary=\"\(prefix)"
+        guard let prefixStart = content.range(of: search),
+              let closingQuote = content.range(of: "\"", range: prefixStart.upperBound..<content.endIndex)
+        else { return nil }
+        let valueStart = content.index(prefixStart.upperBound, offsetBy: -prefix.count)
+        return String(content[valueStart..<closingQuote.lowerBound])
     }
 }
 // swiftlint:enable file_length type_body_length
