@@ -4,8 +4,12 @@
 import Foundation
 import NIO
 import NIOIMAP
+import NIOIMAPCore
 
-/// Command for fetching message headers
+/// Command for fetching message metadata. The exact attributes requested are selected by
+/// `options`; pass `headerFields` to request a `BODY.PEEK[HEADER.FIELDS (...)]` section
+/// instead of (or in addition to) the full header — useful for newsletter / auto-mail
+/// detection without the cost of the full header section.
 struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     typealias ResultType = [MessageInfo]
     typealias HandlerType = FetchMessageInfoHandler
@@ -13,13 +17,30 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     /// The set of message identifiers to fetch
     let identifierSet: MessageIdentifierSet<T>
 
+    /// Which attributes to request alongside UID.
+    let options: FetchMessageInfoOptions
+
+    /// Optional named header fields to request via `BODY.PEEK[HEADER.FIELDS (...)]`.
+    /// Ignored when `options` already contains `.fullHeader` (the full header section
+    /// includes everything).
+    let headerFields: [String]?
+
     /// Custom timeout for this operation
     let timeoutSeconds = 10
 
     /// Initialize a new fetch headers command
-    /// - Parameter identifierSet: The set of message identifiers to fetch
-    init(identifierSet: MessageIdentifierSet<T>) {
+    /// - Parameters:
+    ///   - identifierSet: The set of message identifiers to fetch
+    ///   - options: Which attributes to request. Defaults to `.default`.
+    ///   - headerFields: Optional named header fields. See `FetchMessageInfoOptions.newsletterHeaderFields`.
+    init(
+        identifierSet: MessageIdentifierSet<T>,
+        options: FetchMessageInfoOptions = .default,
+        headerFields: [String]? = nil
+    ) {
         self.identifierSet = identifierSet
+        self.options = options
+        self.headerFields = headerFields
     }
 
     /// Validate the command before execution
@@ -33,14 +54,29 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server
     func toTaggedCommand(tag: String) -> TaggedCommand {
-        let attributes: [FetchAttribute] = [
-            .uid,
-            .envelope,
-            .internalDate,
-            .bodyStructure(extensions: true),
-            .bodySection(peek: true, .header, nil),
-            .flags
-        ]
+        var attributes: [FetchAttribute] = [.uid]
+        if options.contains(.envelope) {
+            attributes.append(.envelope)
+        }
+        if options.contains(.internalDate) {
+            attributes.append(.internalDate)
+        }
+        if options.contains(.flags) {
+            attributes.append(.flags)
+        }
+        if options.contains(.size) {
+            attributes.append(.rfc822Size)
+        }
+        if options.contains(.bodyStructure) {
+            attributes.append(.bodyStructure(extensions: true))
+        }
+
+        if options.contains(.fullHeader) {
+            attributes.append(.bodySection(peek: true, .header, nil))
+        } else if let fields = headerFields, !fields.isEmpty {
+            let section = SectionSpecifier(part: .init([]), kind: .headerFields(fields))
+            attributes.append(.bodySection(peek: true, section, nil))
+        }
 
         if T.self == UID.self {
             return TaggedCommand(tag: tag, command: .uidFetch(
