@@ -205,7 +205,14 @@ extension Email {
     }
 
     private func encodedAttachmentBody(_ data: Data) -> String {
-        data.base64EncodedString(options: [.lineLength76Characters, .endLineWithCarriageReturn])
+        // MIME (RFC 2045) requires CRLF line endings between wrapped base64
+        // lines. `.endLineWithCarriageReturn` alone emits a bare CR, which some
+        // clients fail to de-wrap, saving the raw base64 text as the attachment.
+        data.base64EncodedString(options: [
+            .lineLength76Characters,
+            .endLineWithCarriageReturn,
+            .endLineWithLineFeed
+        ])
     }
 
     /// Formats the current date in RFC 2822 format for the Date header.

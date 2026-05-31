@@ -258,6 +258,50 @@ struct SMTPTests {
         #expect(relatedCloseRange.upperBound < pdfPartRange.lowerBound)
     }
 
+    // Regression test for #168: base64-wrapped attachment bodies must use CRLF
+    // line endings, not bare CR, or some clients save the raw base64 as the file.
+    @Test
+    func testRegularAttachmentBase64UsesCRLFLineEndings() {
+        // 512 bytes encodes to enough base64 to wrap across multiple 76-char lines.
+        let regularAttachment = Attachment(
+            filename: "attachment.bin",
+            mimeType: "application/octet-stream",
+            data: Data(repeating: 0xAB, count: 512)
+        )
+        let email = Email(
+            sender: EmailAddress(name: "Sender", address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Attachment test",
+            textBody: "Testing attachment encoding.",
+            attachments: [regularAttachment]
+        )
+
+        let rawData = Data(email.constructContent().utf8)
+        #expect(bareCarriageReturnOffsets(in: rawData).isEmpty, "Found bare CR in MIME message")
+    }
+
+    @Test
+    func testInlineAttachmentBase64UsesCRLFLineEndings() {
+        let inlineAttachment = Attachment(
+            filename: "inline.png",
+            mimeType: "image/png",
+            data: Data(repeating: 0x42, count: 512),
+            contentID: "inline-img",
+            isInline: true
+        )
+        let email = Email(
+            sender: EmailAddress(name: "Sender", address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Inline attachment test",
+            textBody: "Testing inline attachment encoding.",
+            htmlBody: "<p>Hello<img src=\"cid:inline-img\"></p>",
+            attachments: [inlineAttachment]
+        )
+
+        let rawData = Data(email.constructContent().utf8)
+        #expect(bareCarriageReturnOffsets(in: rawData).isEmpty, "Found bare CR in MIME message")
+    }
+
     @Test
     func testPrepareEmailForSendOmitsMailFromSizeWhenServerDoesNotAdvertiseSIZE() throws {
         let email = Email(
@@ -668,6 +712,20 @@ struct SMTPTests {
         else { return nil }
         let valueStart = content.index(prefixStart.upperBound, offsetBy: -prefix.count)
         return String(content[valueStart..<closingQuote.lowerBound])
+    }
+
+    /// Byte offsets of any carriage return (0x0D) not immediately followed by a
+    /// line feed (0x0A). MIME bodies must only ever contain CRLF, never bare CR.
+    private func bareCarriageReturnOffsets(in data: Data) -> [Int] {
+        let bytes = Array(data)
+        var offsets: [Int] = []
+        for index in bytes.indices where bytes[index] == 0x0D {
+            let next = index + 1
+            if next >= bytes.count || bytes[next] != 0x0A {
+                offsets.append(index)
+            }
+        }
+        return offsets
     }
 }
 // swiftlint:enable file_length type_body_length
