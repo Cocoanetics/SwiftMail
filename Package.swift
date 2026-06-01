@@ -46,11 +46,12 @@ let package = Package(
         .package(url: "https://github.com/thebarndog/swift-dotenv", from: "2.1.0"),
 		.package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
         // Cross-platform Foundation compatibility shims (UTType, charset/IANA
-        // encoding, ProcessInfo.localIPAddress). No release tag yet — pin to
-        // the latest main commit; switch to `from:` once SwiftCross ships one.
+        // encoding, ProcessInfo.localIPAddress). No release tag yet — pinned to
+        // the commit that gives UTType its comprehensive extension/MIME table
+        // (Cocoanetics/SwiftCross#2); switch to `from:` once SwiftCross ships a release.
         .package(
             url: "https://github.com/Cocoanetics/SwiftCross",
-            revision: "0973641f70322f215aa229ceb5dc722199e8a828"
+            revision: "5e3266e381756550b8d2bcfd6638fec9ee16062f"
         ),
         .package(url: "https://github.com/apple/swift-nio", from: "2.0.0"),
         .package(url: "https://github.com/odrobnik/swift-nio-imap", exact: "0.3.2-pre"),
