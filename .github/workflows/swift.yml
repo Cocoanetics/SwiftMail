@@ -64,29 +64,31 @@ jobs:
           swift-version: "6.3.1"
       - name: Verify Swift version
         run: swift --version
-      # Pre-defining _WINSOCKAPI_ makes <windows.h> skip the legacy <winsock.h>
-      # whose sockaddr / fd_set / WSAData collide with the <winsock2.h> that
-      # swift-nio-ssl's BoringSSL includes. Unlike WIN32_LEAN_AND_MEAN it does
-      # NOT trim the rest of <windows.h>, so CNIOWindows/shim.c still gets the
-      # transitive <stdlib.h> it needs for abort(). Passed to both the C and
-      # C++ clang drivers so it reaches BoringSSL's .cc sources.
+      # Two defines are needed to compile swift-nio-ssl's BoringSSL against the
+      # runner's Windows SDK, passed to both the C and C++ clang drivers:
+      #   _WINSOCKAPI_ — makes <windows.h> skip the legacy <winsock.h> whose
+      #     sockaddr / fd_set / WSAData collide with the <winsock2.h> BoringSSL
+      #     includes. Unlike WIN32_LEAN_AND_MEAN it does not trim the rest of
+      #     <windows.h>, so CNIOWindows/shim.c keeps the <stdlib.h> it needs
+      #     for abort().
+      #   NOMINMAX — stops <windows.h> defining min()/max() as function-like
+      #     macros, which otherwise break BoringSSL's std::numeric_limits<>::max().
       - name: Build (Windows)
-        run: swift build --build-tests -v -Xcc -D_WINSOCKAPI_ -Xcxx -D_WINSOCKAPI_
+        run: swift build --build-tests -v -Xcc -D_WINSOCKAPI_ -Xcc -DNOMINMAX -Xcxx -D_WINSOCKAPI_ -Xcxx -DNOMINMAX
       - name: Test (Windows)
-        run: swift test -v --skip-build -Xcc -D_WINSOCKAPI_ -Xcxx -D_WINSOCKAPI_
+        run: swift test -v --skip-build -Xcc -D_WINSOCKAPI_ -Xcc -DNOMINMAX -Xcxx -D_WINSOCKAPI_ -Xcxx -DNOMINMAX
 
   build-android:
     # Cross-build the SwiftMail library for Android via skiptools/swift-android-action.
     #
-    # EXPERIMENTAL / non-blocking (continue-on-error) — Android does not build
-    # yet because of two upstream dependency gaps, neither in SwiftMail itself:
-    #   1. swift-nio-imap's per-file libc-import guards list only
-    #      Darwin/Glibc/Musl/Windows; on the Android SDK canImport(Glibc) is
-    #      false, so every grammar file falls into `#else let badOS = …` and
-    #      the module fails with "invalid redeclaration of 'badOS'". Needs
-    #      canImport(Android)/canImport(Bionic) added to the dependency.
-    #   2. swift-testing 0.12.0 (an exact pin shared by all test targets) does
-    #      not compile against Bionic — hence build-only here once (1) is fixed.
+    # Build-only (no test run): swift-testing 0.12.0 — an exact pin shared by
+    # every test target — does not compile against Bionic, so we validate that
+    # the library cross-compiles rather than the test suites. The earlier
+    # "invalid redeclaration of 'badOS'" blocker is fixed by depending on
+    # swift-nio-imap 0.3.1-pre, which adds Android/Bionic to its libc guards.
+    #
+    # Kept non-blocking (continue-on-error) for now while the Android build is
+    # still being proven out; flip to a required job once it is reliably green.
     #
     # Package.swift also drops the ArgumentParser-based CLI demos on Android
     # (keyed on the TARGET_OS_ANDROID env the action sets) to avoid a spurious
