@@ -7,6 +7,7 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:   # manual trigger, used to re-check the experimental Windows job
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -51,21 +52,22 @@ jobs:
     # native dependency is BoringSSL, which swift-nio-ssl vendors and builds
     # itself (compiling it from scratch is the slow part, hence the timeout).
     #
-    # EXPERIMENTAL / non-blocking (continue-on-error). SwiftMail's own code,
-    # BoringSSL (via the swift-nio-ssl fork's per-target SDK defines) and the
-    # CLI-demo exclusion are all resolved; the remaining blocker is upstream in
-    # swift-nio core: NIOPosix does not compile on the windows-latest runner
-    # (Swift 6.3.1 + Windows SDK 10.0.26100) —
+    # EXPERIMENTAL — runs on manual dispatch only, so it does not post a
+    # perpetually-failing check on every PR/push. SwiftMail's own code, BoringSSL
+    # (via the swift-nio-ssl fork's per-target SDK defines) and the CLI-demo
+    # exclusion are all resolved; the remaining blocker is upstream in swift-nio
+    # core: NIOPosix does not compile on the windows-latest runner (Swift 6.3.1 +
+    # Windows SDK 10.0.26100) —
     #   • System.swift: CInt(IPPROTO_UDP) fails because IPPROTO imports as an
     #     enum rather than an Int on this SDK, and
     #   • Thread.swift/ThreadWindows.swift: ThreadHandle = HANDLE =
     #     UnsafeMutableRawPointer does not satisfy NIOThread's `Sendable`
     #     requirement under Swift 6 strict concurrency.
-    # Both persist across swift-nio 2.95–2.100. This job will go green once
-    # swift-nio fixes its Windows build; until then it is left non-blocking.
+    # Both persist across swift-nio 2.95–2.100. Trigger this workflow manually
+    # ("Run workflow") to re-check; it should pass once swift-nio fixes Windows.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: windows-latest
     timeout-minutes: 45
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - name: Setup Swift
