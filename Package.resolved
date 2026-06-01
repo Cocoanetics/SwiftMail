@@ -68,8 +68,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio",
       "state" : {
-        "revision" : "e932d3c4d8f77433c8f7093b5ebcbf91463948a0",
-        "version" : "2.95.0"
+        "revision" : "57c0a08a331aaea9f5d7a932ad94ef43be942a95",
+        "version" : "2.100.0"
       }
     },
     {
@@ -77,8 +77,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/odrobnik/swift-nio-imap",
       "state" : {
-        "revision" : "01de1f9a29df31f77e87c2d9248940de7233ee1e",
-        "version" : "0.3.0-pre"
+        "revision" : "8fcbcb1ff5f75671d3ec43ca7dc500e23ada1117",
+        "version" : "0.3.2-pre"
       }
     },
     {
@@ -86,8 +86,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio-ssl",
       "state" : {
-        "revision" : "173cc69a058623525a58ae6710e2f5727c663793",
-        "version" : "2.36.0"
+        "revision" : "ae6b517f53289d72b7b0d4495b4609d25065deed"
       }
     },
     {

@@ -9,6 +9,8 @@ import Foundation
     import Glibc
 #elseif canImport(Musl)
     import Musl
+#elseif canImport(Android)
+    import Android
 #endif
 
 extension String {
@@ -22,8 +24,14 @@ extension String {
             if let hostname = Host.current().name {
                 return hostname
             }
+        #elseif os(Windows)
+            // WinSock's gethostname() requires a prior WSAStartup(); read the
+            // machine name from the environment to avoid that dependency.
+            if let name = ProcessInfo.processInfo.environment["COMPUTERNAME"], !name.isEmpty {
+                return name
+            }
         #else
-            // Use system call on Linux and other platforms
+            // Use system call on Linux/Android and other POSIX platforms
             var hostname = [CChar](repeating: 0, count: 256) // Linux typically uses 256 as max hostname length.
             if gethostname(&hostname, hostname.count) == 0 {
                 // Create a string from the C string
@@ -47,6 +55,10 @@ extension String {
      - Returns: The local IP address as a string, or nil if not available
      */
     public static var localIPAddress: String? {
+        // `getifaddrs`/`ifaddrs` are available on Apple platforms and Linux but
+        // not on Windows, and are not reliably exposed on Android. On those
+        // platforms we skip interface enumeration; callers fall back gracefully.
+        #if canImport(Darwin) || os(Linux)
         var ifaddr: UnsafeMutablePointer<ifaddrs>?
 
         guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else {
@@ -105,5 +117,8 @@ extension String {
         }
 
         return foundAddress
+        #else
+        return nil
+        #endif
     }
 }

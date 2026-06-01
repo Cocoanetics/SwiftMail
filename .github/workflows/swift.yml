@@ -7,9 +7,10 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:   # manual trigger, used to re-check the experimental Windows job
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  
+
 jobs:
 
   build-macos:
@@ -45,3 +46,74 @@ jobs:
         run: swift build --build-tests -v
       - name: Test (Linux)
         run: swift test -v --skip-build
+
+  build-windows:
+    # Windows build + test. No vcpkg / system C libraries are needed: the only
+    # native dependency is BoringSSL, which swift-nio-ssl vendors and builds
+    # itself (compiling it from scratch is the slow part, hence the timeout).
+    #
+    # EXPERIMENTAL — runs on manual dispatch only, so it does not post a
+    # perpetually-failing check on every PR/push. SwiftMail's own code, BoringSSL
+    # (via the swift-nio-ssl fork's per-target SDK defines) and the CLI-demo
+    # exclusion are all resolved; the remaining blocker is upstream in swift-nio
+    # core: NIOPosix does not compile on the windows-latest runner (Swift 6.3.1 +
+    # Windows SDK 10.0.26100) —
+    #   • System.swift: CInt(IPPROTO_UDP) fails because IPPROTO imports as an
+    #     enum rather than an Int on this SDK, and
+    #   • Thread.swift/ThreadWindows.swift: ThreadHandle = HANDLE =
+    #     UnsafeMutableRawPointer does not satisfy NIOThread's `Sendable`
+    #     requirement under Swift 6 strict concurrency.
+    # Both persist across swift-nio 2.95–2.100. Trigger this workflow manually
+    # ("Run workflow") to re-check; it should pass once swift-nio fixes Windows.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Swift
+        uses: SwiftyLab/setup-swift@latest
+        with:
+          # 6.3.x ships Windows SDK overlays new enough for the runner's
+          # Windows Kit (10.0.26100); older toolchains hit winsock.h /
+          # winsock2.h redefinition errors while compiling BoringSSL.
+          swift-version: "6.3.1"
+      - name: Verify Swift version
+        run: swift --version
+      # The BoringSSL Windows-SDK header workarounds (_WINSOCKAPI_/NOMINMAX/
+      # NOCRYPT) live in the swift-nio-ssl fork's CNIOBoringSSL target settings
+      # (see Package.swift), not here — passing them globally via -Xcc would
+      # also reach the Swift module importer and mis-import IPPROTO, breaking
+      # swift-nio's NIOPosix.
+      - name: Build (Windows)
+        run: swift build --build-tests -v
+      - name: Test (Windows)
+        run: swift test -v --skip-build
+
+  build-android:
+    # Cross-build the SwiftMail library for Android via skiptools/swift-android-action.
+    #
+    # Build-only (no test run): swift-testing 0.12.0 — an exact pin shared by
+    # every test target — does not compile against Bionic, so we validate that
+    # the library cross-compiles rather than the test suites. The earlier
+    # "invalid redeclaration of 'badOS'" blocker is fixed by depending on
+    # swift-nio-imap 0.3.1-pre, which adds Android/Bionic to its libc guards.
+    #
+    # Package.swift also drops the ArgumentParser-based CLI demos on Android
+    # (keyed on the TARGET_OS_ANDROID env the action sets) to avoid a spurious
+    # explicit-module dependency cycle.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build (Android)
+        uses: skiptools/swift-android-action@v2
+        with:
+          # Pin to a full patch version: the floating "6.3" key can drift the
+          # cached host toolchain ahead of the SDK and break module imports.
+          swift-version: "6.3.2"
+          # SDK + NDK overrun the runner's ~14 GiB free space.
+          free-disk-space: true
+          # Skip building/running the test targets (swift-testing 0.12.0 is not
+          # Android-compatible); build the library + its dependencies only.
+          build-tests: false
+          run-tests: false

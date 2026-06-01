@@ -6,12 +6,6 @@ import NIO
 import NIOCore
 import NIOSSL
 
-#if canImport(Glibc)
-    import Glibc
-#elseif canImport(Musl)
-    import Musl
-#endif
-
 extension SMTPServer {
     /**
      Connect to the SMTP server
@@ -71,8 +65,8 @@ extension SMTPServer {
         let duplexLogger = self.duplexLogger
 
         return ClientBootstrap(group: group)
-            .channelOption(ChannelOptions.socket(SocketOptionLevel(SOL_SOCKET), SO_REUSEADDR), value: 1)
-            .channelOption(ChannelOptions.socket(IPPROTO_TCP, TCP_NODELAY), value: 1)
+            .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .channelOption(ChannelOptions.tcpOption(.tcp_nodelay), value: 1)
             .channelInitializer { channel in
                 if useImplicitTLS {
                     do {
