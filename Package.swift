@@ -3,11 +3,21 @@
 
 import PackageDescription
 
-// The Android CI toolchain (skiptools/swift-android-action) sets TARGET_OS_ANDROID=1.
-// The ArgumentParser-based CLI demos hit a spurious explicit-module dependency
-// cycle when cross-compiled for Android, so they are dropped from the Android
-// build. They remain available on every other platform (macOS, iOS, Linux, Windows).
+// The CLI demos are only built where their dependencies actually compile —
+// Apple platforms and Linux — and are dropped from the Windows and Android
+// cross-builds:
+//   • Windows: swift-dotenv does an unguarded `import Darwin` (no Windows
+//     support). The manifest runs on the Windows host here, so `os(Windows)`
+//     detects it.
+//   • Android: ArgumentParser hits a spurious explicit-module dependency cycle.
+//     The skiptools/swift-android-action toolchain sets TARGET_OS_ANDROID=1
+//     (the manifest itself runs on the Linux host, so os() can't see Android).
+// The SwiftMail library and its tests depend on neither, so they are unaffected.
+#if os(Windows)
+let buildCLIDemos = false
+#else
 let buildCLIDemos = Context.environment["TARGET_OS_ANDROID"] == nil
+#endif
 
 let package = Package(
     name: "SwiftMail",
