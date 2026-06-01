@@ -1,124 +1,31 @@
 // String+Hostname.swift
-// Hostname and IP-related extensions for String
+// Hostname and IP-related extensions for String.
+//
+// Backed by Foundation's portable `ProcessInfo.hostName` and SwiftCross's
+// `ProcessInfo.localIPAddress` (which enumerates interfaces with getifaddrs on
+// Apple/Linux/Android and uses getsockname on Windows).
 
-import Foundation
-
-#if canImport(Darwin)
-    import Darwin
-#elseif canImport(Glibc)
-    import Glibc
-#elseif canImport(Musl)
-    import Musl
-#elseif canImport(Android)
-    import Android
-#endif
+import SwiftCross
 
 extension String {
-    /**
-     Get the local hostname for EHLO/HELO commands
-     - Returns: The local hostname
-     */
+    /// Get the local hostname for EHLO/HELO commands
+    /// - Returns: The local hostname
     public static var localHostname: String {
-        #if os(macOS) && !targetEnvironment(macCatalyst)
-            // Host is only available on macOS
-            if let hostname = Host.current().name {
-                return hostname
-            }
-        #elseif os(Windows)
-            // WinSock's gethostname() requires a prior WSAStartup(); read the
-            // machine name from the environment to avoid that dependency.
-            if let name = ProcessInfo.processInfo.environment["COMPUTERNAME"], !name.isEmpty {
-                return name
-            }
-        #else
-            // Use system call on Linux/Android and other POSIX platforms
-            var hostname = [CChar](repeating: 0, count: 256) // Linux typically uses 256 as max hostname length.
-            if gethostname(&hostname, hostname.count) == 0 {
-                // Create a string from the C string
-                if let name = String(cString: hostname, encoding: .utf8), !name.isEmpty {
-                    return name
-                }
-            }
-        #endif
+        let hostName = ProcessInfo.processInfo.hostName
+        if !hostName.isEmpty {
+            return hostName
+        }
 
-        // Try to get a local IP address as a fallback
+        // Fall back to a bracketed literal IP address, then a domain-like default.
         if let localIP = String.localIPAddress {
             return "[\(localIP)]"
         }
-
-        // Use a domain-like format as a last resort
         return "swift-mail-client.local"
     }
 
-    /**
-     Get the local IP address
-     - Returns: The local IP address as a string, or nil if not available
-     */
+    /// Get the local IP address
+    /// - Returns: The local IP address as a string, or nil if not available
     public static var localIPAddress: String? {
-        // `getifaddrs`/`ifaddrs` are available on Apple platforms and Linux but
-        // not on Windows, and are not reliably exposed on Android. On those
-        // platforms we skip interface enumeration; callers fall back gracefully.
-        #if canImport(Darwin) || os(Linux)
-        var ifaddr: UnsafeMutablePointer<ifaddrs>?
-
-        guard getifaddrs(&ifaddr) == 0, let firstAddr = ifaddr else {
-            return nil
-        }
-
-        defer {
-            freeifaddrs(ifaddr)
-        }
-
-        // Iterate through linked list of interfaces
-        var currentAddr: UnsafeMutablePointer<ifaddrs>? = firstAddr
-        var foundAddress: String?
-
-        while let addr = currentAddr {
-            let interface = addr.pointee
-
-            // Check for IPv4 or IPv6 interface
-            let addrFamily = interface.ifa_addr.pointee.sa_family
-            if addrFamily == UInt8(AF_INET) || addrFamily == UInt8(AF_INET6) {
-                // Check interface name starts with "en" (Ethernet) or "wl" (WiFi)
-                let name = String(cString: interface.ifa_name)
-                if name.hasPrefix("en") || name.hasPrefix("wl") || name.hasPrefix("eth") {
-                    // Convert interface address to a human readable string
-                    var hostname = [CChar](repeating: 0, count: Int(NI_MAXHOST))
-
-                    #if canImport(Darwin)
-                        let saLen = socklen_t(interface.ifa_addr.pointee.sa_len)
-                    #else
-                        let saLen = addrFamily == UInt8(AF_INET) ?
-                            socklen_t(MemoryLayout<sockaddr_in>.size) :
-                            socklen_t(MemoryLayout<sockaddr_in6>.size)
-                    #endif
-
-                    // Get address info
-                    if getnameinfo(
-                        interface.ifa_addr,
-                        saLen,
-                        &hostname,
-                        socklen_t(hostname.count),
-                        nil,
-                        0,
-                        NI_NUMERICHOST
-                    ) == 0 {
-
-                        if let address = String(cString: hostname, encoding: .utf8) {
-                            foundAddress = address
-                            break
-                        }
-                    }
-                }
-            }
-
-            // Move to next interface
-            currentAddr = interface.ifa_next
-        }
-
-        return foundAddress
-        #else
-        return nil
-        #endif
+        ProcessInfo.processInfo.localIPAddress
     }
 }

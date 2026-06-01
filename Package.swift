@@ -22,11 +22,13 @@ let buildCLIDemos = Context.environment["TARGET_OS_ANDROID"] == nil
 let package = Package(
     name: "SwiftMail",
     platforms: [
+		// Floors raised to satisfy the SwiftCross dependency (iOS 15 / tvOS 15 /
+		// watchOS 8); SwiftCross's own floor is set by its URLSession.bytes shim.
 		.macOS("12.0"),
-		.iOS("14.0"),
-		.tvOS("14.0"),
-		.watchOS("7.0"),
-		.macCatalyst("14.0")
+		.iOS("15.0"),
+		.tvOS("15.0"),
+		.watchOS("8.0"),
+		.macCatalyst("15.0")
     ],
     products: [
         .library(
@@ -43,6 +45,13 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/thebarndog/swift-dotenv", from: "2.1.0"),
 		.package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
+        // Cross-platform Foundation compatibility shims (UTType, charset/IANA
+        // encoding, ProcessInfo.localIPAddress). No release tag yet — pin to
+        // the latest main commit; switch to `from:` once SwiftCross ships one.
+        .package(
+            url: "https://github.com/Cocoanetics/SwiftCross",
+            revision: "0973641f70322f215aa229ceb5dc722199e8a828"
+        ),
         .package(url: "https://github.com/apple/swift-nio", from: "2.0.0"),
         .package(url: "https://github.com/odrobnik/swift-nio-imap", exact: "0.3.2-pre"),
         // Pinned to the upstream commit that merged the Windows-SDK BoringSSL
@@ -66,7 +75,8 @@ let package = Package(
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "NIOIMAP", package: "swift-nio-imap"),
-                .product(name: "OrderedCollections", package: "swift-collections")
+                .product(name: "OrderedCollections", package: "swift-collections"),
+                .product(name: "SwiftCross", package: "SwiftCross")
             ]
         )
     ] + (buildCLIDemos ? [

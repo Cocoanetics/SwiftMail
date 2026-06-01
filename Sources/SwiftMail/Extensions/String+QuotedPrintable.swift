@@ -1,7 +1,4 @@
 import Foundation
-#if os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS)
-    import CoreFoundation
-#endif
 
 /// Internal helper describing a contiguous run of MIME encoded-word matches that
 /// can be merged before being decoded with the same charset/encoding.
