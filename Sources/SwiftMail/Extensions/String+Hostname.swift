@@ -11,8 +11,6 @@ import Foundation
     import Musl
 #elseif canImport(Android)
     import Android
-#elseif canImport(Bionic)
-    import Bionic
 #endif
 
 extension String {
