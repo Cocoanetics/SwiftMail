@@ -64,22 +64,15 @@ jobs:
           swift-version: "6.3.1"
       - name: Verify Swift version
         run: swift --version
-      # Three defines are needed to compile swift-nio-ssl's BoringSSL against
-      # the runner's Windows SDK, passed to both the C and C++ clang drivers.
-      # Together they suppress only the collision-prone parts of <windows.h>
-      # while leaving the rest intact (so CNIOWindows/shim.c keeps the
-      # transitive <stdlib.h> it needs for abort() — WIN32_LEAN_AND_MEAN trims
-      # too much and breaks it):
-      #   _WINSOCKAPI_ — skip the legacy <winsock.h> whose sockaddr / fd_set /
-      #     WSAData collide with the <winsock2.h> BoringSSL includes.
-      #   NOMINMAX — don't define min()/max() as macros; they break BoringSSL's
-      #     std::numeric_limits<>::max().
-      #   NOCRYPT — don't pull in <wincrypt.h>, which #defines X509_NAME /
-      #     X509_EXTENSIONS / X509_CERT_PAIR and collides with BoringSSL's types.
+      # The BoringSSL Windows-SDK header workarounds (_WINSOCKAPI_/NOMINMAX/
+      # NOCRYPT) live in the swift-nio-ssl fork's CNIOBoringSSL target settings
+      # (see Package.swift), not here — passing them globally via -Xcc would
+      # also reach the Swift module importer and mis-import IPPROTO, breaking
+      # swift-nio's NIOPosix.
       - name: Build (Windows)
-        run: swift build --build-tests -v -Xcc -D_WINSOCKAPI_ -Xcc -DNOMINMAX -Xcc -DNOCRYPT -Xcxx -D_WINSOCKAPI_ -Xcxx -DNOMINMAX -Xcxx -DNOCRYPT
+        run: swift build --build-tests -v
       - name: Test (Windows)
-        run: swift test -v --skip-build -Xcc -D_WINSOCKAPI_ -Xcc -DNOMINMAX -Xcc -DNOCRYPT -Xcxx -D_WINSOCKAPI_ -Xcxx -DNOMINMAX -Xcxx -DNOCRYPT
+        run: swift test -v --skip-build
 
   build-android:
     # Cross-build the SwiftMail library for Android via skiptools/swift-android-action.

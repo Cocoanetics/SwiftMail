@@ -45,7 +45,11 @@ let package = Package(
 		.package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-nio", from: "2.0.0"),
         .package(url: "https://github.com/odrobnik/swift-nio-imap", exact: "0.3.1-pre"),
-        .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.0.0"),
+        // Fork of apple/swift-nio-ssl 2.36.0 that scopes the Windows-SDK
+        // BoringSSL header workarounds (_WINSOCKAPI_/NOMINMAX/NOCRYPT) to the
+        // CNIOBoringSSL target. Needed to cross-compile on the windows-latest
+        // runner; identical to upstream on every other platform.
+        .package(url: "https://github.com/odrobnik/swift-nio-ssl", exact: "2.36.0-winsdk"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-testing", exact: "0.12.0"),
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
