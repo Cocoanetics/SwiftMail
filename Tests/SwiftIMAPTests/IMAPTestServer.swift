@@ -4,6 +4,10 @@
 // on iOS and Linux). Keeping it as one file with the structural rules disabled
 // is the lower-risk choice.
 // swiftlint:disable file_length type_body_length function_body_length cyclomatic_complexity
+// Raw POSIX sockets, DispatchSource and sockaddr_in.sin_len are only available
+// on macOS/Linux; Windows and Android exclude this fake server entirely (the
+// integration tests that use it are themselves gated to `#if os(macOS)`).
+#if os(macOS) || os(Linux)
 import Foundation
 #if canImport(Glibc)
     import Glibc
@@ -544,4 +548,5 @@ final class IMAPTestServer {
         )
     }
 }
+#endif // os(macOS) || os(Linux)
 // swiftlint:enable file_length type_body_length function_body_length cyclomatic_complexity

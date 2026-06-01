@@ -3,6 +3,12 @@
 
 import PackageDescription
 
+// The Android CI toolchain (skiptools/swift-android-action) sets TARGET_OS_ANDROID=1.
+// The ArgumentParser-based CLI demos hit a spurious explicit-module dependency
+// cycle when cross-compiled for Android, so they are dropped from the Android
+// build. They remain available on every other platform (macOS, iOS, Linux, Windows).
+let buildCLIDemos = Context.environment["TARGET_OS_ANDROID"] == nil
+
 let package = Package(
     name: "SwiftMail",
     platforms: [
@@ -15,14 +21,15 @@ let package = Package(
     products: [
         .library(
             name: "SwiftMail",
-            targets: ["SwiftMail"]),
+            targets: ["SwiftMail"])
+    ] + (buildCLIDemos ? [
         .executable(
             name: "SwiftIMAPCLI",
             targets: ["SwiftIMAPCLI"]),
         .executable(
             name: "SwiftSMTPCLI",
             targets: ["SwiftSMTPCLI"])
-    ],
+    ] : []),
     dependencies: [
         .package(url: "https://github.com/thebarndog/swift-dotenv", from: "2.1.0"),
 		.package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
@@ -32,7 +39,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-testing", exact: "0.12.0"),
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0")
     ],
     targets: [
         .target(
@@ -42,15 +49,16 @@ let package = Package(
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "NIOIMAP", package: "swift-nio-imap"),
-                .product(name: "OrderedCollections", package: "swift-collections"),
+                .product(name: "OrderedCollections", package: "swift-collections")
             ]
-        ),
+        )
+    ] + (buildCLIDemos ? [
         .executableTarget(
             name: "SwiftIMAPCLI",
             dependencies: [
                 "SwiftMail",
                 .product(name: "SwiftDotenv", package: "swift-dotenv"),
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
 			path: "Demos/SwiftIMAPCLI"
         ),
@@ -58,10 +66,11 @@ let package = Package(
             name: "SwiftSMTPCLI",
             dependencies: [
                 "SwiftMail",
-                .product(name: "SwiftDotenv", package: "swift-dotenv"),
+                .product(name: "SwiftDotenv", package: "swift-dotenv")
             ],
 			path: "Demos/SwiftSMTPCLI"
-        ),
+        )
+    ] : []) + [
         .testTarget(
             name: "SwiftIMAPTests",
             dependencies: [
@@ -90,6 +99,6 @@ let package = Package(
                 "SwiftMail",
                 .product(name: "Testing", package: "swift-testing")
             ]
-        ),
+        )
     ]
 )

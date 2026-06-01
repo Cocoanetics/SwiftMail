@@ -9,7 +9,7 @@ on:
       - main
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  
+
 jobs:
 
   build-macos:
@@ -45,3 +45,45 @@ jobs:
         run: swift build --build-tests -v
       - name: Test (Linux)
         run: swift test -v --skip-build
+
+  build-windows:
+    # Full Windows build + test. No vcpkg / system C libraries are needed:
+    # the only native dependency is BoringSSL, which swift-nio-ssl vendors and
+    # builds itself. Compiling BoringSSL from scratch is the slow part, hence
+    # the generous timeout.
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - name: Setup Swift
+        uses: SwiftyLab/setup-swift@latest
+        with:
+          swift-version: "6.1.2"
+      - name: Verify Swift version
+        run: swift --version
+      - name: Build (Windows)
+        run: swift build --build-tests -v
+      - name: Test (Windows)
+        run: swift test -v --skip-build
+
+  build-android:
+    # Cross-build the library + test suites and run them on an x86_64 emulator
+    # via skiptools/swift-android-action. No `container:` — the emulator needs
+    # nested KVM, only available on the bare ubuntu runner image.
+    #
+    # Package.swift drops the ArgumentParser-based CLI demos on Android (keyed
+    # on the TARGET_OS_ANDROID env the action sets) to avoid a spurious
+    # explicit-module dependency cycle; the library and its tests are
+    # unaffected.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - name: Build & test (Android emulator)
+        uses: skiptools/swift-android-action@v2
+        with:
+          # Pin to a full patch version: the floating "6.3" key can drift the
+          # cached host toolchain ahead of the SDK and break module imports.
+          swift-version: "6.3.2"
+          # SDK + NDK + emulator overrun the runner's ~14 GiB free space.
+          free-disk-space: true
