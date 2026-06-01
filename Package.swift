@@ -48,10 +48,10 @@ let package = Package(
         // Cross-platform Foundation compatibility shims (UTType, charset/IANA
         // encoding, ProcessInfo.localIPAddress). No release tag yet — pinned to
         // the commit that gives UTType its comprehensive extension/MIME table
-        // (Cocoanetics/SwiftCross#2); switch to `from:` once SwiftCross ships a release.
+        // (merged in Cocoanetics/SwiftCross#2); switch to `from:` once SwiftCross ships a release.
         .package(
             url: "https://github.com/Cocoanetics/SwiftCross",
-            revision: "5e3266e381756550b8d2bcfd6638fec9ee16062f"
+            revision: "63fd355925644600540d9e3b29cd0de64dd2e1c3"
         ),
         .package(url: "https://github.com/apple/swift-nio", from: "2.0.0"),
         .package(url: "https://github.com/odrobnik/swift-nio-imap", exact: "0.3.2-pre"),

@@ -3,6 +3,7 @@
 // off from the main quoted-printable file.
 
 import Foundation
+import SwiftCross
 
 extension String {
     /// Decode a MIME-encoded header string
@@ -127,7 +128,7 @@ extension String {
         return MIMEEncodedWordParts(
             normalizedCharset: charset.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
             encoding: String(source[encodingRange]).uppercased(),
-            stringEncoding: String.encodingFromCharset(charset),
+            stringEncoding: String.Encoding(ianaCharsetName: charset) ?? .utf8,
             encodedText: String(source[textRange]),
             originalWord: String(source[range]),
             upperBound: range.upperBound,
@@ -171,7 +172,7 @@ extension String {
         if let range = self.range(of: contentTypePattern, options: .regularExpression, range: nil, locale: nil),
            let charsetRange = self[range].range(of: "charset=([^\\s;\"']+)", options: .regularExpression) {
             let charsetString = self[charsetRange].replacingOccurrences(of: "charset=", with: "")
-            return String.encodingFromCharset(charsetString)
+            return String.Encoding(ianaCharsetName: charsetString) ?? .utf8
         }
 
         // Look for meta tag with charset
@@ -179,7 +180,7 @@ extension String {
         if let range = self.range(of: metaPattern, options: .regularExpression, range: nil, locale: nil),
            let charsetRange = self[range].range(of: "charset=([^\\s;\"'/>]+)", options: .regularExpression) {
             let charsetString = self[charsetRange].replacingOccurrences(of: "charset=", with: "")
-            return String.encodingFromCharset(charsetString)
+            return String.Encoding(ianaCharsetName: charsetString) ?? .utf8
         }
 
         // Default to UTF-8
@@ -216,7 +217,7 @@ extension String {
                             .trimmingCharacters(in: .whitespacesAndNewlines)
                             .replacingOccurrences(of: "\"", with: "")
                             .replacingOccurrences(of: "'", with: "")
-                        contentEncoding = String.encodingFromCharset(charsetString)
+                        contentEncoding = String.Encoding(ianaCharsetName: charsetString) ?? .utf8
                     }
                 }
 

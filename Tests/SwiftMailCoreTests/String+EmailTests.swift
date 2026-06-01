@@ -6,6 +6,7 @@ import Testing
 
 // Use existing tag definitions
 extension Tag {
+    @Tag static var core: Self
     @Tag static var validation: Self
     @Tag static var security: Self
 }

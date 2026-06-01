@@ -130,7 +130,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Cocoanetics/SwiftCross",
       "state" : {
-        "revision" : "5e3266e381756550b8d2bcfd6638fec9ee16062f"
+        "revision" : "63fd355925644600540d9e3b29cd0de64dd2e1c3"
       }
     }
   ],

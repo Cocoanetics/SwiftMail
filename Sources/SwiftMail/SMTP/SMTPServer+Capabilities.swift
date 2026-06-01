@@ -19,7 +19,7 @@ extension SMTPServer {
      */
     @discardableResult
     public func fetchCapabilities() async throws -> [String] {
-        let command = EHLOCommand(hostname: String.localHostname)
+        let command = EHLOCommand(hostname: ProcessInfo.processInfo.hostName)
 
         do {
             let response = try await executeCommand(command)
