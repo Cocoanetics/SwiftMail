@@ -2,6 +2,7 @@
 // Structure to hold information about a message part
 
 import Foundation
+import SwiftCross
 
 /// A part of an email message
 public struct MessagePart: Sendable {
@@ -100,7 +101,7 @@ public struct MessagePart: Sendable {
             // Strip parameters (e.g., "; charset=utf-8") before MIME lookup.
             let baseType = contentType.components(separatedBy: ";").first?
                 .trimmingCharacters(in: .whitespaces) ?? contentType
-            let fileExtension = String.fileExtension(for: baseType) ?? "dat"
+            let fileExtension = UTType(mimeType: baseType)?.preferredFilenameExtension ?? "dat"
 
             return "part_\(section.description.replacingOccurrences(of: ".", with: "_")).\(fileExtension)"
         }
@@ -128,9 +129,11 @@ public struct MessagePart: Sendable {
         }
 
         // Decode bytes exactly once, preferring the declared charset.
-        if let declaredCharset,
-           let text = String(data: transferDecodedData, encoding: String.encodingFromCharset(declaredCharset)) {
-            return text
+        if let declaredCharset {
+            let encoding = String.Encoding(ianaCharsetName: declaredCharset) ?? .utf8
+            if let text = String(data: transferDecodedData, encoding: encoding) {
+                return text
+            }
         }
 
         // Fallbacks for malformed/unknown charset labels in real-world mail.

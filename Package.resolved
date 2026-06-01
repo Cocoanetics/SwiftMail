@@ -124,6 +124,14 @@
         "revision" : "c55848b2aa4b29a4df542b235dfdd792a6fbe341",
         "version" : "0.12.0"
       }
+    },
+    {
+      "identity" : "swiftcross",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Cocoanetics/SwiftCross",
+      "state" : {
+        "revision" : "63fd355925644600540d9e3b29cd0de64dd2e1c3"
+      }
     }
   ],
   "version" : 2

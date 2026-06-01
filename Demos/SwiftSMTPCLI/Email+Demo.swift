@@ -43,7 +43,7 @@ extension Email {
         email.attachments = [
             Attachment(
                 filename: logoFilename,
-                mimeType: String.mimeType(for: "svg"),
+                mimeType: "image/svg+xml",
                 data: logoData,
                 contentID: logoContentID,
                 isInline: true
