@@ -84,10 +84,9 @@
     {
       "identity" : "swift-nio-ssl",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/odrobnik/swift-nio-ssl",
+      "location" : "https://github.com/apple/swift-nio-ssl",
       "state" : {
-        "revision" : "99ae158e977ac6ba4960e147408426a6b035b692",
-        "version" : "2.36.0-winsdk"
+        "revision" : "ae6b517f53289d72b7b0d4495b4609d25065deed"
       }
     },
     {
