@@ -64,24 +64,35 @@ jobs:
           swift-version: "6.3.1"
       - name: Verify Swift version
         run: swift --version
+      # WIN32_LEAN_AND_MEAN stops <windows.h> from pulling in the legacy
+      # <winsock.h>, which otherwise collides with the <winsock2.h> that
+      # swift-nio-ssl's BoringSSL includes (redefinition of sockaddr / fd_set /
+      # WSAData ...). Passed to both the C and C++ clang drivers so it reaches
+      # BoringSSL's .cc sources.
       - name: Build (Windows)
-        run: swift build --build-tests -v
+        run: swift build --build-tests -v -Xcc -DWIN32_LEAN_AND_MEAN -Xcxx -DWIN32_LEAN_AND_MEAN
       - name: Test (Windows)
-        run: swift test -v --skip-build
+        run: swift test -v --skip-build -Xcc -DWIN32_LEAN_AND_MEAN -Xcxx -DWIN32_LEAN_AND_MEAN
 
   build-android:
     # Cross-build the SwiftMail library for Android via skiptools/swift-android-action.
     #
-    # Build-only (no test run): the package pins swift-testing to exactly 0.12.0,
-    # whose FileHandle.swift does not compile against Bionic (unwrapped optional
-    # pointers). Since that pin is shared by every test target, we validate that
-    # the library itself cross-compiles for Android rather than the test suites.
+    # EXPERIMENTAL / non-blocking (continue-on-error) — Android does not build
+    # yet because of two upstream dependency gaps, neither in SwiftMail itself:
+    #   1. swift-nio-imap's per-file libc-import guards list only
+    #      Darwin/Glibc/Musl/Windows; on the Android SDK canImport(Glibc) is
+    #      false, so every grammar file falls into `#else let badOS = …` and
+    #      the module fails with "invalid redeclaration of 'badOS'". Needs
+    #      canImport(Android)/canImport(Bionic) added to the dependency.
+    #   2. swift-testing 0.12.0 (an exact pin shared by all test targets) does
+    #      not compile against Bionic — hence build-only here once (1) is fixed.
     #
     # Package.swift also drops the ArgumentParser-based CLI demos on Android
     # (keyed on the TARGET_OS_ANDROID env the action sets) to avoid a spurious
     # explicit-module dependency cycle.
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - name: Build (Android)
