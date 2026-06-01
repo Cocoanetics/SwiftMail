@@ -64,15 +64,16 @@ jobs:
           swift-version: "6.3.1"
       - name: Verify Swift version
         run: swift --version
-      # WIN32_LEAN_AND_MEAN stops <windows.h> from pulling in the legacy
-      # <winsock.h>, which otherwise collides with the <winsock2.h> that
-      # swift-nio-ssl's BoringSSL includes (redefinition of sockaddr / fd_set /
-      # WSAData ...). Passed to both the C and C++ clang drivers so it reaches
-      # BoringSSL's .cc sources.
+      # Pre-defining _WINSOCKAPI_ makes <windows.h> skip the legacy <winsock.h>
+      # whose sockaddr / fd_set / WSAData collide with the <winsock2.h> that
+      # swift-nio-ssl's BoringSSL includes. Unlike WIN32_LEAN_AND_MEAN it does
+      # NOT trim the rest of <windows.h>, so CNIOWindows/shim.c still gets the
+      # transitive <stdlib.h> it needs for abort(). Passed to both the C and
+      # C++ clang drivers so it reaches BoringSSL's .cc sources.
       - name: Build (Windows)
-        run: swift build --build-tests -v -Xcc -DWIN32_LEAN_AND_MEAN -Xcxx -DWIN32_LEAN_AND_MEAN
+        run: swift build --build-tests -v -Xcc -D_WINSOCKAPI_ -Xcxx -D_WINSOCKAPI_
       - name: Test (Windows)
-        run: swift test -v --skip-build -Xcc -DWIN32_LEAN_AND_MEAN -Xcxx -DWIN32_LEAN_AND_MEAN
+        run: swift test -v --skip-build -Xcc -D_WINSOCKAPI_ -Xcxx -D_WINSOCKAPI_
 
   build-android:
     # Cross-build the SwiftMail library for Android via skiptools/swift-android-action.
