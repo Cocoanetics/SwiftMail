@@ -47,12 +47,25 @@ jobs:
         run: swift test -v --skip-build
 
   build-windows:
-    # Full Windows build + test. No vcpkg / system C libraries are needed:
-    # the only native dependency is BoringSSL, which swift-nio-ssl vendors and
-    # builds itself. Compiling BoringSSL from scratch is the slow part, hence
-    # the generous timeout.
+    # Windows build + test. No vcpkg / system C libraries are needed: the only
+    # native dependency is BoringSSL, which swift-nio-ssl vendors and builds
+    # itself (compiling it from scratch is the slow part, hence the timeout).
+    #
+    # EXPERIMENTAL / non-blocking (continue-on-error). SwiftMail's own code,
+    # BoringSSL (via the swift-nio-ssl fork's per-target SDK defines) and the
+    # CLI-demo exclusion are all resolved; the remaining blocker is upstream in
+    # swift-nio core: NIOPosix does not compile on the windows-latest runner
+    # (Swift 6.3.1 + Windows SDK 10.0.26100) —
+    #   • System.swift: CInt(IPPROTO_UDP) fails because IPPROTO imports as an
+    #     enum rather than an Int on this SDK, and
+    #   • Thread.swift/ThreadWindows.swift: ThreadHandle = HANDLE =
+    #     UnsafeMutableRawPointer does not satisfy NIOThread's `Sendable`
+    #     requirement under Swift 6 strict concurrency.
+    # Both persist across swift-nio 2.95–2.100. This job will go green once
+    # swift-nio fixes its Windows build; until then it is left non-blocking.
     runs-on: windows-latest
     timeout-minutes: 45
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - name: Setup Swift
@@ -83,15 +96,11 @@ jobs:
     # "invalid redeclaration of 'badOS'" blocker is fixed by depending on
     # swift-nio-imap 0.3.1-pre, which adds Android/Bionic to its libc guards.
     #
-    # Kept non-blocking (continue-on-error) for now while the Android build is
-    # still being proven out; flip to a required job once it is reliably green.
-    #
     # Package.swift also drops the ArgumentParser-based CLI demos on Android
     # (keyed on the TARGET_OS_ANDROID env the action sets) to avoid a spurious
     # explicit-module dependency cycle.
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v6
       - name: Build (Android)
