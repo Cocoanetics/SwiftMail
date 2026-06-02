@@ -54,7 +54,14 @@ let package = Package(
             revision: "63fd355925644600540d9e3b29cd0de64dd2e1c3"
         ),
         .package(url: "https://github.com/apple/swift-nio", from: "2.0.0"),
-        .package(url: "https://github.com/odrobnik/swift-nio-imap", exact: "0.3.2-pre"),
+        // Upstream now carries the Android/Bionic libc-guard fix for NIOIMAPCore
+        // (apple/swift-nio-imap#826), so depend on it directly instead of a fork.
+        // No release contains it yet (latest tag is 0.2.0) — pin the merge
+        // revision; switch to `from:` once a release ships.
+        .package(
+            url: "https://github.com/apple/swift-nio-imap",
+            revision: "bcf875610ca56dfd7bae869fa19ca3149c075908"
+        ),
         // Pinned to the upstream commit that merged the Windows-SDK BoringSSL
         // header workarounds (_WINSOCKAPI_/NOMINMAX/NOCRYPT scoped to the
         // CNIOBoringSSL target, apple/swift-nio-ssl#585). Switch to a normal
