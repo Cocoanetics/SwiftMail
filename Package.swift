@@ -46,13 +46,8 @@ let package = Package(
         .package(url: "https://github.com/thebarndog/swift-dotenv", from: "2.1.0"),
 		.package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
         // Cross-platform Foundation compatibility shims (UTType, charset/IANA
-        // encoding, ProcessInfo.localIPAddress). No release tag yet — pinned to
-        // the commit that gives UTType its comprehensive extension/MIME table
-        // (merged in Cocoanetics/SwiftCross#2); switch to `from:` once SwiftCross ships a release.
-        .package(
-            url: "https://github.com/Cocoanetics/SwiftCross",
-            revision: "63fd355925644600540d9e3b29cd0de64dd2e1c3"
-        ),
+        // encoding, ProcessInfo.localIPAddress).
+        .package(url: "https://github.com/Cocoanetics/SwiftCross", from: "1.2.0"),
         .package(url: "https://github.com/apple/swift-nio", from: "2.0.0"),
         // Upstream now carries the Android/Bionic libc-guard fix for NIOIMAPCore
         // (apple/swift-nio-imap#826), so depend on it directly instead of a fork.
