@@ -67,7 +67,11 @@ let package = Package(
             revision: "407d82d5b6cc00e1c3fb83a81b1539b70c788c5e"
         ),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-testing", exact: "0.12.0"),
+        // swift-testing releases track toolchain versions: 6.3.2's manifest is
+        // swift-tools-version 6.2, so every platform that compiles the test
+        // targets needs Swift 6.2+. The macOS CI job selects Xcode 26 for that
+        // reason (Linux/Android/Windows runners are already on Swift 6.3.x).
+        .package(url: "https://github.com/apple/swift-testing", exact: "6.3.2"),
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0")
     ],
