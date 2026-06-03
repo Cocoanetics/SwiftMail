@@ -18,6 +18,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+      # swift-testing 6.3.2 (shared by the test targets) has a swift-tools-version
+      # 6.2 manifest, which the runner's default Xcode (Swift 6.1.2) cannot
+      # resolve. Xcode 26.0 ships Swift 6.2 — same version already used by the
+      # iOS job, so it is known to be available on the runner.
+      - name: Select Xcode 26.0
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "26.0"
       - name: Verify Swift version
         run: swift --version
       - name: Build (macOS)
@@ -92,11 +100,11 @@ jobs:
   build-android:
     # Cross-build the SwiftMail library for Android via skiptools/swift-android-action.
     #
-    # Build-only (no test run): swift-testing 0.12.0 — an exact pin shared by
-    # every test target — does not compile against Bionic, so we validate that
-    # the library cross-compiles rather than the test suites. The earlier
-    # "invalid redeclaration of 'badOS'" blocker is fixed by depending on
-    # swift-nio-imap 0.3.1-pre, which adds Android/Bionic to its libc guards.
+    # Build-only (no test run): the test targets depend on swift-testing, whose
+    # Android compatibility is not validated here, so we check that the library
+    # cross-compiles rather than the test suites. The earlier "invalid
+    # redeclaration of 'badOS'" blocker is fixed upstream by apple/swift-nio-imap
+    # #826 (commit bcf8756), which adds Android/Bionic to NIOIMAPCore's libc guards.
     #
     # Package.swift also drops the ArgumentParser-based CLI demos on Android
     # (keyed on the TARGET_OS_ANDROID env the action sets) to avoid a spurious
@@ -113,7 +121,7 @@ jobs:
           swift-version: "6.3.2"
           # SDK + NDK overrun the runner's ~14 GiB free space.
           free-disk-space: true
-          # Skip building/running the test targets (swift-testing 0.12.0 is not
-          # Android-compatible); build the library + its dependencies only.
+          # Skip building/running the test targets (swift-testing's Android
+          # compatibility is unverified); build the library + its deps only.
           build-tests: false
           run-tests: false

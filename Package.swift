@@ -57,16 +57,21 @@ let package = Package(
             url: "https://github.com/apple/swift-nio-imap",
             revision: "bcf875610ca56dfd7bae869fa19ca3149c075908"
         ),
-        // Pinned to the upstream commit that merged the Windows-SDK BoringSSL
-        // header workarounds (_WINSOCKAPI_/NOMINMAX/NOCRYPT scoped to the
-        // CNIOBoringSSL target, apple/swift-nio-ssl#585). Switch to a normal
-        // `from:` once a release ships with that fix.
+        // Pinned to the latest upstream main, which carries the Windows-SDK
+        // BoringSSL header workarounds (_WINSOCKAPI_/NOMINMAX/NOCRYPT scoped to
+        // the CNIOBoringSSL target, apple/swift-nio-ssl#585). No release contains
+        // that fix yet (latest tag is 2.37.0) — switch to a normal `from:` once
+        // one ships.
         .package(
             url: "https://github.com/apple/swift-nio-ssl",
-            revision: "ae6b517f53289d72b7b0d4495b4609d25065deed"
+            revision: "407d82d5b6cc00e1c3fb83a81b1539b70c788c5e"
         ),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
-        .package(url: "https://github.com/apple/swift-testing", exact: "0.12.0"),
+        // swift-testing releases track toolchain versions: 6.3.2's manifest is
+        // swift-tools-version 6.2, so every platform that compiles the test
+        // targets needs Swift 6.2+. The macOS CI job selects Xcode 26 for that
+        // reason (Linux/Android/Windows runners are already on Swift 6.3.x).
+        .package(url: "https://github.com/apple/swift-testing", exact: "6.3.2"),
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0")
     ],

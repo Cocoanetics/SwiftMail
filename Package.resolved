@@ -5,8 +5,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-argument-parser",
       "state" : {
-        "revision" : "c5d11a805e765f52ba34ec7284bd4fcd6ba68615",
-        "version" : "1.7.0"
+        "revision" : "ca37474853a4b5f59a22c74bfdd449b1f6bc4cc2",
+        "version" : "1.8.1"
       }
     },
     {
@@ -23,8 +23,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-collections.git",
       "state" : {
-        "revision" : "8d9834a6189db730f6264db7556a7ffb751e99ee",
-        "version" : "1.4.0"
+        "revision" : "fea17c02d767f46b23070fdfdacc28a03a39232a",
+        "version" : "1.5.1"
       }
     },
     {
@@ -32,8 +32,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-docc-plugin",
       "state" : {
-        "revision" : "e977f65879f82b375a044c8837597f690c067da6",
-        "version" : "1.4.6"
+        "revision" : "647c708be89f834fa6a6d4945442793a77ddf5b6",
+        "version" : "1.5.0"
       }
     },
     {
@@ -59,8 +59,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
       "state" : {
-        "revision" : "bbd81b6725ae874c69e9b8c8804d462356b55523",
-        "version" : "1.10.1"
+        "revision" : "2aed77ae5ec9a86d8fe42c12275e4c2653a286ee",
+        "version" : "1.13.1"
       }
     },
     {
@@ -85,7 +85,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio-ssl",
       "state" : {
-        "revision" : "ae6b517f53289d72b7b0d4495b4609d25065deed"
+        "revision" : "407d82d5b6cc00e1c3fb83a81b1539b70c788c5e"
       }
     },
     {
@@ -102,8 +102,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-syntax.git",
       "state" : {
-        "revision" : "0687f71944021d616d34d922343dcef086855920",
-        "version" : "600.0.1"
+        "revision" : "9de99a78f099e59caf2b2beec65a4c45d54b2081",
+        "version" : "603.0.1"
       }
     },
     {
@@ -120,8 +120,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-testing",
       "state" : {
-        "revision" : "c55848b2aa4b29a4df542b235dfdd792a6fbe341",
-        "version" : "0.12.0"
+        "revision" : "70eff261d7f462cad1fff51e05bcc74aa0b0f420",
+        "version" : "6.3.2"
       }
     },
     {
