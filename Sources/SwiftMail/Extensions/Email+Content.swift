@@ -107,6 +107,23 @@ extension Email {
         let hasInline = !self.inlineAttachments.isEmpty
         let hasRegular = !self.regularAttachments.isEmpty
 
+        // iMIP invite shortcut (RFC 6047 §2.2): when the message carries exactly one
+        // text/calendar part and nothing else, ship it as multipart/alternative —
+        // text/plain body alternative + the ICS. Mail clients (Apple Mail, Outlook,
+        // Gmail, iCloud) key their Accept/Decline UI off this shape;
+        // multipart/mixed with the same parts does not trigger it.
+        if !hasHtmlBody && !hasInline,
+           self.regularAttachments.count == 1,
+           let icsText = calendarInviteText(for: self.regularAttachments[0]) {
+            writeCalendarAlternative(
+                context: context,
+                invite: self.regularAttachments[0],
+                icsText: icsText,
+                into: &content
+            )
+            return
+        }
+
         if hasRegular {
             writeMultipartMixed(context: context, hasHtmlBody: hasHtmlBody, hasInline: hasInline, into: &content)
         } else if hasHtmlBody && hasInline {
@@ -156,11 +173,70 @@ extension Email {
         for attachment in self.regularAttachments {
             content += "--\(context.mainBoundary)\r\n"
             content += "Content-Type: \(attachment.mimeType)\r\n"
-            content += "Content-Transfer-Encoding: base64\r\n"
-            content += "Content-Disposition: attachment; filename=\"\(attachment.filename)\"\r\n\r\n"
-            content += encodedAttachmentBody(attachment.data) + "\r\n\r\n"
+            if let icsText = calendarInviteText(for: attachment) {
+                // RFC 6047 iMIP: calendar invites need an inline (or absent)
+                // Content-Disposition for clients to render the Accept/Decline UI.
+                // base64 encoding also breaks recognition in some clients — ship
+                // the ICS verbatim as 7bit text. The 7bit label follows RFC 6047's
+                // examples; clients tolerate UTF-8 octets here, and re-encoding is
+                // exactly what breaks invite recognition.
+                content += "Content-Transfer-Encoding: 7bit\r\n"
+                content += "Content-Disposition: inline\r\n\r\n"
+                content += terminatedICSBody(icsText)
+            } else {
+                content += "Content-Transfer-Encoding: base64\r\n"
+                content += "Content-Disposition: attachment; filename=\"\(attachment.filename)\"\r\n\r\n"
+                content += encodedAttachmentBody(attachment.data) + "\r\n\r\n"
+            }
         }
         content += "--\(context.mainBoundary)--\r\n"
+    }
+
+    /// Returns the ICS text, normalized to CRLF line endings, when the attachment
+    /// is a text/calendar part whose data is valid UTF-8 (a byte-level check —
+    /// the declared charset parameter is not consulted); `nil` routes the
+    /// attachment through the regular base64 path.
+    private func calendarInviteText(for attachment: Attachment) -> String? {
+        let mimeType = attachment.mimeType.lowercased()
+        guard mimeType == "text/calendar" || mimeType.hasPrefix("text/calendar;") else { return nil }
+        guard let icsText = String(data: attachment.data, encoding: .utf8) else { return nil }
+        // SMTP DATA requires CRLF-only line endings (RFC 5321 §2.3.8) and the
+        // send path's dot-stuffing assumes canonical CRLF framing, while ICS
+        // producers commonly emit bare LF — normalize before shipping verbatim.
+        return icsText
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\n", with: "\r\n")
+    }
+
+    /// ICS body terminated so the following boundary marker starts on its own line.
+    private func terminatedICSBody(_ icsText: String) -> String {
+        icsText.hasSuffix("\r\n") ? icsText + "\r\n" : icsText + "\r\n\r\n"
+    }
+
+    /// multipart/alternative envelope for a single-invite message: the text/plain
+    /// body followed by the text/calendar part as 7bit text without an attachment
+    /// disposition, per RFC 6047 iMIP transport conventions.
+    private func writeCalendarAlternative(
+        context: MIMEBuildContext,
+        invite: Attachment,
+        icsText: String,
+        into content: inout String
+    ) {
+        content += "Content-Type: multipart/alternative; boundary=\"\(context.altBoundary)\"\r\n\r\n"
+        content += "This is a multi-part message in MIME format.\r\n\r\n"
+
+        content += "--\(context.altBoundary)\r\n"
+        content += "Content-Type: text/plain; charset=UTF-8\r\n"
+        content += "Content-Transfer-Encoding: \(context.textEncoding)\r\n\r\n"
+        content += "\(context.textBody)\r\n\r\n"
+
+        content += "--\(context.altBoundary)\r\n"
+        content += "Content-Type: \(invite.mimeType)\r\n"
+        content += "Content-Transfer-Encoding: 7bit\r\n\r\n"
+        content += terminatedICSBody(icsText)
+
+        content += "--\(context.altBoundary)--\r\n"
     }
 
     /// multipart/related body: a multipart/alternative bodies section followed by
