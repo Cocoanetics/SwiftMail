@@ -307,7 +307,8 @@ struct SMTPTests {
     // clients render their Accept/Decline UI.
     @Test
     func testConstructContentFormatsSingleCalendarInviteAsAlternative() throws {
-        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\n"
+            + "UID:imip-test-1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
         let invite = Attachment(
             filename: "invite.ics",
             mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
@@ -325,7 +326,10 @@ struct SMTPTests {
 
         #expect(content.contains("Content-Type: multipart/alternative; boundary="))
         #expect(!content.contains("Content-Type: multipart/mixed"))
-        #expect(content.contains("Content-Type: text/calendar; method=REQUEST; charset=UTF-8\r\nContent-Transfer-Encoding: 7bit\r\n\r\n" + ics))
+        #expect(content.contains(
+            "Content-Type: text/calendar; method=REQUEST; charset=UTF-8\r\n"
+                + "Content-Transfer-Encoding: 7bit\r\n\r\n" + ics
+        ))
         #expect(!content.contains("Content-Disposition: attachment"))
     }
 
@@ -333,7 +337,8 @@ struct SMTPTests {
     // shipped inline as 7bit text while other attachments stay base64.
     @Test
     func testConstructContentShipsCalendarAttachmentInlineInMixedMessage() throws {
-        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-2\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\n"
+            + "UID:imip-test-2\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
         let invite = Attachment(
             filename: "invite.ics",
             mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
@@ -357,7 +362,10 @@ struct SMTPTests {
         #expect(content.contains("Content-Type: multipart/mixed; boundary="))
         let calendarPart = try #require(content.range(of: "Content-Type: text/calendar; method=REQUEST; charset=UTF-8"))
         let calendarTail = String(content[calendarPart.lowerBound...])
-        #expect(calendarTail.contains("Content-Transfer-Encoding: 7bit\r\nContent-Disposition: inline; filename=\"invite.ics\"\r\n\r\n" + ics))
+        #expect(calendarTail.contains(
+            "Content-Transfer-Encoding: 7bit\r\n"
+                + "Content-Disposition: inline; filename=\"invite.ics\"\r\n\r\n" + ics
+        ))
         #expect(content.contains("Content-Disposition: attachment; filename=\"report.pdf\""))
     }
 
@@ -423,7 +431,8 @@ struct SMTPTests {
     // ICS ships verbatim under an honest `8bit` label — not `7bit`, not base64.
     @Test
     func testConstructContentLabelsNonASCIICalendarAs8BitWhenServerSupports8BitMIME() throws {
-        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-5\r\nSUMMARY:Besprechung mit Herrn Müller\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-5\r\n"
+            + "SUMMARY:Besprechung mit Herrn Müller\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
         let invite = Attachment(
             filename: "invite.ics",
             mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
@@ -440,7 +449,10 @@ struct SMTPTests {
         let content = email.constructContent(use8BitMIME: true)
 
         #expect(content.contains("Content-Type: multipart/alternative; boundary="))
-        #expect(content.contains("Content-Type: text/calendar; method=REQUEST; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" + ics))
+        #expect(content.contains(
+            "Content-Type: text/calendar; method=REQUEST; charset=UTF-8\r\n"
+                + "Content-Transfer-Encoding: 8bit\r\n\r\n" + ics
+        ))
         #expect(content.contains("Müller"))
         #expect(!content.contains("Content-Disposition: attachment"))
     }
@@ -450,7 +462,8 @@ struct SMTPTests {
     // falls back to the regular base64 attachment path instead.
     @Test
     func testConstructContentFallsBackToBase64ForNonASCIICalendarWithout8BitMIME() throws {
-        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-6\r\nSUMMARY:Besprechung mit Herrn Müller\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-6\r\n"
+            + "SUMMARY:Besprechung mit Herrn Müller\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
         let invite = Attachment(
             filename: "invite.ics",
             mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
@@ -478,7 +491,8 @@ struct SMTPTests {
     @Test
     func testConstructContentFallsBackToBase64ForOverlongCalendarLine() throws {
         let longDescription = String(repeating: "x", count: 1500)
-        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-7\r\nDESCRIPTION:\(longDescription)\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-7\r\n"
+            + "DESCRIPTION:\(longDescription)\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
         let invite = Attachment(
             filename: "invite.ics",
             mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
@@ -506,7 +520,8 @@ struct SMTPTests {
     @Test
     func testConstructContentFallsBackToBase64ForOverlongMultibyteCalendarLine() throws {
         let longSummary = String(repeating: "ü", count: 600) // 600 Characters, 1200 UTF-8 octets
-        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-8\r\nSUMMARY:\(longSummary)\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-8\r\n"
+            + "SUMMARY:\(longSummary)\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
         let invite = Attachment(
             filename: "invite.ics",
             mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
