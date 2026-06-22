@@ -47,7 +47,10 @@ public struct EMLSerializer {
         appendListHeader("To", header.to, into: &output)
         appendListHeader("Cc", header.cc, into: &output)
         appendListHeader("Bcc", header.bcc, into: &output)
-        appendHeaderIfPresent("Subject", header.subject, into: &output)
+        // Subject is free text — RFC 2047-encode it if non-ASCII. (From/To/Cc here
+        // are already-formatted address strings, so they are left as-is; per-name
+        // encoding of those would require re-parsing each address.)
+        appendHeaderIfPresent("Subject", header.subject?.rfc2047EncodedHeader(), into: &output)
         if let date = header.date {
             output += "Date: \(formatRFC2822Date(date))\r\n"
         }

@@ -70,4 +70,25 @@ extension EmailAddress: LosslessStringConvertible {
             return address
         }
     }
+
+    /**
+     RFC 5322 address string for use in a header field (`From`/`To`/`Cc`/…).
+
+     Identical to ``description`` for ASCII display names, but a non-ASCII name
+     is RFC 2047-encoded. Encoded-words must not appear inside a quoted-string,
+     so an encoded name is emitted bare (never quoted). Use this — not
+     ``description`` — when writing an address into a header so that non-ASCII
+     names survive transport instead of being mojibake'd.
+     */
+    func headerString() -> String {
+        guard let name = name, !name.isEmpty else { return address }
+        if name.contains(where: { !$0.isASCII }) {
+            return "\(name.rfc2047EncodedHeader()) <\(address)>"
+        }
+        // Use quotes if the (ASCII) name contains special characters
+        if name.contains(where: { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }) {
+            return "\"\(name)\" <\(address)>"
+        }
+        return "\(name) <\(address)>"
+    }
 }

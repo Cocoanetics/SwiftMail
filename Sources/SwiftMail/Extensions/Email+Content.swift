@@ -69,14 +69,14 @@ extension Email {
     /// `Message-Id`, `MIME-Version`) plus any caller-supplied additional
     /// headers, suppressing a duplicate `Message-Id` when one is already set.
     private func writeHeaders(into content: inout String) {
-        content += "From: \(self.sender)\r\n"
+        content += "From: \(self.sender.headerString())\r\n"
         if !self.recipients.isEmpty {
-            content += "To: \(self.recipients.map { $0.description }.joined(separator: ", "))\r\n"
+            content += "To: \(self.recipients.map { $0.headerString() }.joined(separator: ", "))\r\n"
         }
         if !self.ccRecipients.isEmpty {
-            content += "Cc: \(self.ccRecipients.map { $0.description }.joined(separator: ", "))\r\n"
+            content += "Cc: \(self.ccRecipients.map { $0.headerString() }.joined(separator: ", "))\r\n"
         }
-        content += "Subject: \(self.subject)\r\n"
+        content += "Subject: \(self.subject.rfc2047EncodedHeader())\r\n"
         content += "Date: \(Self.rfc2822Date())\r\n"
 
         let resolvedHeaderID = resolvedMessageIDHeader()
