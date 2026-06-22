@@ -16,8 +16,13 @@ extension Email {
         let mainBoundary: String
         let altBoundary: String
         let relatedBoundary: String
+        /// Whether the SMTP server announced `8BITMIME`. Threaded through so the
+        /// calendar-invite helpers can label non-ASCII ICS `8bit` only when the
+        /// server negotiated it (otherwise they fall back to base64).
+        let use8BitMIME: Bool
 
         init(email: Email, use8BitMIME: Bool) {
+            self.use8BitMIME = use8BitMIME
             let safe8Bit = use8BitMIME && email.textBody.isSafe8BitContent()
                 && (email.htmlBody == nil || email.htmlBody!.isSafe8BitContent())
             if safe8Bit {
@@ -111,14 +116,18 @@ extension Email {
         // text/calendar part and nothing else, ship it as multipart/alternative —
         // text/plain body alternative + the ICS. Mail clients (Apple Mail, Outlook,
         // Gmail, iCloud) key their Accept/Decline UI off this shape;
-        // multipart/mixed with the same parts does not trigger it.
+        // multipart/mixed with the same parts does not trigger it. Note: clients
+        // (Outlook especially) also require the ICS to carry a `method` parameter
+        // (e.g. `text/calendar; method=REQUEST`) before they offer Accept/Decline —
+        // that parameter is the caller's responsibility on the Attachment mimeType.
         if !hasHtmlBody && !hasInline,
            self.regularAttachments.count == 1,
-           let icsText = calendarInviteText(for: self.regularAttachments[0]) {
+           let invite = calendarInviteText(for: self.regularAttachments[0], use8BitMIME: context.use8BitMIME) {
             writeCalendarAlternative(
                 context: context,
                 invite: self.regularAttachments[0],
-                icsText: icsText,
+                icsText: invite.text,
+                encoding: invite.encoding,
                 into: &content
             )
             return
@@ -173,16 +182,18 @@ extension Email {
         for attachment in self.regularAttachments {
             content += "--\(context.mainBoundary)\r\n"
             content += "Content-Type: \(attachment.mimeType)\r\n"
-            if let icsText = calendarInviteText(for: attachment) {
+            if let invite = calendarInviteText(for: attachment, use8BitMIME: context.use8BitMIME) {
                 // RFC 6047 iMIP: calendar invites need an inline (or absent)
-                // Content-Disposition for clients to render the Accept/Decline UI.
-                // base64 encoding also breaks recognition in some clients — ship
-                // the ICS verbatim as 7bit text. The 7bit label follows RFC 6047's
-                // examples; clients tolerate UTF-8 octets here, and re-encoding is
-                // exactly what breaks invite recognition.
-                content += "Content-Transfer-Encoding: 7bit\r\n"
-                content += "Content-Disposition: inline\r\n\r\n"
-                content += terminatedICSBody(icsText)
+                // Content-Disposition for clients to render the Accept/Decline UI,
+                // and the ICS shipped verbatim (base64/quoted-printable re-encoding
+                // is exactly what breaks invite recognition). The transfer encoding
+                // is 7bit for pure-ASCII ICS, 8bit when the server negotiated
+                // 8BITMIME, else the part falls back to the base64 branch below.
+                // The filename keeps non-calendar clients able to save the .ics,
+                // mirroring how Gmail's own outgoing invites are formatted.
+                content += "Content-Transfer-Encoding: \(invite.encoding)\r\n"
+                content += "Content-Disposition: inline; filename=\"\(attachment.filename)\"\r\n\r\n"
+                content += terminatedICSBody(invite.text)
             } else {
                 content += "Content-Transfer-Encoding: base64\r\n"
                 content += "Content-Disposition: attachment; filename=\"\(attachment.filename)\"\r\n\r\n"
@@ -192,21 +203,51 @@ extension Email {
         content += "--\(context.mainBoundary)--\r\n"
     }
 
-    /// Returns the ICS text, normalized to CRLF line endings, when the attachment
-    /// is a text/calendar part whose data is valid UTF-8 (a byte-level check —
-    /// the declared charset parameter is not consulted); `nil` routes the
+    /// Returns the ICS text (normalized to CRLF line endings) together with the
+    /// transfer encoding to label it with, when the attachment is a text/calendar
+    /// part whose data is valid UTF-8 (a byte-level check — the declared charset
+    /// parameter is not consulted) and safe to ship verbatim. `nil` routes the
     /// attachment through the regular base64 path.
-    private func calendarInviteText(for attachment: Attachment) -> String? {
+    ///
+    /// Encoding selection keeps the wire bytes identical to the ICS while staying
+    /// honest about what is on the wire (RFC 2045 §6.2: `7bit` means no octet > 127):
+    /// - **pure ASCII** → `7bit` (the field-proven shape for an all-ASCII invite).
+    /// - **non-ASCII, server advertised 8BITMIME** → `8bit` (real invites carry
+    ///   non-ASCII in SUMMARY/LOCATION/attendee names; an honest `8bit` label keeps
+    ///   bytes identical and is what clients recognize).
+    /// - **non-ASCII, no 8BITMIME** → `nil` so the part falls back to base64 rather
+    ///   than putting unnegotiated 8-bit octets on a 7-bit path where an MTA may
+    ///   strip the high bits and corrupt the invite.
+    ///
+    /// Content that is unsafe for verbatim transmission — NUL/control bytes, or a
+    /// line over the RFC 5322 §2.1.1 998-octet limit (unfolded `DESCRIPTION`,
+    /// `X-ALT-DESC`) — also returns `nil`, since such a line would overrun SMTP's
+    /// limit. NUL/control safety reuses ``String/isSafe8BitContent()`` (the gate the
+    /// text and HTML bodies already pass through); the line length is measured here
+    /// in UTF-8 *octets* between hard CRLFs, because `isSafe8BitContent` counts
+    /// grapheme clusters — which undercounts multibyte ICS lines (a 600-character
+    /// `SUMMARY` of 2-byte chars is 1200 octets) — and splits on Unicode separators
+    /// (U+2028/U+2029) that SMTP does not treat as line breaks.
+    private func calendarInviteText(
+        for attachment: Attachment,
+        use8BitMIME: Bool
+    ) -> (text: String, encoding: String)? {
         let mimeType = attachment.mimeType.lowercased()
         guard mimeType == "text/calendar" || mimeType.hasPrefix("text/calendar;") else { return nil }
-        guard let icsText = String(data: attachment.data, encoding: .utf8) else { return nil }
+        guard let decoded = String(data: attachment.data, encoding: .utf8) else { return nil }
         // SMTP DATA requires CRLF-only line endings (RFC 5321 §2.3.8) and the
         // send path's dot-stuffing assumes canonical CRLF framing, while ICS
         // producers commonly emit bare LF — normalize before shipping verbatim.
-        return icsText
+        let icsText = decoded
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")
             .replacingOccurrences(of: "\n", with: "\r\n")
+        guard icsText.isSafe8BitContent(),
+              icsText.components(separatedBy: "\r\n").allSatisfy({ $0.utf8.count <= 998 })
+        else { return nil }
+        if icsText.utf8.allSatisfy({ $0 < 128 }) { return (icsText, "7bit") }
+        if use8BitMIME { return (icsText, "8bit") }
+        return nil
     }
 
     /// ICS body terminated so the following boundary marker starts on its own line.
@@ -215,12 +256,14 @@ extension Email {
     }
 
     /// multipart/alternative envelope for a single-invite message: the text/plain
-    /// body followed by the text/calendar part as 7bit text without an attachment
-    /// disposition, per RFC 6047 iMIP transport conventions.
+    /// body followed by the text/calendar part shipped verbatim without an
+    /// attachment disposition, per RFC 6047 iMIP transport conventions. The
+    /// transfer encoding (`7bit`/`8bit`) is chosen by ``calendarInviteText(for:use8BitMIME:)``.
     private func writeCalendarAlternative(
         context: MIMEBuildContext,
         invite: Attachment,
         icsText: String,
+        encoding: String,
         into content: inout String
     ) {
         content += "Content-Type: multipart/alternative; boundary=\"\(context.altBoundary)\"\r\n\r\n"
@@ -233,7 +276,7 @@ extension Email {
 
         content += "--\(context.altBoundary)\r\n"
         content += "Content-Type: \(invite.mimeType)\r\n"
-        content += "Content-Transfer-Encoding: 7bit\r\n\r\n"
+        content += "Content-Transfer-Encoding: \(encoding)\r\n\r\n"
         content += terminatedICSBody(icsText)
 
         content += "--\(context.altBoundary)--\r\n"
