@@ -302,6 +302,248 @@ struct SMTPTests {
         #expect(bareCarriageReturnOffsets(in: rawData).isEmpty, "Found bare CR in MIME message")
     }
 
+    // RFC 6047 iMIP: a message whose only attachment is a text/calendar invite
+    // is shipped as multipart/alternative with the ICS verbatim as 7bit, so
+    // clients render their Accept/Decline UI.
+    @Test
+    func testConstructContentFormatsSingleCalendarInviteAsAlternative() throws {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\n"
+            + "UID:imip-test-1\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let invite = Attachment(
+            filename: "invite.ics",
+            mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
+            data: Data(ics.utf8)
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Invite",
+            textBody: "You are invited.",
+            attachments: [invite]
+        )
+
+        let content = email.constructContent()
+
+        #expect(content.contains("Content-Type: multipart/alternative; boundary="))
+        #expect(!content.contains("Content-Type: multipart/mixed"))
+        #expect(content.contains(
+            "Content-Type: text/calendar; method=REQUEST; charset=UTF-8\r\n"
+                + "Content-Transfer-Encoding: 7bit\r\n\r\n" + ics
+        ))
+        #expect(!content.contains("Content-Disposition: attachment"))
+    }
+
+    // RFC 6047 iMIP: in a multipart/mixed message, a text/calendar attachment is
+    // shipped inline as 7bit text while other attachments stay base64.
+    @Test
+    func testConstructContentShipsCalendarAttachmentInlineInMixedMessage() throws {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\n"
+            + "UID:imip-test-2\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let invite = Attachment(
+            filename: "invite.ics",
+            mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
+            data: Data(ics.utf8)
+        )
+        let report = Attachment(
+            filename: "report.pdf",
+            mimeType: "application/pdf",
+            data: Data(repeating: 0x5A, count: 16)
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Invite plus report",
+            textBody: "You are invited.",
+            attachments: [invite, report]
+        )
+
+        let content = email.constructContent()
+
+        #expect(content.contains("Content-Type: multipart/mixed; boundary="))
+        let calendarPart = try #require(content.range(of: "Content-Type: text/calendar; method=REQUEST; charset=UTF-8"))
+        let calendarTail = String(content[calendarPart.lowerBound...])
+        #expect(calendarTail.contains(
+            "Content-Transfer-Encoding: 7bit\r\n"
+                + "Content-Disposition: inline; filename=\"invite.ics\"\r\n\r\n" + ics
+        ))
+        #expect(content.contains("Content-Disposition: attachment; filename=\"report.pdf\""))
+    }
+
+    // ICS producers commonly emit bare-LF line endings; the verbatim 7bit path
+    // must normalize to CRLF or SMTP DATA framing (and dot-stuffing) breaks.
+    @Test
+    func testConstructContentNormalizesBareLFCalendarDataToCRLF() throws {
+        let ics = "BEGIN:VCALENDAR\nMETHOD:REQUEST\nBEGIN:VEVENT\nUID:imip-test-3\nEND:VEVENT\nEND:VCALENDAR\n"
+        let invite = Attachment(
+            filename: "invite.ics",
+            mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
+            data: Data(ics.utf8)
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Invite",
+            textBody: "You are invited.",
+            attachments: [invite]
+        )
+
+        let content = email.constructContent()
+
+        #expect(content.contains("BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\n"))
+        var previousByte: UInt8 = 0
+        var foundBareLF = false
+        for byte in Data(content.utf8) {
+            if byte == 0x0A && previousByte != 0x0D {
+                foundBareLF = true
+                break
+            }
+            previousByte = byte
+        }
+        #expect(!foundBareLF, "Found bare LF in MIME message")
+    }
+
+    // A text/calendar attachment whose data is not valid UTF-8 falls back to the
+    // regular base64 attachment path instead of corrupting the message body.
+    @Test
+    func testConstructContentFallsBackToBase64ForNonUTF8CalendarData() throws {
+        let invite = Attachment(
+            filename: "invite.ics",
+            mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
+            data: Data([0xFF, 0xFE, 0xFD])
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Broken invite",
+            textBody: "You are invited.",
+            attachments: [invite]
+        )
+
+        let content = email.constructContent()
+
+        #expect(content.contains("Content-Type: multipart/mixed; boundary="))
+        #expect(content.contains("Content-Disposition: attachment; filename=\"invite.ics\""))
+        #expect(content.contains("Content-Transfer-Encoding: base64"))
+    }
+
+    // RFC 2045 §6.2: `7bit` means no octet > 127. Real invites carry non-ASCII in
+    // SUMMARY/LOCATION/attendee names, so when the server advertised 8BITMIME the
+    // ICS ships verbatim under an honest `8bit` label — not `7bit`, not base64.
+    @Test
+    func testConstructContentLabelsNonASCIICalendarAs8BitWhenServerSupports8BitMIME() throws {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-5\r\n"
+            + "SUMMARY:Besprechung mit Herrn Müller\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let invite = Attachment(
+            filename: "invite.ics",
+            mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
+            data: Data(ics.utf8)
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Invite",
+            textBody: "You are invited.",
+            attachments: [invite]
+        )
+
+        let content = email.constructContent(use8BitMIME: true)
+
+        #expect(content.contains("Content-Type: multipart/alternative; boundary="))
+        #expect(content.contains(
+            "Content-Type: text/calendar; method=REQUEST; charset=UTF-8\r\n"
+                + "Content-Transfer-Encoding: 8bit\r\n\r\n" + ics
+        ))
+        #expect(content.contains("Müller"))
+        #expect(!content.contains("Content-Disposition: attachment"))
+    }
+
+    // Without a negotiated 8BITMIME, non-ASCII ICS must NOT go on the wire under a
+    // 7bit/8bit label (an MTA may strip the high bits and corrupt the invite) — it
+    // falls back to the regular base64 attachment path instead.
+    @Test
+    func testConstructContentFallsBackToBase64ForNonASCIICalendarWithout8BitMIME() throws {
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-6\r\n"
+            + "SUMMARY:Besprechung mit Herrn Müller\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let invite = Attachment(
+            filename: "invite.ics",
+            mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
+            data: Data(ics.utf8)
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Invite",
+            textBody: "You are invited.",
+            attachments: [invite]
+        )
+
+        let content = email.constructContent(use8BitMIME: false)
+
+        #expect(content.contains("Content-Type: multipart/mixed; boundary="))
+        #expect(content.contains("Content-Disposition: attachment; filename=\"invite.ics\""))
+        #expect(content.contains("Content-Transfer-Encoding: base64"))
+        #expect(!content.contains("Content-Transfer-Encoding: 8bit"))
+    }
+
+    // RFC 5322 caps a line at 998 octets; unfolded ICS producers (long DESCRIPTION,
+    // X-ALT-DESC with HTML) routinely exceed it. Such content must not ship verbatim
+    // even on an 8BITMIME server — it falls back to the line-wrapped base64 path.
+    @Test
+    func testConstructContentFallsBackToBase64ForOverlongCalendarLine() throws {
+        let longDescription = String(repeating: "x", count: 1500)
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-7\r\n"
+            + "DESCRIPTION:\(longDescription)\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let invite = Attachment(
+            filename: "invite.ics",
+            mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
+            data: Data(ics.utf8)
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Invite",
+            textBody: "You are invited.",
+            attachments: [invite]
+        )
+
+        let content = email.constructContent(use8BitMIME: true)
+
+        #expect(content.contains("Content-Disposition: attachment; filename=\"invite.ics\""))
+        #expect(content.contains("Content-Transfer-Encoding: base64"))
+        #expect(!content.contains("Content-Transfer-Encoding: 7bit"))
+        #expect(!content.contains(longDescription))
+    }
+
+    // The 998-octet limit must be measured in octets, not grapheme clusters: a line
+    // of 600 two-byte characters is 1200 octets (only 600 Characters), so it must
+    // fall back to base64 even on an 8BITMIME server rather than ship verbatim 8bit.
+    @Test
+    func testConstructContentFallsBackToBase64ForOverlongMultibyteCalendarLine() throws {
+        let longSummary = String(repeating: "ü", count: 600) // 600 Characters, 1200 UTF-8 octets
+        let ics = "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nBEGIN:VEVENT\r\nUID:imip-test-8\r\n"
+            + "SUMMARY:\(longSummary)\r\nEND:VEVENT\r\nEND:VCALENDAR\r\n"
+        let invite = Attachment(
+            filename: "invite.ics",
+            mimeType: "text/calendar; method=REQUEST; charset=UTF-8",
+            data: Data(ics.utf8)
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Invite",
+            textBody: "You are invited.",
+            attachments: [invite]
+        )
+
+        let content = email.constructContent(use8BitMIME: true)
+
+        // The calendar part took the base64 attachment fallback, not the inline path,
+        // and the over-long multibyte line is nowhere on the wire verbatim.
+        #expect(content.contains("Content-Disposition: attachment; filename=\"invite.ics\""))
+        #expect(content.contains("Content-Transfer-Encoding: base64"))
+        #expect(!content.contains(longSummary))
+    }
+
     @Test
     func testPrepareEmailForSendOmitsMailFromSizeWhenServerDoesNotAdvertiseSIZE() throws {
         let email = Email(
