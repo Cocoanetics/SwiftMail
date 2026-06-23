@@ -42,6 +42,11 @@ public actor IMAPServer {
     /// Certificate verification preference used by all TLS transports for this server.
     let certificateVerificationPolicy: MailCertificateVerificationPolicy
 
+    /// Maximum number of bytes the IMAP response parser may buffer before failing.
+    /// Large SEARCH/FETCH responses from dense mailboxes can exceed a small buffer
+    /// and surface as `PayloadTooLargeError`; raise this for very large mailboxes.
+    let responseBufferLimit: Int
+
     /** The event loop group for handling asynchronous operations */
     let group: EventLoopGroup
 
@@ -119,6 +124,13 @@ public actor IMAPServer {
 
     // MARK: - Initialization
 
+    /// The default IMAP response parser buffer limit (1 MB).
+    ///
+    /// Large SEARCH responses can contain thousands of message IDs; 1 MB keeps
+    /// typical mailboxes working without an unbounded buffer. Callers indexing
+    /// very large or dense mailboxes can pass a larger value to the initializer.
+    public static let defaultResponseBufferLimit = 1024 * 1024
+
     /**
      Initialize a new IMAP server connection
 
@@ -129,22 +141,29 @@ public actor IMAPServer {
      ports; explicit values override that inference.
      - certificateVerificationPolicy: The certificate verification policy to use for TLS connections.
      - numberOfThreads: The number of threads to use for the event loop group
+     - responseBufferLimit: Maximum bytes the IMAP response parser may buffer
+     before failing with `PayloadTooLargeError`. Defaults to
+     ``IMAPServer/defaultResponseBufferLimit`` (1 MB), which handles large SEARCH
+     responses containing thousands of message IDs. Raise it for very dense
+     mailboxes whose SEARCH/FETCH responses exceed 1 MB. Must be greater than 0.
 
-     - Note: The connection is configured with a 1MB buffer limit to handle large SEARCH responses
-     that may contain thousands of message IDs. This prevents PayloadTooLargeError when
-     searching large mailboxes.
+     - Precondition: `responseBufferLimit > 0` — a non-positive limit would make
+     every response exceed the buffer and fail with `PayloadTooLargeError`.
      */
     public init(
         host: String,
         port: Int,
         transportSecurity: MailTransportSecurity = .automatic,
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
-        numberOfThreads: Int = 1
+        numberOfThreads: Int = 1,
+        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit
     ) {
+        precondition(responseBufferLimit > 0, "responseBufferLimit must be greater than 0 bytes")
         self.host = host
         self.port = port
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
+        self.responseBufferLimit = responseBufferLimit
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
         // Initialize loggers
@@ -163,17 +182,25 @@ public actor IMAPServer {
             outboundLabel: outboundLabel,
             inboundLabel: inboundLabel,
             connectionID: "primary",
-            connectionRole: "primary"
+            connectionRole: "primary",
+            responseBufferLimit: responseBufferLimit
         )
     }
 
-    public init(host: String, port: Int, useTLS: Bool?, numberOfThreads: Int = 1) {
+    public init(
+        host: String,
+        port: Int,
+        useTLS: Bool?,
+        numberOfThreads: Int = 1,
+        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit
+    ) {
         self.init(
             host: host,
             port: port,
             transportSecurity: Self.resolveLegacyTransportSecurity(port: port, useTLS: useTLS),
             certificateVerificationPolicy: .fullVerification,
-            numberOfThreads: numberOfThreads
+            numberOfThreads: numberOfThreads,
+            responseBufferLimit: responseBufferLimit
         )
     }
 
@@ -188,6 +215,13 @@ public actor IMAPServer {
 
         return .plainText
     }
+
+    #if DEBUG
+    /// Test-only access to the response buffer limit configured on the primary connection.
+    var primaryResponseBufferLimitForTesting: Int {
+        primaryConnection.responseBufferLimit
+    }
+    #endif
 
     deinit {
         // Schedule shutdown on a background thread to avoid EventLoop issues
