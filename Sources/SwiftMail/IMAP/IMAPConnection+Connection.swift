@@ -28,7 +28,7 @@ extension IMAPConnection {
         self.isSessionAuthenticated = false
         self.namespaces = nil
 
-        logger.info("\(connectionContext) Connected to IMAP server with 1MB buffer limit for large responses")
+        logger.info("\(connectionContext) Connected; response buffer limit \(responseBufferLimit) bytes")
 
         let greetingCapabilities = try await waitForGreeting(
             channel: channel,
@@ -47,6 +47,7 @@ extension IMAPConnection {
         let certificateVerificationPolicy = self.certificateVerificationPolicy
         let duplexLogger = self.duplexLogger
         let responseBuffer = self.responseBuffer
+        let responseBufferLimit = self.responseBufferLimit
 
         return ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
@@ -54,7 +55,7 @@ extension IMAPConnection {
             .channelInitializer { channel in
                 do {
                     let parserOptions = ResponseParser.Options(
-                        bufferLimit: 1024 * 1024,
+                        bufferLimit: responseBufferLimit,
                         messageAttributeLimit: .max,
                         bodySizeLimit: .max,
                         literalSizeLimit: IMAPDefaults.literalSizeLimit

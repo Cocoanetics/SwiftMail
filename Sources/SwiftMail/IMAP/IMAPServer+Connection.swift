@@ -224,7 +224,8 @@ extension IMAPServer {
             outboundLabel: outboundLabel,
             inboundLabel: inboundLabel,
             connectionID: shortID,
-            connectionRole: "idle:\(sanitizedMailbox)"
+            connectionRole: "idle:\(sanitizedMailbox)",
+            responseBufferLimit: responseBufferLimit
         )
     }
 
@@ -247,7 +248,8 @@ extension IMAPServer {
             outboundLabel: outboundLabel,
             inboundLabel: inboundLabel,
             connectionID: "named-\(shortID)",
-            connectionRole: "named:\(sanitizedName)"
+            connectionRole: "named:\(sanitizedName)",
+            responseBufferLimit: responseBufferLimit
         )
     }
 

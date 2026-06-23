@@ -18,6 +18,7 @@ final class IMAPConnection {
     let port: Int
     let transportSecurity: MailTransportSecurity
     let certificateVerificationPolicy: MailCertificateVerificationPolicy
+    let responseBufferLimit: Int
     let group: EventLoopGroup
     let connectionID: String
     let connectionRole: String
@@ -46,12 +47,14 @@ final class IMAPConnection {
         outboundLabel: String,
         inboundLabel: String,
         connectionID: String,
-        connectionRole: String
+        connectionRole: String,
+        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit
     ) {
         self.host = host
         self.port = port
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
+        self.responseBufferLimit = responseBufferLimit
         self.group = group
         self.connectionID = connectionID
         self.connectionRole = connectionRole
@@ -91,7 +94,8 @@ final class IMAPConnection {
         outboundLabel: String,
         inboundLabel: String,
         connectionID: String,
-        connectionRole: String
+        connectionRole: String,
+        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit
     ) {
         self.init(
             host: host,
@@ -103,7 +107,8 @@ final class IMAPConnection {
             outboundLabel: outboundLabel,
             inboundLabel: inboundLabel,
             connectionID: connectionID,
-            connectionRole: connectionRole
+            connectionRole: connectionRole,
+            responseBufferLimit: responseBufferLimit
         )
     }
 
@@ -177,6 +182,12 @@ final class IMAPConnection {
     var certificateVerificationPolicyForTesting: MailCertificateVerificationPolicy {
         certificateVerificationPolicy
     }
+
+    #if DEBUG
+    var responseBufferLimitForTesting: Int {
+        responseBufferLimit
+    }
+    #endif
 
     var namespacesSnapshot: NamespaceResponse? {
         namespaces
