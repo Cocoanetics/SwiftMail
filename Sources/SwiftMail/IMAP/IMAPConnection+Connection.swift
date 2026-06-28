@@ -198,6 +198,8 @@ extension IMAPConnection {
             duplexLogger.flushInboundBuffer()
 
             if error is CancellationError {
+                logger.warning("\(connectionContext) IDLE termination was cancelled; recycling connection")
+                try? await disconnectBody()
                 throw error
             }
 
