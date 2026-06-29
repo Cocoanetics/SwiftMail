@@ -7,6 +7,16 @@ import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPIdleCancellationTests {
+    private struct IdleHarness {
+        let connection: IMAPConnection
+        let channel: NIOAsyncTestingChannel
+    }
+
+    private struct CommandQueueBlocker {
+        let task: Task<Void, Never>
+        let release: AsyncStream<Void>.Continuation
+    }
+
     @Test
     func cancelledDoneRecyclesChannelBeforeDroppingIdleState() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -16,6 +26,33 @@ struct IMAPIdleCancellationTests {
             }
         }
 
+        let harness = try await makeIdleHarness(group: group)
+        try await enterIdle(connection: harness.connection, channel: harness.channel)
+
+        let blocker = await blockCommandQueue(on: harness.connection)
+        let doneTask = Task {
+            try await harness.connection.done(timeoutSeconds: 1)
+        }
+        doneTask.cancel()
+        blocker.release.yield(())
+        blocker.release.finish()
+        await blocker.task.value
+
+        do {
+            try await doneTask.value
+            Issue.record("Expected cancelled DONE to throw CancellationError")
+        } catch is CancellationError {
+            // Expected. The connection must still be recycled before this leaves.
+        } catch {
+            Issue.record("Expected CancellationError, got \(error)")
+        }
+
+        #expect(harness.connection.channel == nil)
+        #expect(harness.connection.idleHandler == nil)
+        #expect(!harness.connection.responseBuffer.hasActiveHandler)
+    }
+
+    private func makeIdleHarness(group: MultiThreadedEventLoopGroup) async throws -> IdleHarness {
         let connection = IMAPConnection(
             host: "localhost",
             port: 143,
@@ -36,6 +73,10 @@ struct IMAPIdleCancellationTests {
         connection.replaceChannelForTesting(channel)
         connection.replaceCapabilitiesForTesting([.idle])
 
+        return IdleHarness(connection: connection, channel: channel)
+    }
+
+    private func enterIdle(connection: IMAPConnection, channel: NIOAsyncTestingChannel) async throws {
         _ = try await connection.idle()
         guard var idleCommandLine = try await channel.readOutbound(as: ByteBuffer.self) else {
             Issue.record("Expected outbound IDLE command")
@@ -46,7 +87,9 @@ struct IMAPIdleCancellationTests {
         var idleConfirmation = channel.allocator.buffer(capacity: 0)
         idleConfirmation.writeString("+ idling\r\n")
         try await channel.writeInbound(idleConfirmation)
+    }
 
+    private func blockCommandQueue(on connection: IMAPConnection) async -> CommandQueueBlocker {
         let blockerStarted = AsyncStream<Void>.makeStream()
         let blockerRelease = AsyncStream<Void>.makeStream()
         let blocker = Task {
@@ -61,25 +104,6 @@ struct IMAPIdleCancellationTests {
         var blockerIterator = blockerStarted.stream.makeAsyncIterator()
         await blockerIterator.next()
 
-        let doneTask = Task {
-            try await connection.done(timeoutSeconds: 1)
-        }
-        doneTask.cancel()
-        blockerRelease.continuation.yield(())
-        blockerRelease.continuation.finish()
-        await blocker.value
-
-        do {
-            try await doneTask.value
-            Issue.record("Expected cancelled DONE to throw CancellationError")
-        } catch is CancellationError {
-            // Expected. The connection must still be recycled before this leaves.
-        } catch {
-            Issue.record("Expected CancellationError, got \(error)")
-        }
-
-        #expect(connection.channel == nil)
-        #expect(connection.idleHandler == nil)
-        #expect(!connection.responseBuffer.hasActiveHandler)
+        return CommandQueueBlocker(task: blocker, release: blockerRelease.continuation)
     }
 }
