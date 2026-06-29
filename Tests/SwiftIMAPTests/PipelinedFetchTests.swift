@@ -109,6 +109,82 @@ struct PipelinedFetchPartHandlerTests {
     }
 }
 
+// MARK: - Pipelined Connection Cleanup Tests
+
+@Suite(.serialized, .timeLimit(.minutes(1)))
+struct PipelinedFetchConnectionCleanupTests {
+    @Test("Interrupted pipelined fetch recycles the connection before returning partial results")
+    func interruptedPipelinedFetchRecyclesConnection() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        defer {
+            Task {
+                try? await group.shutdownGracefully()
+            }
+        }
+
+        let connection = IMAPConnection(
+            host: "localhost",
+            port: 143,
+            transportSecurity: .plainText,
+            group: group,
+            loggerLabel: "test.imap",
+            outboundLabel: "test.imap.out",
+            inboundLabel: "test.imap.in",
+            connectionID: "test-pipelined-interrupt",
+            connectionRole: "test"
+        )
+        let channel = NIOAsyncTestingChannel()
+        let address = try SocketAddress(ipAddress: "127.0.0.1", port: 143)
+        try await channel.connect(to: address)
+        try await channel.pipeline.addHandler(IMAPClientHandler())
+        try await channel.pipeline.addHandler(connection.duplexLogger)
+        try await channel.pipeline.addHandler(connection.responseBuffer)
+        connection.replaceChannelForTesting(channel)
+
+        let fetchTask = Task {
+            try await connection.executePipelinedFetchParts(
+                requests: [
+                    (uid: UID(1), section: Section("1")),
+                    (uid: UID(2), section: Section("2"))
+                ],
+                timeoutSeconds: 60
+            )
+        }
+
+        guard var firstOutbound = try await readOutboundCommand(from: channel),
+              let firstCommand = firstOutbound.readString(length: firstOutbound.readableBytes),
+              let firstTag = firstCommand.split(separator: " ").first else {
+            Issue.record("Expected first pipelined FETCH command")
+            try? await channel.close()
+            return
+        }
+        _ = try await readOutboundCommand(from: channel)
+
+        var firstResponse = channel.allocator.buffer(capacity: 0)
+        firstResponse.writeString("* 1 FETCH (BODY[1] {5}\r\nHello)\r\n\(firstTag) OK FETCH completed\r\n")
+        try await channel.writeInbound(firstResponse)
+        try await channel.close()
+
+        let results = try await fetchTask.value
+        #expect(results.map(\.uid) == [UID(1)])
+        #expect(connection.channel == nil)
+        #expect(!connection.responseBuffer.hasActiveHandler)
+        if connection.channel != nil {
+            try? await channel.close()
+        }
+    }
+
+    private func readOutboundCommand(from channel: NIOAsyncTestingChannel) async throws -> ByteBuffer? {
+        for _ in 0..<20 {
+            if let outbound = try await channel.readOutbound(as: ByteBuffer.self) {
+                return outbound
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        return nil
+    }
+}
+
 // MARK: - PipelinedCommandDispatcher Tests
 
 @Suite("PipelinedCommandDispatcher")
