@@ -141,17 +141,63 @@ extension IMAPServer {
 
         let idleGroup = request.idleGroup
         let sessionID = request.sessionID
-        let cycleTask = Task.detached { [idleGroup] in
+        let lifecycle = IMAPIdleSessionLifecycle(idleGroup: idleGroup)
+        let connection = request.connection
+        let cycleTask = Task.detached {
             await IMAPResilientIdleRunner.run(context: context)
             continuation.finish()
-            try? await idleGroup.shutdownGracefully()
+            await lifecycle.finishFromRunner()
         }
 
-        return IMAPIdleSession(events: wrappedEvents) { [weak self] in
-            cycleTask.cancel()
-            guard let self else { return }
-            try await self.endIdleSession(id: sessionID)
+        return IMAPIdleSession(events: wrappedEvents) { [weak self, connection] in
+            guard await lifecycle.beginStop(cycleTask: cycleTask) else { return }
+
+            var cleanupError: Error?
+            do {
+                if let self {
+                    try await self.endIdleSession(id: sessionID)
+                } else {
+                    try? await connection.done()
+                    try? await connection.disconnect()
+                }
+            } catch {
+                cleanupError = error
+            }
+
+            await lifecycle.finishStop(cycleTask: cycleTask)
+
+            if let cleanupError {
+                throw cleanupError
+            }
         }
+    }
+}
+
+actor IMAPIdleSessionLifecycle {
+    private var isStopped = false
+    private let idleGroup: EventLoopGroup
+
+    init(idleGroup: EventLoopGroup) {
+        self.idleGroup = idleGroup
+    }
+
+    func finishFromRunner() async {
+        guard !isStopped else { return }
+        isStopped = true
+        try? await idleGroup.shutdownGracefully()
+    }
+
+    func beginStop(cycleTask: Task<Void, Never>) -> Bool {
+        guard !isStopped else { return false }
+        isStopped = true
+
+        cycleTask.cancel()
+        return true
+    }
+
+    func finishStop(cycleTask: Task<Void, Never>) async {
+        await cycleTask.value
+        try? await idleGroup.shutdownGracefully()
     }
 }
 
