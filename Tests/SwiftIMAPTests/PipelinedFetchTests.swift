@@ -115,13 +115,56 @@ struct PipelinedFetchPartHandlerTests {
 struct PipelinedFetchConnectionCleanupTests {
     @Test("Interrupted pipelined fetch recycles the connection before returning partial results")
     func interruptedPipelinedFetchRecyclesConnection() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let harness = try await makePipelinedFetchHarness()
         defer {
             Task {
-                try? await group.shutdownGracefully()
+                await harness.shutdown()
             }
         }
 
+        let fetchTask = Task {
+            try await harness.connection.executePipelinedFetchParts(
+                requests: [
+                    (uid: UID(1), section: Section("1")),
+                    (uid: UID(2), section: Section("2"))
+                ],
+                timeoutSeconds: 60
+            )
+        }
+
+        guard var firstOutbound = try await readOutboundCommand(from: harness.channel),
+              let firstCommand = firstOutbound.readString(length: firstOutbound.readableBytes),
+              let firstTag = firstCommand.split(separator: " ").first else {
+            Issue.record("Expected first pipelined FETCH command")
+            try? await harness.channel.close()
+            return
+        }
+        _ = try await readOutboundCommand(from: harness.channel)
+
+        var firstResponse = harness.channel.allocator.buffer(capacity: 0)
+        firstResponse.writeString("* 1 FETCH (BODY[1] {5}\r\nHello)\r\n\(firstTag) OK FETCH completed\r\n")
+        try await harness.channel.writeInbound(firstResponse)
+        try await harness.channel.close()
+
+        let results = try await fetchTask.value
+        #expect(results.map(\.uid) == [UID(1)])
+        #expect(harness.connection.channel == nil)
+        #expect(!harness.connection.responseBuffer.hasActiveHandler)
+    }
+
+    private struct PipelinedFetchHarness {
+        let group: MultiThreadedEventLoopGroup
+        let connection: IMAPConnection
+        let channel: NIOAsyncTestingChannel
+
+        func shutdown() async {
+            try? await channel.close()
+            try? await group.shutdownGracefully()
+        }
+    }
+
+    private func makePipelinedFetchHarness() async throws -> PipelinedFetchHarness {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let connection = IMAPConnection(
             host: "localhost",
             port: 143,
@@ -140,38 +183,7 @@ struct PipelinedFetchConnectionCleanupTests {
         try await channel.pipeline.addHandler(connection.duplexLogger)
         try await channel.pipeline.addHandler(connection.responseBuffer)
         connection.replaceChannelForTesting(channel)
-
-        let fetchTask = Task {
-            try await connection.executePipelinedFetchParts(
-                requests: [
-                    (uid: UID(1), section: Section("1")),
-                    (uid: UID(2), section: Section("2"))
-                ],
-                timeoutSeconds: 60
-            )
-        }
-
-        guard var firstOutbound = try await readOutboundCommand(from: channel),
-              let firstCommand = firstOutbound.readString(length: firstOutbound.readableBytes),
-              let firstTag = firstCommand.split(separator: " ").first else {
-            Issue.record("Expected first pipelined FETCH command")
-            try? await channel.close()
-            return
-        }
-        _ = try await readOutboundCommand(from: channel)
-
-        var firstResponse = channel.allocator.buffer(capacity: 0)
-        firstResponse.writeString("* 1 FETCH (BODY[1] {5}\r\nHello)\r\n\(firstTag) OK FETCH completed\r\n")
-        try await channel.writeInbound(firstResponse)
-        try await channel.close()
-
-        let results = try await fetchTask.value
-        #expect(results.map(\.uid) == [UID(1)])
-        #expect(connection.channel == nil)
-        #expect(!connection.responseBuffer.hasActiveHandler)
-        if connection.channel != nil {
-            try? await channel.close()
-        }
+        return PipelinedFetchHarness(group: group, connection: connection, channel: channel)
     }
 
     private func readOutboundCommand(from channel: NIOAsyncTestingChannel) async throws -> ByteBuffer? {
