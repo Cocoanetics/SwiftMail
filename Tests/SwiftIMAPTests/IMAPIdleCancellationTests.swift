@@ -20,36 +20,38 @@ struct IMAPIdleCancellationTests {
     @Test
     func cancelledDoneRecyclesChannelBeforeDroppingIdleState() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer {
-            Task {
-                try? await group.shutdownGracefully()
-            }
-        }
-
-        let harness = try await makeIdleHarness(group: group)
-        try await enterIdle(connection: harness.connection, channel: harness.channel)
-
-        let blocker = await blockCommandQueue(on: harness.connection)
-        let doneTask = Task {
-            try await harness.connection.done(timeoutSeconds: 1)
-        }
-        doneTask.cancel()
-        blocker.release.yield(())
-        blocker.release.finish()
-        await blocker.task.value
 
         do {
-            try await doneTask.value
-            Issue.record("Expected cancelled DONE to throw CancellationError")
-        } catch is CancellationError {
-            // Expected. The connection must still be recycled before this leaves.
-        } catch {
-            Issue.record("Expected CancellationError, got \(error)")
-        }
+            let harness = try await makeIdleHarness(group: group)
+            try await enterIdle(connection: harness.connection, channel: harness.channel)
 
-        #expect(harness.connection.channel == nil)
-        #expect(harness.connection.idleHandler == nil)
-        #expect(!harness.connection.responseBuffer.hasActiveHandler)
+            let blocker = await blockCommandQueue(on: harness.connection)
+            let doneTask = Task {
+                try await harness.connection.done(timeoutSeconds: 1)
+            }
+            doneTask.cancel()
+            blocker.release.yield(())
+            blocker.release.finish()
+            await blocker.task.value
+
+            do {
+                try await doneTask.value
+                Issue.record("Expected cancelled DONE to throw CancellationError")
+            } catch is CancellationError {
+                // Expected. The connection must still be recycled before this leaves.
+            } catch {
+                Issue.record("Expected CancellationError, got \(error)")
+            }
+
+            #expect(harness.connection.channel == nil)
+            #expect(harness.connection.idleHandler == nil)
+            #expect(!harness.connection.responseBuffer.hasActiveHandler)
+
+            try await group.shutdownGracefully()
+        } catch {
+            try? await group.shutdownGracefully()
+            throw error
+        }
     }
 
     private func makeIdleHarness(group: MultiThreadedEventLoopGroup) async throws -> IdleHarness {

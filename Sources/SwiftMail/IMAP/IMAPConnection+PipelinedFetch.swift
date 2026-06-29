@@ -83,10 +83,6 @@ extension IMAPConnection {
         // Remove dispatcher — may already be removed if channelInactive fired
         try? await channel.pipeline.removeHandler(dispatcher)
 
-        if results.count != requests.count || !channel.isActive {
-            try? await disconnectBody()
-        }
-
         return results
     }
 
@@ -173,7 +169,6 @@ extension IMAPConnection {
             for handler in handlers {
                 handler.fail(error)
             }
-            try? await disconnectBody()
             throw error
         }
     }

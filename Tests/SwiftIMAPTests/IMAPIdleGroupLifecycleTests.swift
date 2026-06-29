@@ -97,6 +97,7 @@ import Testing
             let session = try await server.idle(on: "INBOX", configuration: configuration)
 
             try await Task.sleep(nanoseconds: 1_000_000_000)
+            #expect(testServer.idleCommandCount >= 2)
             try await session.done()
             try? await server.disconnect()
         }

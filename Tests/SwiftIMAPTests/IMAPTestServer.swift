@@ -45,6 +45,8 @@ final class IMAPTestServer {
     private let queue = DispatchQueue(label: "IMAPTestServer")
     private let messages: [Message]
     private var clientFds: [Int32] = []
+    private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
+    private var idleCommandCountStorage = 0
 
     init(
         host: String = "localhost",
@@ -58,6 +60,14 @@ final class IMAPTestServer {
         self.username = username
         self.password = password
         self.messages = try Self.loadMaildir(maildirURL)
+    }
+
+    var idleCommandCount: Int {
+        metricsQueue.sync { idleCommandCountStorage }
+    }
+
+    private func recordIdleCommand() {
+        metricsQueue.sync { idleCommandCountStorage += 1 }
     }
 
     func start() throws {
@@ -190,6 +200,7 @@ final class IMAPTestServer {
                 let args = parts.count > 2 ? parts[2] : ""
 
                 if command == "IDLE" {
+                    recordIdleCommand()
                     sendLine(fd: fileDescriptor, "+ idling\r\n")
                     idleTag = tag
                     continue

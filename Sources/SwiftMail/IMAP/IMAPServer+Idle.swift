@@ -141,12 +141,11 @@ extension IMAPServer {
 
         let idleGroup = request.idleGroup
         let sessionID = request.sessionID
-        let lifecycle = IMAPIdleSessionLifecycle(idleGroup: idleGroup)
+        let lifecycle = IMAPIdleSessionLifecycle()
         let connection = request.connection
         let cycleTask = Task.detached {
             await IMAPResilientIdleRunner.run(context: context)
             continuation.finish()
-            await lifecycle.finishFromRunner()
         }
 
         return IMAPIdleSession(events: wrappedEvents) { [weak self, connection] in
@@ -164,7 +163,8 @@ extension IMAPServer {
                 cleanupError = error
             }
 
-            await lifecycle.finishStop(cycleTask: cycleTask)
+            await cycleTask.value
+            try? await idleGroup.shutdownGracefully()
 
             if let cleanupError {
                 throw cleanupError
@@ -175,29 +175,16 @@ extension IMAPServer {
 
 actor IMAPIdleSessionLifecycle {
     private var isStopped = false
-    private let idleGroup: EventLoopGroup
 
-    init(idleGroup: EventLoopGroup) {
-        self.idleGroup = idleGroup
-    }
-
-    func finishFromRunner() async {
-        guard !isStopped else { return }
-        isStopped = true
-        try? await idleGroup.shutdownGracefully()
-    }
-
+    /// The session stop path owns both connection removal and IDLE group shutdown.
+    /// The resilient runner observes cancellation, finishes its stream, and then
+    /// this gate keeps repeated `done()` calls from repeating cleanup.
     func beginStop(cycleTask: Task<Void, Never>) -> Bool {
         guard !isStopped else { return false }
         isStopped = true
 
         cycleTask.cancel()
         return true
-    }
-
-    func finishStop(cycleTask: Task<Void, Never>) async {
-        await cycleTask.value
-        try? await idleGroup.shutdownGracefully()
     }
 }
 
