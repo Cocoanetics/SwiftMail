@@ -44,6 +44,7 @@ final class IMAPTestServer {
     private var acceptSource: DispatchSourceRead?
     private let queue = DispatchQueue(label: "IMAPTestServer")
     private let messages: [Message]
+    private let loginResponseDelay: TimeInterval
     private var clientFds: [Int32] = []
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
@@ -53,12 +54,14 @@ final class IMAPTestServer {
         port: Int = 0,
         username: String = "testuser",
         password: String = "testpass",
+        loginResponseDelay: TimeInterval = 0,
         maildirURL: URL
     ) throws {
         self.host = host
         self.port = port
         self.username = username
         self.password = password
+        self.loginResponseDelay = loginResponseDelay
         self.messages = try Self.loadMaildir(maildirURL)
     }
 
@@ -252,6 +255,9 @@ final class IMAPTestServer {
                 return "* CAPABILITY IMAP4rev1 AUTH=PLAIN LITERAL+ ID NAMESPACE UIDPLUS IDLE\r\n"
                     + "\(tag) OK CAPABILITY completed\r\n"
             case "LOGIN":
+                if loginResponseDelay > 0 {
+                    Thread.sleep(forTimeInterval: loginResponseDelay)
+                }
                 authenticated = true
                 return "\(tag) OK LOGIN completed\r\n"
             case "SELECT":

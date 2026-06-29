@@ -18,6 +18,8 @@ public actor IMAPNamedConnection {
     /// The timestamp of the last successfully completed command on this connection.
     /// Useful for implementing staleness checks in ephemeral connection patterns.
     public private(set) var lastActivity: Date?
+    private var authenticationWaiters: [CheckedContinuation<Void, any Error>] = []
+    private var isAuthenticationInFlight = false
 
     init(
         name: String,
@@ -70,8 +72,37 @@ public actor IMAPNamedConnection {
     }
 
     func ensureAuthenticated() async throws {
-        if !connection.isAuthenticated {
+        guard !connection.isAuthenticated else { return }
+
+        if isAuthenticationInFlight {
+            try await withCheckedThrowingContinuation { continuation in
+                authenticationWaiters.append(continuation)
+            }
+            return
+        }
+
+        isAuthenticationInFlight = true
+        do {
             try await authenticateOnConnection(connection)
+            completeAuthenticationWaiters(with: .success(()))
+        } catch {
+            completeAuthenticationWaiters(with: .failure(error))
+            throw error
+        }
+    }
+
+    private func completeAuthenticationWaiters(with result: Result<Void, any Error>) {
+        isAuthenticationInFlight = false
+        let waiters = authenticationWaiters
+        authenticationWaiters.removeAll()
+
+        for waiter in waiters {
+            switch result {
+                case .success:
+                    waiter.resume()
+                case .failure(let error):
+                    waiter.resume(throwing: error)
+            }
         }
     }
 

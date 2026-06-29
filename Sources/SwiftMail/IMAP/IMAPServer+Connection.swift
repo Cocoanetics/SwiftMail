@@ -158,10 +158,17 @@ extension IMAPServer {
             return existing.handle
         }
 
+        if pendingNamedConnectionWaiters[normalizedName] != nil {
+            return try await withCheckedThrowingContinuation { continuation in
+                pendingNamedConnectionWaiters[normalizedName, default: []].append(continuation)
+            }
+        }
+
         guard let authentication else {
             throw IMAPError.commandFailed("Authentication required before creating a named connection")
         }
 
+        pendingNamedConnectionWaiters[normalizedName] = []
         let connection = makeNamedConnection(name: normalizedName)
 
         do {
@@ -177,10 +184,28 @@ extension IMAPServer {
             )
 
             namedConnections[normalizedName] = NamedConnection(connection: connection, handle: handle)
+            completePendingNamedConnection(named: normalizedName, with: .success(handle))
             return handle
         } catch {
             try? await connection.disconnect()
+            completePendingNamedConnection(named: normalizedName, with: .failure(error))
             throw error
+        }
+    }
+
+    private func completePendingNamedConnection(
+        named name: String,
+        with result: Result<IMAPNamedConnection, any Error>
+    ) {
+        let waiters = pendingNamedConnectionWaiters.removeValue(forKey: name) ?? []
+
+        for waiter in waiters {
+            switch result {
+                case .success(let handle):
+                    waiter.resume(returning: handle)
+                case .failure(let error):
+                    waiter.resume(throwing: error)
+            }
         }
     }
 

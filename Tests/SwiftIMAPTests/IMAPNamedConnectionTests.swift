@@ -4,6 +4,28 @@ import NIOIMAPCore
 import Testing
 @testable import SwiftMail
 
+private actor AuthenticationGate {
+    private var starts = 0
+    private var releaseContinuations: [CheckedContinuation<Void, Never>] = []
+
+    func startAndWait() async {
+        starts += 1
+        await withCheckedContinuation { continuation in
+            releaseContinuations.append(continuation)
+        }
+    }
+
+    func startCount() -> Int {
+        starts
+    }
+
+    func releaseAll() {
+        let continuations = releaseContinuations
+        releaseContinuations.removeAll()
+        continuations.forEach { $0.resume() }
+    }
+}
+
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPNamedConnectionTests {
     private func makeConnection(
@@ -50,6 +72,84 @@ struct IMAPNamedConnectionTests {
         let activity = await named.lastActivity
         #expect(activity == nil)
     }
+
+    @Test
+    func concurrentAuthenticationRequestsShareSingleInFlightAttempt() async throws {
+        let gate = AuthenticationGate()
+        let named = makeConnection(authenticate: { connection in
+            await gate.startAndWait()
+            connection.isSessionAuthenticated = true
+        })
+
+        let first = Task {
+            try await named.ensureAuthenticated()
+        }
+
+        while await gate.startCount() < 1 {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+
+        let second = Task {
+            try await named.ensureAuthenticated()
+        }
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        #expect(await gate.startCount() == 1)
+
+        await gate.releaseAll()
+        try await first.value
+        try await second.value
+    }
+
+    #if os(macOS)
+        @Test
+        func concurrentSameNameConnectionRequestsShareSingleHandle() async throws {
+            let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let maildir = tempRoot.appendingPathComponent("Maildir")
+            let curDir = maildir.appendingPathComponent("cur")
+            let newDir = maildir.appendingPathComponent("new")
+
+            try FileManager.default.createDirectory(at: curDir, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: newDir, withIntermediateDirectories: true)
+            defer {
+                try? FileManager.default.removeItem(at: tempRoot)
+            }
+
+            let sampleMessage = """
+            From: Test <sender@example.com>\r
+            To: Test <recipient@example.com>\r
+            Subject: Test\r
+            Date: Thu, 01 Jan 2026 00:00:00 +0000\r
+            Message-ID: <test@example.com>\r
+            Content-Type: text/plain; charset=utf-8\r
+            \r
+            Body.\r
+            """
+            try sampleMessage.data(using: .utf8)?.write(to: curDir.appendingPathComponent("1.eml"))
+
+            let testServer = try IMAPTestServer(
+                host: "localhost",
+                port: 0,
+                username: "u",
+                password: "p",
+                loginResponseDelay: 0.15,
+                maildirURL: maildir
+            )
+            try testServer.start()
+            defer { testServer.stop() }
+
+            let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+            try await server.connect()
+            try await server.login(username: "u", password: "p")
+
+            async let first = server.connection(named: "shared")
+            async let second = server.connection(named: "shared")
+            let handles = try await (first, second)
+
+            #expect(ObjectIdentifier(handles.0) == ObjectIdentifier(handles.1))
+            try await server.disconnect()
+        }
+    #endif
 
     @Test
     func uidExpungeRequiresUIDPlusCapability() async {
