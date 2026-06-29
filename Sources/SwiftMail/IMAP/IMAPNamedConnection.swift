@@ -21,6 +21,12 @@ public actor IMAPNamedConnection {
     private var authenticationWaiters: [CheckedContinuation<Void, any Error>] = []
     private var isAuthenticationInFlight = false
 
+    #if DEBUG
+    var authenticationWaiterCountForTesting: Int {
+        authenticationWaiters.count
+    }
+    #endif
+
     init(
         name: String,
         connection: IMAPConnection,
@@ -81,6 +87,8 @@ public actor IMAPNamedConnection {
             return
         }
 
+        // Concurrent callers share this leader's result. Failure clears the
+        // in-flight state so a later call can retry normally.
         isAuthenticationInFlight = true
         do {
             try await authenticateOnConnection(connection)

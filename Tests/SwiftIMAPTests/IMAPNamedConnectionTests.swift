@@ -28,10 +28,19 @@ private actor AuthenticationGate {
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPNamedConnectionTests {
+    private struct NamedConnectionHarness {
+        let named: IMAPNamedConnection
+        let group: MultiThreadedEventLoopGroup
+
+        func shutdown() async {
+            try? await group.shutdownGracefully()
+        }
+    }
+
     private func makeConnection(
         name: String = "test",
         authenticate: @escaping @Sendable (IMAPConnection) async throws -> Void = { _ in }
-    ) -> IMAPNamedConnection {
+    ) -> NamedConnectionHarness {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let connection = IMAPConnection(
             host: "localhost",
@@ -44,14 +53,35 @@ struct IMAPNamedConnectionTests {
             connectionID: "test-\(name)",
             connectionRole: "test"
         )
-        return IMAPNamedConnection(name: name, connection: connection, authenticateOnConnection: authenticate)
+        let named = IMAPNamedConnection(name: name, connection: connection, authenticateOnConnection: authenticate)
+        return NamedConnectionHarness(named: named, group: group)
+    }
+
+    private func waitForAuthenticationWaiter(
+        on named: IMAPNamedConnection,
+        gate: AuthenticationGate
+    ) async throws {
+        for _ in 0..<100 {
+            if await named.authenticationWaiterCountForTesting == 1 {
+                return
+            }
+            if await gate.startCount() > 1 {
+                Issue.record("Expected second authentication request to wait behind the leader")
+                return
+            }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+
+        Issue.record("Expected second authentication request to park as a waiter")
     }
 
     @Test
     func lastActivityIsNilBeforeAnyCommands() async {
-        let named = makeConnection()
-        let activity = await named.lastActivity
+        let harness = makeConnection()
+
+        let activity = await harness.named.lastActivity
         #expect(activity == nil)
+        await harness.shutdown()
     }
 
     @Test
@@ -59,46 +89,54 @@ struct IMAPNamedConnectionTests {
         // Authentication closure throws before executeCommand reaches the
         // underlying connection, so lastActivity must stay nil and no transport
         // should be opened.
-        let named = makeConnection(authenticate: { _ in
+        let harness = makeConnection(authenticate: { _ in
             throw IMAPError.authFailed("auth error")
         })
 
         do {
-            _ = try await named.noop()
+            _ = try await harness.named.noop()
         } catch {
             // expected – authentication throws before any command reaches the server
         }
 
-        let activity = await named.lastActivity
+        let activity = await harness.named.lastActivity
         #expect(activity == nil)
+        await harness.shutdown()
     }
 
     @Test
     func concurrentAuthenticationRequestsShareSingleInFlightAttempt() async throws {
         let gate = AuthenticationGate()
-        let named = makeConnection(authenticate: { connection in
+        let harness = makeConnection(authenticate: { connection in
             await gate.startAndWait()
             connection.isSessionAuthenticated = true
         })
 
-        let first = Task {
-            try await named.ensureAuthenticated()
+        do {
+            let first = Task {
+                try await harness.named.ensureAuthenticated()
+            }
+
+            while await gate.startCount() < 1 {
+                try await Task.sleep(nanoseconds: 1_000_000)
+            }
+
+            let second = Task {
+                try await harness.named.ensureAuthenticated()
+            }
+
+            try await waitForAuthenticationWaiter(on: harness.named, gate: gate)
+            #expect(await gate.startCount() == 1)
+
+            await gate.releaseAll()
+            try await first.value
+            try await second.value
+            await harness.shutdown()
+        } catch {
+            await gate.releaseAll()
+            await harness.shutdown()
+            throw error
         }
-
-        while await gate.startCount() < 1 {
-            try await Task.sleep(nanoseconds: 1_000_000)
-        }
-
-        let second = Task {
-            try await named.ensureAuthenticated()
-        }
-
-        try await Task.sleep(nanoseconds: 50_000_000)
-        #expect(await gate.startCount() == 1)
-
-        await gate.releaseAll()
-        try await first.value
-        try await second.value
     }
 
     #if os(macOS)
@@ -154,11 +192,6 @@ struct IMAPNamedConnectionTests {
     @Test
     func uidExpungeRequiresUIDPlusCapability() async {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer {
-            Task {
-                try? await group.shutdownGracefully()
-            }
-        }
 
         let connection = IMAPConnection(
             host: "localhost",
@@ -186,16 +219,12 @@ struct IMAPNamedConnectionTests {
         } catch {
             Issue.record("Expected IMAPError.commandNotSupported, got \(error)")
         }
+        try? await group.shutdownGracefully()
     }
 
     @Test
     func sortedSearchRequiresSortCapability() async {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer {
-            Task {
-                try? await group.shutdownGracefully()
-            }
-        }
 
         let connection = IMAPConnection(
             host: "localhost",
@@ -226,5 +255,6 @@ struct IMAPNamedConnectionTests {
         } catch {
             Issue.record("Expected IMAPError.commandNotSupported, got \(error)")
         }
+        try? await group.shutdownGracefully()
     }
 }

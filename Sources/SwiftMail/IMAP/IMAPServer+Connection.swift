@@ -160,7 +160,7 @@ extension IMAPServer {
 
         if pendingNamedConnectionWaiters[normalizedName] != nil {
             return try await withCheckedThrowingContinuation { continuation in
-                pendingNamedConnectionWaiters[normalizedName, default: []].append(continuation)
+                pendingNamedConnectionWaiters[normalizedName]?.append(continuation)
             }
         }
 
@@ -168,6 +168,8 @@ extension IMAPServer {
             throw IMAPError.commandFailed("Authentication required before creating a named connection")
         }
 
+        // Concurrent callers share the leader's result. Success returns the same
+        // handle; failure clears this sentinel so a later call can retry normally.
         pendingNamedConnectionWaiters[normalizedName] = []
         let connection = makeNamedConnection(name: normalizedName)
 
