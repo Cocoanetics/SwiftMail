@@ -145,7 +145,9 @@ final class IMAPTestServer {
 
         let activeClientFds = markStoppingAndSnapshotClientFds()
         for fileDescriptor in activeClientFds {
-            shutdown(fileDescriptor, SHUT_RDWR)
+            // `SHUT_RDWR` imports as `Int32` on Darwin but `Int` on Glibc; cast so
+            // the `shutdown(2)` call (which wants `Int32`) compiles on Linux too.
+            shutdown(fileDescriptor, Int32(SHUT_RDWR))
         }
 
         if !activeClientFds.isEmpty {
