@@ -21,11 +21,9 @@ public actor IMAPNamedConnection {
     private var authenticationWaiters: [CheckedContinuation<Void, any Error>] = []
     private var isAuthenticationInFlight = false
 
-    #if DEBUG
     var authenticationWaiterCountForTesting: Int {
         authenticationWaiters.count
     }
-    #endif
 
     init(
         name: String,
