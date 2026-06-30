@@ -10,12 +10,28 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
     typealias InboundIn = Response
     typealias InboundOut = Never
 
+    enum CompletionReason: String {
+        case taggedResponse
+        case serverTermination
+        case channelInactive
+        case error
+    }
+
     private let continuation: AsyncStream<IMAPServerEvent>.Continuation
     private let idleLogger = Logger(label: "com.cocoanetics.SwiftMail.IdleHandler")
     private var didReceiveIdleStarted = false
+    private var completionReasonStorage: CompletionReason?
 
     var hasEnteredIdleState: Bool {
         lock.withLock { didReceiveIdleStarted }
+    }
+
+    var completionReason: CompletionReason? {
+        lock.withLock { completionReasonStorage }
+    }
+
+    var completedWithTaggedResponse: Bool {
+        lock.withLock { completionReasonStorage == .taggedResponse }
     }
 
     init(commandTag: String, promise: EventLoopPromise<Void>, continuation: AsyncStream<IMAPServerEvent>.Continuation) {
@@ -29,13 +45,33 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
 
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
         // Call super to handle CLIENTBUG warnings and fulfill the Void promise.
+        recordCompletionReason(.taggedResponse)
         super.handleTaggedOKResponse(response)
         continuation.finish()
     }
 
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
+        recordCompletionReason(.taggedResponse)
         failWithError(IMAPError.commandFailed(String(describing: response.state)))
         continuation.finish()
+    }
+
+    override func channelInactive(context: ChannelHandlerContext) {
+        recordCompletionReason(.channelInactive)
+        super.channelInactive(context: context)
+    }
+
+    override func errorCaught(context: ChannelHandlerContext, error: Error) {
+        recordCompletionReason(.error)
+        super.errorCaught(context: context, error: error)
+    }
+
+    private func recordCompletionReason(_ reason: CompletionReason) {
+        lock.withLock {
+            if completionReasonStorage == nil {
+                completionReasonStorage = reason
+            }
+        }
     }
 
     private var currentSeq: SequenceNumber?
@@ -58,6 +94,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
             case .fatal(let text):
                 continuation.yield(.bye(text.text))
                 // Server-initiated termination - complete the IDLE session
+                recordCompletionReason(.serverTermination)
                 succeedWithResult(())
                 continuation.finish()
                 return true  // Indicate this response was fully handled
@@ -141,6 +178,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
             case .bye(let text):
                 continuation.yield(.bye(text.text))
                 // Server-initiated termination - complete the IDLE session
+                recordCompletionReason(.serverTermination)
                 succeedWithResult(())
                 continuation.finish()
                 return true

@@ -96,6 +96,47 @@ struct IMAPIdleCancellationTests {
         }
     }
 
+    @Test
+    func byeDuringDoneRecyclesChannelBeforeNextIdle() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+
+        do {
+            let harness = try await makeIdleHarness(group: group)
+            try await enterIdle(connection: harness.connection, channel: harness.channel)
+
+            let doneTask = Task {
+                try await harness.connection.done(timeoutSeconds: 1)
+            }
+
+            guard let doneLine = try await nextOutboundLine(from: harness.channel) else {
+                Issue.record("Expected outbound DONE command")
+                try await group.shutdownGracefully()
+                return
+            }
+            #expect(doneLine == "DONE\r\n")
+
+            var bye = harness.channel.allocator.buffer(capacity: 0)
+            bye.writeString("* BYE Server closing during IDLE termination\r\n")
+            try await harness.channel.writeInbound(bye)
+
+            do {
+                try await doneTask.value
+                Issue.record("Expected DONE to throw after BYE without tagged IDLE completion")
+            } catch {
+                // Expected: untagged BYE does not retire the active IDLE tag.
+            }
+
+            #expect(harness.connection.channel == nil)
+            #expect(harness.connection.idleHandler == nil)
+            #expect(!harness.connection.responseBuffer.hasActiveHandler)
+
+            try await group.shutdownGracefully()
+        } catch {
+            try? await group.shutdownGracefully()
+            throw error
+        }
+    }
+
     private func makeIdleHarness(group: MultiThreadedEventLoopGroup) async throws -> IdleHarness {
         let connection = IMAPConnection(
             host: "localhost",
