@@ -9,12 +9,17 @@ import Foundation
 
 final class IMAPCommandQueue {
     private struct Waiter {
+        // Stored only while the task is suspended in acquire; it is promoted to
+        // owner before the continuation resumes, so comparisons occur while the
+        // task is still alive.
         let ownerTask: UnsafeCurrentTask?
         let continuation: CheckedContinuation<Void, Never>
     }
 
     private let lock = NSLock()
     private var isOwned = false
+    // Holds the task currently executing run(), and is cleared or replaced
+    // before that task can leave run().
     private var ownerTask: UnsafeCurrentTask?
     private var depth = 0
     private var waiters: [Waiter] = []
