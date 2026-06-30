@@ -59,6 +59,9 @@ public actor IMAPServer {
     /// User-managed named connections keyed by requested name.
     var namedConnections: [String: NamedConnection] = [:]
 
+    /// Waiters for named connections currently being created.
+    var pendingNamedConnectionWaiters: [String: [CheckedContinuation<IMAPNamedConnection, any Error>]] = [:]
+
     /// Authentication configuration for spawning new connections.
     var authentication: Authentication?
 
