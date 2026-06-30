@@ -7,69 +7,70 @@
 
 import Foundation
 
-private enum IMAPCommandQueueTaskContext {
-    @TaskLocal static var ownerToken: UUID?
-}
-
 final class IMAPCommandQueue {
     private struct Waiter {
-        let ownerToken: UUID
+        // Stored only while the task is suspended in acquire; it is promoted to
+        // owner before the continuation resumes, so comparisons occur while the
+        // task is still alive.
+        let ownerTask: UnsafeCurrentTask?
         let continuation: CheckedContinuation<Void, Never>
     }
 
     private let lock = NSLock()
-    private var ownerToken: UUID?
+    private var isOwned = false
+    // Holds the task currently executing run(), and is cleared or replaced
+    // before that task can leave run().
+    private var ownerTask: UnsafeCurrentTask?
     private var depth = 0
     private var waiters: [Waiter] = []
 
     func run<T>(_ operation: () async throws -> T) async rethrows -> T {
-        let token = IMAPCommandQueueTaskContext.ownerToken ?? UUID()
-
-        return try await IMAPCommandQueueTaskContext.$ownerToken.withValue(token) {
-            await acquire(ownerToken: token)
-            defer { release(ownerToken: token) }
-            return try await operation()
-        }
+        let task = withUnsafeCurrentTask { $0 }
+        await acquire(ownerTask: task)
+        defer { release(ownerTask: task) }
+        return try await operation()
     }
 
-    private func acquire(ownerToken: UUID) async {
-        if acquireImmediatelyIfPossible(ownerToken: ownerToken) {
+    private func acquire(ownerTask: UnsafeCurrentTask?) async {
+        if acquireImmediatelyIfPossible(ownerTask: ownerTask) {
             return
         }
 
         await withCheckedContinuation { continuation in
             lock.lock()
-            if ownerToken == self.ownerToken {
+            if isOwned && isSameTask(ownerTask, self.ownerTask) {
                 depth += 1
                 lock.unlock()
                 continuation.resume()
                 return
             }
 
-            if self.ownerToken == nil {
-                self.ownerToken = ownerToken
+            if !isOwned {
+                isOwned = true
+                self.ownerTask = ownerTask
                 depth = 1
                 lock.unlock()
                 continuation.resume()
                 return
             }
 
-            waiters.append(Waiter(ownerToken: ownerToken, continuation: continuation))
+            waiters.append(Waiter(ownerTask: ownerTask, continuation: continuation))
             lock.unlock()
         }
     }
 
-    private func acquireImmediatelyIfPossible(ownerToken: UUID) -> Bool {
+    private func acquireImmediatelyIfPossible(ownerTask: UnsafeCurrentTask?) -> Bool {
         lock.lock()
         defer { lock.unlock() }
 
-        if ownerToken == self.ownerToken {
+        if isOwned && isSameTask(ownerTask, self.ownerTask) {
             depth += 1
             return true
         }
 
-        if self.ownerToken == nil {
-            self.ownerToken = ownerToken
+        if !isOwned {
+            isOwned = true
+            self.ownerTask = ownerTask
             depth = 1
             return true
         }
@@ -77,10 +78,10 @@ final class IMAPCommandQueue {
         return false
     }
 
-    private func release(ownerToken: UUID) {
+    private func release(ownerTask: UnsafeCurrentTask?) {
         lock.lock()
 
-        guard self.ownerToken == ownerToken else {
+        guard isOwned && isSameTask(self.ownerTask, ownerTask) else {
             lock.unlock()
             return
         }
@@ -92,17 +93,24 @@ final class IMAPCommandQueue {
         }
 
         guard !waiters.isEmpty else {
-            self.ownerToken = nil
+            isOwned = false
+            self.ownerTask = nil
             depth = 0
             lock.unlock()
             return
         }
 
         let next = waiters.removeFirst()
-        self.ownerToken = next.ownerToken
+        isOwned = true
+        self.ownerTask = next.ownerTask
         depth = 1
         lock.unlock()
 
         next.continuation.resume()
+    }
+
+    private func isSameTask(_ lhs: UnsafeCurrentTask?, _ rhs: UnsafeCurrentTask?) -> Bool {
+        guard let lhs, let rhs else { return false }
+        return lhs == rhs
     }
 }

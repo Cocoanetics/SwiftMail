@@ -71,6 +71,37 @@ import Testing
             try? await session.done()
         }
 
+        @Test
+        func repeatedIdleRenewalsDoNotTripClientStateMachine() async throws {
+            let (testServer, tempRoot) = try makeTestServer()
+            try testServer.start()
+            defer {
+                testServer.stop()
+                try? FileManager.default.removeItem(at: tempRoot)
+            }
+
+            let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+            try await server.connect()
+            try await server.login(username: "u", password: "p")
+
+            let configuration = IMAPIdleConfiguration(
+                renewalInterval: 0.05,
+                noopInterval: 1,
+                postIdleNoopEnabled: false,
+                postIdleNoopDelay: 0,
+                doneTimeout: 2,
+                reconnectBaseDelay: 0.01,
+                reconnectMaxDelay: 0.01,
+                reconnectJitterFactor: 0
+            )
+            let session = try await server.idle(on: "INBOX", configuration: configuration)
+
+            try await Task.sleep(nanoseconds: 1_000_000_000)
+            #expect(testServer.idleCommandCount >= 2)
+            try await session.done()
+            try? await server.disconnect()
+        }
+
         /// The idle group should be cleaned up when the initial connection fails.
         @Test
         func idleGroupCleanedUpOnConnectionFailure() async throws {

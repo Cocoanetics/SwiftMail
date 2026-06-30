@@ -193,17 +193,18 @@ extension IMAPConnection {
                 timeoutSeconds: timeoutSeconds
             )
             try await waitForIdleHandlerCompletion(handler, timeoutSeconds: timeoutSeconds)
-            duplexLogger.flushInboundBuffer()
         } catch {
             duplexLogger.flushInboundBuffer()
 
             if error is CancellationError {
+                logger.warning("\(connectionContext) IDLE termination was cancelled; recycling connection")
+                try? await disconnectBody()
                 throw error
             }
 
             if handler.isCompleted {
-                logger.info("\(connectionContext) Server closed connection while IDLE termination was in progress")
-                return
+                try await requireTaggedIdleCompletion(handler)
+                throw error
             }
 
             logErrorDiagnostics(error: error, operation: "DONE")
@@ -216,6 +217,22 @@ extension IMAPConnection {
 
             try? await disconnectBody()
             throw error
+        }
+
+        try await requireTaggedIdleCompletion(handler)
+        duplexLogger.flushInboundBuffer()
+    }
+
+    private func requireTaggedIdleCompletion(_ handler: IdleHandler) async throws {
+        guard handler.completedWithTaggedResponse else {
+            let reason = handler.completionReason?.rawValue ?? "unknown"
+            let warning = "\(connectionContext) IDLE completed without tagged completion "
+                + "during DONE (reason=\(reason)); recycling connection"
+            logger.warning("\(warning)")
+            try? await disconnectBody()
+            throw IMAPError.connectionFailed(
+                "IDLE completed without tagged completion during DONE; connection recycled"
+            )
         }
     }
 
