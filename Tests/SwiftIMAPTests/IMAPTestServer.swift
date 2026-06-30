@@ -45,9 +45,12 @@ final class IMAPTestServer {
     private let queue = DispatchQueue(label: "IMAPTestServer")
     private let messages: [Message]
     private let loginResponseDelay: TimeInterval
-    private var clientFds: [Int32] = []
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
+    private var clientFds: Set<Int32> = []
+    private let clientFdsLock = NSLock()
+    private let clientGroup = DispatchGroup()
+    private var isStopping = false
 
     init(
         host: String = "localhost",
@@ -74,6 +77,8 @@ final class IMAPTestServer {
     }
 
     func start() throws {
+        resetClientTrackingForStart()
+
         #if os(Linux)
             listenFd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
         #else
@@ -137,10 +142,19 @@ final class IMAPTestServer {
     func stop() {
         acceptSource?.cancel()
         acceptSource = nil
-        for fileDescriptor in clientFds {
+
+        let activeClientFds = markStoppingAndSnapshotClientFds()
+        for fileDescriptor in activeClientFds {
+            shutdown(fileDescriptor, SHUT_RDWR)
+        }
+
+        if !activeClientFds.isEmpty {
+            _ = clientGroup.wait(timeout: .now() + .seconds(2))
+        }
+
+        for fileDescriptor in drainClientFds() {
             close(fileDescriptor)
         }
-        clientFds.removeAll()
     }
 
     // MARK: - Connection Handling
@@ -154,15 +168,27 @@ final class IMAPTestServer {
             }
         }
         guard clientFd >= 0 else { return }
-        clientFds.append(clientFd)
+        guard registerClient(fd: clientFd) else {
+            close(clientFd)
+            return
+        }
 
         // Handle on a background queue
+        let clientGroup = clientGroup
+        clientGroup.enter()
         DispatchQueue.global().async { [weak self] in
-            self?.handleClient(fd: clientFd)
+            defer { clientGroup.leave() }
+            guard let self else {
+                close(clientFd)
+                return
+            }
+            self.handleClient(fd: clientFd)
         }
     }
 
     private func handleClient(fd fileDescriptor: Int32) {
+        defer { closeTrackedClient(fd: fileDescriptor) }
+
         // Send greeting
         sendLine(fd: fileDescriptor, "* OK IMAP test server ready\r\n")
 
@@ -219,13 +245,53 @@ final class IMAPTestServer {
                 sendLine(fd: fileDescriptor, response)
 
                 if command == "LOGOUT" {
-                    close(fileDescriptor)
                     return
                 }
             }
         }
+    }
 
-        close(fileDescriptor)
+    private func resetClientTrackingForStart() {
+        clientFdsLock.lock()
+        isStopping = false
+        clientFds.removeAll()
+        clientFdsLock.unlock()
+    }
+
+    private func registerClient(fd fileDescriptor: Int32) -> Bool {
+        clientFdsLock.lock()
+        defer { clientFdsLock.unlock() }
+
+        guard !isStopping else { return false }
+        clientFds.insert(fileDescriptor)
+        return true
+    }
+
+    private func markStoppingAndSnapshotClientFds() -> [Int32] {
+        clientFdsLock.lock()
+        defer { clientFdsLock.unlock() }
+
+        isStopping = true
+        return Array(clientFds)
+    }
+
+    private func drainClientFds() -> [Int32] {
+        clientFdsLock.lock()
+        defer { clientFdsLock.unlock() }
+
+        let fileDescriptors = Array(clientFds)
+        clientFds.removeAll()
+        return fileDescriptors
+    }
+
+    private func closeTrackedClient(fd fileDescriptor: Int32) {
+        clientFdsLock.lock()
+        let shouldClose = clientFds.remove(fileDescriptor) != nil
+        clientFdsLock.unlock()
+
+        if shouldClose {
+            close(fileDescriptor)
+        }
     }
 
     private func sendLine(fd fileDescriptor: Int32, _ text: String) {
