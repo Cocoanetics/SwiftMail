@@ -49,14 +49,7 @@ let package = Package(
         // encoding, ProcessInfo.localIPAddress).
         .package(url: "https://github.com/Cocoanetics/SwiftCross", from: "1.2.0"),
         .package(url: "https://github.com/apple/swift-nio", from: "2.0.0"),
-        // Upstream now carries the Android/Bionic libc-guard fix for NIOIMAPCore
-        // (apple/swift-nio-imap#826), so depend on it directly instead of a fork.
-        // No release contains it yet (latest tag is 0.2.0) — pin the merge
-        // revision; switch to `from:` once a release ships.
-        .package(
-            url: "https://github.com/apple/swift-nio-imap",
-            revision: "bcf875610ca56dfd7bae869fa19ca3149c075908"
-        ),
+        .package(url: "https://github.com/apple/swift-nio-imap", from: "0.3.0"),
         // Pinned to the latest upstream main, which carries the Windows-SDK
         // BoringSSL header workarounds (_WINSOCKAPI_/NOMINMAX/NOCRYPT scoped to
         // the CNIOBoringSSL target, apple/swift-nio-ssl#585). No release contains

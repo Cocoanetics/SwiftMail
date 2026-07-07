@@ -341,8 +341,7 @@ struct XOAUTH2AuthenticationHandlerTests {
         expectsChallenge: Bool,
         failContinuationWrite: Bool = false
     ) async throws -> ChannelSetup {
-        let channel = NIOAsyncTestingChannel()
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         if failContinuationWrite {
             try await channel.pipeline.addHandler(FailContinuationWriteHandler())

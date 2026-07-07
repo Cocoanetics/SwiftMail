@@ -9,9 +9,7 @@ import Testing
 struct UntaggedResponseBufferTests {
     @Test
     func testTracksBufferedByeAsTerminationSignal() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let buffer = UntaggedResponseBuffer()
         try await channel.pipeline.addHandler(buffer)

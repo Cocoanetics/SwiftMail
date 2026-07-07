@@ -39,9 +39,7 @@ struct PlainAuthenticationTests {
 
     @Test
     func testHandlerSucceedsOnTaggedOK() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let promise = channel.eventLoop.makePromise(of: [Capability].self)
         var creds = channel.allocator.buffer(capacity: 10)
@@ -69,9 +67,7 @@ struct PlainAuthenticationTests {
 
     @Test
     func testHandlerFailsOnTaggedNO() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let promise = channel.eventLoop.makePromise(of: [Capability].self)
         var creds = channel.allocator.buffer(capacity: 10)

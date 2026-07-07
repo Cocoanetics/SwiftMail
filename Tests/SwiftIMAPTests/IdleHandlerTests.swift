@@ -10,9 +10,7 @@ import Testing
 struct IdleHandlerTests {
     @Test
     func testIdleStartedKeepsHandlerActiveUntilTaggedOK() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         var continuationRef: AsyncStream<IMAPServerEvent>.Continuation?
         _ = AsyncStream<IMAPServerEvent> { continuation in
@@ -62,9 +60,7 @@ struct IdleHandlerTests {
 
     @Test
     func testByeDuringIdleCompletesWithoutDoneOrTaggedOK() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         var continuationRef: AsyncStream<IMAPServerEvent>.Continuation?
         let stream = AsyncStream<IMAPServerEvent> { continuation in

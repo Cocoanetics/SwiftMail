@@ -238,9 +238,7 @@ struct FetchMessageInfoHandlerTests {
     }
 
     private func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let promise = channel.eventLoop.makePromise(of: [MessageInfo].self)
         let handler = FetchMessageInfoHandler(commandTag: "A001", promise: promise)

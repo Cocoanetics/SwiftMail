@@ -16,8 +16,7 @@ struct SearchCommandTests {
 
     @Test
     func testIdentifierSetScopeIncludedInUIDSearch() async throws {
-        let channel = NIOAsyncTestingChannel()
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let ids = MessageIdentifierSet<UID>([UID(10), UID(20), UID(30)])
         let command = SearchCommand<UID>(identifierSet: ids, criteria: [SearchCriteria.unseen])
@@ -37,8 +36,7 @@ struct SearchCommandTests {
 
     @Test
     func testUIDSortWireFormatUsesSortCommand() async throws {
-        let channel = NIOAsyncTestingChannel()
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let ids = MessageIdentifierSet<UID>([UID(10), UID(20), UID(30)])
         let command = SearchCommand<UID>(
@@ -65,8 +63,7 @@ struct SearchCommandTests {
 
     @Test
     func testNoIdentifierSetSearchesEntireMailbox() async throws {
-        let channel = NIOAsyncTestingChannel()
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let command = SearchCommand<UID>(identifierSet: nil, criteria: [SearchCriteria.unseen])
         let tagged = command.toTaggedCommand(tag: "S002")
@@ -85,8 +82,7 @@ struct SearchCommandTests {
 
     @Test
     func testIdentifierSetScopeIncludedInSequenceNumberSearch() async throws {
-        let channel = NIOAsyncTestingChannel()
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let ids = MessageIdentifierSet<SequenceNumber>([SequenceNumber(1), SequenceNumber(2)])
         let command = SearchCommand<SequenceNumber>(identifierSet: ids, criteria: [SearchCriteria.unseen])
@@ -107,8 +103,7 @@ struct SearchCommandTests {
 
     @Test
     func testUIDExpungeUsesUIDCommandWireFormat() async throws {
-        let channel = NIOAsyncTestingChannel()
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let command = UIDExpungeCommand(identifierSet: UIDSet([UID(10), UID(20), UID(30)]))
         let tagged = command.toTaggedCommand(tag: "S004")

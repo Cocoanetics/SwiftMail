@@ -1,6 +1,6 @@
 // Splitting this test file was tried but introduced a macOS CI hang;
 // see the IMAPTestServer.swift comment for context.
-// swiftlint:disable file_length type_body_length
+// swiftlint:disable type_body_length
 
 import Foundation
 import NIO
@@ -47,9 +47,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testEsearchResponseUID() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let promise = channel.eventLoop.makePromise(of: ExtendedSearchResult<UID>.self)
         let handler = ExtendedSearchHandler<UID>(commandTag: "A001", promise: promise)
@@ -83,9 +81,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testEsearchResponseSequenceNumber() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let promise = channel.eventLoop.makePromise(of: ExtendedSearchResult<SequenceNumber>.self)
         let handler = ExtendedSearchHandler<SequenceNumber>(commandTag: "A002", promise: promise)
@@ -113,9 +109,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testFallbackPlainSearch() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let promise = channel.eventLoop.makePromise(of: ExtendedSearchResult<UID>.self)
         let handler = ExtendedSearchHandler<UID>(commandTag: "A003", promise: promise)
@@ -159,9 +153,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testEsearchEmptyResult() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let promise = channel.eventLoop.makePromise(of: ExtendedSearchResult<UID>.self)
         let handler = ExtendedSearchHandler<UID>(commandTag: "A004", promise: promise)
@@ -189,9 +181,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testCommandWireFormatWithEsearch() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let command = ExtendedSearchCommand<UID>(criteria: [SearchCriteria.all], useEsearch: true)
         let tagged = command.toTaggedCommand(tag: "C001")
@@ -214,9 +204,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testSortedCommandWireFormatUsesUIDSort() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let command = ExtendedSearchCommand<UID>(
             criteria: [SearchCriteria.all],
@@ -242,9 +230,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testCommandWireFormatWithoutEsearch() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let command = ExtendedSearchCommand<UID>(criteria: [SearchCriteria.all], useEsearch: false)
         let tagged = command.toTaggedCommand(tag: "C002")
@@ -263,9 +249,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testCommandWireFormatSequenceNumberWithEsearch() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let command = ExtendedSearchCommand<SequenceNumber>(criteria: [SearchCriteria.all], useEsearch: true)
         let tagged = command.toTaggedCommand(tag: "C003")
@@ -285,9 +269,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testIdentifierSetScopeIsIncludedInUIDSearch() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let ids = MessageIdentifierSet<UID>([UID(1), UID(2), UID(3)])
         let command = ExtendedSearchCommand<UID>(identifierSet: ids, criteria: [SearchCriteria.all], useEsearch: true)
@@ -307,9 +289,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testNoIdentifierSetSearchesEntireMailbox() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let command = ExtendedSearchCommand<UID>(identifierSet: nil, criteria: [SearchCriteria.all], useEsearch: true)
         let tagged = command.toTaggedCommand(tag: "C006")
@@ -331,9 +311,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testEsearchPartialResponse() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let promise = channel.eventLoop.makePromise(of: ExtendedSearchResult<UID>.self)
         let handler = ExtendedSearchHandler<UID>(commandTag: "A007", promise: promise)
@@ -379,9 +357,7 @@ struct ExtendedSearchHandlerTests {
 
     @Test
     func testCommandWireFormatWithPartial() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let partialRange = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(1...100))
         let command = ExtendedSearchCommand<UID>(
@@ -406,4 +382,4 @@ struct ExtendedSearchHandlerTests {
         #expect(!wireString.contains("ALL"))
     }
 }
-// swiftlint:enable file_length type_body_length
+// swiftlint:enable type_body_length
