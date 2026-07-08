@@ -10,9 +10,7 @@ import Testing
 struct WithinSearchTests {
     @Test
     func testYoungerSearchKeyWireFormat() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let command = SearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.younger(seconds: 3600)])
         let tagged = command.toTaggedCommand(tag: "W001")
@@ -31,9 +29,7 @@ struct WithinSearchTests {
 
     @Test
     func testOlderSearchKeyWireFormat() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let command = SearchCommand<SwiftMail.UID>(criteria: [SearchCriteria.older(seconds: 86400)])
         let tagged = command.toTaggedCommand(tag: "W002")
@@ -52,9 +48,7 @@ struct WithinSearchTests {
 
     @Test
     func testWithinCriteriaWithExtendedSearch() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let command = ExtendedSearchCommand<SwiftMail.UID>(
             criteria: [SearchCriteria.younger(seconds: 600)],
@@ -77,9 +71,7 @@ struct WithinSearchTests {
 
     @Test
     func testCombinedWithinAndOtherCriteria() async throws {
-        let channel = NIOAsyncTestingChannel()
-
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let command = SearchCommand<SwiftMail.UID>(
             criteria: [SearchCriteria.younger(seconds: 3600), SearchCriteria.unseen]

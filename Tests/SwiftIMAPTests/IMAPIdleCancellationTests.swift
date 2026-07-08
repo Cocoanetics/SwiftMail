@@ -152,7 +152,7 @@ struct IMAPIdleCancellationTests {
         let channel = NIOAsyncTestingChannel()
         let address = try SocketAddress(ipAddress: "127.0.0.1", port: 143)
         try await channel.connect(to: address)
-        try await channel.pipeline.addHandler(IMAPClientHandler())
+        try await channel.addIMAPClientHandler()
         try await channel.pipeline.addHandler(connection.duplexLogger)
         try await channel.pipeline.addHandler(connection.responseBuffer)
         connection.replaceChannelForTesting(channel)
