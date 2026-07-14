@@ -24,6 +24,9 @@ public struct MessagePart: Sendable {
     /// The content ID of the part (if any)
     public let contentId: String?
 
+    /// The size of the part body in octets, as reported by BODYSTRUCTURE (if any)
+    public let size: Int?
+
     /// The content data (if any)
     public var data: Data?
 
@@ -40,6 +43,7 @@ public struct MessagePart: Sendable {
     ///   - encoding: The content transfer encoding (e.g., "base64", "quoted-printable")
     ///   - filename: The filename (if any)
     ///   - contentId: The content ID
+    ///   - size: The body size in octets from BODYSTRUCTURE (optional)
     ///   - data: The content data (optional)
     ///   - embeddedMessageInfo: Envelope headers for message/rfc822 parts (optional)
     public init(
@@ -49,6 +53,7 @@ public struct MessagePart: Sendable {
         encoding: String? = nil,
         filename: String? = nil,
         contentId: String? = nil,
+        size: Int? = nil,
         data: Data? = nil,
         embeddedMessageInfo: MessageInfo? = nil
     ) {
@@ -58,6 +63,7 @@ public struct MessagePart: Sendable {
         self.encoding = encoding
         self.filename = filename
         self.contentId = contentId
+        self.size = size
         self.data = data
         self.embeddedMessageInfo = embeddedMessageInfo
     }
@@ -77,6 +83,7 @@ public struct MessagePart: Sendable {
         encoding: String? = nil,
         filename: String? = nil,
         contentId: String? = nil,
+        size: Int? = nil,
         data: Data? = nil,
         embeddedMessageInfo: MessageInfo? = nil
     ) {
@@ -86,6 +93,7 @@ public struct MessagePart: Sendable {
         self.encoding = encoding
         self.filename = filename
         self.contentId = contentId
+        self.size = size
         self.data = data
         self.embeddedMessageInfo = embeddedMessageInfo
     }
@@ -161,7 +169,7 @@ public struct MessagePart: Sendable {
 // MARK: - Codable Implementation
 extension MessagePart: Codable {
     private enum CodingKeys: String, CodingKey {
-        case section, contentType, disposition, encoding, filename, contentId, data, embeddedMessageInfo
+        case section, contentType, disposition, encoding, filename, contentId, size, data, embeddedMessageInfo
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -173,6 +181,7 @@ extension MessagePart: Codable {
         try container.encodeIfPresent(encoding, forKey: .encoding)
         try container.encodeIfPresent(filename, forKey: .filename)
         try container.encodeIfPresent(contentId, forKey: .contentId)
+        try container.encodeIfPresent(size, forKey: .size)
         try container.encodeIfPresent(data, forKey: .data)
         try container.encodeIfPresent(embeddedMessageInfo, forKey: .embeddedMessageInfo)
     }
@@ -186,6 +195,7 @@ extension MessagePart: Codable {
         encoding = try container.decodeIfPresent(String.self, forKey: .encoding)
         filename = try container.decodeIfPresent(String.self, forKey: .filename)
         contentId = try container.decodeIfPresent(String.self, forKey: .contentId)
+        size = try container.decodeIfPresent(Int.self, forKey: .size)
         data = try container.decodeIfPresent(Data.self, forKey: .data)
         embeddedMessageInfo = try container.decodeIfPresent(MessageInfo.self, forKey: .embeddedMessageInfo)
     }
