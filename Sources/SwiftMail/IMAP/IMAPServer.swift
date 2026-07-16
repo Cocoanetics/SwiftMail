@@ -42,6 +42,9 @@ public actor IMAPServer {
     /// Certificate verification preference used by all TLS transports for this server.
     let certificateVerificationPolicy: MailCertificateVerificationPolicy
 
+    /// Lowest TLS version any transport for this server may negotiate.
+    let minimumTLSVersion: MailTLSMinimumVersion
+
     /// Maximum number of bytes the IMAP response parser may buffer before failing.
     /// Large SEARCH/FETCH responses from dense mailboxes can exceed a small buffer
     /// and surface as `PayloadTooLargeError`; raise this for very large mailboxes.
@@ -158,6 +161,7 @@ public actor IMAPServer {
         port: Int,
         transportSecurity: MailTransportSecurity = .automatic,
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
+        minimumTLSVersion: MailTLSMinimumVersion = .tlsv1_2,
         numberOfThreads: Int = 1,
         responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit
     ) {
@@ -166,6 +170,7 @@ public actor IMAPServer {
         self.port = port
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
+        self.minimumTLSVersion = minimumTLSVersion
         self.responseBufferLimit = responseBufferLimit
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
@@ -180,6 +185,7 @@ public actor IMAPServer {
             port: port,
             transportSecurity: transportSecurity,
             certificateVerificationPolicy: certificateVerificationPolicy,
+            minimumTLSVersion: minimumTLSVersion,
             group: group,
             loggerLabel: primaryLoggerLabel,
             outboundLabel: outboundLabel,

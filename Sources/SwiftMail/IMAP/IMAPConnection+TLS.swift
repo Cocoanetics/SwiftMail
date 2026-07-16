@@ -8,10 +8,12 @@ extension IMAPConnection {
     static func makeTLSHandler(
         for channel: Channel,
         host: String,
-        certificateVerificationPolicy: MailCertificateVerificationPolicy
+        certificateVerificationPolicy: MailCertificateVerificationPolicy,
+        minimumTLSVersion: MailTLSMinimumVersion = .tlsv1_2
     ) throws -> NIOSSLClientHandler {
         let configuration = MailTLSConfiguration.makeClientConfiguration(
-            certificateVerificationPolicy: certificateVerificationPolicy
+            certificateVerificationPolicy: certificateVerificationPolicy,
+            minimumTLSVersion: minimumTLSVersion
         )
         let context = try NIOSSLContext(configuration: configuration)
         let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
@@ -61,11 +63,13 @@ extension IMAPConnection {
 
         let host = self.host
         let certificateVerificationPolicy = self.certificateVerificationPolicy
+        let minimumTLSVersion = self.minimumTLSVersion
         try await channel.eventLoop.submit {
             let sslHandler = try Self.makeTLSHandler(
                 for: channel,
                 host: host,
-                certificateVerificationPolicy: certificateVerificationPolicy
+                certificateVerificationPolicy: certificateVerificationPolicy,
+                minimumTLSVersion: minimumTLSVersion
             )
             try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
         }.get()
