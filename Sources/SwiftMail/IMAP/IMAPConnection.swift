@@ -20,6 +20,7 @@ final class IMAPConnection {
     let certificateVerificationPolicy: MailCertificateVerificationPolicy
     let minimumTLSVersion: MailTLSMinimumVersion
     let responseBufferLimit: Int
+    let parserLimits: IMAPParserLimits
     let group: EventLoopGroup
     let connectionID: String
     let connectionRole: String
@@ -50,7 +51,8 @@ final class IMAPConnection {
         inboundLabel: String,
         connectionID: String,
         connectionRole: String,
-        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit
+        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit,
+        parserLimits: IMAPParserLimits = .default
     ) {
         self.host = host
         self.port = port
@@ -58,6 +60,7 @@ final class IMAPConnection {
         self.certificateVerificationPolicy = certificateVerificationPolicy
         self.minimumTLSVersion = minimumTLSVersion
         self.responseBufferLimit = responseBufferLimit
+        self.parserLimits = parserLimits
         self.group = group
         self.connectionID = connectionID
         self.connectionRole = connectionRole

@@ -48,6 +48,7 @@ extension IMAPConnection {
         let duplexLogger = self.duplexLogger
         let responseBuffer = self.responseBuffer
         let responseBufferLimit = self.responseBufferLimit
+        let parserLimits = self.parserLimits
 
         return ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
@@ -56,9 +57,9 @@ extension IMAPConnection {
                 do {
                     let parserOptions = ResponseParser.Options(
                         bufferLimit: responseBufferLimit,
-                        messageAttributeLimit: .max,
-                        bodySizeLimit: .max,
-                        literalSizeLimit: IMAPDefaults.literalSizeLimit
+                        messageAttributeLimit: parserLimits.messageAttributeLimit,
+                        bodySizeLimit: parserLimits.bodySizeLimit,
+                        literalSizeLimit: parserLimits.literalSizeLimit
                     )
 
                     if case .implicitTLS = initialTLSMode {

@@ -50,6 +50,9 @@ public actor IMAPServer {
     /// and surface as `PayloadTooLargeError`; raise this for very large mailboxes.
     let responseBufferLimit: Int
 
+    /// Bounds the response parser enforces against a hostile or malfunctioning server.
+    let parserLimits: IMAPParserLimits
+
     /** The event loop group for handling asynchronous operations */
     let group: EventLoopGroup
 
@@ -146,7 +149,14 @@ public actor IMAPServer {
      - transportSecurity: The transport security policy to use. `.automatic` infers from standard IMAP
      ports; explicit values override that inference.
      - certificateVerificationPolicy: The certificate verification policy to use for TLS connections.
+     - minimumTLSVersion: The lowest TLS version any transport may negotiate. Defaults to
+     ``MailTLSMinimumVersion/tlsv1_2``, the lowest version RFC 8996 still permits. Pass
+     ``MailTLSMinimumVersion/tlsv1_3`` when every server you talk to supports it, which makes
+     a downgrade impossible regardless of what the server offers.
      - numberOfThreads: The number of threads to use for the event loop group
+     - parserLimits: Bounds the response parser enforces against a hostile or malfunctioning
+     server. Defaults to ``IMAPParserLimits/default``, which leaves body size and attribute
+     count unbounded — the behaviour before this parameter existed.
      - responseBufferLimit: Maximum bytes the IMAP response parser may buffer
      before failing with `PayloadTooLargeError`. Defaults to
      ``IMAPServer/defaultResponseBufferLimit`` (1 MB), which handles large SEARCH
@@ -163,7 +173,8 @@ public actor IMAPServer {
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
         minimumTLSVersion: MailTLSMinimumVersion = .tlsv1_2,
         numberOfThreads: Int = 1,
-        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit
+        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit,
+        parserLimits: IMAPParserLimits = .default
     ) {
         precondition(responseBufferLimit > 0, "responseBufferLimit must be greater than 0 bytes")
         self.host = host
@@ -172,6 +183,7 @@ public actor IMAPServer {
         self.certificateVerificationPolicy = certificateVerificationPolicy
         self.minimumTLSVersion = minimumTLSVersion
         self.responseBufferLimit = responseBufferLimit
+        self.parserLimits = parserLimits
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
         // Initialize loggers
@@ -192,7 +204,8 @@ public actor IMAPServer {
             inboundLabel: inboundLabel,
             connectionID: "primary",
             connectionRole: "primary",
-            responseBufferLimit: responseBufferLimit
+            responseBufferLimit: responseBufferLimit,
+            parserLimits: parserLimits
         )
     }
 
