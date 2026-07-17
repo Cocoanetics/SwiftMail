@@ -5,13 +5,20 @@ import NIO
 import NIOSSL
 
 extension IMAPConnection {
+    /// - Note: `minimumTLSVersion` has **no default on purpose.** It used to default to
+    ///   `.tlsv12`, and the implicit-TLS call site simply omitted it — so a caller asking for
+    ///   `.tlsv13` on port 993 silently got a TLS 1.2 floor. A default here makes forgetting the
+    ///   argument indistinguishable from choosing a value, and the compiler cannot help. Every
+    ///   call site now has to say what it means.
     static func makeTLSHandler(
         for channel: Channel,
         host: String,
-        certificateVerificationPolicy: MailCertificateVerificationPolicy
+        certificateVerificationPolicy: MailCertificateVerificationPolicy,
+        minimumTLSVersion: MailTLSMinimumVersion
     ) throws -> NIOSSLClientHandler {
         let configuration = MailTLSConfiguration.makeClientConfiguration(
-            certificateVerificationPolicy: certificateVerificationPolicy
+            certificateVerificationPolicy: certificateVerificationPolicy,
+            minimumTLSVersion: minimumTLSVersion
         )
         let context = try NIOSSLContext(configuration: configuration)
         let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
@@ -61,11 +68,13 @@ extension IMAPConnection {
 
         let host = self.host
         let certificateVerificationPolicy = self.certificateVerificationPolicy
+        let minimumTLSVersion = self.minimumTLSVersion
         try await channel.eventLoop.submit {
             let sslHandler = try Self.makeTLSHandler(
                 for: channel,
                 host: host,
-                certificateVerificationPolicy: certificateVerificationPolicy
+                certificateVerificationPolicy: certificateVerificationPolicy,
+                minimumTLSVersion: minimumTLSVersion
             )
             try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
         }.get()

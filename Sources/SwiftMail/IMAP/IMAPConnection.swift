@@ -18,7 +18,9 @@ final class IMAPConnection {
     let port: Int
     let transportSecurity: MailTransportSecurity
     let certificateVerificationPolicy: MailCertificateVerificationPolicy
+    let minimumTLSVersion: MailTLSMinimumVersion
     let responseBufferLimit: Int
+    let parserLimits: IMAPParserLimits
     let group: EventLoopGroup
     let connectionID: String
     let connectionRole: String
@@ -37,24 +39,35 @@ final class IMAPConnection {
     let logger: Logging.Logger
     let duplexLogger: IMAPLogger
 
+    /// - Note: `minimumTLSVersion` and `parserLimits` deliberately have **no defaults.**
+    ///   They used to, and `makeIdleConnection`/`makeNamedConnection` simply left them out — so
+    ///   a server configured with a TLS 1.3 floor and 64 MiB parser limits spawned IDLE and named
+    ///   connections with a TLS 1.2 floor and *unbounded* limits, while `IMAPServer`'s
+    ///   documentation claimed the policy governed every transport. A default turns "forgot to
+    ///   pass the security policy" into "chose the lax one", and neither the compiler nor a
+    ///   reviewer can see the difference. Without defaults, omitting one is a build error.
     init(
         host: String,
         port: Int,
         transportSecurity: MailTransportSecurity = .automatic,
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
+        minimumTLSVersion: MailTLSMinimumVersion,
         group: EventLoopGroup,
         loggerLabel: String,
         outboundLabel: String,
         inboundLabel: String,
         connectionID: String,
         connectionRole: String,
-        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit
+        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit,
+        parserLimits: IMAPParserLimits
     ) {
         self.host = host
         self.port = port
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
+        self.minimumTLSVersion = minimumTLSVersion
         self.responseBufferLimit = responseBufferLimit
+        self.parserLimits = parserLimits
         self.group = group
         self.connectionID = connectionID
         self.connectionRole = connectionRole
@@ -85,6 +98,11 @@ final class IMAPConnection {
         )
     }
 
+    /// Legacy convenience initializer taking `useTLS` instead of a `MailTransportSecurity`.
+    ///
+    /// Security policy is explicit here for the same reason the designated initializer has no
+    /// defaults: this call site was invisible to a grep for `IMAPConnection(` and only surfaced
+    /// once the compiler demanded the arguments.
     convenience init(
         host: String,
         port: Int,
@@ -95,20 +113,24 @@ final class IMAPConnection {
         inboundLabel: String,
         connectionID: String,
         connectionRole: String,
-        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit
+        responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit,
+        minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
+        parserLimits: IMAPParserLimits = .default
     ) {
         self.init(
             host: host,
             port: port,
             transportSecurity: Self.resolveLegacyTransportSecurity(port: port, useTLS: useTLS),
             certificateVerificationPolicy: .fullVerification,
+            minimumTLSVersion: minimumTLSVersion,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,
             inboundLabel: inboundLabel,
             connectionID: connectionID,
             connectionRole: connectionRole,
-            responseBufferLimit: responseBufferLimit
+            responseBufferLimit: responseBufferLimit,
+            parserLimits: parserLimits
         )
     }
 

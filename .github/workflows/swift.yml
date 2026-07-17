@@ -15,32 +15,66 @@ jobs:
 
   build-macos:
     runs-on: macos-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
       # swift-testing 6.3.2 (shared by the test targets) has a swift-tools-version
-      # 6.2 manifest, which the runner's default Xcode (Swift 6.1.2) cannot
-      # resolve. Xcode 26.0 ships Swift 6.2 — same version already used by the
-      # iOS job, so it is known to be available on the runner.
-      - name: Select Xcode 26.0
+      # 6.2 manifest, so the selected Xcode must ship Swift 6.2+. `macos-latest`
+      # rotated to the macos-26 image (2026-07-15), whose stable Xcodes all
+      # qualify — track the newest one rather than pinning a version that the
+      # next image rotation strands without platform components.
+      - name: Select latest stable Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26.0"
+          xcode-version: latest-stable
       - name: Verify Swift version
         run: swift --version
       - name: Build (macOS)
         run: swift build --build-tests -v
+      # The watchdog exists because a test-run deadlock surfaces here as a silent
+      # 10-minute stall followed by "cancelled" — no output, no stacks, nothing to
+      # debug with. If the run is still alive after the deadline it samples every
+      # test process so the log shows exactly which threads are stuck where, then
+      # fails the step honestly instead of letting the job timeout eat it.
       - name: Test (macOS)
-        run: swift test -v --skip-build
+        run: |
+          swift test -v --skip-build &
+          TEST_PID=$!
+          (
+            # /dev/null keeps the orphaned sleep from holding the step's output
+            # pipe open (the runner waits on that pipe) after a normal fast run.
+            sleep 360 >/dev/null 2>&1
+            echo "::error::Test run still running after 6 minutes - dumping thread samples"
+            for pid in $(pgrep -f 'swiftpm-testing|SwiftMailPackageTests'); do
+              echo "=== sample of PID $pid ($(ps -o comm= -p $pid)) ==="
+              sample "$pid" 3 -file /dev/stdout || true
+            done
+            # The helper processes are children of the driver but survive its death;
+            # kill them too so the step ends now instead of at the job timeout.
+            pkill -9 -f 'swiftpm-testing|SwiftMailPackageTests' 2>/dev/null || true
+            kill -9 "$TEST_PID" 2>/dev/null || true
+          ) &
+          WATCHDOG_PID=$!
+          set +e
+          wait "$TEST_PID"
+          STATUS=$?
+          set -e
+          kill "$WATCHDOG_PID" 2>/dev/null || true
+          exit "$STATUS"
 
   build-ios:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Select Xcode 26.0
+      # latest-stable rather than a pin: the image's newest Xcode is the one
+      # whose platform components are preinstalled. The pinned 26.0 outlived its
+      # image — on macos-26 it has no iOS platform, and `-downloadPlatform` for
+      # it fails with "Unable to connect to simulator", so the build died with
+      # "iOS 26.0 is not installed" before compiling anything.
+      - name: Select latest stable Xcode
         uses: maxim-lobanov/setup-xcode@v1
         with:
-          xcode-version: "26.0"
+          xcode-version: latest-stable
       # Xcode 16+ ships platform SDKs as on-demand components, so a freshly
       # rotated `macos-latest` image can have the selected Xcode without the iOS
       # platform installed — `-destination 'generic/platform=iOS'` then resolves
@@ -55,14 +89,39 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-latest
+    # Without a limit a hung test run occupies the runner for the 6-hour GitHub
+    # default — several did exactly that before the watchdog below existed.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - name: Verify Swift version
         run: swift --version
       - name: Build (Linux)
         run: swift build --build-tests -v
+      # Same watchdog as build-macos, with gdb standing in for sample(1): a
+      # deadlocked test run must fail with thread backtraces in the log, not
+      # sit silently until the job timeout.
       - name: Test (Linux)
-        run: swift test -v --skip-build
+        run: |
+          swift test -v --skip-build &
+          TEST_PID=$!
+          (
+            sleep 360 >/dev/null 2>&1
+            echo "::error::Test run still running after 6 minutes - dumping thread backtraces"
+            for pid in $(pgrep -f 'swiftpm-testing|SwiftMailPackageTests'); do
+              echo "=== backtraces of PID $pid ($(ps -o comm= -p $pid)) ==="
+              sudo gdb -p "$pid" -batch -ex 'thread apply all bt' 2>&1 | tail -200 || true
+            done
+            pkill -9 -f 'swiftpm-testing|SwiftMailPackageTests' 2>/dev/null || true
+            kill -9 "$TEST_PID" 2>/dev/null || true
+          ) &
+          WATCHDOG_PID=$!
+          set +e
+          wait "$TEST_PID"
+          STATUS=$?
+          set -e
+          kill "$WATCHDOG_PID" 2>/dev/null || true
+          exit "$STATUS"
 
   build-windows:
     # Windows build + test. No vcpkg / system C libraries are needed: the only

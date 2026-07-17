@@ -10,12 +10,14 @@ struct IMAPTransportSecurityTests {
     @Test
     func certificateVerificationPolicyMapsToNIOSSLConfiguration() {
         let fullVerification = MailTLSConfiguration.makeClientConfiguration(
-            certificateVerificationPolicy: .fullVerification
+            certificateVerificationPolicy: .fullVerification,
+            minimumTLSVersion: .tlsv12
         )
         #expect(fullVerification.certificateVerification == .fullVerification)
 
         let noVerification = MailTLSConfiguration.makeClientConfiguration(
-            certificateVerificationPolicy: .noVerification
+            certificateVerificationPolicy: .noVerification,
+            minimumTLSVersion: .tlsv12
         )
         #expect(noVerification.certificateVerification == .none)
     }
@@ -116,12 +118,14 @@ struct IMAPTransportSecurityTests {
                 host: "localhost",
                 port: 143,
                 transportSecurity: .startTLS,
+                minimumTLSVersion: .tlsv12,
                 group: group,
                 loggerLabel: "test.imap",
                 outboundLabel: "test.imap.out",
                 inboundLabel: "test.imap.in",
                 connectionID: "test-starttls-failure",
-                connectionRole: "test"
+                connectionRole: "test",
+                parserLimits: .default
             )
             let channel = EmbeddedChannel()
             let address = try SocketAddress(ipAddress: "127.0.0.1", port: 143)
