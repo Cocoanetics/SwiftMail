@@ -30,7 +30,13 @@ struct MailTLSConfigurationTests {
         #expect(configuration.minimumTLSVersion == nio)
     }
 
-    @Test("Raising the floor to TLS 1.3 makes a downgrade impossible")
+    /// - Important: This suite covers the *configuration factory* only — that it returns what it
+    ///   is handed. It says nothing about whether any connection passes the value in, which is
+    ///   where the implicit-TLS defect lived: this test was green throughout, under the name
+    ///   *"Raising the floor to TLS 1.3 makes a downgrade impossible"*, while a downgrade on
+    ///   port 993 was entirely possible. Enforcement on the wire is covered by
+    ///   ``IMAPTLSFloorEnforcementTests``, which talks to a TLS-1.2-only peer.
+    @Test("Requesting TLS 1.3 yields a configuration with a TLS 1.3 floor")
     func tls13Floor() {
         let configuration = MailTLSConfiguration.makeClientConfiguration(
             certificateVerificationPolicy: .fullVerification,

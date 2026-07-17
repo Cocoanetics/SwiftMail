@@ -45,6 +45,7 @@ extension IMAPConnection {
     ) -> ClientBootstrap {
         let host = self.host
         let certificateVerificationPolicy = self.certificateVerificationPolicy
+        let minimumTLSVersion = self.minimumTLSVersion
         let duplexLogger = self.duplexLogger
         let responseBuffer = self.responseBuffer
         let responseBufferLimit = self.responseBufferLimit
@@ -55,18 +56,14 @@ extension IMAPConnection {
             .channelOption(ChannelOptions.tcpOption(.tcp_nodelay), value: 1)
             .channelInitializer { channel in
                 do {
-                    let parserOptions = ResponseParser.Options(
-                        bufferLimit: responseBufferLimit,
-                        messageAttributeLimit: parserLimits.messageAttributeLimit,
-                        bodySizeLimit: parserLimits.bodySizeLimit,
-                        literalSizeLimit: parserLimits.literalSizeLimit
-                    )
+                    let parserOptions = parserLimits.makeParserOptions(bufferLimit: responseBufferLimit)
 
                     if case .implicitTLS = initialTLSMode {
                         let sslHandler = try Self.makeTLSHandler(
                             for: channel,
                             host: host,
-                            certificateVerificationPolicy: certificateVerificationPolicy
+                            certificateVerificationPolicy: certificateVerificationPolicy,
+                            minimumTLSVersion: minimumTLSVersion
                         )
                         try channel.pipeline.syncOperations.addHandler(sslHandler)
                     }

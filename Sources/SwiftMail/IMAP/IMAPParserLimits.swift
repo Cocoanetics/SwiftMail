@@ -56,4 +56,37 @@ public struct IMAPParserLimits: Sendable, Equatable {
         self.messageAttributeLimit = messageAttributeLimit
         self.literalSizeLimit = literalSizeLimit
     }
+
+    /// Translates these limits into `ResponseParser.Options`.
+    ///
+    /// ## Why this is a method and not four call sites
+    /// Because the translation is not the identity, and every place that spelled it out by hand
+    /// was a place it could drift. It already had: only the primary connection ever received
+    /// these limits at all.
+    ///
+    /// ## Why the `+ 1`
+    /// These properties are documented as *maxima* — a body of exactly `bodySizeLimit` is legal.
+    /// The parser, however, enforces strict inequalities:
+    ///
+    /// ```swift
+    /// guard size < self.bodySizeLimit else { throw ExceededMaximumBodySizeError(…) }
+    /// guard attributeCount < self.messageAttributeLimit else { throw … }
+    /// ```
+    ///
+    /// So passing the value through unchanged makes the effective maximum one *less* than the
+    /// documented one: `bodySizeLimit: 64 * 1024 * 1024` rejects a message of exactly 64 MiB, and
+    /// `messageAttributeLimit: 1` rejects a single-attribute FETCH — the attribute itself parses,
+    /// then the closing `)` runs the same guard with the count already incremented.
+    ///
+    /// Rather than redefine the public contract as an exclusive bound (surprising: nobody reads
+    /// "maximum" as "one less than this"), the conversion adds one. Saturating, because the
+    /// defaults are `.max` and overflow would trap — and there `.max` already means unbounded.
+    func makeParserOptions(bufferLimit: Int) -> ResponseParser.Options {
+        ResponseParser.Options(
+            bufferLimit: bufferLimit,
+            messageAttributeLimit: messageAttributeLimit == .max ? .max : messageAttributeLimit + 1,
+            bodySizeLimit: bodySizeLimit == .max ? .max : bodySizeLimit + 1,
+            literalSizeLimit: literalSizeLimit
+        )
+    }
 }
