@@ -79,7 +79,7 @@ private final class GreetingSender: ChannelInboundHandler {
 /// configuration-level tests could not catch this.
 private final class TLS12OnlyServer {
     let channel: Channel
-    let group: EventLoopGroup
+    let group: MultiThreadedEventLoopGroup
 
     var port: Int { channel.localAddress?.port ?? 0 }
 
@@ -114,9 +114,11 @@ private final class TLS12OnlyServer {
             .wait()
     }
 
-    func shutdown() {
-        try? channel.close().wait()
-        try? group.syncShutdownGracefully()
+    /// - Note: `async`, and the group shutdown goes through ``shutDownGracefully(_:)``.
+    ///   Blocking here would deadlock the macOS CI job — see that function.
+    func shutdown() async {
+        try? await channel.close()
+        await shutDownGracefully(group)
     }
 }
 
@@ -134,7 +136,7 @@ private final class TLS12OnlyServer {
 /// A test that cannot produce the failure proves nothing about it. So these connect a real
 /// `IMAPConnection` to a real TLS endpoint that refuses to speak anything above TLS 1.2 and assert
 /// on the outcome. Drop the `minimumTLSVersion:` argument at any call site and one goes red.
-@Suite("TLS floor is honored on the wire")
+@Suite("TLS floor is honored on the wire", .serialized, .timeLimit(.minutes(1)))
 struct IMAPTLSFloorEnforcementTests {
 
     private func makeConnection(
@@ -163,16 +165,16 @@ struct IMAPTLSFloorEnforcementTests {
     @Test("Implicit TLS refuses a TLS 1.2 peer when the floor is TLS 1.3")
     func implicitTLSHonorsFloor() async throws {
         let server = try TLS12OnlyServer()
-        defer { server.shutdown() }
-
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
 
         let connection = makeConnection(port: server.port, minimumTLSVersion: .tlsv13, group: group)
         await #expect(throws: Error.self) {
             try await connection.connect()
         }
+
         try? await connection.disconnect()
+        await server.shutdown()
+        await shutDownGracefully(group)
     }
 
     /// The control. Without it the test above proves only "connecting fails", which it would also
@@ -180,13 +182,13 @@ struct IMAPTLSFloorEnforcementTests {
     @Test("The same peer connects when the floor is TLS 1.2")
     func tls12FloorConnects() async throws {
         let server = try TLS12OnlyServer()
-        defer { server.shutdown() }
-
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
 
         let connection = makeConnection(port: server.port, minimumTLSVersion: .tlsv12, group: group)
         try await connection.connect()
+
         try? await connection.disconnect()
+        await server.shutdown()
+        await shutDownGracefully(group)
     }
 }

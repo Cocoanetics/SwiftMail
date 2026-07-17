@@ -14,7 +14,7 @@ import NIOIMAPCore
 ///
 /// These assert on the spawned connection itself rather than on a factory in isolation. Remove
 /// either argument from either factory and they go red.
-@Suite("Server policy reaches spawned connections")
+@Suite("Server policy reaches spawned connections", .serialized, .timeLimit(.minutes(1)))
 struct IMAPSecurityPolicyPropagationTests {
 
     private func makeServer() -> SwiftMail.IMAPServer {
@@ -40,13 +40,15 @@ struct IMAPSecurityPolicyPropagationTests {
     @Test("IDLE connections inherit the TLS floor and the parser limits")
     func idleConnectionInheritsPolicy() async {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
         let connection = await makeServer().makeIdleConnection(
             sessionID: UUID(), mailbox: "INBOX", group: group
         )
         #expect(connection.minimumTLSVersion == MailTLSMinimumVersion.tlsv13)
         #expect(connection.parserLimits.bodySizeLimit == 64 * 1024 * 1024)
         #expect(connection.parserLimits.messageAttributeLimit == 1024)
+        // Not in a `defer` with a detached `Task`: that would let the shutdown outlive the test.
+        // This function is async and cannot throw, so awaiting here is both simpler and correct.
+        await shutDownGracefully(group)
     }
 }
 
