@@ -39,7 +39,23 @@ public struct IMAPParserLimits: Sendable, Equatable {
     ///
     /// Message bodies are bounded by ``bodySizeLimit`` instead, so this can stay small.
     /// Defaults to `NIOIMAPCore.IMAPDefaults.literalSizeLimit` (4 KB).
+    ///
+    /// - Important: **Cannot exceed 8 KiB**, and the initializer rejects larger values rather
+    ///   than accept a limit it cannot keep. `IMAPClientHandler` constructs its
+    ///   `NIOSingleStepByteToMessageProcessor` with `maximumBufferSize:
+    ///   IMAPDefaults.lineLengthLimit` (8,192 bytes), hardcoded and independent of these
+    ///   options. A larger literal therefore parses only when the network happens to deliver it
+    ///   in few enough reads; if fragmentation leaves more than 8 KiB buffered before the
+    ///   literal completes, it fails with `PayloadTooLargeError` — below every configured limit.
+    ///   A configuration whose behaviour depends on packet boundaries is not a limit, it is a
+    ///   coin toss, so ``maximumSupportedLiteralSizeLimit`` is enforced up front.
     public var literalSizeLimit: Int
+
+    /// The largest value ``literalSizeLimit`` can take: `IMAPDefaults.lineLengthLimit` (8 KiB).
+    ///
+    /// Raising it further needs a configurable `maximumBufferSize` in `IMAPClientHandler`, which
+    /// the pinned NIOIMAP does not offer.
+    public static let maximumSupportedLiteralSizeLimit = IMAPDefaults.lineLengthLimit
 
     /// SwiftMail's previous behaviour: bodies and attribute counts unbounded.
     public static let `default` = IMAPParserLimits()
@@ -52,6 +68,15 @@ public struct IMAPParserLimits: Sendable, Equatable {
         precondition(bodySizeLimit > 0, "bodySizeLimit must be greater than 0")
         precondition(messageAttributeLimit > 0, "messageAttributeLimit must be greater than 0")
         precondition(literalSizeLimit > 0, "literalSizeLimit must be greater than 0")
+        precondition(
+            literalSizeLimit <= Self.maximumSupportedLiteralSizeLimit,
+            """
+            literalSizeLimit must not exceed \(Self.maximumSupportedLiteralSizeLimit) bytes: \
+            IMAPClientHandler caps its decoder buffer at IMAPDefaults.lineLengthLimit, so a \
+            larger literal only parses when the network happens to deliver it in few enough \
+            reads. Accepting the value would promise a bound that depends on packet boundaries.
+            """
+        )
         self.bodySizeLimit = bodySizeLimit
         self.messageAttributeLimit = messageAttributeLimit
         self.literalSizeLimit = literalSizeLimit

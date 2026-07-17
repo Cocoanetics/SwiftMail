@@ -50,6 +50,8 @@ extension IMAPConnection {
         let responseBuffer = self.responseBuffer
         let responseBufferLimit = self.responseBufferLimit
         let parserLimits = self.parserLimits
+        let logger = self.logger
+        let connectionContext = self.connectionContext
 
         return ClientBootstrap(group: group)
             .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
@@ -70,6 +72,16 @@ extension IMAPConnection {
 
                     try channel.pipeline.syncOperations.addHandlers([
                         IMAPClientHandler(parserOptions: parserOptions),
+                        // Directly behind the decoder: it sees every response and every
+                        // parser-limit error before any command handler does. The parser bounds
+                        // a single body section; this bounds the whole FETCH response, which is
+                        // what `bodySizeLimit` promises — and it closes the connection on a
+                        // violation instead of letting a rejected response sit in the decoder.
+                        IMAPResponseLimitGuard(
+                            bodySizeLimit: parserLimits.bodySizeLimit,
+                            logger: logger,
+                            connectionContext: connectionContext
+                        ),
                         duplexLogger,
                         greetingHandler,
                         responseBuffer

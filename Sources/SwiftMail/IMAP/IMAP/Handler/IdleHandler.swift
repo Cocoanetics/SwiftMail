@@ -56,14 +56,32 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
         continuation.finish()
     }
 
+    /// - Note: `continuation.finish()` is the point of this override.
+    ///
+    ///   The tagged paths above finish the stream; the connection dying did not. A caller sitting
+    ///   in `for await event in stream` therefore waited forever once the transport went away —
+    ///   the stream had no more producer and no end. `AsyncStream` cannot know that on its own:
+    ///   an unfinished continuation is indistinguishable from a quiet mailbox.
+    ///
+    ///   This matters most for the case it was reported under: a parser-limit violation closes
+    ///   the channel (see ``IMAPResponseLimitGuard``), and without finishing here, "fail closed"
+    ///   would only be half true — socket shut, caller still hanging.
     override func channelInactive(context: ChannelHandlerContext) {
         recordCompletionReason(.channelInactive)
         super.channelInactive(context: context)
+        continuation.finish()
     }
 
+    /// - Note: Finishes the stream for the same reason as ``channelInactive(context:)``.
+    ///
+    ///   `super.errorCaught` fails the private promise, but nothing awaits it until a later DONE
+    ///   or checkpoint — so an error during IDLE used to leave the caller's stream open with no
+    ///   producer behind it. Finishing here ends the loop; the error itself still surfaces
+    ///   through the promise for whoever is waiting on it.
     override func errorCaught(context: ChannelHandlerContext, error: Error) {
         recordCompletionReason(.error)
         super.errorCaught(context: context, error: error)
+        continuation.finish()
     }
 
     private func recordCompletionReason(_ reason: CompletionReason) {
