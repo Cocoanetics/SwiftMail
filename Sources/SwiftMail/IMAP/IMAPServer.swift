@@ -246,10 +246,11 @@ public actor IMAPServer {
     #endif
 
     deinit {
-        // Schedule shutdown on a background thread to avoid EventLoop issues
-        Task {  @MainActor [group] in
-            try? await group.shutdownGracefully()
-        }
+        // Same non-blocking pattern as SMTPServer.deinit. The callback form needs
+        // neither a Task nor an actor hop: the previous @MainActor task variant
+        // quietly serialized every shutdown through the main actor and never ran at
+        // all in processes that do not drain the main queue.
+        group.shutdownGracefully { _ in }
     }
 
     // MARK: - Mailbox State (used by helpers in extensions)

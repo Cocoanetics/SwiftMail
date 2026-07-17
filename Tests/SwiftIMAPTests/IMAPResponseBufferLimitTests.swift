@@ -5,22 +5,10 @@ import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPResponseBufferLimitTests {
-    /// Deterministically shuts `group` down via `syncShutdownGracefully()`, but runs
-    /// that blocking call OFF the Swift Concurrency cooperative pool. Calling
-    /// `syncShutdownGracefully()` directly from a swift-testing test blocks a
-    /// cooperative-pool thread; on a core-constrained CI runner that violates the
-    /// pool's forward-progress guarantee and deadlocks the whole run (a 7-minute
-    /// hang to the job timeout was observed). Dispatching to a non-cooperative GCD
-    /// global queue and awaiting the continuation keeps the shutdown deterministic
-    /// without ever blocking the pool.
-    private func shutDownGracefully(_ group: MultiThreadedEventLoopGroup) async {
-        await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
-                try? group.syncShutdownGracefully()
-                continuation.resume()
-            }
-        }
-    }
+    // Group shutdown goes through the shared shutDownGracefully(_:) helper in
+    // EventLoopGroupTestSupport.swift; this suite's private GCD-dispatch copy was
+    // its first iteration and parked a thread in the pool that delivers the
+    // shutdown's own completion — see the helper's comment for the full story.
 
     @Test("Default response buffer limit is 1 MB")
     func defaultIsOneMegabyte() async {

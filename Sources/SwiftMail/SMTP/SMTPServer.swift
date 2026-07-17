@@ -175,7 +175,16 @@ public actor SMTPServer {
     }
 
     deinit {
-        try? group.syncShutdownGracefully()
+        // Must not block: deinit runs on whatever thread drops the last reference,
+        // which under Swift Concurrency is a cooperative-pool thread — on Darwin one
+        // of the process's ncpu default-QoS workqueue threads. syncShutdownGracefully()
+        // parks that thread on a semaphore whose signal is itself delivered via the
+        // default-QoS global queue, so once ncpu deinits are in flight at the same
+        // time no thread is left to deliver any of the signals and every waiter waits
+        // forever. A 3-core CI runner deadlocked exactly this way with three tests
+        // concurrently releasing servers. The callback form initiates the same
+        // shutdown without waiting for it.
+        group.shutdownGracefully { _ in }
     }
 
     // MARK: - Command Execution

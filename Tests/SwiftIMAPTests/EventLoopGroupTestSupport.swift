@@ -1,25 +1,26 @@
 import Foundation
 import NIO
 
-/// Shuts `group` down deterministically **without** blocking a Swift Concurrency pool thread.
+/// Shuts `group` down deterministically without parking **any** thread on the result.
 ///
-/// ## Why this is not just `try? group.syncShutdownGracefully()`
-/// Because that call, made directly from a swift-testing test, blocks a cooperative-pool thread.
-/// On a core-constrained CI runner it violates the pool's forward-progress guarantee and
-/// deadlocks the entire run — the macOS job hangs until its `timeout-minutes: 10` fires and the
-/// whole thing reports as *cancelled* rather than failed, which is a good deal harder to notice
-/// than a red X.
+/// ## Why this is not `try? group.syncShutdownGracefully()`
+/// That call parks the calling thread on a semaphore whose signal is delivered via the
+/// default-QoS global queue. Called from a swift-testing test it parks a cooperative-pool
+/// thread; the pool is one thread per core, and the same threads back the default-QoS global
+/// queue — so on a core-constrained CI runner a handful of concurrent shutdowns consume every
+/// thread that could have delivered their wake-ups, and the whole run deadlocks until the job
+/// timeout reports it as *cancelled*. Moving the blocking call onto a GCD queue (this helper's
+/// first iteration, after #179 hit the 7-minute variant of the same hang) only relocates the
+/// parked thread into the very pool that has to deliver the signal.
 ///
-/// This is not a new discovery: `IMAPResponseBufferLimitTests` documented and solved it in #179,
-/// having watched a 7-minute hang. Dispatching the blocking call to a non-cooperative GCD queue
-/// and awaiting the continuation keeps the shutdown deterministic without ever blocking the pool.
+/// The callback form initiates the identical shutdown and resumes the continuation from NIO's
+/// completion callback directly: deterministic completion, zero threads parked anywhere.
 ///
 /// It lives here rather than being copied into each suite so the next test that needs an event
 /// loop group finds the answer instead of the trap.
 func shutDownGracefully(_ group: MultiThreadedEventLoopGroup) async {
     await withCheckedContinuation { continuation in
-        DispatchQueue.global().async {
-            try? group.syncShutdownGracefully()
+        group.shutdownGracefully { _ in
             continuation.resume()
         }
     }
