@@ -70,6 +70,9 @@ public actor SMTPServer {
     /** The certificate verification policy for TLS connections */
     let certificateVerificationPolicy: MailCertificateVerificationPolicy
 
+    /// Lowest TLS version any transport for this server may negotiate.
+    let minimumTLSVersion: MailTLSMinimumVersion
+
     /** The event loop group for handling asynchronous operations */
     let group: EventLoopGroup
 
@@ -155,12 +158,14 @@ public actor SMTPServer {
         port: Int,
         transportSecurity: MailTransportSecurity = .automatic,
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
+        minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
         numberOfThreads: Int = 1
     ) {
         self.host = host
         self.port = port
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
+        self.minimumTLSVersion = minimumTLSVersion
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
         let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")

@@ -246,13 +246,15 @@ extension IMAPServer {
             port: port,
             transportSecurity: transportSecurity,
             certificateVerificationPolicy: certificateVerificationPolicy,
+            minimumTLSVersion: minimumTLSVersion,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,
             inboundLabel: inboundLabel,
             connectionID: shortID,
             connectionRole: "idle:\(sanitizedMailbox)",
-            responseBufferLimit: responseBufferLimit
+            responseBufferLimit: responseBufferLimit,
+            parserLimits: parserLimits
         )
     }
 
@@ -270,13 +272,15 @@ extension IMAPServer {
             port: port,
             transportSecurity: transportSecurity,
             certificateVerificationPolicy: certificateVerificationPolicy,
+            minimumTLSVersion: minimumTLSVersion,
             group: group,
             loggerLabel: loggerLabel,
             outboundLabel: outboundLabel,
             inboundLabel: inboundLabel,
             connectionID: "named-\(shortID)",
             connectionRole: "named:\(sanitizedName)",
-            responseBufferLimit: responseBufferLimit
+            responseBufferLimit: responseBufferLimit,
+            parserLimits: parserLimits
         )
     }
 

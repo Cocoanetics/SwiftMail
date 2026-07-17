@@ -71,19 +71,27 @@ extension IMAPConnection {
             scheduledTimeout: scheduledTimeout
         )
 
-        let results = await collectPipelinedFetchResults(
-            tagToRequest: registered.tagToRequest,
-            futures: registered.futures
-        )
+        // `defer`, because a limit violation now throws out of the collection step and the
+        // cleanup has to happen either way — otherwise a hostile server could leave the
+        // dispatcher installed and `hasActiveHandler` set, which would wedge the next command.
+        defer {
+            scheduledTimeout.cancel()
+            responseBuffer.hasActiveHandler = false
+            duplexLogger.flushInboundBuffer()
+        }
 
-        scheduledTimeout.cancel()
-        responseBuffer.hasActiveHandler = false
-        duplexLogger.flushInboundBuffer()
-
-        // Remove dispatcher — may already be removed if channelInactive fired
-        try? await channel.pipeline.removeHandler(dispatcher)
-
-        return results
+        do {
+            let results = try await collectPipelinedFetchResults(
+                tagToRequest: registered.tagToRequest,
+                futures: registered.futures
+            )
+            // Remove dispatcher — may already be removed if channelInactive fired
+            try? await channel.pipeline.removeHandler(dispatcher)
+            return results
+        } catch {
+            try? await channel.pipeline.removeHandler(dispatcher)
+            throw error
+        }
     }
 
     private func preparePipelinedFetchChannel() async throws -> Channel {
@@ -173,11 +181,26 @@ extension IMAPConnection {
         }
     }
 
+    /// Collects the per-request results, tolerating individual failures — **except** limit
+    /// violations, which are rethrown.
+    ///
+    /// ## Why limit violations are not tolerated
+    /// Swallowing a failed request and moving on is the point of pipelining: one bad UID must not
+    /// sink the batch. But a parser-limit violation is not a property of one request — it means
+    /// **the peer sent more than we allow**, and it poisons the shared decoder. Reported as an
+    /// empty success, it looked to the caller exactly like "this message has no such section",
+    /// and the connection stayed in use with a decoder that would raise the same error on the
+    /// next read. A guard whose violation is indistinguishable from an ordinary empty result is
+    /// not a guard.
+    ///
+    /// The channel itself is closed by ``IMAPResponseLimitGuard`` when the violation happens;
+    /// this makes sure the caller is told rather than handed an empty array.
     private func collectPipelinedFetchResults(
         tagToRequest: [TaggedFetchRequest],
         futures: [EventLoopFuture<Data>]
-    ) async -> [PipelinedFetchResult] {
+    ) async throws -> [PipelinedFetchResult] {
         var results: [PipelinedFetchResult] = []
+        var limitViolation: Error?
 
         for (index, request) in tagToRequest.enumerated() {
             do {
@@ -186,10 +209,20 @@ extension IMAPConnection {
             } catch {
                 let uidValue = request.uid.value
                 let sectionDescription = request.section.description
-                logger.debug("Pipelined fetch failed for UID \(uidValue) section \(sectionDescription): \(error)")
+                if IMAPResponseLimitGuard.isLimitViolation(error) {
+                    // Remember the first one, but keep draining the remaining futures: leaving
+                    // them unawaited would trip NIO's leaked-promise check.
+                    let message = "\(connectionContext) Pipelined fetch hit a parser limit on UID "
+                        + "\(uidValue) section \(sectionDescription): \(error)"
+                    logger.warning("\(message)")
+                    if limitViolation == nil { limitViolation = error }
+                } else {
+                    logger.debug("Pipelined fetch failed for UID \(uidValue) section \(sectionDescription): \(error)")
+                }
             }
         }
 
+        if let limitViolation { throw limitViolation }
         return results
     }
 }
