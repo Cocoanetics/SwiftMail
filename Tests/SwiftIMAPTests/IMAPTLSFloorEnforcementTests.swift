@@ -83,7 +83,14 @@ private final class TLS12OnlyServer {
 
     var port: Int { channel.localAddress?.port ?? 0 }
 
-    init() throws {
+    /// - Note: `async`, because `bind(...).wait()` blocks — and blocking here is what hung the
+    ///   macOS CI job. It is the same trap as `syncShutdownGracefully()` (see
+    ///   ``shutDownGracefully(_:)``) wearing a different hat: any `.wait()` reached from a
+    ///   swift-testing test blocks a cooperative-pool thread, and a core-constrained runner then
+    ///   loses its forward-progress guarantee. It also defeats `.timeLimit` — a blocked thread
+    ///   cannot be cancelled, so the suite runs into the job timeout instead of failing.
+    ///   Nothing else in this test suite calls `.wait()`; that was the hint.
+    init() async throws {
         group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
         let cert = try NIOSSLCertificate(bytes: Array(testCertPEM.utf8), format: .pem)
@@ -99,7 +106,7 @@ private final class TLS12OnlyServer {
 
         let context = try NIOSSLContext(configuration: configuration)
 
-        channel = try ServerBootstrap(group: group)
+        channel = try await ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { channel in
                 do {
@@ -111,7 +118,7 @@ private final class TLS12OnlyServer {
                 }
             }
             .bind(host: "127.0.0.1", port: 0)
-            .wait()
+            .get()
     }
 
     /// - Note: `async`, and the group shutdown goes through ``shutDownGracefully(_:)``.
@@ -164,7 +171,7 @@ struct IMAPTLSFloorEnforcementTests {
     /// The regression test for the reported defect: implicit TLS on port 993 ignored the floor.
     @Test("Implicit TLS refuses a TLS 1.2 peer when the floor is TLS 1.3")
     func implicitTLSHonorsFloor() async throws {
-        let server = try TLS12OnlyServer()
+        let server = try await TLS12OnlyServer()
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
         let connection = makeConnection(port: server.port, minimumTLSVersion: .tlsv13, group: group)
@@ -181,7 +188,7 @@ struct IMAPTLSFloorEnforcementTests {
     /// do if the port were closed, the certificate rejected, or the greeting malformed.
     @Test("The same peer connects when the floor is TLS 1.2")
     func tls12FloorConnects() async throws {
-        let server = try TLS12OnlyServer()
+        let server = try await TLS12OnlyServer()
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
         let connection = makeConnection(port: server.port, minimumTLSVersion: .tlsv12, group: group)
