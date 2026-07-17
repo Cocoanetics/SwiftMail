@@ -60,9 +60,14 @@ public enum MailTLSMinimumVersion: Sendable, Equatable {
 }
 
 enum MailTLSConfiguration {
+    /// - Note: `minimumTLSVersion` has no default for the same reason
+    ///   `IMAPConnection.makeTLSHandler` has none: a default here turns "forgot to thread the
+    ///   configured floor through" into "silently chose TLS 1.2", which is exactly the shape of
+    ///   the implicit-TLS defect this change fixed. The *library-wide* default lives on the
+    ///   public `IMAPServer`/`SMTPServer` initializers, where choosing it is visible.
     static func makeClientConfiguration(
         certificateVerificationPolicy: MailCertificateVerificationPolicy,
-        minimumTLSVersion: MailTLSMinimumVersion = .tlsv12
+        minimumTLSVersion: MailTLSMinimumVersion
     ) -> TLSConfiguration {
         var configuration = TLSConfiguration.makeClientConfiguration()
         configuration.minimumTLSVersion = minimumTLSVersion.nioTLSVersion

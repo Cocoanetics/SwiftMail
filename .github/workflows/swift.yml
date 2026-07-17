@@ -49,6 +49,9 @@ jobs:
               echo "=== sample of PID $pid ($(ps -o comm= -p $pid)) ==="
               sample "$pid" 3 -file /dev/stdout || true
             done
+            # The helper processes are children of the driver but survive its death;
+            # kill them too so the step ends now instead of at the job timeout.
+            pkill -9 -f 'swiftpm-testing|SwiftMailPackageTests' 2>/dev/null || true
             kill -9 "$TEST_PID" 2>/dev/null || true
           ) &
           WATCHDOG_PID=$!

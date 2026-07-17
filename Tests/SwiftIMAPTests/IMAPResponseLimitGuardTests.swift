@@ -155,6 +155,52 @@ struct IMAPLimitViolationFailsClosedTests {
         #expect(channel.isActive == false)
     }
 
+    @Test("An oversized literal closes the channel")
+    func oversizedLiteralCloses() throws {
+        let channel = try makeChannel()
+        channel.pipeline.fireErrorCaught(ExceededLiteralSizeLimitError(actualCount: 8192, maximumCount: 4096))
+        channel.embeddedEventLoop.run()
+        #expect(channel.isActive == false)
+    }
+
+    /// The one that catches what the raw-error tests above cannot: `ResponseDecoder` wraps every
+    /// parser error in `IMAPDecoderError` before `IMAPClientHandler` fires it down the pipeline.
+    /// The tests above inject the bare types, so a guard that never unwrapped the wrapper — the
+    /// shipped defect — passed all of them while never firing in production. This one feeds raw
+    /// wire bytes through the real decoder with the real pipeline order, so the error arrives
+    /// exactly as a hostile server would deliver it.
+    @Test("A parser-limit error raised by the real decoder still closes the channel")
+    func decoderWrappedViolationCloses() throws {
+        let channel = EmbeddedChannel()
+        let limits = IMAPParserLimits(bodySizeLimit: 10)
+        try channel.pipeline.syncOperations.addHandlers([
+            IMAPClientHandler(parserOptions: limits.makeParserOptions(bufferLimit: 1024)),
+            IMAPResponseLimitGuard(
+                bodySizeLimit: limits.bodySizeLimit,
+                logger: Logger(label: "test"),
+                connectionContext: "[test]"
+            )
+        ])
+        try channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 993)).wait()
+        #expect(channel.isActive, "Precondition: the channel has to be open for a close to mean anything")
+
+        // The parser's state machine wants a greeting before anything else; without it the FETCH
+        // below fails as a plain syntax error, which the guard rightly ignores.
+        var greeting = channel.allocator.buffer(capacity: 16)
+        greeting.writeString("* OK ready\r\n")
+        try channel.writeInbound(greeting)
+
+        // A FETCH declaring a 100-byte body against a 10-byte limit. The parser rejects the
+        // declaration itself, so the body bytes never need to follow.
+        var buffer = channel.allocator.buffer(capacity: 64)
+        buffer.writeString("* 1 FETCH (BODY[TEXT] {100}\r\n")
+        #expect(throws: Error.self) {
+            try channel.writeInbound(buffer)
+        }
+        channel.embeddedEventLoop.run()
+        #expect(channel.isActive == false, "A violation from the real decoder has to close the connection")
+    }
+
     /// Deliberately narrow. `errorCaught` sees unrelated failures too, and tearing the connection
     /// down for those would change behaviour far outside this feature.
     @Test("An unrelated error does not close the channel")

@@ -12,8 +12,12 @@ struct MailTLSConfigurationTests {
 
     @Test("Default floor is TLS 1.2, not NIOSSL's TLS 1.0")
     func defaultIsTLS12() {
+        // The library-wide default lives on the server initializers — the factory itself
+        // takes the floor explicitly, so "forgot to pass it" cannot compile.
+        #expect(MailTLSMinimumVersion.tlsv12.nioTLSVersion == .tlsv12)
         let configuration = MailTLSConfiguration.makeClientConfiguration(
-            certificateVerificationPolicy: .fullVerification
+            certificateVerificationPolicy: .fullVerification,
+            minimumTLSVersion: .tlsv12
         )
         #expect(configuration.minimumTLSVersion == .tlsv12)
         // Guards the whole point of this change: NIOSSL's own default is .tlsv1,

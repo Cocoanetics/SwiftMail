@@ -54,7 +54,7 @@ public struct IMAPParserLimits: Sendable, Equatable {
     /// The largest value ``literalSizeLimit`` can take: `IMAPDefaults.lineLengthLimit` (8 KiB).
     ///
     /// Raising it further needs a configurable `maximumBufferSize` in `IMAPClientHandler`, which
-    /// the pinned NIOIMAP does not offer.
+    /// NIOIMAP does not offer as of 0.3.0.
     public static let maximumSupportedLiteralSizeLimit = IMAPDefaults.lineLengthLimit
 
     /// SwiftMail's previous behaviour: bodies and attribute counts unbounded.

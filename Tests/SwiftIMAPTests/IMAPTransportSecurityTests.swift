@@ -10,12 +10,14 @@ struct IMAPTransportSecurityTests {
     @Test
     func certificateVerificationPolicyMapsToNIOSSLConfiguration() {
         let fullVerification = MailTLSConfiguration.makeClientConfiguration(
-            certificateVerificationPolicy: .fullVerification
+            certificateVerificationPolicy: .fullVerification,
+            minimumTLSVersion: .tlsv12
         )
         #expect(fullVerification.certificateVerification == .fullVerification)
 
         let noVerification = MailTLSConfiguration.makeClientConfiguration(
-            certificateVerificationPolicy: .noVerification
+            certificateVerificationPolicy: .noVerification,
+            minimumTLSVersion: .tlsv12
         )
         #expect(noVerification.certificateVerification == .none)
     }

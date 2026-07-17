@@ -108,9 +108,19 @@ final class IMAPResponseLimitGuard: ChannelInboundHandler {
     /// Deliberately narrow: only errors that mean *„this peer sent more than we allow"*. A
     /// connection is not torn down for anything else — `errorCaught` sees unrelated failures too,
     /// and closing on those would change behaviour far outside this feature.
+    ///
+    /// - Important: `ResponseDecoder` wraps **every** parser error in `IMAPDecoderError` before
+    ///   `IMAPClientHandler` fires it down the pipeline, so the wrapper has to be unwrapped
+    ///   first — matching only the bare types means never matching anything the real decoder
+    ///   produces. (The bare types are still matched for the guard's own
+    ///   `ExceededResponseBodySizeError`, which it throws unwrapped.)
     static func isLimitViolation(_ error: Error) -> Bool {
-        error is ExceededMaximumBodySizeError
+        if let decoderError = error as? IMAPDecoderError {
+            return isLimitViolation(decoderError.parserError)
+        }
+        return error is ExceededMaximumBodySizeError
             || error is ExceededMaximumMessageAttributesError
+            || error is ExceededLiteralSizeLimitError
             || error is ExceededResponseBodySizeError
     }
 }

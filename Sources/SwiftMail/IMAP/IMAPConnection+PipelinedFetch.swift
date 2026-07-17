@@ -71,10 +71,12 @@ extension IMAPConnection {
             scheduledTimeout: scheduledTimeout
         )
 
-        // `defer`, because a limit violation now throws out of the collection step and the
-        // cleanup has to happen either way — otherwise a hostile server could leave the
-        // dispatcher installed and `hasActiveHandler` set, which would wedge the next command.
-        defer {
+        // Runs on both paths, because a limit violation now throws out of the collection step —
+        // otherwise a hostile server could leave the dispatcher installed and `hasActiveHandler`
+        // set, which would wedge the next command. Ordering matters: the response buffer has to
+        // resume buffering *before* the dispatcher is removed, or an unsolicited response
+        // (BYE, EXISTS) arriving during the removal await is neither dispatched nor buffered.
+        func restoreChannelState() {
             scheduledTimeout.cancel()
             responseBuffer.hasActiveHandler = false
             duplexLogger.flushInboundBuffer()
@@ -85,10 +87,12 @@ extension IMAPConnection {
                 tagToRequest: registered.tagToRequest,
                 futures: registered.futures
             )
+            restoreChannelState()
             // Remove dispatcher — may already be removed if channelInactive fired
             try? await channel.pipeline.removeHandler(dispatcher)
             return results
         } catch {
+            restoreChannelState()
             try? await channel.pipeline.removeHandler(dispatcher)
             throw error
         }
