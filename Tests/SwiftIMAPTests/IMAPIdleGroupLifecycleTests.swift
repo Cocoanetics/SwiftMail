@@ -43,63 +43,61 @@ import Testing
         func idleSessionSurvivesServerDeallocation() async throws {
             let (testServer, tempRoot) = try makeTestServer()
             try testServer.start()
-            defer {
-                testServer.stop()
-                try? FileManager.default.removeItem(at: tempRoot)
+            defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+            try await testServer.run {
+                // Create server, start IDLE, then deallocate the server.
+                var session: IMAPIdleSession?
+                do {
+                    let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+                    try await server.connect()
+                    try await server.login(username: "u", password: "p")
+                    session = try await server.idle(on: "INBOX")
+                    // server goes out of scope here — its deinit fires shutdownGracefully()
+                }
+
+                guard let session else {
+                    Issue.record("Failed to create IDLE session")
+                    return
+                }
+
+                // The session should still be usable after the server is deallocated.
+                // Give the deinit's shutdown a moment to execute.
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+
+                // Ending the session should not crash (no "event loop shut down" assertion).
+                try? await session.done()
             }
-
-            // Create server, start IDLE, then deallocate the server.
-            var session: IMAPIdleSession?
-            do {
-                let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
-                try await server.connect()
-                try await server.login(username: "u", password: "p")
-                session = try await server.idle(on: "INBOX")
-                // server goes out of scope here — its deinit fires shutdownGracefully()
-            }
-
-            guard let session else {
-                Issue.record("Failed to create IDLE session")
-                return
-            }
-
-            // The session should still be usable after the server is deallocated.
-            // Give the deinit's shutdown Task a moment to execute.
-            try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
-
-            // Ending the session should not crash (no "event loop shut down" assertion).
-            try? await session.done()
         }
 
         @Test
         func repeatedIdleRenewalsDoNotTripClientStateMachine() async throws {
             let (testServer, tempRoot) = try makeTestServer()
             try testServer.start()
-            defer {
-                testServer.stop()
-                try? FileManager.default.removeItem(at: tempRoot)
+            defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+            try await testServer.run {
+                let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+                try await server.connect()
+                try await server.login(username: "u", password: "p")
+
+                let configuration = IMAPIdleConfiguration(
+                    renewalInterval: 0.05,
+                    noopInterval: 1,
+                    postIdleNoopEnabled: false,
+                    postIdleNoopDelay: 0,
+                    doneTimeout: 2,
+                    reconnectBaseDelay: 0.01,
+                    reconnectMaxDelay: 0.01,
+                    reconnectJitterFactor: 0
+                )
+                let session = try await server.idle(on: "INBOX", configuration: configuration)
+
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+                #expect(testServer.idleCommandCount >= 2)
+                try await session.done()
+                try? await server.disconnect()
             }
-
-            let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
-            try await server.connect()
-            try await server.login(username: "u", password: "p")
-
-            let configuration = IMAPIdleConfiguration(
-                renewalInterval: 0.05,
-                noopInterval: 1,
-                postIdleNoopEnabled: false,
-                postIdleNoopDelay: 0,
-                doneTimeout: 2,
-                reconnectBaseDelay: 0.01,
-                reconnectMaxDelay: 0.01,
-                reconnectJitterFactor: 0
-            )
-            let session = try await server.idle(on: "INBOX", configuration: configuration)
-
-            try await Task.sleep(nanoseconds: 1_000_000_000)
-            #expect(testServer.idleCommandCount >= 2)
-            try await session.done()
-            try? await server.disconnect()
         }
 
         /// The idle group should be cleaned up when the initial connection fails.

@@ -28,11 +28,49 @@ public enum MailCertificateVerificationPolicy: Sendable, Equatable {
     case noVerification
 }
 
+/// The lowest TLS protocol version a connection is allowed to negotiate.
+///
+/// Without this, connections inherit NIOSSL's `TLSConfiguration.makeClientConfiguration()`
+/// default, which is TLS 1.0 — deprecated by
+/// [RFC 8996](https://datatracker.ietf.org/doc/html/rfc8996) since March 2021.
+///
+/// Callers who know every server they talk to speaks TLS 1.3 can raise the floor and make
+/// downgrades impossible regardless of what the server offers.
+public enum MailTLSMinimumVersion: Sendable, Equatable {
+    /// TLS 1.0. Deprecated by RFC 8996 — only for legacy servers that offer nothing newer.
+    case tlsv1
+
+    /// TLS 1.1. Deprecated by RFC 8996.
+    case tlsv11
+
+    /// TLS 1.2. The default, and the lowest version RFC 8996 still permits.
+    case tlsv12
+
+    /// TLS 1.3. The strongest floor; refuses to negotiate anything older.
+    case tlsv13
+
+    var nioTLSVersion: TLSVersion {
+        switch self {
+            case .tlsv1: return .tlsv1
+            case .tlsv11: return .tlsv11
+            case .tlsv12: return .tlsv12
+            case .tlsv13: return .tlsv13
+        }
+    }
+}
+
 enum MailTLSConfiguration {
+    /// - Note: `minimumTLSVersion` has no default for the same reason
+    ///   `IMAPConnection.makeTLSHandler` has none: a default here turns "forgot to thread the
+    ///   configured floor through" into "silently chose TLS 1.2", which is exactly the shape of
+    ///   the implicit-TLS defect this change fixed. The *library-wide* default lives on the
+    ///   public `IMAPServer`/`SMTPServer` initializers, where choosing it is visible.
     static func makeClientConfiguration(
-        certificateVerificationPolicy: MailCertificateVerificationPolicy
+        certificateVerificationPolicy: MailCertificateVerificationPolicy,
+        minimumTLSVersion: MailTLSMinimumVersion
     ) -> TLSConfiguration {
         var configuration = TLSConfiguration.makeClientConfiguration()
+        configuration.minimumTLSVersion = minimumTLSVersion.nioTLSVersion
         switch certificateVerificationPolicy {
             case .fullVerification:
                 configuration.certificateVerification = .fullVerification

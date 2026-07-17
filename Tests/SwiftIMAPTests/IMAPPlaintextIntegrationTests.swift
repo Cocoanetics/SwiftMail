@@ -39,14 +39,15 @@ import Testing
                 maildirURL: maildir
             )
             try testServer.start()
-            defer { testServer.stop() }
 
-            let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
-            try await server.connect()
-            try await server.login(username: "testuser", password: "testpass")
-            let status = try await server.selectMailbox("INBOX")
-            #expect(status.messageCount == 1)
-            try await server.disconnect()
+            try await testServer.run {
+                let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+                try await server.connect()
+                try await server.login(username: "testuser", password: "testpass")
+                let status = try await server.selectMailbox("INBOX")
+                #expect(status.messageCount == 1)
+                try await server.disconnect()
+            }
         }
     }
 #endif

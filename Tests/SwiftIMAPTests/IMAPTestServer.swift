@@ -139,7 +139,15 @@ final class IMAPTestServer {
         source.resume()
     }
 
-    func stop() {
+    /// Stops the server and awaits the client handlers' drain.
+    ///
+    /// Async on purpose: the drain used to be `clientGroup.wait(timeout: 2s)`, which parks the
+    /// calling thread — from a swift-testing test that is a cooperative-pool thread, one of ncpu
+    /// on a core-constrained CI runner. The unbounded sibling of that pattern (blocking ELG
+    /// shutdown in `SMTPServer.deinit`) deadlocked the 3-core macOS runner outright. Here the
+    /// continuation is resumed from `DispatchGroup.notify` when the last handler leaves — same
+    /// determinism, same 2-second upper bound, zero threads parked.
+    func stop() async {
         acceptSource?.cancel()
         acceptSource = nil
 
@@ -151,11 +159,49 @@ final class IMAPTestServer {
         }
 
         if !activeClientFds.isEmpty {
-            _ = clientGroup.wait(timeout: .now() + .seconds(2))
+            await awaitClientDrain(timeoutSeconds: 2)
         }
 
         for fileDescriptor in drainClientFds() {
             close(fileDescriptor)
+        }
+    }
+
+    /// Runs `body`, then stops the server — on success and on throw alike. The scoped
+    /// replacement for `defer { stop() }`, which cannot await an async `stop()`.
+    func run<T>(_ body: () async throws -> T) async throws -> T {
+        do {
+            let result = try await body()
+            await stop()
+            return result
+        } catch {
+            await stop()
+            throw error
+        }
+    }
+
+    /// Resumes when the last client handler leaves `clientGroup`, or after `timeoutSeconds` —
+    /// whichever comes first. Both paths arrive as GCD callbacks; nothing blocks anywhere.
+    private func awaitClientDrain(timeoutSeconds: Double) async {
+        final class ResumeOnce: @unchecked Sendable {
+            private let lock = NSLock()
+            private var resumed = false
+            func claim() -> Bool {
+                lock.lock()
+                defer { lock.unlock() }
+                if resumed { return false }
+                resumed = true
+                return true
+            }
+        }
+        let once = ResumeOnce()
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            clientGroup.notify(queue: .global()) {
+                if once.claim() { continuation.resume() }
+            }
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeoutSeconds) {
+                if once.claim() { continuation.resume() }
+            }
         }
     }
 

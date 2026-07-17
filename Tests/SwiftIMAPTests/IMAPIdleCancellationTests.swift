@@ -142,12 +142,16 @@ struct IMAPIdleCancellationTests {
             host: "localhost",
             port: 143,
             transportSecurity: .plainText,
+            // Explicit since the designated initializer dropped its defaults: forgetting the
+            // security policy is now a build error rather than a silently lax connection.
+            minimumTLSVersion: .tlsv12,
             group: group,
             loggerLabel: "test.imap",
             outboundLabel: "test.imap.out",
             inboundLabel: "test.imap.in",
             connectionID: "test-idle-cancel",
-            connectionRole: "test"
+            connectionRole: "test",
+            parserLimits: .default
         )
         let channel = NIOAsyncTestingChannel()
         let address = try SocketAddress(ipAddress: "127.0.0.1", port: 143)

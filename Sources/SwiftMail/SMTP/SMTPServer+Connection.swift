@@ -62,6 +62,7 @@ extension SMTPServer {
     private func makeClientBootstrap(useImplicitTLS: Bool) -> ClientBootstrap {
         let host = self.host
         let certificateVerificationPolicy = self.certificateVerificationPolicy
+        let minimumTLSVersion = self.minimumTLSVersion
         let duplexLogger = self.duplexLogger
 
         return ClientBootstrap(group: group)
@@ -72,7 +73,8 @@ extension SMTPServer {
                     do {
                         // Create SSL context with proper configuration for secure connection
                         let tlsConfig = MailTLSConfiguration.makeClientConfiguration(
-                            certificateVerificationPolicy: certificateVerificationPolicy
+                            certificateVerificationPolicy: certificateVerificationPolicy,
+                            minimumTLSVersion: minimumTLSVersion
                         )
 
                         let sslContext = try NIOSSLContext(configuration: tlsConfig)
@@ -279,7 +281,8 @@ extension SMTPServer {
 
         // Create SSL context with proper configuration for secure connection
         let tlsConfig = MailTLSConfiguration.makeClientConfiguration(
-            certificateVerificationPolicy: certificateVerificationPolicy
+            certificateVerificationPolicy: certificateVerificationPolicy,
+            minimumTLSVersion: minimumTLSVersion
         )
 
         // Capture the configuration before the closure to avoid concurrency issues
