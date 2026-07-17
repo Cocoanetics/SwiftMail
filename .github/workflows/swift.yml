@@ -89,14 +89,39 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-latest
+    # Without a limit a hung test run occupies the runner for the 6-hour GitHub
+    # default — several did exactly that before the watchdog below existed.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - name: Verify Swift version
         run: swift --version
       - name: Build (Linux)
         run: swift build --build-tests -v
+      # Same watchdog as build-macos, with gdb standing in for sample(1): a
+      # deadlocked test run must fail with thread backtraces in the log, not
+      # sit silently until the job timeout.
       - name: Test (Linux)
-        run: swift test -v --skip-build
+        run: |
+          swift test -v --skip-build &
+          TEST_PID=$!
+          (
+            sleep 360 >/dev/null 2>&1
+            echo "::error::Test run still running after 6 minutes - dumping thread backtraces"
+            for pid in $(pgrep -f 'swiftpm-testing|SwiftMailPackageTests'); do
+              echo "=== backtraces of PID $pid ($(ps -o comm= -p $pid)) ==="
+              sudo gdb -p "$pid" -batch -ex 'thread apply all bt' 2>&1 | tail -200 || true
+            done
+            pkill -9 -f 'swiftpm-testing|SwiftMailPackageTests' 2>/dev/null || true
+            kill -9 "$TEST_PID" 2>/dev/null || true
+          ) &
+          WATCHDOG_PID=$!
+          set +e
+          wait "$TEST_PID"
+          STATUS=$?
+          set -e
+          kill "$WATCHDOG_PID" 2>/dev/null || true
+          exit "$STATUS"
 
   build-windows:
     # Windows build + test. No vcpkg / system C libraries are needed: the only

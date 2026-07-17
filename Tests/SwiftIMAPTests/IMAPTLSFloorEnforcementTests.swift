@@ -61,6 +61,33 @@ KHpDM5nC0c2igQREhdC5dYsH
 -----END PRIVATE KEY-----
 """
 
+/// Tears the two handshake channels down without deadlocking on the graceful TLS shutdown.
+///
+/// A bare `finish()` deadlocks here: it does `close().wait()`, and closing a channel whose
+/// handshake completed makes NIOSSL attempt a *graceful* TLS shutdown — it sends close_notify
+/// and completes the close only on the peer's reply or on a timeout it schedules on the event
+/// loop. The handshake pump has stopped by then and an `EmbeddedEventLoop`'s clock never
+/// advances on its own, so on Linux that `wait()` never returned and the whole test run hung
+/// until the CI job timeout (macOS happened to complete the close inline). So: initiate both
+/// closes, pump the close_notify exchange to completion, advance embedded time past any
+/// scheduled shutdown timeout, then finish, accepting an already-closed channel.
+private func shutDownHandshakeChannels(client: EmbeddedChannel, server: EmbeddedChannel) {
+    client.close(promise: nil)
+    server.close(promise: nil)
+    for _ in 0..<4 {
+        if let bytes = ((try? client.readOutbound(as: ByteBuffer.self)) ?? nil) {
+            _ = try? server.writeInbound(bytes)
+        }
+        if let bytes = ((try? server.readOutbound(as: ByteBuffer.self)) ?? nil) {
+            _ = try? client.writeInbound(bytes)
+        }
+    }
+    client.embeddedEventLoop.advanceTime(by: .seconds(10))
+    server.embeddedEventLoop.advanceTime(by: .seconds(10))
+    _ = try? client.finish(acceptAlreadyClosed: true)
+    _ = try? server.finish(acceptAlreadyClosed: true)
+}
+
 /// Runs a TLS handshake between two `EmbeddedChannel`s and returns the error, if any.
 ///
 /// ## Why in-memory rather than a real socket
@@ -81,10 +108,7 @@ private func handshakeError(
 ) throws -> Error? {
     let client = EmbeddedChannel()
     let server = EmbeddedChannel()
-    defer {
-        _ = try? client.finish()
-        _ = try? server.finish()
-    }
+    defer { shutDownHandshakeChannels(client: client, server: server) }
 
     let certificate = try NIOSSLCertificate(bytes: Array(testCertPEM.utf8), format: .pem)
     let privateKey = try NIOSSLPrivateKey(bytes: Array(testKeyPEM.utf8), format: .pem)
