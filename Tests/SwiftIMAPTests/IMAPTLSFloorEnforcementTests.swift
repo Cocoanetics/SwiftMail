@@ -1,12 +1,13 @@
 import Testing
 import Foundation
 import NIO
+import NIOEmbedded
 import NIOSSL
 @testable import SwiftMail
 
 // Self-signed, CN=localhost, generated for these tests only and valid for 100 years so it cannot
-// rot. The client uses `.noVerification`, so trust is not what is under test here — only the
-// negotiated protocol version is.
+// rot. The client uses `.noVerification`: trust is not what is under test here, only the
+// negotiated protocol version.
 private let testCertPEM = """
 -----BEGIN CERTIFICATE-----
 MIIDCzCCAfOgAwIBAgIUXe8RGk02W2OBGgsbJaE3Jz+qGDAwDQYJKoZIhvcNAQEL
@@ -60,142 +61,122 @@ KHpDM5nC0c2igQREhdC5dYsH
 -----END PRIVATE KEY-----
 """
 
-/// Sends an IMAP greeting once TLS is up, so a successful handshake is observable.
-private final class GreetingSender: ChannelInboundHandler {
-    typealias InboundIn = ByteBuffer
-    typealias OutboundOut = ByteBuffer
-
-    func channelActive(context: ChannelHandlerContext) {
-        var buffer = context.channel.allocator.buffer(capacity: 64)
-        buffer.writeString("* OK [CAPABILITY IMAP4rev1] Test server ready\r\n")
-        context.writeAndFlush(self.wrapOutboundOut(buffer), promise: nil)
-    }
-}
-
-/// A TLS endpoint that will not negotiate above TLS 1.2, and greets like an IMAP server.
+/// Runs a TLS handshake between two `EmbeddedChannel`s and returns the error, if any.
 ///
-/// This is the piece that makes the failure reproducible: a real downgraded peer. Without one
-/// there is nothing for a TLS 1.3 floor to refuse, which is exactly why the existing
-/// configuration-level tests could not catch this.
-private final class TLS12OnlyServer {
-    let channel: Channel
-    let group: MultiThreadedEventLoopGroup
+/// ## Why in-memory rather than a real socket
+/// The first version of this test bound a real TLS server and connected to it. It worked, and it
+/// hung the macOS CI job: real sockets need a `MultiThreadedEventLoopGroup`, its teardown needs
+/// `syncShutdownGracefully()`, and every blocking step reachable from a swift-testing test costs
+/// a cooperative-pool thread. On a core-constrained runner the pool starves and the whole run
+/// stalls — 29 of 346 tests completed, then nothing, until the job timeout. It even defeats
+/// `.timeLimit`, because a blocked thread cannot be cancelled.
+///
+/// `EmbeddedChannel` has no threads, no sockets and no event loop to shut down: it runs
+/// everything inline on the calling thread. The handshake is real — same `NIOSSLClientHandler`
+/// built by the same `makeTLSHandler` the connection bootstrap uses, same BoringSSL, same
+/// version negotiation — only the transport is a byte pump instead of a socket.
+private func handshakeError(
+    clientFloor: MailTLSMinimumVersion,
+    serverMaximum: TLSVersion
+) throws -> Error? {
+    let client = EmbeddedChannel()
+    let server = EmbeddedChannel()
+    defer {
+        _ = try? client.finish()
+        _ = try? server.finish()
+    }
 
-    var port: Int { channel.localAddress?.port ?? 0 }
+    let certificate = try NIOSSLCertificate(bytes: Array(testCertPEM.utf8), format: .pem)
+    let privateKey = try NIOSSLPrivateKey(bytes: Array(testKeyPEM.utf8), format: .pem)
 
-    /// - Note: `async`, because `bind(...).wait()` blocks — and blocking here is what hung the
-    ///   macOS CI job. It is the same trap as `syncShutdownGracefully()` (see
-    ///   ``shutDownGracefully(_:)``) wearing a different hat: any `.wait()` reached from a
-    ///   swift-testing test blocks a cooperative-pool thread, and a core-constrained runner then
-    ///   loses its forward-progress guarantee. It also defeats `.timeLimit` — a blocked thread
-    ///   cannot be cancelled, so the suite runs into the job timeout instead of failing.
-    ///   Nothing else in this test suite calls `.wait()`; that was the hint.
-    init() async throws {
-        group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+    var serverConfiguration = TLSConfiguration.makeServerConfiguration(
+        certificateChain: [.certificate(certificate)],
+        privateKey: .privateKey(privateKey)
+    )
+    // The peer under test: it cannot go above this version.
+    serverConfiguration.maximumTLSVersion = serverMaximum
+    let serverContext = try NIOSSLContext(configuration: serverConfiguration)
+    try server.pipeline.syncOperations.addHandler(NIOSSLServerHandler(context: serverContext))
 
-        let cert = try NIOSSLCertificate(bytes: Array(testCertPEM.utf8), format: .pem)
-        let key = try NIOSSLPrivateKey(bytes: Array(testKeyPEM.utf8), format: .pem)
+    // The client handler comes from the same factory the real bootstrap calls, with the same
+    // arguments — this is the code path the reported defect lived in.
+    let clientHandler = try IMAPConnection.makeTLSHandler(
+        for: client,
+        host: "localhost",
+        certificateVerificationPolicy: .noVerification,
+        minimumTLSVersion: clientFloor
+    )
+    try client.pipeline.syncOperations.addHandler(clientHandler)
 
-        var configuration = TLSConfiguration.makeServerConfiguration(
-            certificateChain: [.certificate(cert)],
-            privateKey: .privateKey(key)
-        )
-        // The whole point: this peer cannot go above TLS 1.2.
-        configuration.minimumTLSVersion = .tlsv12
-        configuration.maximumTLSVersion = .tlsv12
+    try client.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 993)).wait()
+    try server.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 993)).wait()
 
-        let context = try NIOSSLContext(configuration: configuration)
-
-        channel = try await ServerBootstrap(group: group)
-            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-            .childChannelInitializer { channel in
-                do {
-                    try channel.pipeline.syncOperations.addHandler(NIOSSLServerHandler(context: context))
-                    try channel.pipeline.syncOperations.addHandler(GreetingSender())
-                    return channel.eventLoop.makeSucceededFuture(())
-                } catch {
-                    return channel.eventLoop.makeFailedFuture(error)
-                }
+    // Pump bytes between the two until neither has anything left to say. Any handshake failure
+    // surfaces as a throw from `writeInbound`.
+    do {
+        var moved = true
+        while moved {
+            moved = false
+            if let outbound = try client.readOutbound(as: ByteBuffer.self) {
+                moved = true
+                try server.writeInbound(outbound)
             }
-            .bind(host: "127.0.0.1", port: 0)
-            .get()
-    }
-
-    /// - Note: `async`, and the group shutdown goes through ``shutDownGracefully(_:)``.
-    ///   Blocking here would deadlock the macOS CI job — see that function.
-    func shutdown() async {
-        try? await channel.close()
-        await shutDownGracefully(group)
+            if let outbound = try server.readOutbound(as: ByteBuffer.self) {
+                moved = true
+                try client.writeInbound(outbound)
+            }
+        }
+        return nil
+    } catch {
+        return error
     }
 }
 
-/// Does the configured TLS floor actually reach the socket?
+/// Is the configured TLS floor actually enforced during the handshake?
 ///
-/// ## Why these tests speak to a real server instead of inspecting a `TLSConfiguration`
-/// Because the defect this file exists for was invisible at that level. `MailTLSConfigurationTests`
-/// asserts that `makeClientConfiguration(minimumTLSVersion: .tlsv13)` returns `.tlsv13` — and it
-/// always did. One of its cases was even named *"Raising the floor to TLS 1.3 makes a downgrade
-/// impossible"*. Meanwhile the implicit-TLS call site never passed the value, so on port 993 — the
-/// port every IMAPS client uses — the floor stayed at TLS 1.2 and a downgrade was entirely
-/// possible. That test could not have failed: it verified that a factory returns what it is given,
-/// while the defect was that nobody handed it the value.
+/// ## What these cover that `MailTLSConfigurationTests` cannot
+/// That suite asserts `makeClientConfiguration(minimumTLSVersion: .tlsv13)` returns `.tlsv13` —
+/// and it always did. One of its cases was even named *"Raising the floor to TLS 1.3 makes a
+/// downgrade impossible"*, while a downgrade on port 993 was entirely possible: the implicit-TLS
+/// call site never passed the value. That test could not have failed, because it verified that a
+/// factory returns what it is handed, and the defect was that nobody handed it the value.
 ///
-/// A test that cannot produce the failure proves nothing about it. So these connect a real
-/// `IMAPConnection` to a real TLS endpoint that refuses to speak anything above TLS 1.2 and assert
-/// on the outcome. Drop the `minimumTLSVersion:` argument at any call site and one goes red.
-@Suite("TLS floor is honored on the wire", .serialized, .timeLimit(.minutes(1)))
+/// These run a real handshake against a peer pinned below the floor, through the same
+/// `makeTLSHandler` the bootstrap uses. Verified by reverting the fix: the first one fails.
+///
+/// ## What they do *not* cover — stated plainly, because the last omission cost a release
+/// They prove the floor is **enforced** once it reaches the handler. They do **not** prove the
+/// call sites **pass** it — which is precisely what the reported defect was. Calling
+/// `makeTLSHandler` directly, as these do, hands it the value the bootstrap forgot.
+///
+/// That gap is closed by the compiler rather than by a test: `makeTLSHandler` and
+/// `IMAPConnection`'s designated initializer no longer default `minimumTLSVersion`, so a call
+/// site that omits it does not build. A guarantee the compiler enforces is worth more than one a
+/// test checks — but it is a different guarantee, and pretending otherwise here would repeat the
+/// mistake this file exists to document. ``IMAPSecurityPolicyPropagationTests`` additionally
+/// asserts that spawned connections carry the configured value.
+@Suite("TLS floor is enforced during the handshake", .timeLimit(.minutes(1)))
 struct IMAPTLSFloorEnforcementTests {
 
-    private func makeConnection(
-        port: Int,
-        minimumTLSVersion: MailTLSMinimumVersion,
-        group: EventLoopGroup
-    ) -> IMAPConnection {
-        IMAPConnection(
-            host: "localhost",
-            port: port,
-            transportSecurity: .implicitTLS,
-            // Not what is under test — the certificate is self-signed on purpose.
-            certificateVerificationPolicy: .noVerification,
-            minimumTLSVersion: minimumTLSVersion,
-            group: group,
-            loggerLabel: "test",
-            outboundLabel: "test.out",
-            inboundLabel: "test.in",
-            connectionID: "test",
-            connectionRole: "test",
-            parserLimits: .default
-        )
+    /// The regression test for the reported defect.
+    @Test("A TLS 1.3 floor refuses a peer that stops at TLS 1.2")
+    func tls13FloorRefusesTLS12Peer() throws {
+        let error = try handshakeError(clientFloor: .tlsv13, serverMaximum: .tlsv12)
+        #expect(error != nil, "A TLS 1.2 peer must not be accepted when the floor is TLS 1.3")
     }
 
-    /// The regression test for the reported defect: implicit TLS on port 993 ignored the floor.
-    @Test("Implicit TLS refuses a TLS 1.2 peer when the floor is TLS 1.3")
-    func implicitTLSHonorsFloor() async throws {
-        let server = try await TLS12OnlyServer()
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-
-        let connection = makeConnection(port: server.port, minimumTLSVersion: .tlsv13, group: group)
-        await #expect(throws: Error.self) {
-            try await connection.connect()
-        }
-
-        try? await connection.disconnect()
-        await server.shutdown()
-        await shutDownGracefully(group)
+    /// The control. Without it the test above proves only "the handshake fails", which it would
+    /// also do for a bad certificate, a broken pump, or a misconfigured server.
+    @Test("The same peer is accepted when the floor is TLS 1.2")
+    func tls12FloorAcceptsTLS12Peer() throws {
+        let error = try handshakeError(clientFloor: .tlsv12, serverMaximum: .tlsv12)
+        #expect(error == nil, "Expected a clean handshake, got: \(String(describing: error))")
     }
 
-    /// The control. Without it the test above proves only "connecting fails", which it would also
-    /// do if the port were closed, the certificate rejected, or the greeting malformed.
-    @Test("The same peer connects when the floor is TLS 1.2")
-    func tls12FloorConnects() async throws {
-        let server = try await TLS12OnlyServer()
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-
-        let connection = makeConnection(port: server.port, minimumTLSVersion: .tlsv12, group: group)
-        try await connection.connect()
-
-        try? await connection.disconnect()
-        await server.shutdown()
-        await shutDownGracefully(group)
+    /// The floor is a floor, not an exact match: a peer that can go higher is fine.
+    @Test("A TLS 1.2 floor still negotiates TLS 1.3 with a capable peer")
+    func tls12FloorAcceptsTLS13Peer() throws {
+        let error = try handshakeError(clientFloor: .tlsv12, serverMaximum: .tlsv13)
+        #expect(error == nil, "Expected a clean handshake, got: \(String(describing: error))")
     }
 }
