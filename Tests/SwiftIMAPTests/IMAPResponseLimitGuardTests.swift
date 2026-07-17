@@ -19,7 +19,7 @@ import Logging
 /// These tests drive the guard with the response sequence a hostile server would produce, so the
 /// bypass is reproducible. Remove `IMAPResponseLimitGuard` from the pipeline and
 /// `manySmallSectionsExceedTheTotal` goes green in the wrong direction — it stops throwing.
-@Suite("Body size limit covers the whole FETCH response")
+@Suite("Body size limit covers the whole FETCH response", .timeLimit(.minutes(1)))
 struct IMAPResponseLimitGuardTests {
 
     /// - Note: The channel is **connected** before use. An `EmbeddedChannel` reports
@@ -118,7 +118,7 @@ struct IMAPResponseLimitGuardTests {
 /// that nothing was awaiting until a later DONE. The decoder kept the rejected response and
 /// appended every subsequent read to it — the post-decode buffer cap is skipped when decoding
 /// throws — so a malicious peer could keep growing memory while the caller's `AsyncStream` hung.
-@Suite("Parser limit violations close the connection")
+@Suite("Parser limit violations close the connection", .timeLimit(.minutes(1)))
 struct IMAPLimitViolationFailsClosedTests {
 
     /// - Note: Connected first — see the note in ``IMAPResponseLimitGuardTests``. Without it

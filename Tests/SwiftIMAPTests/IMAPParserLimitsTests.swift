@@ -2,7 +2,14 @@ import Testing
 import NIOIMAPCore
 @testable import SwiftMail
 
-@Suite("IMAP parser limits")
+/// - Note: `.serialized` and `.timeLimit` are not decoration. Constructing an `IMAPServer` or
+///   `SMTPServer` allocates a `MultiThreadedEventLoopGroup`, and `SMTPServer.deinit` shuts it
+///   down with the **blocking** `syncShutdownGracefully()`. Released from a Swift Concurrency
+///   context, that costs a cooperative-pool thread; run in parallel with the rest of the suite on
+///   a core-constrained CI runner, the pool starves and the whole test run stalls. Every
+///   pre-existing suite here that constructs a server carries these traits — this one did not,
+///   and that is what hung the macOS job.
+@Suite("IMAP parser limits", .serialized, .timeLimit(.minutes(1)))
 struct IMAPParserLimitsTests {
 
     @Test("Defaults preserve the previous unbounded behaviour")

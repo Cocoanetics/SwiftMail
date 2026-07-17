@@ -2,7 +2,14 @@ import Testing
 import NIOSSL
 @testable import SwiftMail
 
-@Suite("TLS minimum version")
+/// - Note: `.serialized` and `.timeLimit` are not decoration. Constructing an `IMAPServer` or
+///   `SMTPServer` allocates a `MultiThreadedEventLoopGroup`, and `SMTPServer.deinit` shuts it
+///   down with the **blocking** `syncShutdownGracefully()`. Released from a Swift Concurrency
+///   context, that costs a cooperative-pool thread; run in parallel with the rest of the suite on
+///   a core-constrained CI runner, the pool starves and the whole test run stalls. Every
+///   pre-existing suite here that constructs a server carries these traits — this one did not,
+///   and that is what hung the macOS job.
+@Suite("TLS minimum version", .serialized, .timeLimit(.minutes(1)))
 struct MailTLSConfigurationTests {
 
     @Test("Default floor is TLS 1.2, not NIOSSL's TLS 1.0")
