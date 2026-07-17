@@ -174,18 +174,19 @@ struct IMAPNamedConnectionTests {
                 maildirURL: maildir
             )
             try testServer.start()
-            defer { testServer.stop() }
 
-            let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
-            try await server.connect()
-            try await server.login(username: "u", password: "p")
+            try await testServer.run {
+                let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+                try await server.connect()
+                try await server.login(username: "u", password: "p")
 
-            async let first = server.connection(named: "shared")
-            async let second = server.connection(named: "shared")
-            let handles = try await (first, second)
+                async let first = server.connection(named: "shared")
+                async let second = server.connection(named: "shared")
+                let handles = try await (first, second)
 
-            #expect(ObjectIdentifier(handles.0) == ObjectIdentifier(handles.1))
-            try await server.disconnect()
+                #expect(ObjectIdentifier(handles.0) == ObjectIdentifier(handles.1))
+                try await server.disconnect()
+            }
         }
     #endif
 

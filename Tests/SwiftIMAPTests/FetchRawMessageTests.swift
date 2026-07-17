@@ -39,19 +39,20 @@ import Testing
                 maildirURL: maildir
             )
             try testServer.start()
-            defer { testServer.stop() }
 
-            let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
-            try await server.connect()
+            try await testServer.run {
+                let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+                try await server.connect()
 
-            try await server.login(username: "testuser", password: "testpass")
-            _ = try await server.selectMailbox("INBOX")
+                try await server.login(username: "testuser", password: "testpass")
+                _ = try await server.selectMailbox("INBOX")
 
-            let raw = try await server.fetchRawMessage(identifier: UID(1))
-            #expect(raw == sampleMessage)
-            #expect(String(data: raw, encoding: .utf8)?.contains("Received: from mx.example.com") == true)
+                let raw = try await server.fetchRawMessage(identifier: UID(1))
+                #expect(raw == sampleMessage)
+                #expect(String(data: raw, encoding: .utf8)?.contains("Received: from mx.example.com") == true)
 
-            try await server.disconnect()
+                try await server.disconnect()
+            }
         }
     }
 #endif
