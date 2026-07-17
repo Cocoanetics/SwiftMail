@@ -158,7 +158,7 @@ public actor SMTPServer {
         port: Int,
         transportSecurity: MailTransportSecurity = .automatic,
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
-        minimumTLSVersion: MailTLSMinimumVersion = .tlsv1_2,
+        minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
         numberOfThreads: Int = 1
     ) {
         self.host = host

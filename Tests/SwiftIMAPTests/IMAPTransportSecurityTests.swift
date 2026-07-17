@@ -116,7 +116,7 @@ struct IMAPTransportSecurityTests {
                 host: "localhost",
                 port: 143,
                 transportSecurity: .startTLS,
-                minimumTLSVersion: .tlsv1_2,
+                minimumTLSVersion: .tlsv12,
                 group: group,
                 loggerLabel: "test.imap",
                 outboundLabel: "test.imap.out",

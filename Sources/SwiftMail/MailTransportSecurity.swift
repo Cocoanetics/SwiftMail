@@ -41,20 +41,20 @@ public enum MailTLSMinimumVersion: Sendable, Equatable {
     case tlsv1
 
     /// TLS 1.1. Deprecated by RFC 8996.
-    case tlsv1_1
+    case tlsv11
 
     /// TLS 1.2. The default, and the lowest version RFC 8996 still permits.
-    case tlsv1_2
+    case tlsv12
 
     /// TLS 1.3. The strongest floor; refuses to negotiate anything older.
-    case tlsv1_3
+    case tlsv13
 
     var nioTLSVersion: TLSVersion {
         switch self {
             case .tlsv1: return .tlsv1
-            case .tlsv1_1: return .tlsv11
-            case .tlsv1_2: return .tlsv12
-            case .tlsv1_3: return .tlsv13
+            case .tlsv11: return .tlsv11
+            case .tlsv12: return .tlsv12
+            case .tlsv13: return .tlsv13
         }
     }
 }
@@ -62,7 +62,7 @@ public enum MailTLSMinimumVersion: Sendable, Equatable {
 enum MailTLSConfiguration {
     static func makeClientConfiguration(
         certificateVerificationPolicy: MailCertificateVerificationPolicy,
-        minimumTLSVersion: MailTLSMinimumVersion = .tlsv1_2
+        minimumTLSVersion: MailTLSMinimumVersion = .tlsv12
     ) -> TLSConfiguration {
         var configuration = TLSConfiguration.makeClientConfiguration()
         configuration.minimumTLSVersion = minimumTLSVersion.nioTLSVersion

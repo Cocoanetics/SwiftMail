@@ -21,7 +21,7 @@ struct IMAPSecurityPolicyPropagationTests {
         SwiftMail.IMAPServer(
             host: "imap.example.com",
             port: 993,
-            minimumTLSVersion: MailTLSMinimumVersion.tlsv1_3,
+            minimumTLSVersion: MailTLSMinimumVersion.tlsv13,
             parserLimits: IMAPParserLimits(
                 bodySizeLimit: 64 * 1024 * 1024,
                 messageAttributeLimit: 1024
@@ -32,7 +32,7 @@ struct IMAPSecurityPolicyPropagationTests {
     @Test("Named connections inherit the TLS floor and the parser limits")
     func namedConnectionInheritsPolicy() async {
         let connection = await makeServer().makeNamedConnection(name: "sync")
-        #expect(connection.minimumTLSVersion == MailTLSMinimumVersion.tlsv1_3)
+        #expect(connection.minimumTLSVersion == MailTLSMinimumVersion.tlsv13)
         #expect(connection.parserLimits.bodySizeLimit == 64 * 1024 * 1024)
         #expect(connection.parserLimits.messageAttributeLimit == 1024)
     }
@@ -44,7 +44,7 @@ struct IMAPSecurityPolicyPropagationTests {
         let connection = await makeServer().makeIdleConnection(
             sessionID: UUID(), mailbox: "INBOX", group: group
         )
-        #expect(connection.minimumTLSVersion == MailTLSMinimumVersion.tlsv1_3)
+        #expect(connection.minimumTLSVersion == MailTLSMinimumVersion.tlsv13)
         #expect(connection.parserLimits.bodySizeLimit == 64 * 1024 * 1024)
         #expect(connection.parserLimits.messageAttributeLimit == 1024)
     }

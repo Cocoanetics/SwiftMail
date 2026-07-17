@@ -114,7 +114,7 @@ final class IMAPConnection {
         connectionID: String,
         connectionRole: String,
         responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit,
-        minimumTLSVersion: MailTLSMinimumVersion = .tlsv1_2,
+        minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
         parserLimits: IMAPParserLimits = .default
     ) {
         self.init(

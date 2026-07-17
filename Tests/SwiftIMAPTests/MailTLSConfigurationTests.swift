@@ -18,9 +18,9 @@ struct MailTLSConfigurationTests {
 
     @Test("Each case maps to the matching NIOSSL version", arguments: [
         (MailTLSMinimumVersion.tlsv1, TLSVersion.tlsv1),
-        (MailTLSMinimumVersion.tlsv1_1, TLSVersion.tlsv11),
-        (MailTLSMinimumVersion.tlsv1_2, TLSVersion.tlsv12),
-        (MailTLSMinimumVersion.tlsv1_3, TLSVersion.tlsv13),
+        (MailTLSMinimumVersion.tlsv11, TLSVersion.tlsv11),
+        (MailTLSMinimumVersion.tlsv12, TLSVersion.tlsv12),
+        (MailTLSMinimumVersion.tlsv13, TLSVersion.tlsv13)
     ])
     func mapsToNIOVersion(_ mail: MailTLSMinimumVersion, _ nio: TLSVersion) {
         let configuration = MailTLSConfiguration.makeClientConfiguration(
@@ -40,7 +40,7 @@ struct MailTLSConfigurationTests {
     func tls13Floor() {
         let configuration = MailTLSConfiguration.makeClientConfiguration(
             certificateVerificationPolicy: .fullVerification,
-            minimumTLSVersion: .tlsv1_3
+            minimumTLSVersion: .tlsv13
         )
         #expect(configuration.minimumTLSVersion == .tlsv13)
     }
@@ -49,38 +49,38 @@ struct MailTLSConfigurationTests {
     func verificationPolicyUnaffected() {
         let verifying = MailTLSConfiguration.makeClientConfiguration(
             certificateVerificationPolicy: .fullVerification,
-            minimumTLSVersion: .tlsv1_3
+            minimumTLSVersion: .tlsv13
         )
         #expect(verifying.certificateVerification == .fullVerification)
 
         let notVerifying = MailTLSConfiguration.makeClientConfiguration(
             certificateVerificationPolicy: .noVerification,
-            minimumTLSVersion: .tlsv1_3
+            minimumTLSVersion: .tlsv13
         )
         #expect(notVerifying.certificateVerification == .none)
     }
 
     @Test("IMAPServer carries the caller's TLS floor")
     func imapServerStoresFloor() async {
-        let server = IMAPServer(host: "imap.example.com", port: 993, minimumTLSVersion: .tlsv1_3)
-        #expect(await server.minimumTLSVersion == .tlsv1_3)
+        let server = IMAPServer(host: "imap.example.com", port: 993, minimumTLSVersion: .tlsv13)
+        #expect(await server.minimumTLSVersion == .tlsv13)
     }
 
     @Test("IMAPServer defaults to TLS 1.2")
     func imapServerDefault() async {
         let server = IMAPServer(host: "imap.example.com", port: 993)
-        #expect(await server.minimumTLSVersion == .tlsv1_2)
+        #expect(await server.minimumTLSVersion == .tlsv12)
     }
 
     @Test("SMTPServer carries the caller's TLS floor")
     func smtpServerStoresFloor() async {
-        let server = SMTPServer(host: "smtp.example.com", port: 587, minimumTLSVersion: .tlsv1_3)
-        #expect(await server.minimumTLSVersion == .tlsv1_3)
+        let server = SMTPServer(host: "smtp.example.com", port: 587, minimumTLSVersion: .tlsv13)
+        #expect(await server.minimumTLSVersion == .tlsv13)
     }
 
     @Test("SMTPServer defaults to TLS 1.2")
     func smtpServerDefault() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
-        #expect(await server.minimumTLSVersion == .tlsv1_2)
+        #expect(await server.minimumTLSVersion == .tlsv12)
     }
 }

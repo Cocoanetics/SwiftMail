@@ -144,7 +144,7 @@ struct IMAPIdleCancellationTests {
             transportSecurity: .plainText,
             // Explicit since the designated initializer dropped its defaults: forgetting the
             // security policy is now a build error rather than a silently lax connection.
-            minimumTLSVersion: .tlsv1_2,
+            minimumTLSVersion: .tlsv12,
             group: group,
             loggerLabel: "test.imap",
             outboundLabel: "test.imap.out",

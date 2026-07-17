@@ -150,8 +150,8 @@ public actor IMAPServer {
      ports; explicit values override that inference.
      - certificateVerificationPolicy: The certificate verification policy to use for TLS connections.
      - minimumTLSVersion: The lowest TLS version any transport may negotiate. Defaults to
-     ``MailTLSMinimumVersion/tlsv1_2``, the lowest version RFC 8996 still permits. Pass
-     ``MailTLSMinimumVersion/tlsv1_3`` when every server you talk to supports it, which makes
+     ``MailTLSMinimumVersion/tlsv12``, the lowest version RFC 8996 still permits. Pass
+     ``MailTLSMinimumVersion/tlsv13`` when every server you talk to supports it, which makes
      a downgrade impossible regardless of what the server offers.
      - numberOfThreads: The number of threads to use for the event loop group
      - parserLimits: Bounds the response parser enforces against a hostile or malfunctioning
@@ -171,7 +171,7 @@ public actor IMAPServer {
         port: Int,
         transportSecurity: MailTransportSecurity = .automatic,
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
-        minimumTLSVersion: MailTLSMinimumVersion = .tlsv1_2,
+        minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
         numberOfThreads: Int = 1,
         responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit,
         parserLimits: IMAPParserLimits = .default
