@@ -22,12 +22,12 @@ struct MessagePartSizeTests {
         #expect(parts[0].size == 123_456)
     }
 
-    @Test func zeroOctetCountYieldsNilSize() {
+    @Test func zeroOctetCountIsPreservedAsSize() {
         let text = BodyStructure.Singlepart.Text(mediaSubtype: "plain", lineCount: 10)
         let part = BodyStructure.Singlepart(kind: .text(text), fields: fields(octetCount: 0))
         let parts = [MessagePart](.singlepart(part))
         #expect(parts.count == 1)
-        #expect(parts[0].size == nil)
+        #expect(parts[0].size == 0)
     }
 
     @Test func multipartChildrenEachCarryTheirOwnSize() {

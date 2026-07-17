@@ -40,9 +40,9 @@ extension Array where Element == MessagePart {
         var filename = dispositionAndFilename.filename
         let disposition = dispositionAndFilename.disposition
         let contentId: String? = part.fields.id.map { String($0) }.flatMap { $0.isEmpty ? nil : $0 }
-        // BODYSTRUCTURE reports the body size in octets; NIOIMAP parses a
-        // missing/zero field as 0, which we surface as nil.
-        let size: Int? = part.fields.octetCount > 0 ? part.fields.octetCount : nil
+        // body-fld-octets is mandatory in BODYSTRUCTURE, so every parsed
+        // singlepart reports a size; zero is a valid size for an empty part.
+        let size = part.fields.octetCount
 
         // message/rfc822: extract envelope metadata and derive a filename
         // from the subject when one isn't already set.

@@ -24,7 +24,9 @@ public struct MessagePart: Sendable {
     /// The content ID of the part (if any)
     public let contentId: String?
 
-    /// The size of the part body in octets, as reported by BODYSTRUCTURE (if any)
+    /// The size of the part body in octets, as reported by BODYSTRUCTURE.
+    /// Zero is a valid size (an empty part); `nil` means the size is unknown
+    /// because the part was not built from a BODYSTRUCTURE response.
     public let size: Int?
 
     /// The content data (if any)
