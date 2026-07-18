@@ -52,10 +52,10 @@ let package = Package(
         // compilation with Swift 6.3 and the current Windows SDK.
         .package(url: "https://github.com/apple/swift-nio", from: "2.101.3"),
         .package(url: "https://github.com/apple/swift-nio-imap", from: "0.3.0"),
-        // 2.37.1 includes the Windows-SDK BoringSSL header workarounds from
-        // apple/swift-nio-ssl#585, scoped to the CNIOBoringSSL target. Full
-        // NIOSSL Windows support remains blocked on apple/swift-nio-ssl#567.
-        .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.37.1"),
+        // TEMPORARY TEST OVERRIDE (do not merge): full NIOSSL Windows support
+        // from the refresh of apple/swift-nio-ssl#567 (Joannis/swift-nio-ssl#1),
+        // pending upstream merge + release.
+        .package(url: "https://github.com/odrobnik/swift-nio-ssl", branch: "windows-support"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
         // swift-testing releases track toolchain versions: 6.3.2's manifest is
         // swift-tools-version 6.2, so every platform that compiles the test
