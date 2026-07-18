@@ -7,7 +7,7 @@ on:
   pull_request:
     branches:
       - main
-  workflow_dispatch:
+  workflow_dispatch:   # manual trigger, used to re-check the experimental Windows job
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -128,12 +128,24 @@ jobs:
     # native dependency is BoringSSL, which swift-nio-ssl vendors and builds
     # itself (compiling it from scratch is the slow part, hence the timeout).
     #
-    # The blockers found in the first Windows pass are now released upstream:
-    # swift-nio 2.101.3 contains #3433 (the IPPROTO_UDP import and Sendable
-    # Windows HANDLE fixes), while swift-nio-ssl 2.37.1 contains #585 (the
-    # target-scoped _WINSOCKAPI_/NOMINMAX/NOCRYPT BoringSSL workarounds).
-    # swift-nio-imap has Windows/ucrt source guards but no Windows CI of its own,
-    # so this job also serves as the integration check for that dependency.
+    # EXPERIMENTAL — runs on manual dispatch only. Re-evaluated 2026-07-18 on
+    # Swift 6.3.1 + Windows SDK 10.0.26100:
+    #   • Sockets: swift-nio 2.101.3 contains #3433, which fixes the former
+    #     IPPROTO_UDP import and Sendable Windows HANDLE compiler failures.
+    #     NIO/NIOPosix now build in upstream's required Windows 6.3 job.
+    #   • TLS: swift-nio-ssl 2.37.2 still does not compile its NIOSSL Swift
+    #     target on Windows. Eight source files emit `#error("unsupported os")`;
+    #     WinSDK/ucrt socket and POSIX types/functions are also missing (in_addr,
+    #     in6_addr, inet_pton/inet_ntop, stat, opendir). #585 only fixed the
+    #     vendored BoringSSL header collisions. Track apple/swift-nio-ssl#567,
+    #     which has no Windows CI and currently has changes requested.
+    #   • IMAP/Foundation: swift-nio-imap has Windows/ucrt source guards but no
+    #     Windows CI. The NIOSSL failure prevents SwiftMail from compiling, so no
+    #     later Foundation gap can yet be assessed; SwiftCross already supplies
+    #     the known UTType and String.Encoding compatibility shims.
+    # Keep this job available for manual upstream re-checks without posting a
+    # permanently failing check on every push and pull request.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: windows-latest
     timeout-minutes: 45
     steps:

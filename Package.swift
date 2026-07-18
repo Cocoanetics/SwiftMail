@@ -53,7 +53,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-nio", from: "2.101.3"),
         .package(url: "https://github.com/apple/swift-nio-imap", from: "0.3.0"),
         // 2.37.1 includes the Windows-SDK BoringSSL header workarounds from
-        // apple/swift-nio-ssl#585, scoped to the CNIOBoringSSL target.
+        // apple/swift-nio-ssl#585, scoped to the CNIOBoringSSL target. Full
+        // NIOSSL Windows support remains blocked on apple/swift-nio-ssl#567.
         .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.37.1"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
         // swift-testing releases track toolchain versions: 6.3.2's manifest is
