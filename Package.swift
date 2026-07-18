@@ -48,17 +48,13 @@ let package = Package(
         // Cross-platform Foundation compatibility shims (UTType, charset/IANA
         // encoding, ProcessInfo.localIPAddress).
         .package(url: "https://github.com/Cocoanetics/SwiftCross", from: "1.2.0"),
-        .package(url: "https://github.com/apple/swift-nio", from: "2.0.0"),
+        // 2.101.3 includes apple/swift-nio#3433, which fixes NIO/NIOPosix
+        // compilation with Swift 6.3 and the current Windows SDK.
+        .package(url: "https://github.com/apple/swift-nio", from: "2.101.3"),
         .package(url: "https://github.com/apple/swift-nio-imap", from: "0.3.0"),
-        // Pinned to the latest upstream main, which carries the Windows-SDK
-        // BoringSSL header workarounds (_WINSOCKAPI_/NOMINMAX/NOCRYPT scoped to
-        // the CNIOBoringSSL target, apple/swift-nio-ssl#585). No release contains
-        // that fix yet (latest tag is 2.37.0) — switch to a normal `from:` once
-        // one ships.
-        .package(
-            url: "https://github.com/apple/swift-nio-ssl",
-            revision: "407d82d5b6cc00e1c3fb83a81b1539b70c788c5e"
-        ),
+        // 2.37.1 includes the Windows-SDK BoringSSL header workarounds from
+        // apple/swift-nio-ssl#585, scoped to the CNIOBoringSSL target.
+        .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.37.1"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
         // swift-testing releases track toolchain versions: 6.3.2's manifest is
         // swift-tools-version 6.2, so every platform that compiles the test

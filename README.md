@@ -143,11 +143,12 @@ try await imapServer.append(
 ## Requirements
 
 - Swift 5.9+
-- macOS 11.0+
-- iOS 14.0+
-- tvOS 14.0+
-- watchOS 7.0+
-- macCatalyst 14.0+
+- macOS 12.0+
+- iOS 15.0+
+- tvOS 15.0+
+- watchOS 8.0+
+- macCatalyst 15.0+
+- Windows (SwiftMail library and tests; command-line demos are not built)
 
 ## Dependencies
 
