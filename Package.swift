@@ -51,7 +51,9 @@ let package = Package(
         // 2.101.3 includes apple/swift-nio#3433, which fixes NIO/NIOPosix
         // compilation with Swift 6.3 and the current Windows SDK.
         .package(url: "https://github.com/apple/swift-nio", from: "2.101.3"),
-        .package(url: "https://github.com/apple/swift-nio-imap", from: "0.3.0"),
+        // TEMPORARY TEST OVERRIDE (do not merge): apple/swift-nio-imap main plus
+        // the pure-Swift isalnum replacement, for Windows compilation.
+        .package(url: "https://github.com/odrobnik/swift-nio-imap", branch: "windows-support"),
         // TEMPORARY TEST OVERRIDE (do not merge): full NIOSSL Windows support
         // from the refresh of apple/swift-nio-ssl#567 (Joannis/swift-nio-ssl#1),
         // pending upstream merge + release.
