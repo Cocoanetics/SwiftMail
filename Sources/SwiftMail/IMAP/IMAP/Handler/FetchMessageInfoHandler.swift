@@ -323,6 +323,12 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     /// Groups are flattened to their member addresses — no synthetic address is
     /// produced for the group name itself. An address with neither a mailbox nor
     /// a host is dropped rather than yielding a bare `"@"`.
+    ///
+    /// This deliberately diverges from ``formatAddress(_:)``, which unconditionally
+    /// renders `"\(mailbox)@\(host)"` (so a mailbox-only address becomes `"devnull@"`
+    /// and an empty one becomes `"@"`). Those are display artefacts that make sense
+    /// only in a free-text string; a structured address with no mailbox and no host
+    /// carries no information, so here it's simply omitted instead of preserved.
     /// - Parameter address: The address to convert
     /// - Returns: The structured addresses contributed by this element
     private func structuredAddress(_ address: EmailAddressListElement) -> [EmailAddress] {
