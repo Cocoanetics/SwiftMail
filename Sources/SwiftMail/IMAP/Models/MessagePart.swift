@@ -29,11 +29,6 @@ public struct MessagePart: Sendable {
     /// because the part was not built from a BODYSTRUCTURE response.
     public let size: Int?
 
-    /// The size of the part in octets (bytes), in its encoded form, as reported by
-    /// `BODYSTRUCTURE`. An alias for ``size`` under the name used elsewhere in the
-    /// fetch pipeline.
-    public var octetCount: Int? { size }
-
     /// The content data (if any)
     public var data: Data?
 
