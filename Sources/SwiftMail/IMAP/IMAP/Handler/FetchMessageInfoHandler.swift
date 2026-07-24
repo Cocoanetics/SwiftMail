@@ -237,11 +237,15 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         }
         if !envelope.from.isEmpty {
             header.from = formatAddress(envelope.from[0])
+            header.fromAddress = structuredAddress(envelope.from[0]).first
         }
         header.replyTo = envelope.reply.map { formatAddress($0) }
         header.to = envelope.to.map { formatAddress($0) }
         header.cc = envelope.cc.map { formatAddress($0) }
         header.bcc = envelope.bcc.map { formatAddress($0) }
+        header.toAddresses = envelope.to.flatMap { structuredAddress($0) }
+        header.ccAddresses = envelope.cc.flatMap { structuredAddress($0) }
+        header.bccAddresses = envelope.bcc.flatMap { structuredAddress($0) }
         if let date = envelope.date, let parsed = Self.parseEnvelopeDate(String(date)) {
             header.date = parsed
             // If parsing fails we silently fall through. Callers can use `internalDate`
@@ -311,6 +315,39 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 let groupName = group.groupName.stringValue.decodeMIMEHeader()
                 let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
                 return "\(groupName): \(members)"
+        }
+    }
+
+    /// Convert an address into structured ``EmailAddress`` values.
+    ///
+    /// Groups are flattened to their member addresses — no synthetic address is
+    /// produced for the group name itself. An address with neither a mailbox nor
+    /// a host is dropped rather than yielding a bare `"@"`.
+    /// - Parameter address: The address to convert
+    /// - Returns: The structured addresses contributed by this element
+    private func structuredAddress(_ address: EmailAddressListElement) -> [EmailAddress] {
+        switch address {
+            case .singleAddress(let emailAddress):
+                let name = emailAddress.personName?.stringValue.decodeMIMEHeader() ?? ""
+                let mailbox = emailAddress.mailbox?.stringValue ?? ""
+                let host = emailAddress.host?.stringValue ?? ""
+
+                let value: String
+                switch (mailbox.isEmpty, host.isEmpty) {
+                    case (false, false):
+                        value = "\(mailbox)@\(host)"
+                    case (false, true):
+                        value = mailbox
+                    case (true, false):
+                        value = "@\(host)"
+                    case (true, true):
+                        return []
+                }
+
+                return [EmailAddress(name: name.isEmpty ? nil : name, address: value)]
+
+            case .group(let group):
+                return group.children.flatMap { structuredAddress($0) }
         }
     }
 
