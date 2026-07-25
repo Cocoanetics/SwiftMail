@@ -425,7 +425,8 @@ struct FetchMessageInfoHandlerTests {
         bcc: [String] = [],
         messageId: String = "<msg@example.com>"
     ) -> String {
-        "(NIL \"\(subject)\" \(addressList(from)) NIL NIL \(addressList(to)) \(addressList(cc)) \(addressList(bcc)) NIL \"\(messageId)\")"
+        let recipients = "\(addressList(to)) \(addressList(cc)) \(addressList(bcc))"
+        return "(NIL \"\(subject)\" \(addressList(from)) NIL NIL \(recipients) NIL \"\(messageId)\")"
     }
 
     /// Render an IMAP addr-list: `NIL` when empty, else the addresses concatenated
