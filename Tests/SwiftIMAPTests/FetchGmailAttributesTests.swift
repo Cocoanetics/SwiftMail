@@ -42,7 +42,7 @@ struct FetchGmailAttributesTests {
             [
                 "* 1 FETCH (UID 42 X-GM-MSGID 1278455344230334865 X-GM-THRID 1266894439832287888 "
                     + "X-GM-LABELS (\\Inbox \"Work\"))\r\n",
-                "A001 OK FETCH completed\r\n",
+                "A001 OK FETCH completed\r\n"
             ]
         )
 
@@ -105,10 +105,10 @@ struct FetchGmailAttributesTests {
 
     // MARK: - Helpers
 
-    private func executeFetch(_ rawResponses: [String]) async throws -> [GmailMessageAttributes] {
+    private func executeFetch(_ rawResponses: [String]) async throws -> [GmailAttributeRecord] {
         let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
-        let promise = channel.eventLoop.makePromise(of: [GmailMessageAttributes].self)
+        let promise = channel.eventLoop.makePromise(of: [GmailAttributeRecord].self)
         let handler = FetchGmailAttributesHandler(commandTag: "A001", promise: promise)
         try await channel.pipeline.addHandler(handler)
 

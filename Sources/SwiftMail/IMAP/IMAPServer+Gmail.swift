@@ -8,17 +8,17 @@ extension IMAPServer {
     /// tagged BAD. Gate calls on `Capability.gmailExtensions` being advertised.
     public func fetchGmailAttributes(
         for identifierSet: UIDSet
-    ) async throws -> [UID: (messageID: UInt64, threadID: UInt64, labels: [String])] {
+    ) async throws -> [UID: GmailMessageAttributes] {
         let command = FetchGmailAttributesCommand(identifierSet: identifierSet)
         let records = try await executeCommand(command)
 
-        var result: [UID: (messageID: UInt64, threadID: UInt64, labels: [String])] = [:]
+        var result: [UID: GmailMessageAttributes] = [:]
         for record in records {
             guard let uid = record.uid,
                   let messageID = record.messageID,
                   let threadID = record.threadID
             else { continue }
-            result[uid] = (messageID: messageID, threadID: threadID, labels: record.labels)
+            result[uid] = GmailMessageAttributes(messageID: messageID, threadID: threadID, labels: record.labels)
         }
         return result
     }

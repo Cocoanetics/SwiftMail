@@ -2,7 +2,7 @@ import Foundation
 import NIOIMAPCore
 
 struct FetchGmailAttributesCommand: IMAPTaggedCommand {
-    typealias ResultType = [GmailMessageAttributes]
+    typealias ResultType = [GmailAttributeRecord]
     typealias HandlerType = FetchGmailAttributesHandler
 
     let identifierSet: UIDSet

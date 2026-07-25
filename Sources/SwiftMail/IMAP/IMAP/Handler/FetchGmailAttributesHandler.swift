@@ -1,17 +1,22 @@
 import Foundation
 import NIOIMAPCore
 
-struct GmailMessageAttributes: Sendable {
+/// Mutable accumulator used while parsing a Gmail attribute FETCH response.
+///
+/// Fields start `nil`/empty and are filled in as the corresponding FETCH data items
+/// arrive; `IMAPServer.fetchGmailAttributes(for:)` converts fully-populated records
+/// into the public, non-optional `GmailMessageAttributes`.
+struct GmailAttributeRecord: Sendable {
     var uid: UID?
     var messageID: UInt64?
     var threadID: UInt64?
     var labels: [String] = []
 }
 
-final class FetchGmailAttributesHandler: BaseIMAPCommandHandler<[GmailMessageAttributes]>,
+final class FetchGmailAttributesHandler: BaseIMAPCommandHandler<[GmailAttributeRecord]>,
     IMAPCommandHandler, @unchecked Sendable {
 
-    private var attributes: [GmailMessageAttributes] = []
+    private var attributes: [GmailAttributeRecord] = []
 
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
         super.handleTaggedOKResponse(response)
@@ -31,7 +36,7 @@ final class FetchGmailAttributesHandler: BaseIMAPCommandHandler<[GmailMessageAtt
     private func processFetchResponse(_ fetchResponse: FetchResponse) {
         switch fetchResponse {
             case .start:
-                lock.withLock { self.attributes.append(GmailMessageAttributes()) }
+                lock.withLock { self.attributes.append(GmailAttributeRecord()) }
             case .simpleAttribute(let attribute):
                 lock.withLock {
                     guard let index = self.attributes.indices.last else { return }
@@ -43,7 +48,7 @@ final class FetchGmailAttributesHandler: BaseIMAPCommandHandler<[GmailMessageAtt
         }
     }
 
-    private static func apply(_ attribute: MessageAttribute, to record: inout GmailMessageAttributes) {
+    private static func apply(_ attribute: MessageAttribute, to record: inout GmailAttributeRecord) {
         switch attribute {
             case .uid(let uid): record.uid = UID(nio: uid)
             case .gmailMessageID(let messageID): record.messageID = messageID
