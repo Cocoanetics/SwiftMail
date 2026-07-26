@@ -71,6 +71,12 @@ public actor IMAPServer {
     /// Authentication configuration for spawning new connections.
     var authentication: Authentication?
 
+    /// RFC 2971 client identity replayed after every successful
+    /// authentication on every connection this server opens (primary,
+    /// dedicated IDLE connections, and transparent re-authentication).
+    /// Set it before calling `login`/`authenticatePlain`/`authenticateXOAUTH2`.
+    var clientIdentification: Identification?
+
     /** The list of all mailboxes with their attributes */
     public private(set) var mailboxes: [Mailbox.Info] = []
 
@@ -121,13 +127,18 @@ public actor IMAPServer {
         let handle: IMAPNamedConnection
     }
 
-    enum Authentication {
-        case login(username: String, password: String)
-        case plain(username: String, password: String)
-        case xoauth2(email: String, accessTokenProvider: @Sendable () async throws -> String)
+    struct Authentication {
+        enum Method {
+            case login(username: String, password: String)
+            case plain(username: String, password: String)
+            case xoauth2(email: String, accessTokenProvider: @Sendable () async throws -> String)
+        }
+
+        let method: Method
+        var identification: Identification?
 
         func authenticate(on connection: IMAPConnection) async throws {
-            switch self {
+            switch method {
                 case .login(let username, let password):
                     try await connection.login(username: username, password: password)
                 case .plain(let username, let password):
@@ -135,6 +146,14 @@ public actor IMAPServer {
                 case .xoauth2(let email, let accessTokenProvider):
                     let accessToken = try await accessTokenProvider()
                     try await connection.authenticateXOAUTH2(email: email, accessToken: accessToken)
+            }
+            // RFC 2971: some servers (e.g. NetEase 163/126) reject SELECT on any
+            // authenticated connection that has not identified itself, so the
+            // stored identity is replayed after every authentication. Servers
+            // that do not advertise the ID capability are skipped, and a
+            // failed ID must never fail the authentication itself.
+            if let identification, connection.capabilitiesSnapshot.contains(.id) {
+                _ = try? await connection.id(identification)
             }
         }
     }

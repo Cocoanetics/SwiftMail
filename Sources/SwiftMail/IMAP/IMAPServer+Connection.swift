@@ -70,7 +70,11 @@ extension IMAPServer {
      */
     public func login(username: String, password: String) async throws {
         try await primaryConnection.login(username: username, password: password)
-        authentication = .login(username: username, password: password)
+        authentication = Authentication(
+            method: .login(username: username, password: password),
+            identification: clientIdentification
+        )
+        await identifyPrimaryConnectionIfNeeded()
         namespaces = primaryConnection.namespacesSnapshot
     }
 
@@ -87,7 +91,11 @@ extension IMAPServer {
     ///   or ``IMAPError.authFailed`` when authentication fails.
     public func authenticatePlain(username: String, password: String) async throws {
         try await primaryConnection.authenticatePlain(username: username, password: password)
-        authentication = .plain(username: username, password: password)
+        authentication = Authentication(
+            method: .plain(username: username, password: password),
+            identification: clientIdentification
+        )
+        await identifyPrimaryConnectionIfNeeded()
         namespaces = primaryConnection.namespacesSnapshot
     }
 
@@ -99,7 +107,11 @@ extension IMAPServer {
     ///   ``IMAPError.authFailed`` when authentication fails.
     public func authenticateXOAUTH2(email: String, accessToken: String) async throws {
         try await primaryConnection.authenticateXOAUTH2(email: email, accessToken: accessToken)
-        authentication = .xoauth2(email: email, accessTokenProvider: { accessToken })
+        authentication = Authentication(
+            method: .xoauth2(email: email, accessTokenProvider: { accessToken }),
+            identification: clientIdentification
+        )
+        await identifyPrimaryConnectionIfNeeded()
         namespaces = primaryConnection.namespacesSnapshot
     }
 
@@ -109,7 +121,32 @@ extension IMAPServer {
         email: String,
         accessTokenProvider: @escaping @Sendable () async throws -> String
     ) {
-        authentication = .xoauth2(email: email, accessTokenProvider: accessTokenProvider)
+        authentication = Authentication(
+            method: .xoauth2(email: email, accessTokenProvider: accessTokenProvider),
+            identification: clientIdentification
+        )
+    }
+
+    /// Stores the RFC 2971 client identity replayed after every successful
+    /// authentication on every connection this server opens (primary,
+    /// dedicated IDLE connections, and transparent re-authentication).
+    /// Some servers (e.g. NetEase 163/126) reject SELECT on any authenticated
+    /// connection that has not identified itself; configuring this once makes
+    /// every connection — including ones the server opens internally — send
+    /// ID right after authenticating. Call it before
+    /// `login`/`authenticatePlain`/`authenticateXOAUTH2`. Servers that do not
+    /// advertise the ID capability are never sent the command.
+    public func setClientIdentification(_ identification: Identification?) {
+        clientIdentification = identification
+        authentication?.identification = identification
+    }
+
+    /// RFC 2971 replay for the primary connection's explicit authentication.
+    /// Best-effort: a failed ID must never fail the authentication itself.
+    private func identifyPrimaryConnectionIfNeeded() async {
+        guard let clientIdentification,
+              primaryConnection.capabilitiesSnapshot.contains(.id) else { return }
+        _ = try? await primaryConnection.id(clientIdentification)
     }
 
     /// Identify the client to the server using the `ID` command.
