@@ -84,6 +84,11 @@ extension IMAPResilientIdleRunner {
     ) async throws {
         do {
             try? await context.connection.disconnect()
+            // Teardown may have cancelled us while the disconnect above was in
+            // flight; none of the calls below are cancellation-interruptible
+            // (NIO futures), so re-check before dialing a session that is being
+            // torn down. Teardown still force-closes anything that slips past.
+            if Task.isCancelled { return }
             try await context.connection.connect()
             try await context.authentication.authenticate(on: context.connection)
             let selectCommand = SelectMailboxCommand(mailboxName: context.resolvedMailbox)
@@ -130,6 +135,10 @@ extension IMAPResilientIdleRunner {
             try? await context.connection.done(timeoutSeconds: context.configuration.doneTimeout)
             try? await context.connection.disconnect()
 
+            // Same window as attemptRoutineReconnect: the check above ran before
+            // done/disconnect, and cancellation may have landed since. Don't
+            // re-dial a session that teardown is waiting on.
+            if Task.isCancelled { return }
             try await context.connection.connect()
             try await context.authentication.authenticate(on: context.connection)
             let selectCommand = SelectMailboxCommand(mailboxName: context.resolvedMailbox)

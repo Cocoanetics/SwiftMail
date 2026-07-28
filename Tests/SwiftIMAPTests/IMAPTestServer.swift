@@ -76,6 +76,19 @@ final class IMAPTestServer {
         metricsQueue.sync { idleCommandCountStorage += 1 }
     }
 
+    /// Total connections ever accepted. Catches re-dials that never reach an
+    /// IDLE command (connect + LOGIN + SELECT and then exit), which
+    /// `idleCommandCount` alone cannot see.
+    var acceptedConnectionCount: Int {
+        metricsQueue.sync { acceptedConnectionCountStorage }
+    }
+
+    private var acceptedConnectionCountStorage = 0
+
+    private func recordAcceptedConnection() {
+        metricsQueue.sync { acceptedConnectionCountStorage += 1 }
+    }
+
     func start() throws {
         resetClientTrackingForStart()
 
@@ -220,6 +233,7 @@ final class IMAPTestServer {
             close(clientFd)
             return
         }
+        recordAcceptedConnection()
 
         // Handle on a background queue
         let clientGroup = clientGroup

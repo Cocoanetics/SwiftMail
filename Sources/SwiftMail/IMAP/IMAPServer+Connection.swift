@@ -317,6 +317,12 @@ extension IMAPServer {
             try? await entry.connection.done()
             try? await entry.connection.disconnect()
             await cycleTask.value
+            // The runner may have completed a reconnect it had already started
+            // when the cancellation landed (NIO connect/auth/select are not
+            // cancellation-interruptible). Close whatever it left behind so
+            // teardown never relies on the group shutdown to reap a re-dialed
+            // socket.
+            try? await entry.connection.disconnect()
         } else {
             // The cycle task never started (the session is still connecting);
             // there is only the connection and its group to release. idle(on:)'s
