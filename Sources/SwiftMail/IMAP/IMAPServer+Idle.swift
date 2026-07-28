@@ -59,7 +59,13 @@ extension IMAPServer {
         // IDLE cycle task (which is Task.detached and can outlive the server).
         let idleGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let connection = makeIdleConnection(sessionID: sessionID, mailbox: resolvedMailbox, group: idleGroup)
-        idleConnections[sessionID] = IdleConnection(mailbox: resolvedMailbox, connection: connection)
+        idleConnections[sessionID] = IdleConnection(
+            mailbox: resolvedMailbox,
+            connection: connection,
+            idleGroup: idleGroup,
+            lifecycle: nil,
+            cycleTask: nil
+        )
 
         do {
             try await connection.connect()
@@ -148,26 +154,26 @@ extension IMAPServer {
             continuation.finish()
         }
 
+        if idleConnections[sessionID] != nil {
+            idleConnections[sessionID]?.lifecycle = lifecycle
+            idleConnections[sessionID]?.cycleTask = cycleTask
+        } else {
+            // A concurrent disconnect() removed (and tore down) the entry while
+            // idle(on:) was still connecting; don't leave a live cycle running
+            // behind a session nobody tracks.
+            cycleTask.cancel()
+        }
+
         return IMAPIdleSession(events: wrappedEvents) { [weak self, connection] in
-            guard await lifecycle.beginStop(cycleTask: cycleTask) else { return }
-
-            var cleanupError: Error?
-            do {
-                if let self {
-                    try await self.endIdleSession(id: sessionID)
-                } else {
-                    try? await connection.done()
-                    try? await connection.disconnect()
-                }
-            } catch {
-                cleanupError = error
-            }
-
-            await cycleTask.value
-            try? await idleGroup.shutdownGracefully()
-
-            if let cleanupError {
-                throw cleanupError
+            if let self {
+                try await self.endIdleSession(id: sessionID)
+            } else {
+                // The server is gone; run the same teardown sequence inline.
+                guard await lifecycle.beginStop(cycleTask: cycleTask) else { return }
+                try? await connection.done()
+                try? await connection.disconnect()
+                await cycleTask.value
+                try? await idleGroup.shutdownGracefully()
             }
         }
     }
@@ -176,9 +182,10 @@ extension IMAPServer {
 actor IMAPIdleSessionLifecycle {
     private var isStopped = false
 
-    /// The session stop path owns both connection removal and IDLE group shutdown.
-    /// The resilient runner observes cancellation, finishes its stream, and then
-    /// this gate keeps repeated `done()` calls from repeating cleanup.
+    /// Gates the single teardown of a dedicated IDLE session. Every stop path —
+    /// the session's `done()`, `IMAPServer.disconnect()`, and the post-deinit
+    /// fallback — funnels through this before touching the connection, so the
+    /// cycle task is cancelled exactly once and cleanup never runs twice.
     func beginStop(cycleTask: Task<Void, Never>) -> Bool {
         guard !isStopped else { return false }
         isStopped = true

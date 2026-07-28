@@ -100,6 +100,81 @@ import Testing
             }
         }
 
+        /// `server.disconnect()` must terminate a dedicated IDLE session for good.
+        /// The cycle task is self-healing: closing the socket without stopping the
+        /// task first makes it treat the close as a dropped connection and re-dial
+        /// (the IMAP-side leak behind Cocoanetics/Post#30). After disconnect, the
+        /// session's events stream must finish and the server must see no further
+        /// IDLE commands.
+        @Test
+        func disconnectTerminatesDedicatedIdleSessionWithoutRedial() async throws {
+            let (testServer, tempRoot) = try makeTestServer()
+            try testServer.start()
+            defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+            try await testServer.run {
+                let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+                try await server.connect()
+                try await server.login(username: "u", password: "p")
+
+                // Long renewal so the only thing that can grow idleCommandCount
+                // after disconnect is a reconnect; near-instant reconnect delays so
+                // a surviving cycle task would re-dial well inside the observation
+                // window.
+                let configuration = IMAPIdleConfiguration(
+                    renewalInterval: 60,
+                    noopInterval: 60,
+                    postIdleNoopEnabled: false,
+                    postIdleNoopDelay: 0,
+                    doneTimeout: 2,
+                    reconnectBaseDelay: 0.01,
+                    reconnectMaxDelay: 0.05,
+                    reconnectJitterFactor: 0
+                )
+                let session = try await server.idle(on: "INBOX", configuration: configuration)
+                #expect(try await waitForIdleCommandCount(testServer, atLeast: 1))
+                let idleCommandsBeforeDisconnect = testServer.idleCommandCount
+
+                try await server.disconnect()
+
+                let streamFinished = await withTaskGroup(of: Bool.self) { group in
+                    group.addTask {
+                        for await _ in session.events {}
+                        return true
+                    }
+                    group.addTask {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                        return false
+                    }
+                    let first = await group.next() ?? false
+                    group.cancelAll()
+                    return first
+                }
+                #expect(streamFinished, "events stream must finish after server.disconnect()")
+
+                // Ample window for a surviving runner to re-dial (its reconnect
+                // delay is 10–50 ms).
+                try await Task.sleep(nanoseconds: 500_000_000)
+                #expect(testServer.idleCommandCount == idleCommandsBeforeDisconnect)
+
+                // A redundant done() after disconnect must be safe and idempotent.
+                try? await session.done()
+            }
+        }
+
+        private func waitForIdleCommandCount(
+            _ testServer: IMAPTestServer,
+            atLeast expected: Int,
+            timeoutNanoseconds: UInt64 = 5_000_000_000
+        ) async throws -> Bool {
+            let start = DispatchTime.now().uptimeNanoseconds
+            while DispatchTime.now().uptimeNanoseconds - start < timeoutNanoseconds {
+                if testServer.idleCommandCount >= expected { return true }
+                try await Task.sleep(nanoseconds: 10_000_000)
+            }
+            return testServer.idleCommandCount >= expected
+        }
+
         /// The idle group should be cleaned up when the initial connection fails.
         @Test
         func idleGroupCleanedUpOnConnectionFailure() async throws {

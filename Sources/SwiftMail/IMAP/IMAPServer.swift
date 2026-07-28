@@ -106,6 +106,14 @@ public actor IMAPServer {
     struct IdleConnection {
         let mailbox: String
         let connection: IMAPConnection
+        /// The session's private EventLoopGroup; shut down as the final step of teardown.
+        let idleGroup: EventLoopGroup
+        /// Set once the resilient cycle starts. Server-side teardown must cancel the
+        /// cycle task before touching the connection — the runner is self-healing, so
+        /// a socket that merely closes underneath it is treated as a dropped
+        /// connection and re-dialed.
+        var lifecycle: IMAPIdleSessionLifecycle?
+        var cycleTask: Task<Void, Never>?
     }
 
     struct NamedConnection {
