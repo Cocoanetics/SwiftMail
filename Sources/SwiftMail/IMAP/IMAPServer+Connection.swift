@@ -302,9 +302,29 @@ extension IMAPServer {
 
     func endIdleSession(id: UUID) async throws {
         guard let entry = idleConnections.removeValue(forKey: id) else { return }
+        await teardownIdleEntry(entry)
+    }
 
-        try? await entry.connection.done()
-        try? await entry.connection.disconnect()
+    /// Complete teardown of a dedicated IDLE entry. The cycle task must be
+    /// stopped before the connection is closed: the resilient runner is
+    /// self-healing, so a socket that merely closes underneath it counts as a
+    /// dropped connection and is re-dialed. Stopping is gated by the session
+    /// lifecycle, which lets `disconnect()` and the session's own `done()`
+    /// race safely; whichever loses the gate leaves cleanup to the winner.
+    private func teardownIdleEntry(_ entry: IdleConnection) async {
+        if let lifecycle = entry.lifecycle, let cycleTask = entry.cycleTask {
+            guard await lifecycle.beginStop(cycleTask: cycleTask) else { return }
+            try? await entry.connection.done()
+            try? await entry.connection.disconnect()
+            await cycleTask.value
+        } else {
+            // The cycle task never started (the session is still connecting);
+            // there is only the connection and its group to release. idle(on:)'s
+            // failure path may shut the group a second time, which is harmless.
+            try? await entry.connection.done()
+            try? await entry.connection.disconnect()
+        }
+        try? await entry.idleGroup.shutdownGracefully()
     }
 
     func closeAllConnections() async throws {
@@ -312,8 +332,7 @@ extension IMAPServer {
         idleConnections.removeAll()
 
         for entry in idleEntries.values {
-            try? await entry.connection.done()
-            try? await entry.connection.disconnect()
+            await teardownIdleEntry(entry)
         }
 
         let namedEntries = namedConnections
