@@ -137,20 +137,10 @@ import Testing
 
                 try await server.disconnect()
 
-                let streamFinished = await withTaskGroup(of: Bool.self) { group in
-                    group.addTask {
-                        for await _ in session.events {}
-                        return true
-                    }
-                    group.addTask {
-                        try? await Task.sleep(nanoseconds: 5_000_000_000)
-                        return false
-                    }
-                    let first = await group.next() ?? false
-                    group.cancelAll()
-                    return first
-                }
-                #expect(streamFinished, "events stream must finish after server.disconnect()")
+                #expect(
+                    await waitForStreamFinish(session),
+                    "events stream must finish after server.disconnect()"
+                )
 
                 // Ample window for a surviving runner to re-dial (its reconnect
                 // delay is 10–50 ms).
@@ -159,6 +149,72 @@ import Testing
 
                 // A redundant done() after disconnect must be safe and idempotent.
                 try? await session.done()
+            }
+        }
+
+        /// Consumers end IDLE producers with `try? await session.done()` from a
+        /// task that is itself already cancelled (Cocoanetics/Post#30's watch
+        /// loops do exactly this). Teardown must complete regardless: the events
+        /// stream finishes and the runner does not survive to renew or re-dial.
+        @Test
+        func doneFromCancelledTaskStillTearsDownSession() async throws {
+            let (testServer, tempRoot) = try makeTestServer()
+            try testServer.start()
+            defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+            try await testServer.run {
+                let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+                try await server.connect()
+                try await server.login(username: "u", password: "p")
+
+                let configuration = IMAPIdleConfiguration(
+                    renewalInterval: 60,
+                    noopInterval: 60,
+                    postIdleNoopEnabled: false,
+                    postIdleNoopDelay: 0,
+                    doneTimeout: 2,
+                    reconnectBaseDelay: 0.01,
+                    reconnectMaxDelay: 0.05,
+                    reconnectJitterFactor: 0
+                )
+                let session = try await server.idle(on: "INBOX", configuration: configuration)
+                #expect(try await waitForIdleCommandCount(testServer, atLeast: 1))
+                let idleCommandsBefore = testServer.idleCommandCount
+
+                let doneTask = Task {
+                    try? await session.done()
+                }
+                doneTask.cancel()
+                await doneTask.value
+
+                #expect(
+                    await waitForStreamFinish(session),
+                    "events stream must finish after done() from a cancelled task"
+                )
+
+                try await Task.sleep(nanoseconds: 500_000_000)
+                #expect(testServer.idleCommandCount == idleCommandsBefore)
+
+                try? await server.disconnect()
+            }
+        }
+
+        private func waitForStreamFinish(
+            _ session: IMAPIdleSession,
+            timeoutNanoseconds: UInt64 = 5_000_000_000
+        ) async -> Bool {
+            await withTaskGroup(of: Bool.self) { group in
+                group.addTask {
+                    for await _ in session.events {}
+                    return true
+                }
+                group.addTask {
+                    try? await Task.sleep(nanoseconds: timeoutNanoseconds)
+                    return false
+                }
+                let first = await group.next() ?? false
+                group.cancelAll()
+                return first
             }
         }
 
