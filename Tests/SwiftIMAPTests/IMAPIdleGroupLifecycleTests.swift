@@ -134,6 +134,7 @@ import Testing
                 let session = try await server.idle(on: "INBOX", configuration: configuration)
                 #expect(try await waitForIdleCommandCount(testServer, atLeast: 1))
                 let idleCommandsBeforeDisconnect = testServer.idleCommandCount
+                let connectionsBeforeDisconnect = testServer.acceptedConnectionCount
 
                 try await server.disconnect()
 
@@ -143,9 +144,12 @@ import Testing
                 )
 
                 // Ample window for a surviving runner to re-dial (its reconnect
-                // delay is 10–50 ms).
+                // delay is 10–50 ms). Assert on connections as well as IDLE
+                // commands: a post-cancellation reconnect dials and authenticates
+                // without ever issuing another IDLE.
                 try await Task.sleep(nanoseconds: 500_000_000)
                 #expect(testServer.idleCommandCount == idleCommandsBeforeDisconnect)
+                #expect(testServer.acceptedConnectionCount == connectionsBeforeDisconnect)
 
                 // A redundant done() after disconnect must be safe and idempotent.
                 try? await session.done()
@@ -180,6 +184,7 @@ import Testing
                 let session = try await server.idle(on: "INBOX", configuration: configuration)
                 #expect(try await waitForIdleCommandCount(testServer, atLeast: 1))
                 let idleCommandsBefore = testServer.idleCommandCount
+                let connectionsBefore = testServer.acceptedConnectionCount
 
                 let doneTask = Task {
                     try? await session.done()
@@ -194,6 +199,7 @@ import Testing
 
                 try await Task.sleep(nanoseconds: 500_000_000)
                 #expect(testServer.idleCommandCount == idleCommandsBefore)
+                #expect(testServer.acceptedConnectionCount == connectionsBefore)
 
                 try? await server.disconnect()
             }

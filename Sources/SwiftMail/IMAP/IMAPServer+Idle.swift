@@ -173,6 +173,9 @@ extension IMAPServer {
                 try? await connection.done()
                 try? await connection.disconnect()
                 await cycleTask.value
+                // Mirror teardownIdleEntry: close any connection the runner
+                // re-established while the cancellation was landing.
+                try? await connection.disconnect()
                 try? await idleGroup.shutdownGracefully()
             }
         }
