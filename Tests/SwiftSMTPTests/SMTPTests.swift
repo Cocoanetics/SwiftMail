@@ -999,6 +999,12 @@ struct SMTPTests {
         #expect(closedChannel.reason == .connectionLost)
         #expect(closedChannel.acceptance == .ambiguous)
 
+        let channelEOF = SMTPSendError.classifyingPostContentDispatch(ChannelError.eof)
+        #expect(channelEOF.reason == .connectionLost)
+
+        let inputClosed = SMTPSendError.classifyingPostContentDispatch(ChannelError.inputClosed)
+        #expect(inputClosed.reason == .connectionLost)
+
         let opaque = SMTPSendError.classifyingPostContentDispatch(OpaqueTLSError())
         if case .transport = opaque.reason {
             // expected
@@ -1240,6 +1246,25 @@ struct SMTPTests {
     }
 
     @Test
+    func testUnexpectedReplyAfterContentIsAmbiguousAndClosesConnection() async throws {
+        var script = SMTPServerScript()
+        script.onContent = [.reply("334 Unexpected continuation")]
+        try await withScriptedServer(script) { server, client in
+            let sendError = await #expect(throws: SMTPSendError.self) {
+                _ = try await client.sendEmail(Self.makeOutcomeTestEmail())
+            }
+            #expect(server.receivedContentMessages.count == 1)
+            #expect(sendError?.phase == .content)
+            #expect(sendError?.acceptance == .ambiguous)
+            #expect(sendError?.response?.code == 334)
+            #expect(sendError?.retryDisposition == .unsafeToRetry)
+
+            let hasChannel = await client.hasChannelForTesting
+            #expect(!hasChannel)
+        }
+    }
+
+    @Test
     func testSendEmailAmbiguousWhenConnectionClosesAfterTerminator() async throws {
         var script = SMTPServerScript()
         script.onContent = [.close]
@@ -1393,6 +1418,10 @@ struct SMTPTests {
             #expect(sendError?.retryDisposition == .retryable)
             #expect(server.receivedContentMessages.isEmpty)
             #expect(server.receivedCommandCount(withPrefix: "RSET") == 1)
+
+            let commands = server.recordedCommands
+            let dataIndex = try #require(commands.firstIndex(where: { $0.uppercased() == "DATA" }))
+            #expect(Array(commands.dropFirst(dataIndex + 1)) == ["RSET"])
         }
     }
 

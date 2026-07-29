@@ -248,6 +248,15 @@ extension SMTPServer {
     private func abortSubmission(with sendError: SMTPSendError) async -> SMTPSendError {
         logger.error("\(sendError.description)")
 
+        // Any ambiguous outcome leaves the protocol state unknown. This also
+        // covers an unexpected non-final reply after the content terminator:
+        // even though a reply arrived, it did not prove that the server
+        // accepted or rejected the completed message.
+        if sendError.acceptance == .ambiguous {
+            await closeConnectionAfterFailedSubmission()
+            return sendError
+        }
+
         switch sendError.reason {
             case .reply(let response) where response.code == 421:
                 await closeConnectionAfterFailedSubmission()
@@ -313,7 +322,7 @@ extension SMTPServer {
         let handler = command.makeHandler(commandTag: commandTag, promise: resultPromise)
 
         let timeoutSeconds = submissionTimeoutSecondsForTesting ?? command.timeoutSeconds
-        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+        let scheduledTask = channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
             resultPromise.fail(SMTPSubmissionTimeoutError())
         }
         defer { scheduledTask.cancel() }

@@ -245,9 +245,13 @@ extension SMTPSendError.Reason {
             // Within the submission dialogue this only arises from the channel
             // going away (BaseSMTPHandler.channelInactive or a vanished channel).
             self = .connectionLost
-        } else if let channelError = error as? ChannelError,
-                  channelError == .ioOnClosedChannel || channelError == .alreadyClosed {
-            self = .connectionLost
+        } else if let channelError = error as? ChannelError {
+            switch channelError {
+                case .ioOnClosedChannel, .alreadyClosed, .inputClosed, .outputClosed, .eof:
+                    self = .connectionLost
+                default:
+                    self = .transport(String(describing: error))
+            }
         } else {
             self = .transport(String(describing: error))
         }
