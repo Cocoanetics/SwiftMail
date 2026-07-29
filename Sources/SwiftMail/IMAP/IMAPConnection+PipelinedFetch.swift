@@ -41,18 +41,21 @@ extension IMAPConnection {
     /// literals.
     ///
     /// - Parameter requests: Array of (uid, section) pairs to fetch.
-    /// - Parameter timeoutSeconds: Timeout for the entire batch.
+    /// - Parameter timeoutSeconds: Optional timeout override for the entire batch.
+    ///   Defaults to a value scaled with the request count.
     /// - Returns: Array of results with fetched data per (uid, section).
     /// - Throws: If the connection is unavailable, if a parser limit is violated, or
     ///   if every command in the batch fails (the first failure is rethrown).
     func executePipelinedFetchParts(
         requests: [(uid: UID, section: Section)],
-        timeoutSeconds: Int = 60
+        timeoutSeconds: Int? = nil
     ) async throws -> [PipelinedFetchResult] {
         guard !requests.isEmpty else { return [] }
+        let timeout = timeoutSeconds
+            ?? Self.defaultPipelinedFetchTimeout(partCount: requests.count)
 
         return try await commandQueue.run { [self] in
-            try await self.pipelinedFetchPartsBody(requests: requests, timeoutSeconds: timeoutSeconds)
+            try await self.pipelinedFetchPartsBody(requests: requests, timeoutSeconds: timeout)
         }
     }
 
@@ -133,6 +136,13 @@ extension IMAPConnection {
     ) async throws -> [PipelinedFetchResult] {
         if let limitViolation = drain.firstLimitViolation {
             throw limitViolation
+        }
+        if let routingViolation = drain.firstRoutingViolation {
+            let message = "\(connectionContext) Recycling connection after pipelined routing violation: "
+                + "\(routingViolation)"
+            logger.warning("\(message)")
+            try? await disconnectBody()
+            throw routingViolation
         }
         // A timeout or channel drop poisons the connection even when some parts
         // arrived intact: literals for the failed tags may still be streaming,
@@ -260,6 +270,9 @@ extension IMAPConnection {
         /// timeout whose literals may still be streaming on the channel.
         let firstRecyclableFailure: Error?
         let firstLimitViolation: Error?
+        /// A content-routing mismatch makes every result in the shared batch
+        /// suspect, even if another request completed before it was detected.
+        let firstRoutingViolation: Error?
         let failureCount: Int
     }
 
@@ -292,6 +305,7 @@ extension IMAPConnection {
         var firstFailure: Error?
         var firstRecyclableFailure: Error?
         var limitViolation: Error?
+        var routingViolation: Error?
         var failureCount = 0
 
         for (index, request) in tagToRequest.enumerated() {
@@ -310,7 +324,9 @@ extension IMAPConnection {
                 } else {
                     logger.debug("Pipelined fetch failed for UID \(uidValue) section \(sectionDescription): \(error)")
                     if firstFailure == nil { firstFailure = error }
-                    if firstRecyclableFailure == nil, shouldRecycleConnection(for: error) {
+                    if routingViolation == nil, error is PipelinedFetchRoutingError {
+                        routingViolation = error
+                    } else if firstRecyclableFailure == nil, shouldRecycleConnection(for: error) {
                         firstRecyclableFailure = error
                     }
                 }
@@ -322,6 +338,7 @@ extension IMAPConnection {
             firstFailure: firstFailure,
             firstRecyclableFailure: firstRecyclableFailure,
             firstLimitViolation: limitViolation,
+            firstRoutingViolation: routingViolation,
             failureCount: failureCount
         )
     }

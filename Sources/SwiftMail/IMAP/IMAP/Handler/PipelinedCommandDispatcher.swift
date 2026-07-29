@@ -1,14 +1,7 @@
-// PipelinedCommandDispatcher.swift
-// NIO channel handler that routes responses to multiple in-flight pipelined command handlers.
-//
-// IMAP RFC 3501 §5.5 allows clients to send multiple commands without waiting for responses.
-// The server processes commands in order and sends tagged responses (A001 OK, A002 OK, etc.)
-// so responses can be matched to commands by tag. Untagged responses (e.g., * FETCH data)
-// carry no tag; they arrive grouped per message (`.start` … `.finish`) and are routed by
-// content when the group identifies itself (UID attribute, streamed body section) and by
-// send order otherwise. A server may stream data for several pipelined commands before
-// sending any tagged OK (RFC 3501 §5.5), so advancing only on the tagged OK would misdeliver
-// a later command's data to an already-finished earlier handler and silently drop it.
+// Routes responses to multiple in-flight pipelined command handlers. Untagged FETCH
+// spans are matched by UID/section when available and by send order only when the
+// response carries no verifiable identity. RFC 3501 §5.5 permits several untagged
+// responses before any tagged completion, so routing cannot advance only on tagged OK.
 //
 // Unsolicited FETCH responses are a hard requirement here: RFC 3501 §7.4.2 lets the server
 // broadcast flag changes (`* n FETCH (FLAGS (\Seen))`) at any time, including interleaved
@@ -20,8 +13,6 @@
 //
 // This handler sits in the NIO pipeline during a pipelined batch. It maintains an ordered
 // registry of (tag → PipelinedHandler) and routes responses accordingly.
-
-import Foundation
 import Logging
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
@@ -34,37 +25,9 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
 
     private let lock = NIOLock()
 
-    /// A registered pipelined command awaiting its responses. `finishedUntagged` flips
-    /// once this command's untagged FETCH data has fully arrived, so subsequent untagged
-    /// data routes to the next command even before any tagged OK. `uid` and
-    /// `expectedSection` enable content-verified routing when the server's response
-    /// identifies itself; entries registered without them fall back to send order.
-    private struct PendingCommand {
-        let tag: String
-        let handler: any PipelinedHandler
-        let uid: UID?
-        let expectedSection: SectionSpecifier?
-        var finishedUntagged: Bool
-    }
-
-    /// The untagged FETCH group currently arriving (one `.start` … `.finish` span).
-    private enum UntaggedGroup {
-        case idle
-        /// `.start` seen but no body data yet. The group's responses are held back
-        /// (start plus simple attributes — bounded and small) until it proves it
-        /// belongs to a pipelined command by streaming body data.
-        case pending(held: [FetchResponse], uid: UID?)
-        /// Group bound to a command; body chunks stream straight through. A server
-        /// may satisfy several pipelined commands for one message inside a single
-        /// group, so `touchedTags` tracks every entry the group delivered to.
-        case bound(currentTag: String, touchedTags: Set<String>, uid: UID?)
-        /// Group streams body data no pending command asked for; swallowed to `.finish`.
-        case dropping
-    }
-
     /// Ordered registry — insertion order matches send order.
-    private var entries: [PendingCommand] = []
-    private var group: UntaggedGroup = .idle
+    private var entries: [PipelinedPendingCommand] = []
+    private var group: PipelinedUntaggedGroup = .idle
 
     private let logger = Logger(label: "com.cocoanetics.SwiftMail.PipelinedDispatcher")
 
@@ -77,7 +40,7 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
         expectedSection: SectionSpecifier? = nil
     ) {
         lock.withLock {
-            entries.append(PendingCommand(
+            entries.append(PipelinedPendingCommand(
                 tag: tag,
                 handler: handler,
                 uid: uid,
@@ -122,9 +85,11 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
         // Always forward to the next handler in the pipeline (UntaggedResponseBuffer)
         context.fireChannelRead(data)
     }
+}
 
-    // MARK: - Untagged FETCH group routing (caller holds `lock`)
+// MARK: - Untagged FETCH group routing (caller holds `lock`)
 
+private extension PipelinedCommandDispatcher {
     private func routeUntaggedFetch(_ fetchResponse: FetchResponse) {
         switch fetchResponse {
             case .start:
@@ -139,8 +104,6 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
                 deliverBodyChunk(fetchResponse)
             case .finish:
                 finishGroup(fetchResponse)
-            default:
-                deliverToBoundEntry(fetchResponse)
         }
     }
 
@@ -175,8 +138,12 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
                 group = .pending(held: held, uid: uid)
             case .bound(let currentTag, let touchedTags, _):
                 if case .uid(let nioUID) = attribute {
-                    verifyBoundUID(UID(nio: nioUID), currentTag: currentTag)
-                    group = .bound(currentTag: currentTag, touchedTags: touchedTags, uid: UID(nio: nioUID))
+                    let uid = UID(nio: nioUID)
+                    guard validateBoundUID(uid, touchedTags: touchedTags) else {
+                        group = .dropping
+                        return
+                    }
+                    group = .bound(currentTag: currentTag, touchedTags: touchedTags, uid: uid)
                 }
                 deliver(response, toTag: currentTag)
             case .dropping, .idle:
@@ -185,13 +152,20 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
     }
 
     /// The UID attribute can arrive after body data has already been delivered. A
-    /// mismatch at that point cannot be unwound — surface it loudly for diagnosis.
-    private func verifyBoundUID(_ uid: UID, currentTag: String) {
-        guard let entry = entries.first(where: { $0.tag == currentTag }),
-              let expected = entry.uid, expected != uid else { return }
-        let message = "FETCH group bound to tag \(currentTag) (UID \(expected.value)) reported "
-            + "UID \(uid.value); possible misrouted pipelined response"
-        logger.warning("\(message)")
+    /// mismatch at that point cannot be unwound, so the whole batch must fail rather
+    /// than return bytes that may belong to another request.
+    private func validateBoundUID(_ uid: UID, touchedTags: Set<String>) -> Bool {
+        let mismatches = entries.filter {
+            touchedTags.contains($0.tag) && $0.uid.map { $0 != uid } == true
+        }
+        guard !mismatches.isEmpty else { return true }
+
+        let bindings = mismatches.map { "\($0.tag)=UID \($0.uid?.value ?? 0)" }
+            .joined(separator: ", ")
+        failRoutingViolation(
+            "FETCH group reported late UID \(uid.value) after delivering body bytes to \(bindings)"
+        )
+        return false
     }
 
     private func handleStreamingBegin(kind: StreamingKind, _ response: FetchResponse) {
@@ -214,27 +188,15 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
     private func bindOrRebind(section: SectionSpecifier?, _ response: FetchResponse) {
         switch group {
             case .pending(let held, let uid):
-                guard let idx = bindableEntryIndex(uid: uid, section: section) else {
-                    logger.warning("Dropping untagged FETCH body data that matches no pipelined command")
-                    group = .dropping
-                    return
-                }
-                let tag = entries[idx].tag
-                group = .bound(currentTag: tag, touchedTags: [tag], uid: uid)
-                for heldResponse in held {
-                    entries[idx].handler.processFetchResponse(heldResponse)
-                }
-                entries[idx].handler.processFetchResponse(response)
+                bindPendingGroup(held: held, uid: uid, section: section, response: response)
             case .bound(let currentTag, var touchedTags, let uid):
-                var targetTag = currentTag
-                if let section,
-                   let idx = bindableEntryIndex(uid: uid, section: section),
-                   entries[idx].expectedSection == section {
-                    targetTag = entries[idx].tag
-                }
-                touchedTags.insert(targetTag)
-                group = .bound(currentTag: targetTag, touchedTags: touchedTags, uid: uid)
-                deliver(response, toTag: targetTag)
+                rebindBoundGroup(
+                    currentTag: currentTag,
+                    touchedTags: &touchedTags,
+                    uid: uid,
+                    section: section,
+                    response: response
+                )
             case .dropping:
                 break
             case .idle:
@@ -242,6 +204,77 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
                 group = .pending(held: [], uid: nil)
                 bindOrRebind(section: section, response)
         }
+    }
+
+    private func bindPendingGroup(
+        held: [FetchResponse],
+        uid: UID?,
+        section: SectionSpecifier?,
+        response: FetchResponse
+    ) {
+        switch bindingDecision(uid: uid, section: section) {
+            case .match(let idx):
+                let tag = entries[idx].tag
+                group = .bound(currentTag: tag, touchedTags: [tag], uid: uid)
+                for heldResponse in held {
+                    entries[idx].handler.processFetchResponse(heldResponse)
+                }
+                entries[idx].handler.processFetchResponse(response)
+            case .unsolicited:
+                dropUnmatchedBodyData()
+            case .routingViolation(let error):
+                failRoutingViolation(error.description)
+                group = .dropping
+        }
+    }
+
+    private func rebindBoundGroup(
+        currentTag: String,
+        touchedTags: inout Set<String>,
+        uid: UID?,
+        section: SectionSpecifier?,
+        response: FetchResponse
+    ) {
+        guard let section else {
+            deliverBoundResponse(
+                response,
+                toTag: currentTag,
+                touchedTags: &touchedTags,
+                uid: uid
+            )
+            return
+        }
+
+        switch bindingDecision(uid: uid, section: section) {
+            case .match(let idx):
+                deliverBoundResponse(
+                    response,
+                    toTag: entries[idx].tag,
+                    touchedTags: &touchedTags,
+                    uid: uid
+                )
+            case .unsolicited:
+                dropUnmatchedBodyData()
+            case .routingViolation(let error):
+                failRoutingViolation(error.description)
+                group = .dropping
+        }
+    }
+
+    private func deliverBoundResponse(
+        _ response: FetchResponse,
+        toTag tag: String,
+        touchedTags: inout Set<String>,
+        uid: UID?
+    ) {
+        touchedTags.insert(tag)
+        group = .bound(currentTag: tag, touchedTags: touchedTags, uid: uid)
+        deliver(response, toTag: tag)
+    }
+
+    private func dropUnmatchedBodyData() {
+        logger.warning("Dropping untagged FETCH body data that matches no pipelined command")
+        group = .dropping
     }
 
     /// Body bytes inside a pending group (a parser that skipped `.streamingBegin`)
@@ -254,12 +287,6 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
                 deliver(response, toTag: currentTag)
             case .dropping, .idle:
                 break
-        }
-    }
-
-    private func deliverToBoundEntry(_ response: FetchResponse) {
-        if case .bound(let currentTag, _, _) = group {
-            deliver(response, toTag: currentTag)
         }
     }
 
@@ -290,32 +317,46 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
         entries[idx].handler.processFetchResponse(response)
     }
 
-    /// Pick the entry a body-bearing group belongs to. Most specific match wins:
-    /// uid + section, then uid, then section, then send order. A group whose UID
-    /// matches no registered command is unsolicited — return nil so it is dropped
-    /// rather than corrupting a pending command's data.
-    private func bindableEntryIndex(uid: UID?, section: SectionSpecifier?) -> Int? {
+    /// Pick the entry a body-bearing group belongs to. Once the server provides a
+    /// UID or section that registered commands can verify, a mismatch is never
+    /// allowed to degrade to send-order routing.
+    private func bindingDecision(uid: UID?, section: SectionSpecifier?) -> PipelinedBindingDecision {
         let candidates = entries.indices.filter { !entries[$0].finishedUntagged }
-        guard !candidates.isEmpty else { return nil }
+        guard !candidates.isEmpty else { return .unsolicited }
 
         if let uid {
-            let uidMatches = candidates.filter { entries[$0].uid == uid }
-            if !uidMatches.isEmpty {
-                if let section,
-                   let exact = uidMatches.first(where: { entries[$0].expectedSection == section }) {
-                    return exact
-                }
-                return uidMatches.first
-            }
-            if entries.contains(where: { $0.uid != nil }) {
-                return nil
+            let uidAware = candidates.filter { entries[$0].uid != nil }
+            if !uidAware.isEmpty {
+                let uidMatches = uidAware.filter { entries[$0].uid == uid }
+                guard !uidMatches.isEmpty else { return .unsolicited }
+                return sectionDecision(uid: uid, section: section, candidates: uidMatches)
             }
         }
-        if let section,
-           let match = candidates.first(where: { entries[$0].expectedSection == section }) {
-            return match
+
+        return sectionDecision(uid: uid, section: section, candidates: candidates)
+    }
+
+    private func sectionDecision(
+        uid: UID?,
+        section: SectionSpecifier?,
+        candidates: [Int]
+    ) -> PipelinedBindingDecision {
+        guard let section else { return .match(candidates[0]) }
+        let sectionAware = candidates.filter { entries[$0].expectedSection != nil }
+        guard !sectionAware.isEmpty else { return .match(candidates[0]) }
+        if let match = sectionAware.first(where: { entries[$0].expectedSection == section }) {
+            return .match(match)
         }
-        return candidates.first
+
+        let uidDescription = uid.map { "UID \($0.value) " } ?? ""
+        return .routingViolation(PipelinedFetchRoutingError(
+            description: "FETCH \(uidDescription)section \(section) matches no pending pipelined request"
+        ))
+    }
+
+    private func failRoutingViolation(_ message: String) {
+        logger.error("\(message)")
+        failAllPending(PipelinedFetchRoutingError(description: message))
     }
 
     /// Fail every pending handler and clear the registry. Caller holds `lock`.
@@ -326,7 +367,9 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
         entries.removeAll()
         group = .idle
     }
+}
 
+extension PipelinedCommandDispatcher {
     func channelInactive(context: ChannelHandlerContext) {
         let error = IMAPError.connectionFailed("Connection closed during pipelined fetch")
         lock.withLock {

@@ -165,6 +165,36 @@ struct PipelinedDispatcherContentRoutingTests {
         let parts = try resolveParts(requests: requests, stream: stream)
         #expect(parts == ["GOOD"])
     }
+
+    @Test("Unrequested section for a requested UID fails the batch")
+    func unrequestedSectionForRequestedUIDFailsBatch() throws {
+        let requests = [
+            ExpectedPart(tag: "A001", uid: SwiftMail.UID(9), section: Section([1])),
+            ExpectedPart(tag: "A002", uid: SwiftMail.UID(9), section: Section([2]))
+        ]
+        let stream: [Response] = [
+            .fetch(.start(.init(1))), uidAttr(9), beginBody([99], byteCount: 4),
+            bytes("EVIL"), .fetch(.streamingEnd), .fetch(.finish),
+            taggedOK("A001"), taggedOK("A002")
+        ]
+        let parts = try resolveParts(requests: requests, stream: stream)
+        #expect(parts == [nil, nil])
+    }
+
+    @Test("UID arriving after literal bytes must not allow a mismatched batch to succeed")
+    func postLiteralUIDMismatchFailsBatch() throws {
+        let requests = [
+            ExpectedPart(tag: "A001", uid: SwiftMail.UID(9), section: Section([1])),
+            ExpectedPart(tag: "A002", uid: SwiftMail.UID(10), section: Section([1]))
+        ]
+        let stream: [Response] = [
+            .fetch(.start(.init(1))), beginBody([1], byteCount: 3),
+            bytes("TEN"), .fetch(.streamingEnd), uidAttr(10), .fetch(.finish),
+            taggedOK("A001"), taggedOK("A002")
+        ]
+        let parts = try resolveParts(requests: requests, stream: stream)
+        #expect(parts == [nil, nil])
+    }
 }
 
 @Suite("PipelinedFetch drain and timeout")
@@ -205,6 +235,7 @@ struct PipelinedFetchDrainTests {
         #expect(drain.results.isEmpty)
         #expect(drain.failureCount == 2)
         #expect(drain.firstLimitViolation == nil)
+        #expect(drain.firstRoutingViolation == nil)
         if case .timeout = drain.firstFailure as? IMAPError {} else {
             Issue.record("Expected the first failure (timeout) to be surfaced")
         }
@@ -277,5 +308,24 @@ struct PipelinedFetchDrainTests {
         #expect(IMAPConnection.defaultPipelinedFetchTimeout(partCount: 2) == 90)
         #expect(IMAPConnection.defaultPipelinedFetchTimeout(partCount: 4) == 150)
         #expect(IMAPConnection.defaultPipelinedFetchTimeout(partCount: 20) == 300)
+    }
+
+    @Test("Routing violation remains batch-fatal after another request succeeds")
+    func routingViolationRecordedAfterSuccess() async {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let connection = makeConnection(group: group)
+        let loop = group.next()
+        let promises = [loop.makePromise(of: Data.self), loop.makePromise(of: Data.self)]
+        promises[0].succeed(Data("ONE".utf8))
+        promises[1].fail(PipelinedFetchRoutingError(description: "late UID mismatch"))
+
+        let drain = await connection.drainPipelinedFetchFutures(
+            tagToRequest: [request("A001", uid: 9, section: [1]), request("A002", uid: 10, section: [1])],
+            futures: promises.map(\.futureResult)
+        )
+
+        #expect(drain.results.count == 1)
+        #expect(drain.firstRoutingViolation is PipelinedFetchRoutingError)
+        #expect(drain.failureCount == 1)
     }
 }

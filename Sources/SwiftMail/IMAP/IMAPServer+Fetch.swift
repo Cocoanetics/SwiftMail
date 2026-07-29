@@ -56,17 +56,25 @@ extension IMAPServer {
      Significantly faster than sequential `fetchPart` calls (~3-5x for body fetching).
 
      - Parameter parts: Array of (uid, section) pairs to fetch.
+     - Parameter timeoutSeconds: Timeout for the entire batch. Defaults to a value
+       scaled with the batch size (60s for one part, +30s per additional part,
+       capped at 300s) so large batches keep parity with serial per-part timeouts.
      - Returns: Dictionary mapping UID to array of (section, data) results.
-     - Throws: If the connection is unavailable.
+     - Throws: If the connection is unavailable, response routing cannot be
+       verified, a parser limit is violated, or every command in the batch fails.
      */
     public func fetchPartsPipelined(
-        parts: [(uid: UID, section: Section)]
+        parts: [(uid: UID, section: Section)],
+        timeoutSeconds: Int? = nil
     ) async throws -> [UID: [(section: Section, data: Data)]] {
         if let authentication, !primaryConnection.isAuthenticated {
             logger.info("Primary connection not authenticated; re-authenticating before pipelined fetch")
             try await authentication.authenticate(on: primaryConnection)
         }
-        let results = try await primaryConnection.executePipelinedFetchParts(requests: parts)
+        let results = try await primaryConnection.executePipelinedFetchParts(
+            requests: parts,
+            timeoutSeconds: timeoutSeconds
+        )
         var grouped: [UID: [(section: Section, data: Data)]] = [:]
         for result in results {
             grouped[result.uid, default: []].append((section: result.section, data: result.data))

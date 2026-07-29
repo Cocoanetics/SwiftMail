@@ -21,18 +21,16 @@ extension IMAPNamedConnection {
     ///   scaled with the batch size (60s for one part, +30s per additional part,
     ///   capped at 300s) so large batches keep parity with serial per-part timeouts.
     /// - Returns: Dictionary mapping UID to array of (section, data) results.
-    /// - Throws: If the connection is unavailable, a parser limit is violated, or
-    ///   every command in the batch fails.
+    /// - Throws: If the connection is unavailable, response routing cannot be
+    ///   verified, a parser limit is violated, or every command in the batch fails.
     public func fetchPartsPipelined(
         parts: [(uid: UID, section: Section)],
         timeoutSeconds: Int? = nil
     ) async throws -> [UID: [(section: Section, data: Data)]] {
         try await ensureAuthenticated()
-        let timeout = timeoutSeconds
-            ?? IMAPConnection.defaultPipelinedFetchTimeout(partCount: parts.count)
         let results = try await connection.executePipelinedFetchParts(
             requests: parts,
-            timeoutSeconds: timeout
+            timeoutSeconds: timeoutSeconds
         )
         recordActivity()
         var grouped: [UID: [(section: Section, data: Data)]] = [:]
