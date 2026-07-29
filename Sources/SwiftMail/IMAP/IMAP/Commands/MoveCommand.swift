@@ -7,7 +7,7 @@ import NIOIMAP
 
 /// Command for moving messages from one mailbox to another
 struct MoveCommand<T: MessageIdentifier>: IMAPTaggedCommand {
-    typealias ResultType = Void
+    typealias ResultType = CopyUID?
     typealias HandlerType = MoveHandler
 
     /// The set of message identifiers to move

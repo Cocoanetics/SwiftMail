@@ -7,33 +7,36 @@ import NIOIMAPCore
 import NIO
 import NIOConcurrencyHelpers
 
-/** Handler for IMAP MOVE command */
-final class MoveHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
-    /** The result type for this handler */
-    typealias ResultType = Void
+/// Handler for IMAP MOVE command.
+///
+/// Extracts the `COPYUID` response code from the tagged OK when the server includes one
+/// (RFC 6851 §3.3). Returns `nil` when the server omits `COPYUID`.
+final class MoveHandler: BaseIMAPCommandHandler<CopyUID?>, IMAPCommandHandler, @unchecked Sendable {
+    typealias ResultType = CopyUID?
 
-    /**
-     Process an incoming response
-     - Parameter response: The response to process
-     - Returns: Whether the response was handled by this handler
-     */
-    override func processResponse(_ response: Response) -> Bool {
-        // Log the response using the base handler
-        let baseHandled = super.processResponse(response)
+    override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        super.handleTaggedOKResponse(response)
 
-        // Check if this is our tagged response
-        if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
-            if case .ok = taggedResponse.state {
-                // The move was successful
-                succeedWithResult(())
-            } else {
-                // The move failed
-                failWithError(IMAPError.commandFailed("Move failed: \(String(describing: taggedResponse.state))"))
-            }
-            return true
+        do {
+            succeedWithResult(try extractCopyUID(from: response))
+        } catch {
+            failWithError(error)
         }
+    }
 
-        // Not our tagged response
-        return baseHandled
+    override func handleTaggedErrorResponse(_ response: TaggedResponse) {
+        failWithError(IMAPError.commandFailed("Move failed: \(String(describing: response.state))"))
+    }
+}
+
+private extension MoveHandler {
+    func extractCopyUID(from response: TaggedResponse) throws -> CopyUID? {
+        guard case .ok(let text) = response.state,
+              let code = text.code,
+              case .uidCopy(let data) = code
+        else {
+            return nil
+        }
+        return try CopyUID(nio: data)
     }
 }

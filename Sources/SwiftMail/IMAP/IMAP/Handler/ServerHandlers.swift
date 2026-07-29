@@ -49,21 +49,33 @@ final class CapabilityHandler: BaseIMAPCommandHandler<[Capability]>, IMAPCommand
 }
 
 /// Handler for IMAP COPY command
-final class CopyHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unchecked Sendable {
+final class CopyHandler: BaseIMAPCommandHandler<CopyUID?>, IMAPCommandHandler, @unchecked Sendable {
+    typealias ResultType = CopyUID?
 
-    /// Handle a tagged OK response by succeeding the promise
-    /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
-        // Call super to handle CLIENTBUG warnings
         super.handleTaggedOKResponse(response)
 
-        succeedWithResult(())
+        do {
+            succeedWithResult(try extractCopyUID(from: response))
+        } catch {
+            failWithError(error)
+        }
     }
 
-    /// Handle a tagged error response
-    /// - Parameter response: The tagged response
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         failWithError(IMAPError.copyFailed(String(describing: response.state)))
+    }
+}
+
+private extension CopyHandler {
+    func extractCopyUID(from response: TaggedResponse) throws -> CopyUID? {
+        guard case .ok(let text) = response.state,
+              let code = text.code,
+              case .uidCopy(let data) = code
+        else {
+            return nil
+        }
+        return try CopyUID(nio: data)
     }
 }
 

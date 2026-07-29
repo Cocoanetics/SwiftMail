@@ -2,15 +2,20 @@ import Foundation
 
 extension IMAPNamedConnection {
     /// Copy messages to another mailbox.
+    ///
+    /// - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
+    ///   or `nil` when the server omits `COPYUID` (e.g. the server does not advertise UIDPLUS,
+    ///   or a sequence-number-based copy was issued).
+    @discardableResult
     public func copy<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>,
         to destinationMailbox: String
-    ) async throws {
+    ) async throws -> CopyUID? {
         let command = CopyCommand(
             identifierSet: identifierSet,
             destinationMailbox: resolveMailboxPath(destinationMailbox)
         )
-        try await executeCommand(command)
+        return try await executeCommand(command)
     }
 
     /// Update flags for messages.
@@ -41,34 +46,45 @@ extension IMAPNamedConnection {
     }
 
     /// Move messages to another mailbox (uses MOVE if supported, otherwise COPY+STORE+EXPUNGE).
+    ///
+    /// - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
+    ///   or `nil` when the server omits `COPYUID`.
+    @discardableResult
     public func move<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>,
         to destinationMailbox: String
-    ) async throws {
+    ) async throws -> CopyUID? {
         if capabilities.contains(.move) && (T.self != UID.self || capabilities.contains(.uidPlus)) {
-            try await executeMove(messages: identifierSet, to: destinationMailbox)
+            return try await executeMove(messages: identifierSet, to: destinationMailbox)
         } else {
-            try await copy(messages: identifierSet, to: destinationMailbox)
+            let copyUID = try await copy(messages: identifierSet, to: destinationMailbox)
             try await store(flags: [.deleted], on: identifierSet, operation: .add)
             try await expungeMoveFallback(messages: identifierSet)
+            return copyUID
         }
     }
 
     /// Move a single message to another mailbox.
-    public func move<T: MessageIdentifier>(message identifier: T, to destinationMailbox: String) async throws {
+    ///
+    /// - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
+    ///   or `nil` when the server omits `COPYUID`.
+    @discardableResult
+    public func move<T: MessageIdentifier>(
+        message identifier: T, to destinationMailbox: String
+    ) async throws -> CopyUID? {
         let set = MessageIdentifierSet<T>(identifier)
-        try await move(messages: set, to: destinationMailbox)
+        return try await move(messages: set, to: destinationMailbox)
     }
 
     private func executeMove<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>,
         to destinationMailbox: String
-    ) async throws {
+    ) async throws -> CopyUID? {
         let command = MoveCommand(
             identifierSet: identifierSet,
             destinationMailbox: resolveMailboxPath(destinationMailbox)
         )
-        try await executeCommand(command)
+        return try await executeCommand(command)
     }
 
     private func expungeMoveFallback<T: MessageIdentifier>(
