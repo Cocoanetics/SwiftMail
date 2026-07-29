@@ -48,15 +48,21 @@ extension CopyUID {
         self.mapping = zip(sourceUIDs, destinationUIDs).map { (source: $0, destination: $1) }
     }
 
+    private static let maxExpandedUIDs = 1_000_000
+
     private static func expand(_ ranges: [NIOIMAPCore.UIDRange]) throws -> [UID] {
         var result: [UID] = []
         for nioRange in ranges {
             let lower = nioRange.range.lowerBound.rawValue
             let upper = nioRange.range.upperBound.rawValue
-            // Guard against wildcard ranges (UInt32.max) or implausibly large server responses.
-            let count = upper &- lower &+ 1
-            guard lower <= upper, count <= 1_000_000 else {
-                throw IMAPError.commandFailed("COPYUID contains an invalid or oversized UID range")
+            guard lower <= upper else {
+                throw IMAPError.commandFailed("COPYUID contains an invalid UID range")
+            }
+            let rangeCount = Int(upper - lower) + 1
+            // Guard against the cumulative expansion exceeding the cap — many small ranges
+            // can otherwise trigger the same allocation blow-up as a single oversized range.
+            guard result.count + rangeCount <= maxExpandedUIDs else {
+                throw IMAPError.commandFailed("COPYUID expansion exceeds \(maxExpandedUIDs) UIDs")
             }
             for raw in lower...upper {
                 result.append(UID(raw))
