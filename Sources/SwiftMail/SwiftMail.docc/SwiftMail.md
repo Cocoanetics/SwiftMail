@@ -56,3 +56,11 @@ Tutorial: <doc:SendingEmailsWithSMTP>
 - ``SMTPServer/connect()``
 - ``SMTPServer/authenticate(username:password:)``
 - ``SMTPServer/sendEmail(_:)``
+- ``SMTPServer/sendRawMessage(_:from:to:)``
+- ``SMTPServer/reset()``
+
+### SMTP Send Outcomes
+
+- ``SMTPSendResult``
+- ``SMTPSendError``
+- ``SMTPResponse``
