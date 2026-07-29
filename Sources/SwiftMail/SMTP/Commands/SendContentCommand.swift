@@ -5,8 +5,8 @@ import NIOCore
  Command to send email content data
  */
 struct SendContentCommand: SMTPCommand {
-    /// The result type is Void since we rely on error throwing for failure cases
-    typealias ResultType = Void
+    /// The result is the server's final accepting 2xx reply after the terminator
+    typealias ResultType = SMTPResponse
 
     /// The handler type that will process responses for this command
     typealias HandlerType = SendContentHandler

@@ -5,7 +5,7 @@ import Logging
 /**
  Handler for the DATA command response
  */
-final class DataHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
+final class DataHandler: BaseSMTPHandler<SMTPResponse>, @unchecked Sendable {
 
     /**
      Process a response from the server
@@ -14,12 +14,13 @@ final class DataHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
      */
     override func processResponse(_ response: SMTPResponse) -> Bool {
 
-        // 3xx responses are considered successful for DATA command (server is ready for content)
-        if response.code >= 300 && response.code < 400 {
-            promise.succeed(true)
+        // RFC 5321 §3.3: message data MUST NOT be sent unless the server
+        // replied exactly 354. Any other reply — including other 3xx codes —
+        // fails the command so no content is ever transmitted after it.
+        if response.code == 354 {
+            promise.succeed(response)
         } else {
-            // Any other response is considered a failure
-            promise.succeed(false)
+            promise.fail(SMTPError.unexpectedResponse(response))
         }
 
         return true // Always complete after a single response

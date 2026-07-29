@@ -85,6 +85,14 @@ public actor SMTPServer {
     /** Server capabilities reported by EHLO command */
     var capabilities: [String] = []
 
+    /// Overrides the per-command response timeout of the submission dialogue.
+    /// Tests use short values to exercise timeout classification deterministically.
+    var submissionTimeoutSecondsForTesting: Int?
+
+    func setSubmissionTimeoutSecondsForTesting(_ seconds: Int?) {
+        submissionTimeoutSecondsForTesting = seconds
+    }
+
     /// Whether the server advertised the `8BITMIME` extension in the most recent EHLO response.
     public var supports8BitMIME: Bool {
         capabilities.contains("8BITMIME")
