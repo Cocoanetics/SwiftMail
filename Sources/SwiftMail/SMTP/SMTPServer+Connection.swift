@@ -31,16 +31,35 @@ extension SMTPServer {
             transportSecurity: transportSecurity
         )
 
-        let bootstrap = makeClientBootstrap(useImplicitTLS: transportMode == .implicitTLS)
+        // Create the greeting promise and handler before connecting: the server
+        // sends its greeting immediately on accept, so the handler must already
+        // be in the pipeline when the first bytes arrive — otherwise a fast
+        // (e.g. local) server wins the race against a later addHandler and the
+        // greeting is dropped at the pipeline tail. Same pattern as IMAPConnection.
+        let greetingPromise = group.next().makePromise(of: SMTPGreeting.self)
+        let greetingHandler = SMTPGreetingHandler(commandTag: "", promise: greetingPromise)
+
+        let bootstrap = makeClientBootstrap(
+            useImplicitTLS: transportMode == .implicitTLS,
+            greetingHandler: greetingHandler
+        )
 
         // Connect to the server
-        let channel = try await bootstrap.connect(host: host, port: port).get()
+        let channel: Channel
+        do {
+            channel = try await bootstrap.connect(host: host, port: port).get()
+        } catch {
+            // Fail the greeting promise before rethrowing — prevents NIO "leaking
+            // promise" fatal error when the TCP connection fails (e.g. no internet).
+            greetingPromise.fail(error)
+            throw error
+        }
 
         // Store the channel
         self.channel = channel
 
-        // Wait for the server greeting using our generic handler execution pattern
-        let greeting = try await executeHandlerOnly(handlerType: SMTPGreetingHandler.self)
+        // Wait for the server greeting
+        let greeting = try await waitForGreeting(greetingPromise: greetingPromise)
 
         // Check if the greeting is positive
         guard greeting.code >= 200 && greeting.code < 300 else {
@@ -58,8 +77,29 @@ extension SMTPServer {
         logger.info("Connected to SMTP server \(self.host):\(self.port)")
     }
 
+    /// Await the server greeting captured by the greeting handler installed in
+    /// the channel initializer, bounded by a 5-second timeout.
+    private func waitForGreeting(greetingPromise: EventLoopPromise<SMTPGreeting>) async throws -> SMTPGreeting {
+        let timeoutTask = group.next().scheduleTask(in: .seconds(5)) {
+            greetingPromise.fail(SMTPError.connectionFailed("Response timeout"))
+        }
+        defer { timeoutTask.cancel() }
+
+        do {
+            let greeting = try await greetingPromise.futureResult.get()
+            duplexLogger.flushInboundBuffer()
+            return greeting
+        } catch {
+            duplexLogger.flushInboundBuffer()
+            throw error
+        }
+    }
+
     /// Build the NIO `ClientBootstrap` used by ``connect()``, optionally configured for implicit TLS.
-    private func makeClientBootstrap(useImplicitTLS: Bool) -> ClientBootstrap {
+    private func makeClientBootstrap(
+        useImplicitTLS: Bool,
+        greetingHandler: SMTPGreetingHandler
+    ) -> ClientBootstrap {
         let host = self.host
         let certificateVerificationPolicy = self.certificateVerificationPolicy
         let minimumTLSVersion = self.minimumTLSVersion
@@ -86,7 +126,8 @@ extension SMTPServer {
                         try channel.pipeline.syncOperations.addHandlers([
                             ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
                             duplexLogger,
-                            SMTPResponseHandler()
+                            SMTPResponseHandler(),
+                            greetingHandler
                         ])
 
                         return channel.eventLoop.makeSucceededFuture(())
@@ -99,7 +140,8 @@ extension SMTPServer {
                         try channel.pipeline.syncOperations.addHandlers([
                             ByteToMessageHandler(SMTPLineBasedFrameDecoder()),
                             duplexLogger,
-                            SMTPResponseHandler()
+                            SMTPResponseHandler(),
+                            greetingHandler
                         ])
                     } catch {
                         return channel.eventLoop.makeFailedFuture(error)

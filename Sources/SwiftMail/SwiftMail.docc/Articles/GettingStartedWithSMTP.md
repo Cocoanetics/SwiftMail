@@ -61,24 +61,45 @@ message.attachments.append(attachment)
 
 ## Error Handling
 
-SwiftMail uses Swift's error handling system. Common errors include:
-- Network connectivity issues
-- Authentication failures
-- Invalid email addresses
-- Server timeouts
-- Attachment size limits
+SwiftMail uses Swift's error handling system. Failures before the SMTP mail
+transaction starts — connectivity problems, authentication failures, invalid
+addresses, oversized messages — surface as ``SMTPError`` and can follow your
+normal retry policy.
 
-Always wrap SMTP operations in try-catch blocks:
+Once the transaction has started, ``SMTPServer/sendEmail(_:)`` and
+``SMTPServer/sendRawMessage(_:from:to:)`` throw ``SMTPSendError``, which
+classifies the outcome so a durable outbox can make safe retry decisions
+without parsing error strings:
 
 ```swift
 do {
-    try await smtpServer.connect()
-    try await smtpServer.login(username: "user@example.com", password: "password")
-    try await smtpServer.send(message)
+    let result = try await smtpServer.sendEmail(email)
+    print("Accepted: \(result.response.code) \(result.response.message)")
+} catch let error as SMTPSendError {
+    switch error.retryDisposition {
+    case .retryable:
+        // The server provably did not accept the message — requeue it.
+        break
+    case .permanent:
+        // Explicitly rejected with a permanent error — do not retry.
+        break
+    case .unsafeToRetry:
+        // The message content was transmitted but no clear final reply
+        // arrived. The server may have accepted it; retrying automatically
+        // could deliver the email twice. Reconcile out of band first.
+        break
+    }
 } catch {
+    // Failed before the dialogue started — normal retry policy applies.
     print("SMTP error: \(error)")
 }
 ```
+
+An ``SMTPSendError`` also reports the ``SMTPSendError/phase-swift.property``
+the dialogue reached, what is known about the server's
+``SMTPSendError/acceptance-swift.property`` of the message, the explicit
+server ``SMTPSendError/response`` when one was received, and the
+``SMTPSendError/rejectedRecipient`` when a `RCPT TO` was refused.
 
 ## Next Steps
 

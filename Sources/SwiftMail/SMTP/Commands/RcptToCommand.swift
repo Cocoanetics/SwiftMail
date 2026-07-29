@@ -5,8 +5,8 @@ import NIOCore
  Command to specify a recipient of an email
  */
 struct RcptToCommand: SMTPCommand {
-    /// The result type is a simple success Boolean
-    typealias ResultType = Bool
+    /// The result is the server's accepting 2xx reply; rejections fail the command
+    typealias ResultType = SMTPResponse
 
     /// The handler type that will process responses for this command
     typealias HandlerType = RcptToHandler

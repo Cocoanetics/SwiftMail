@@ -3,9 +3,9 @@ import NIOCore
 import Logging
 
 /**
- Handler for the RCPT TO command response
+ Handler for the RSET command response
  */
-final class RcptToHandler: BaseSMTPHandler<SMTPResponse>, @unchecked Sendable {
+final class RsetHandler: BaseSMTPHandler<SMTPResponse>, @unchecked Sendable {
 
     /**
      Process a response from the server
@@ -14,12 +14,11 @@ final class RcptToHandler: BaseSMTPHandler<SMTPResponse>, @unchecked Sendable {
      */
     override func processResponse(_ response: SMTPResponse) -> Bool {
 
-        // 2xx responses are considered successful (250, or 251 "will forward")
+        // RFC 5321 §4.1.1.5 requires a 250 reply; accept any 2xx as success
         if response.code >= 200 && response.code < 300 {
             promise.succeed(response)
         } else {
-            // Any other reply rejects the recipient; fail so the transaction
-            // aborts instead of silently skipping the recipient.
+            // A refused RSET means the session state is unknown
             promise.fail(SMTPError.unexpectedResponse(response))
         }
 
