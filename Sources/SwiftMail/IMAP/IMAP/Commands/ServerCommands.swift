@@ -20,7 +20,7 @@ struct CapabilityCommand: IMAPTaggedCommand {
 
 /// Command for copying messages from one mailbox to another
 struct CopyCommand<T: MessageIdentifier>: IMAPTaggedCommand {
-    typealias ResultType = Void
+    typealias ResultType = CopyUID?
     typealias HandlerType = CopyHandler
 
     /// The set of message identifiers to copy

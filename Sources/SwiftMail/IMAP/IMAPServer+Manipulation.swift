@@ -18,22 +18,26 @@ extension IMAPServer {
      - Parameters:
      - identifierSet: The set of messages to move
      - destinationMailbox: The name of the destination mailbox
+     - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
+       or `nil` when the server omits `COPYUID` (e.g. the server does not advertise UIDPLUS).
      - Throws:
      - `IMAPError.moveFailed` if the move operation fails
      - `IMAPError.emptyIdentifierSet` if the identifier set is empty
      - Note: Logs move operations at info level with message count and destination
      */
+    @discardableResult
     public func move<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>,
         to destinationMailbox: String
-    ) async throws {
+    ) async throws -> CopyUID? {
         if capabilities.contains(.move) && (T.self != UID.self || capabilities.contains(.uidPlus)) {
-            try await executeMove(messages: identifierSet, to: destinationMailbox)
+            return try await executeMove(messages: identifierSet, to: destinationMailbox)
         } else {
             // Fall back to COPY + DELETE + targeted expunge when UIDPLUS is available.
-            try await copy(messages: identifierSet, to: destinationMailbox)
+            let copyUID = try await copy(messages: identifierSet, to: destinationMailbox)
             try await store(flags: [.deleted], on: identifierSet, operation: .add)
             try await expungeMoveFallback(messages: identifierSet)
+            return copyUID
         }
     }
 
@@ -42,11 +46,16 @@ extension IMAPServer {
      - Parameters:
      - message: The message identifier to move
      - destinationMailbox: The name of the destination mailbox
+     - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
+       or `nil` when the server omits `COPYUID`.
      - Throws: An error if the move operation fails
      */
-    public func move<T: MessageIdentifier>(message identifier: T, to destinationMailbox: String) async throws {
+    @discardableResult
+    public func move<T: MessageIdentifier>(
+        message identifier: T, to destinationMailbox: String
+    ) async throws -> CopyUID? {
         let set = MessageIdentifierSet<T>(identifier)
-        try await move(messages: set, to: destinationMailbox)
+        return try await move(messages: set, to: destinationMailbox)
     }
 
     /**
@@ -54,40 +63,43 @@ extension IMAPServer {
      - Parameters:
      - header: The email header of the message to move
      - destinationMailbox: The name of the destination mailbox
+     - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
+       or `nil` when the server omits `COPYUID`.
      - Throws: An error if the move operation fails
      */
-    public func move(header: MessageInfo, to destinationMailbox: String) async throws {
-        // Use the UID from the header if available (non-zero), otherwise fall back to sequence number
+    @discardableResult
+    public func move(header: MessageInfo, to destinationMailbox: String) async throws -> CopyUID? {
         if let uid = header.uid {
-            // Use UID for moving
-            try await move(message: uid, to: destinationMailbox)
+            return try await move(message: uid, to: destinationMailbox)
         } else {
-            // Fall back to sequence number
             let sequenceNumber = header.sequenceNumber
-            try await move(message: sequenceNumber, to: destinationMailbox)
+            return try await move(message: sequenceNumber, to: destinationMailbox)
         }
     }
 
     /**
-     Searches for messages matching the given criteria
+     Copies messages to another mailbox.
 
      - Parameters:
      - identifierSet: The set of messages to copy
      - destinationMailbox: The name of the destination mailbox
+     - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
+       or `nil` when the server omits `COPYUID` (e.g. the server does not advertise UIDPLUS,
+       or a sequence-number-based copy was issued).
      - Throws:
      - `IMAPError.copyFailed` if the copy operation fails
      - `IMAPError.emptyIdentifierSet` if the identifier set is empty
-     - Note: Logs copy operations at info level with message count and destination
      */
+    @discardableResult
     public func copy<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>,
         to destinationMailbox: String
-    ) async throws {
+    ) async throws -> CopyUID? {
         let command = CopyCommand(
             identifierSet: identifierSet,
             destinationMailbox: resolveMailboxPath(destinationMailbox)
         )
-        try await executeCommand(command)
+        return try await executeCommand(command)
     }
 
     /**
@@ -178,11 +190,11 @@ extension IMAPServer {
     func executeMove<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>,
         to destinationMailbox: String
-    ) async throws {
+    ) async throws -> CopyUID? {
         let command = MoveCommand(
             identifierSet: identifierSet,
             destinationMailbox: resolveMailboxPath(destinationMailbox)
         )
-        try await executeCommand(command)
+        return try await executeCommand(command)
     }
 }
