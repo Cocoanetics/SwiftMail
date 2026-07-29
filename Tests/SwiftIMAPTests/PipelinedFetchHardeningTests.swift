@@ -249,6 +249,28 @@ struct PipelinedFetchDrainTests {
         #expect(drain.results.isEmpty)
     }
 
+    @Test("A recyclable failure is recorded even when a tagged NO failed first in send order")
+    func recyclableFailureRecordedRegardlessOfSendOrder() async {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let connection = makeConnection(group: group)
+        let loop = group.next()
+        let promises = [loop.makePromise(of: Data.self), loop.makePromise(of: Data.self)]
+        promises[0].fail(IMAPError.fetchFailed("NO invalid section"))
+        promises[1].fail(IMAPError.timeout)
+
+        let drain = await connection.drainPipelinedFetchFutures(
+            tagToRequest: [request("A001", uid: 9, section: [1]), request("A002", uid: 9, section: [2])],
+            futures: promises.map(\.futureResult)
+        )
+
+        if case .fetchFailed = drain.firstFailure as? IMAPError {} else {
+            Issue.record("firstFailure should stay the send-order first (the tagged NO)")
+        }
+        if case .timeout = drain.firstRecyclableFailure as? IMAPError {} else {
+            Issue.record("the later timeout must be recorded as the recyclable failure")
+        }
+    }
+
     @Test("Default batch timeout scales with part count and is capped")
     func defaultTimeoutScalesWithPartCount() {
         #expect(IMAPConnection.defaultPipelinedFetchTimeout(partCount: 1) == 60)

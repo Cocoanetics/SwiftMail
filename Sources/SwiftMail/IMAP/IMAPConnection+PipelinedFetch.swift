@@ -60,6 +60,11 @@ extension IMAPConnection {
         requests: [(uid: UID, section: Section)],
         timeoutSeconds: Int
     ) async throws -> [PipelinedFetchResult] {
+        // A caller cancelled while queued for the command lock must not dispatch
+        // its burst: once on the wire the batch is not cancellation-responsive,
+        // so this check is the last point where a superseded fetch can bow out
+        // without holding the connection for the full batch.
+        try Task.checkCancellation()
         let channel = try await preparePipelinedFetchChannel()
 
         // Create promises and handlers for each request.
@@ -129,18 +134,19 @@ extension IMAPConnection {
         if let limitViolation = drain.firstLimitViolation {
             throw limitViolation
         }
-        if let failure = drain.firstFailure {
-            // A timeout or channel drop poisons the connection even when some parts
-            // arrived intact: literals for the failed tags may still be streaming,
-            // and the next command would read them as its own response. Recycle
-            // before anyone reuses the channel; the successful results stay valid.
-            if shouldRecycleConnection(for: failure) {
-                logger.warning("\(connectionContext) Recycling connection after pipelined fetch failure: \(failure)")
-                try? await disconnectBody()
-            }
-            if drain.results.isEmpty {
-                throw failure
-            }
+        // A timeout or channel drop poisons the connection even when some parts
+        // arrived intact: literals for the failed tags may still be streaming,
+        // and the next command would read them as its own response. Recycle on
+        // ANY recyclable failure in the batch (not just the first-by-send-order
+        // failure) before anyone reuses the channel; successful results stay valid.
+        if let recyclableFailure = drain.firstRecyclableFailure {
+            let message = "\(connectionContext) Recycling connection after pipelined fetch failure: "
+                + "\(recyclableFailure)"
+            logger.warning("\(message)")
+            try? await disconnectBody()
+        }
+        if let failure = drain.firstFailure, drain.results.isEmpty {
+            throw failure
         }
         return drain.results
     }
@@ -248,6 +254,11 @@ extension IMAPConnection {
     struct PipelinedFetchDrain {
         let results: [PipelinedFetchResult]
         let firstFailure: Error?
+        /// The first failure whose class poisons the connection (timeout, channel
+        /// drop). Tracked separately from `firstFailure` because failures are
+        /// drained in send order: an early tagged NO must not mask a later
+        /// timeout whose literals may still be streaming on the channel.
+        let firstRecyclableFailure: Error?
         let firstLimitViolation: Error?
         let failureCount: Int
     }
@@ -279,6 +290,7 @@ extension IMAPConnection {
     ) async -> PipelinedFetchDrain {
         var results: [PipelinedFetchResult] = []
         var firstFailure: Error?
+        var firstRecyclableFailure: Error?
         var limitViolation: Error?
         var failureCount = 0
 
@@ -298,6 +310,9 @@ extension IMAPConnection {
                 } else {
                     logger.debug("Pipelined fetch failed for UID \(uidValue) section \(sectionDescription): \(error)")
                     if firstFailure == nil { firstFailure = error }
+                    if firstRecyclableFailure == nil, shouldRecycleConnection(for: error) {
+                        firstRecyclableFailure = error
+                    }
                 }
             }
         }
@@ -305,6 +320,7 @@ extension IMAPConnection {
         return PipelinedFetchDrain(
             results: results,
             firstFailure: firstFailure,
+            firstRecyclableFailure: firstRecyclableFailure,
             firstLimitViolation: limitViolation,
             failureCount: failureCount
         )
