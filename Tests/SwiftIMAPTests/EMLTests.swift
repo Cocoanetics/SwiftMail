@@ -106,6 +106,7 @@ struct EMLParserTests {
         #expect(message.parts[1].disposition == "attachment")
         #expect(message.parts[1].encoding == "base64")
         #expect(message.attachments.count == 1)
+        #expect(message.attachments[0].decodedData() == Data("Hello World".utf8))
     }
 
     // MARK: - RFC 2047 Encoded Subject
