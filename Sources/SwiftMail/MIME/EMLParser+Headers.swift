@@ -15,7 +15,7 @@ extension EMLParser {
         for separator in [Data("\r\n\r\n".utf8), Data("\n\n".utf8)] {
             guard let range = rawData.range(of: separator) else { continue }
             let headerData = rawData[..<range.lowerBound]
-            let headerBlock = String(decoding: headerData, as: UTF8.self)
+            let headerBlock = String(bytes: headerData, encoding: .utf8) ?? ""
             return (headerBlock, Data(rawData[range.upperBound...]))
         }
 
