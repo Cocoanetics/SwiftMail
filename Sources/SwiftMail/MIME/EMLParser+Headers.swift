@@ -9,17 +9,14 @@ extension EMLParser {
 
     /// Split the raw message into header block (String) and body (Data).
     static func splitHeadersAndBody(from string: String, rawData: Data) -> (String, Data) {
-        // Find the blank line separator — try \r\n\r\n first, then \n\n
-        if let range = string.range(of: "\r\n\r\n") {
-            let headerBlock = String(string[string.startIndex..<range.lowerBound])
-            let bodyStart = string.distance(from: string.startIndex, to: range.upperBound)
-            let bodyData = rawData.dropFirst(bodyStart)
-            return (headerBlock, Data(bodyData))
-        } else if let range = string.range(of: "\n\n") {
-            let headerBlock = String(string[string.startIndex..<range.lowerBound])
-            let bodyStart = string.distance(from: string.startIndex, to: range.upperBound)
-            let bodyData = rawData.dropFirst(bodyStart)
-            return (headerBlock, Data(bodyData))
+        // Find the blank-line separator in the original bytes. String indices
+        // and character distances are not byte offsets: CRLF is one Character
+        // but two bytes, and non-ASCII header text can span multiple UTF-8 bytes.
+        for separator in [Data("\r\n\r\n".utf8), Data("\n\n".utf8)] {
+            guard let range = rawData.range(of: separator) else { continue }
+            let headerData = rawData[..<range.lowerBound]
+            let headerBlock = String(decoding: headerData, as: UTF8.self)
+            return (headerBlock, Data(rawData[range.upperBound...]))
         }
 
         // No body — entire content is headers
