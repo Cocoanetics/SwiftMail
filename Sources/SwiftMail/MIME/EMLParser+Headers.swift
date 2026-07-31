@@ -72,11 +72,18 @@ extension EMLParser {
     /// other line breaks: Unicode "newlines" like NEL (which Latin-1 decoding
     /// can produce from raw byte 0x85), VT, FF, or U+2028 are ordinary header
     /// text, and splitting on them would truncate values or let crafted bytes
-    /// smuggle in whole headers.
+    /// smuggle in whole headers. The split works on the UTF-8 view because
+    /// String searches are grapheme-based and CRLF is a single grapheme — a
+    /// search for "\n" inside "\r\n" finds nothing on Linux.
     private static func headerLines(_ block: String) -> [String] {
-        block.components(separatedBy: "\n").map { line in
-            line.hasSuffix("\r") ? String(line.dropLast()) : line
-        }
+        let lineFeed: UInt8 = 0x0A
+        let carriageReturn: UInt8 = 0x0D
+
+        return block.utf8
+            .split(separator: lineFeed, omittingEmptySubsequences: false)
+            .map { line in
+                String(bytes: line.last == carriageReturn ? line.dropLast() : line, encoding: .utf8) ?? ""
+            }
     }
 
     // MARK: - Header Parsing

@@ -363,4 +363,16 @@ struct EMLHeaderRobustnessTests {
         #expect(message.subject == "Grüße")
         #expect(message.header.additionalFields?["x-legacy"] == "café")
     }
+
+    @Test("CRLF header blocks split into lines on all platforms")
+    func testCRLFHeaderBlockParsing() {
+        // String searches are grapheme-based and "\r\n" is one grapheme, so a
+        // String-level split on "\n" finds nothing in CRLF text on Linux.
+        // parseHeaders is fed raw CRLF blocks by FetchMessageInfoHandler.
+        let block = "References: <root@example.com>\r\nList-Id: <list.example.com>\r\n"
+        let headers = EMLParser.parseHeaders(block)
+
+        #expect(headers["references"] == "<root@example.com>")
+        #expect(headers["list-id"] == "<list.example.com>")
+    }
 }
