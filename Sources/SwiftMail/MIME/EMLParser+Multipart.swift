@@ -160,7 +160,9 @@ extension EMLParser {
         let childPath = sectionPath.isEmpty ? [partNumber] : sectionPath + [partNumber]
 
         let partData = Data(rawPart.utf8)
-        let (partHeaders, partBody) = splitHeadersAndBody(from: rawPart, rawData: partData)
+        guard let (partHeaders, partBody) = try? splitHeadersAndBody(rawData: partData) else {
+            return []
+        }
         let headers = parseHeaders(partHeaders)
 
         let partContentType = headers["content-type"] ?? "text/plain"

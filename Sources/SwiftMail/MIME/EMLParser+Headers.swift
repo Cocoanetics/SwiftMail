@@ -7,20 +7,25 @@ extension EMLParser {
 
     // MARK: - Header Block Splitting
 
-    /// Split the raw message into header block (String) and body (Data).
-    static func splitHeadersAndBody(from string: String, rawData: Data) -> (String, Data) {
+    /// Split raw message bytes into a decoded header block and an opaque body.
+    static func splitHeadersAndBody(rawData: Data) throws -> (String, Data) {
         // Find the blank-line separator in the original bytes. String indices
         // and character distances are not byte offsets: CRLF is one Character
         // but two bytes, and non-ASCII header text can span multiple UTF-8 bytes.
         for separator in [Data("\r\n\r\n".utf8), Data("\n\n".utf8)] {
             guard let range = rawData.range(of: separator) else { continue }
             let headerData = rawData[..<range.lowerBound]
-            let headerBlock = String(bytes: headerData, encoding: .utf8) ?? ""
+            guard let headerBlock = String(bytes: headerData, encoding: .utf8) else {
+                throw EMLParserError.invalidData
+            }
             return (headerBlock, Data(rawData[range.upperBound...]))
         }
 
         // No body — entire content is headers
-        return (string, Data())
+        guard let headerBlock = String(bytes: rawData, encoding: .utf8) else {
+            throw EMLParserError.invalidData
+        }
+        return (headerBlock, Data())
     }
 
     // MARK: - Header Parsing

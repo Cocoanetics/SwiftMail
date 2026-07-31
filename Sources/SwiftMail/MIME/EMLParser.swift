@@ -34,12 +34,9 @@ public struct EMLParser {
     /// - Parameter data: Raw RFC 822 bytes (as obtained from `fetchRawMessage` or an `.eml` file).
     /// - Returns: A fully populated ``Message``.
     public static func parse(_ data: Data) throws -> Message {
-        guard let string = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) else {
-            throw EMLParserError.invalidData
-        }
-
-        // Split headers and body at the first blank line
-        let (headerBlock, bodyData) = splitHeadersAndBody(from: string, rawData: data)
+        // Decode only the RFC 822 header bytes. The body can legitimately use
+        // an arbitrary 8bit charset or contain opaque binary data.
+        let (headerBlock, bodyData) = try splitHeadersAndBody(rawData: data)
 
         guard !headerBlock.isEmpty else {
             throw EMLParserError.missingHeaders
