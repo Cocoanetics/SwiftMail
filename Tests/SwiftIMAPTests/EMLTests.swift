@@ -38,6 +38,51 @@ struct EMLParserTests {
         #expect(message.textBody?.contains("Hello, this is a test message.") == true)
     }
 
+    @Test("Preserve non-UTF-8 8bit body bytes")
+    func testParseNonUTF8Body() throws {
+        let headers = [
+            "From: sender@example.com",
+            "To: recipient@example.com",
+            "Subject: ISO-8859-1 Body",
+            "Content-Type: text/plain; charset=iso-8859-1",
+            "Content-Transfer-Encoding: 8bit",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+        let body = Data([0x63, 0x61, 0x66, 0xE9])
+        var data = Data(headers.utf8)
+        data.append(body)
+
+        let message = try Message(emlData: data)
+
+        #expect(message.parts.count == 1)
+        #expect(message.parts[0].data == body)
+        #expect(message.parts[0].decodedData() == body)
+        #expect(message.parts[0].textContent == "café")
+    }
+
+    @Test("Preserve opaque binary body bytes")
+    func testParseBinaryBody() throws {
+        let headers = [
+            "From: sender@example.com",
+            "To: recipient@example.com",
+            "Subject: Binary Body",
+            "Content-Type: application/octet-stream",
+            "Content-Transfer-Encoding: binary",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+        let body = Data([0x00, 0x7F, 0x80, 0xFF])
+        var data = Data(headers.utf8)
+        data.append(body)
+
+        let message = try Message(emlData: data)
+
+        #expect(message.parts.count == 1)
+        #expect(message.parts[0].data == body)
+        #expect(message.parts[0].decodedData() == body)
+    }
+
     // MARK: - Multipart Alternative
 
     @Test("Parse multipart/alternative message")
