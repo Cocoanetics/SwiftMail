@@ -78,7 +78,7 @@ public struct EMLSerializer {
     private static func writeBody(parts: [MessagePart], into output: inout String) throws {
         if parts.isEmpty {
             output += "Content-Type: text/plain; charset=UTF-8\r\n\r\n"
-        } else if parts.count == 1, let part = parts.first {
+        } else if parts.count == 1, let part = parts.first, part.section.components.count == 1 {
             output += serializePartHeaders(part)
             output += "\r\n"
             if let data = part.data {
@@ -107,16 +107,21 @@ public struct EMLSerializer {
         for group in grouped {
             output += "\r\n--\(boundary)\r\n"
 
-            if group.count == 1, let part = group.first {
-                // Single part in this group
+            if group.count == 1, let part = group.first, part.section.components.count == 1 {
+                // Single leaf part in this group. A singleton group whose part
+                // still has deeper section components is a multipart wrapper
+                // around one child and must recurse to preserve that level.
                 output += serializePartHeaders(part)
                 output += "\r\n"
                 if let data = part.data {
                     output += stringFromData(data)
                 }
             } else {
-                // Nested multipart group
-                try serializeMultipart(parts: group, output: &output)
+                // Nested multipart group — drop the leading section component
+                // consumed by this level so the recursion descends the part
+                // tree instead of regrouping the same sections forever.
+                let children = group.map { droppingLeadingSectionComponent($0) }
+                try serializeMultipart(parts: children, output: &output)
             }
         }
 
@@ -187,6 +192,22 @@ public struct EMLSerializer {
         }
 
         return groups.keys.sorted().map { groups[$0]! }
+    }
+
+    /// Return a copy of the part with the first section component removed,
+    /// re-rooting it one level down the part tree (e.g. [1, 2] becomes [2]).
+    private static func droppingLeadingSectionComponent(_ part: MessagePart) -> MessagePart {
+        return MessagePart(
+            section: Section(Array(part.section.components.dropFirst())),
+            contentType: part.contentType,
+            disposition: part.disposition,
+            encoding: part.encoding,
+            filename: part.filename,
+            contentId: part.contentId,
+            size: part.size,
+            data: part.data,
+            embeddedMessageInfo: part.embeddedMessageInfo
+        )
     }
 
     // MARK: - Helpers
