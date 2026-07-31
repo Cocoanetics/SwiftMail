@@ -7,25 +7,54 @@ extension EMLParser {
 
     // MARK: - Header Block Splitting
 
-    /// Split raw message bytes into a decoded header block and an opaque body.
-    static func splitHeadersAndBody(rawData: Data) throws -> (String, Data) {
-        // Find the blank-line separator in the original bytes. String indices
-        // and character distances are not byte offsets: CRLF is one Character
-        // but two bytes, and non-ASCII header text can span multiple UTF-8 bytes.
-        for separator in [Data("\r\n\r\n".utf8), Data("\n\n".utf8)] {
-            guard let range = rawData.range(of: separator) else { continue }
-            let headerData = rawData[..<range.lowerBound]
-            guard let headerBlock = String(bytes: headerData, encoding: .utf8) else {
-                throw EMLParserError.invalidData
-            }
-            return (headerBlock, Data(rawData[range.upperBound...]))
+    /// Split raw entity bytes into header bytes and opaque body bytes.
+    ///
+    /// The split happens at the first blank line, found in the original bytes:
+    /// String indices and character distances are not byte offsets (CRLF is one
+    /// `Character` but two bytes, non-ASCII text spans multiple UTF-8 bytes),
+    /// and the body need not be valid UTF-8 at all.
+    static func splitHeadersAndBody(rawData: Data) -> (headerData: Data, bodyData: Data) {
+        let data = Data(rawData)
+        let lineFeed: UInt8 = 0x0A
+        let carriageReturn: UInt8 = 0x0D
+
+        // A body part may begin with a blank line, meaning it has no headers
+        // (RFC 2046 §5.1): the leading line break separates empty headers
+        // from the body.
+        if data.first == lineFeed {
+            return (Data(), Data(data.dropFirst()))
+        }
+        if data.first == carriageReturn, data.dropFirst().first == lineFeed {
+            return (Data(), Data(data.dropFirst(2)))
         }
 
-        // No body — entire content is headers
-        guard let headerBlock = String(bytes: rawData, encoding: .utf8) else {
-            throw EMLParserError.invalidData
+        // The first blank line ends with "\n\n" or "\n\r\n"; the latter also
+        // matches "\r\n\r\n" from its first LF. Take the earliest match so a
+        // CRLF blank line later in the data cannot shadow an LF one earlier.
+        let separators = [Data([lineFeed, lineFeed]), Data([lineFeed, carriageReturn, lineFeed])]
+        let candidates = separators.compactMap { data.range(of: $0) }
+        guard let separator = candidates.min(by: { $0.lowerBound < $1.lowerBound }) else {
+            // No blank line — the entire content is headers.
+            return (data, Data())
         }
-        return (headerBlock, Data())
+
+        // Drop the CR of a CRLF-terminated final header line.
+        var headerEnd = separator.lowerBound
+        if headerEnd > data.startIndex && data[headerEnd - 1] == carriageReturn {
+            headerEnd -= 1
+        }
+        return (Data(data[data.startIndex..<headerEnd]), Data(data[separator.upperBound...]))
+    }
+
+    /// Decode header bytes into a `String`.
+    ///
+    /// Headers are ASCII by specification (RFC 5322), with UTF-8 permitted by
+    /// RFC 6532; Latin-1 maps every byte, so the decode is total and malformed
+    /// headers can never make parsing fail or lose body bytes.
+    static func decodeHeaderBlock(_ headerData: Data) -> String {
+        String(data: headerData, encoding: .utf8)
+            ?? String(data: headerData, encoding: .isoLatin1)
+            ?? ""
     }
 
     // MARK: - Header Parsing
