@@ -127,14 +127,14 @@ public actor IMAPServer {
         let handle: IMAPNamedConnection
     }
 
-    struct Authentication {
-        enum Method {
-            case login(username: String, password: String)
-            case plain(username: String, password: String)
-            case xoauth2(email: String, accessTokenProvider: @Sendable () async throws -> String)
-        }
+    enum AuthenticationMethod {
+        case login(username: String, password: String)
+        case plain(username: String, password: String)
+        case xoauth2(email: String, accessTokenProvider: @Sendable () async throws -> String)
+    }
 
-        let method: Method
+    struct Authentication {
+        let method: AuthenticationMethod
         var identification: Identification?
 
         func authenticate(on connection: IMAPConnection) async throws {
@@ -149,11 +149,34 @@ public actor IMAPServer {
             }
             // RFC 2971: some servers (e.g. NetEase 163/126) reject SELECT on any
             // authenticated connection that has not identified itself, so the
-            // stored identity is replayed after every authentication. Servers
-            // that do not advertise the ID capability are skipped, and a
-            // failed ID must never fail the authentication itself.
-            if let identification, connection.capabilitiesSnapshot.contains(.id) {
-                _ = try? await connection.id(identification)
+            // stored identity is replayed after every authentication.
+            guard let identification else { return }
+            try await Self.identify(connection, with: identification)
+        }
+
+        /// Replays the stored RFC 2971 identity on a freshly authenticated
+        /// connection. Servers that do not advertise the ID capability are
+        /// never sent the command — the snapshot is authoritative here because
+        /// every authentication path refreshes it before returning. A server
+        /// refusing ID (NO/BAD) is tolerated: the session stays authenticated
+        /// and usable. But an ID failure that recycles the connection (socket
+        /// closed, timeout) must propagate — swallowing it would report
+        /// authentication success for a connection that is no longer
+        /// connected or authenticated.
+        static func identify(
+            _ connection: IMAPConnection,
+            with identification: Identification
+        ) async throws {
+            guard connection.capabilitiesSnapshot.contains(.id) else { return }
+
+            do {
+                _ = try await connection.id(identification)
+            } catch let error as CancellationError {
+                throw error
+            } catch {
+                guard connection.isConnected, connection.isAuthenticated else {
+                    throw error
+                }
             }
         }
     }

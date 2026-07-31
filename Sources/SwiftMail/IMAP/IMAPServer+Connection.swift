@@ -74,7 +74,7 @@ extension IMAPServer {
             method: .login(username: username, password: password),
             identification: clientIdentification
         )
-        await identifyPrimaryConnectionIfNeeded()
+        try await identifyPrimaryConnectionIfNeeded()
         namespaces = primaryConnection.namespacesSnapshot
     }
 
@@ -95,7 +95,7 @@ extension IMAPServer {
             method: .plain(username: username, password: password),
             identification: clientIdentification
         )
-        await identifyPrimaryConnectionIfNeeded()
+        try await identifyPrimaryConnectionIfNeeded()
         namespaces = primaryConnection.namespacesSnapshot
     }
 
@@ -111,7 +111,7 @@ extension IMAPServer {
             method: .xoauth2(email: email, accessTokenProvider: { accessToken }),
             identification: clientIdentification
         )
-        await identifyPrimaryConnectionIfNeeded()
+        try await identifyPrimaryConnectionIfNeeded()
         namespaces = primaryConnection.namespacesSnapshot
     }
 
@@ -135,18 +135,21 @@ extension IMAPServer {
     /// every connection — including ones the server opens internally — send
     /// ID right after authenticating. Call it before
     /// `login`/`authenticatePlain`/`authenticateXOAUTH2`. Servers that do not
-    /// advertise the ID capability are never sent the command.
+    /// advertise the ID capability are never sent the command, and a server
+    /// refusing ID (NO/BAD) never fails the authentication — but an ID
+    /// failure that kills the connection surfaces as an authentication error
+    /// instead of handing back a dead session.
     public func setClientIdentification(_ identification: Identification?) {
         clientIdentification = identification
         authentication?.identification = identification
     }
 
-    /// RFC 2971 replay for the primary connection's explicit authentication.
-    /// Best-effort: a failed ID must never fail the authentication itself.
-    private func identifyPrimaryConnectionIfNeeded() async {
-        guard let clientIdentification,
-              primaryConnection.capabilitiesSnapshot.contains(.id) else { return }
-        _ = try? await primaryConnection.id(clientIdentification)
+    /// RFC 2971 replay for the primary connection's explicit authentication
+    /// paths, with the same failure semantics as the internal replay in
+    /// ``Authentication/identify(_:with:)``.
+    private func identifyPrimaryConnectionIfNeeded() async throws {
+        guard let clientIdentification else { return }
+        try await Authentication.identify(primaryConnection, with: clientIdentification)
     }
 
     /// Identify the client to the server using the `ID` command.

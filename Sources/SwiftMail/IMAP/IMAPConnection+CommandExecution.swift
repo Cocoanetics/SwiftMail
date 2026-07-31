@@ -11,13 +11,22 @@ extension IMAPConnection {
         return serverCapabilities
     }
 
-    func refreshCapabilities(using reportedCapabilities: [Capability]) async throws {
+    /// Replaces the capability snapshot with `reportedCapabilities`, or — when the
+    /// server reported none — with the result of an explicit CAPABILITY command.
+    /// Pass `useCommandBody: true` from call sites that already hold the command
+    /// queue (mirrors `fetchNamespacesIfSupported(useCommandBody:)`).
+    func refreshCapabilities(using reportedCapabilities: [Capability], useCommandBody: Bool = false) async throws {
         if !reportedCapabilities.isEmpty {
             self.capabilities = Set(reportedCapabilities)
             return
         }
 
-        try await fetchCapabilities()
+        if useCommandBody {
+            let refreshedCapabilities = try await executeCommandBody(CapabilityCommand())
+            self.capabilities = Set(refreshedCapabilities)
+        } else {
+            try await fetchCapabilities()
+        }
     }
 
     func fetchNamespaces() async throws -> NamespaceResponse {

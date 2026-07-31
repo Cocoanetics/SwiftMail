@@ -278,7 +278,15 @@ extension IMAPConnection {
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
 
-            applyXOAUTH2Capabilities(refreshedCapabilities)
+            isSessionAuthenticated = true
+            // AUTHENTICATE often returns an OK without CAPABILITY data, and RFC 3501
+            // invalidates the pre-authentication capability set once authentication
+            // succeeds. Refresh from the server instead of retaining the stale
+            // snapshot — capability-gated features (like the RFC 2971 ID replay)
+            // would otherwise miss capabilities the server only advertises after
+            // authentication. useCommandBody avoids re-entering the command queue
+            // this method already holds, like the namespace fetch below.
+            try await refreshCapabilities(using: refreshedCapabilities, useCommandBody: true)
             await fetchNamespacesIfSupported(useCommandBody: true)
         } catch {
             await handleXOAUTH2Failure(
@@ -317,18 +325,6 @@ extension IMAPConnection {
         )
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
         try await channel.writeAndFlush(wrapped).get()
-    }
-
-    private func applyXOAUTH2Capabilities(_ refreshedCapabilities: [Capability]) {
-        isSessionAuthenticated = true
-        if !refreshedCapabilities.isEmpty {
-            self.capabilities = Set(refreshedCapabilities)
-        } else {
-            // AUTHENTICATE often returns an OK without CAPABILITY data.
-            // Avoid issuing a follow-up CAPABILITY command here because we're already
-            // inside commandQueue.run, and a nested executeCommand would deadlock.
-            logger.debug("XOAUTH2 completed without capability data; retaining existing capability snapshot")
-        }
     }
 
     private func handleXOAUTH2Failure(
