@@ -49,118 +49,154 @@ extension EMLParser {
             )]
         }
 
-        let utf8Body = String(data: bodyData, encoding: .utf8)
-        let asciiBody = String(data: bodyData, encoding: .ascii)
-        guard let bodyString = utf8Body ?? asciiBody else {
-            return []
-        }
-
-        let rawParts = splitMultipartByBoundary(bodyString: bodyString, boundary: boundary)
+        let rawParts = splitMultipartByBoundary(bodyData: bodyData, boundary: boundary)
         return rawParts.enumerated().flatMap { index, rawPart -> [MessagePart] in
             buildMultipartChild(rawPart: rawPart, index: index, sectionPath: sectionPath)
         }
     }
 
-    /// Split a multipart body string into raw part strings using the boundary
-    /// delimiter. Returns an array of raw (header+body) part strings.
-    static func splitMultipartByBoundary(bodyString: String, boundary: String) -> [String] {
-        let delimiter = "--\(boundary)"
-        var rawParts: [String] = []
-        var searchStart = bodyString.startIndex
+    /// Split a multipart body into opaque byte slices using valid boundary lines.
+    /// The preamble, epilogue, and CRLF framing around each part are discarded.
+    static func splitMultipartByBoundary(bodyData: Data, boundary: String) -> [Data] {
+        let marker = Data("--\(boundary)".utf8)
+        guard !marker.isEmpty else { return [] }
 
-        while searchStart < bodyString.endIndex {
-            guard let delimRange = bodyString.range(of: delimiter, range: searchStart..<bodyString.endIndex) else {
-                break
-            }
+        var rawParts: [Data] = []
+        var currentPartStart: Data.Index?
+        var searchStart = bodyData.startIndex
 
-            // Check if this is the end delimiter
-            if isMultipartEndDelimiter(bodyString: bodyString, after: delimRange.upperBound) {
-                break
-            }
-
-            // Find the start of part content (skip past delimiter + line ending)
-            let contentStart = skipPastDelimiterLineEnding(
-                bodyString: bodyString,
-                from: delimRange.upperBound
-            )
-
-            // Find the next boundary to determine the end of this part
-            if let nextDelimRange = bodyString.range(of: delimiter, range: contentStart..<bodyString.endIndex) {
-                let contentEnd = trimmedPartEnd(
-                    bodyString: bodyString,
-                    contentStart: contentStart,
-                    delimiterStart: nextDelimRange.lowerBound
+        while let delimiter = nextMultipartDelimiter(
+            in: bodyData,
+            marker: marker,
+            startingAt: searchStart
+        ) {
+            if let partStart = currentPartStart {
+                let partEnd = trimLineEnding(
+                    before: delimiter.range.lowerBound,
+                    notBefore: partStart,
+                    in: bodyData
                 )
-                rawParts.append(String(bodyString[contentStart..<contentEnd]))
-                searchStart = nextDelimRange.lowerBound
-            } else {
-                // No more boundaries — take the rest
-                let remainder = String(bodyString[contentStart...]).trimmingCharacters(in: .whitespacesAndNewlines)
-                rawParts.append(remainder)
+                rawParts.append(Data(bodyData[partStart..<partEnd]))
+            }
+
+            if delimiter.isClosing {
+                currentPartStart = nil
                 break
             }
+
+            currentPartStart = delimiter.lineEnd
+            searchStart = delimiter.lineEnd
+        }
+
+        if let partStart = currentPartStart {
+            rawParts.append(Data(bodyData[partStart...]))
         }
 
         return rawParts
     }
 
-    /// Return `true` if the characters immediately after a boundary match are
-    /// `"--"`, signalling the multipart end delimiter.
-    private static func isMultipartEndDelimiter(bodyString: String, after index: String.Index) -> Bool {
-        guard index < bodyString.endIndex else { return false }
-        return bodyString[index...].hasPrefix("--")
+    private struct MultipartDelimiter {
+        let range: Range<Data.Index>
+        let lineEnd: Data.Index
+        let isClosing: Bool
     }
 
-    /// Skip past any CR/LF characters following a boundary delimiter so the
-    /// caller can read the part's header block.
-    private static func skipPastDelimiterLineEnding(
-        bodyString: String,
-        from start: String.Index
-    ) -> String.Index {
-        var contentStart = start
-        if contentStart < bodyString.endIndex && bodyString[contentStart] == "\r" {
-            contentStart = bodyString.index(after: contentStart)
+    /// Locate the next delimiter line without decoding any MIME body bytes.
+    private static func nextMultipartDelimiter(
+        in data: Data,
+        marker: Data,
+        startingAt start: Data.Index
+    ) -> MultipartDelimiter? {
+        var searchStart = start
+
+        while searchStart < data.endIndex,
+              let range = data.range(of: marker, in: searchStart..<data.endIndex) {
+            guard isStartOfLine(range.lowerBound, in: data),
+                  let delimiter = multipartDelimiter(in: data, markerRange: range) else {
+                searchStart = data.index(after: range.lowerBound)
+                continue
+            }
+            return delimiter
         }
-        if contentStart < bodyString.endIndex && bodyString[contentStart] == "\n" {
-            contentStart = bodyString.index(after: contentStart)
-        }
-        return contentStart
+
+        return nil
     }
 
-    /// Trim the trailing CR/LF that precedes the next boundary delimiter so the
-    /// returned slice contains only the part body.
-    private static func trimmedPartEnd(
-        bodyString: String,
-        contentStart: String.Index,
-        delimiterStart: String.Index
-    ) -> String.Index {
-        var contentEnd = delimiterStart
-        guard contentEnd > contentStart else { return contentEnd }
-
-        let beforeEnd = bodyString.index(before: contentEnd)
-        guard bodyString[beforeEnd] == "\n" else { return contentEnd }
-        contentEnd = beforeEnd
-
-        guard contentEnd > contentStart else { return contentEnd }
-        let beforeLF = bodyString.index(before: contentEnd)
-        if bodyString[beforeLF] == "\r" {
-            contentEnd = beforeLF
-        }
-        return contentEnd
+    private static func isStartOfLine(_ index: Data.Index, in data: Data) -> Bool {
+        index == data.startIndex || data[data.index(before: index)] == 0x0A
     }
 
-    /// Build the `MessagePart` value(s) for a single raw multipart child string.
+    private static func multipartDelimiter(
+        in data: Data,
+        markerRange: Range<Data.Index>
+    ) -> MultipartDelimiter? {
+        var cursor = markerRange.upperBound
+        let isClosing = hasBytePair(0x2D, 0x2D, in: data, at: cursor)
+        if isClosing {
+            cursor = data.index(cursor, offsetBy: 2)
+        }
+
+        while cursor < data.endIndex && (data[cursor] == 0x20 || data[cursor] == 0x09) {
+            cursor = data.index(after: cursor)
+        }
+
+        let lineEnd: Data.Index
+        if cursor == data.endIndex {
+            lineEnd = cursor
+        } else if data[cursor] == 0x0A {
+            lineEnd = data.index(after: cursor)
+        } else if hasBytePair(0x0D, 0x0A, in: data, at: cursor) {
+            lineEnd = data.index(cursor, offsetBy: 2)
+        } else {
+            return nil
+        }
+
+        return MultipartDelimiter(range: markerRange, lineEnd: lineEnd, isClosing: isClosing)
+    }
+
+    private static func hasBytePair(
+        _ first: UInt8,
+        _ second: UInt8,
+        in data: Data,
+        at start: Data.Index
+    ) -> Bool {
+        guard start < data.endIndex else { return false }
+        let next = data.index(after: start)
+        return next < data.endIndex && data[start] == first && data[next] == second
+    }
+
+    private static func trimLineEnding(
+        before end: Data.Index,
+        notBefore start: Data.Index,
+        in data: Data
+    ) -> Data.Index {
+        var trimmedEnd = end
+        guard trimmedEnd > start else { return trimmedEnd }
+
+        let previous = data.index(before: trimmedEnd)
+        guard data[previous] == 0x0A else { return trimmedEnd }
+        trimmedEnd = previous
+
+        if trimmedEnd > start {
+            let beforeLF = data.index(before: trimmedEnd)
+            if data[beforeLF] == 0x0D {
+                trimmedEnd = beforeLF
+            }
+        }
+        return trimmedEnd
+    }
+
+    /// Build the `MessagePart` value(s) for a single raw multipart child.
     /// Recursively descends into nested multipart parts.
     static func buildMultipartChild(
-        rawPart: String,
+        rawPart: Data,
         index: Int,
         sectionPath: [Int]
     ) -> [MessagePart] {
         let partNumber = index + 1
         let childPath = sectionPath.isEmpty ? [partNumber] : sectionPath + [partNumber]
 
-        let partData = Data(rawPart.utf8)
-        guard let (partHeaders, partBody) = try? splitHeadersAndBody(rawData: partData) else {
+        guard let (partHeaders, partBody) = try? splitHeadersAndBody(rawData: rawPart) else {
             return []
         }
         let headers = parseHeaders(partHeaders)

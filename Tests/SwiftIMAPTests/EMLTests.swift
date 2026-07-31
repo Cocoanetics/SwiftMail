@@ -116,6 +116,70 @@ struct EMLParserTests {
         #expect(message.htmlBody?.contains("HTML version.") == true)
     }
 
+    @Test("Preserve non-UTF-8 8bit multipart child bytes")
+    func testParseMultipartNonUTF8Body() throws {
+        let headers = [
+            "From: sender@example.com",
+            "To: recipient@example.com",
+            "Subject: Multipart ISO-8859-1 Body",
+            "Content-Type: multipart/mixed; boundary=byte-boundary",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+        let partHeaders = [
+            "--byte-boundary",
+            "Content-Type: text/plain; charset=iso-8859-1",
+            "Content-Transfer-Encoding: 8bit",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+        let body = Data([0x63, 0x61, 0x66, 0xE9])
+        var data = Data(headers.utf8)
+        data.append(Data(partHeaders.utf8))
+        data.append(body)
+        data.append(Data("\r\n--byte-boundary--\r\n".utf8))
+
+        let message = try Message(emlData: data)
+
+        try #require(message.parts.count == 1)
+        #expect(message.parts[0].data == body)
+        #expect(message.parts[0].decodedData() == body)
+        #expect(message.parts[0].textContent == "café")
+    }
+
+    @Test("Preserve opaque binary multipart child bytes")
+    func testParseMultipartBinaryBody() throws {
+        let headers = [
+            "From: sender@example.com",
+            "To: recipient@example.com",
+            "Subject: Multipart Binary Body",
+            "Content-Type: multipart/mixed; boundary=byte-boundary",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+        let partHeaders = [
+            "--byte-boundary",
+            "Content-Type: application/octet-stream; name=payload.bin",
+            "Content-Disposition: attachment; filename=payload.bin",
+            "Content-Transfer-Encoding: binary",
+            "",
+            ""
+        ].joined(separator: "\r\n")
+        let body = Data([0x00, 0x7F, 0x80, 0xFF])
+        var data = Data(headers.utf8)
+        data.append(Data(partHeaders.utf8))
+        data.append(body)
+        data.append(Data("\r\n--byte-boundary--\r\n".utf8))
+
+        let message = try Message(emlData: data)
+
+        try #require(message.parts.count == 1)
+        #expect(message.parts[0].filename == "payload.bin")
+        #expect(message.parts[0].data == body)
+        #expect(message.parts[0].decodedData() == body)
+        #expect(message.attachments.count == 1)
+    }
+
     // MARK: - Multipart Mixed with Attachment
 
     @Test("Parse multipart/mixed with attachment")
