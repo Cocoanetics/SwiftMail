@@ -76,6 +76,18 @@ final class IMAPTestServer {
         metricsQueue.sync { idleCommandCountStorage += 1 }
     }
 
+    /// Number of ID commands received across all connections. Lets tests verify
+    /// the RFC 2971 replay actually reached the wire after authentication.
+    var idCommandCount: Int {
+        metricsQueue.sync { idCommandCountStorage }
+    }
+
+    private var idCommandCountStorage = 0
+
+    private func recordIDCommand() {
+        metricsQueue.sync { idCommandCountStorage += 1 }
+    }
+
     /// Total connections ever accepted. Catches re-dials that never reach an
     /// IDLE command (connect + LOGIN + SELECT and then exit), which
     /// `idleCommandCount` alone cannot see.
@@ -412,6 +424,7 @@ final class IMAPTestServer {
             case "LIST":
                 return "* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n\(tag) OK LIST completed\r\n"
             case "ID":
+                recordIDCommand()
                 return "* ID NIL\r\n\(tag) OK ID completed\r\n"
             case "NOOP":
                 return "\(tag) OK NOOP completed\r\n"
