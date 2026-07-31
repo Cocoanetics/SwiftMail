@@ -332,6 +332,56 @@ struct EMLSerializerTests {
         #expect(reparsed.attachments.first?.filename == "report.pdf")
     }
 
+    @Test("Singleton nested multipart wrapper survives the round trip")
+    func testSingletonNestedMultipartRoundTrip() throws {
+        // The wrapper at [1.2] contains a single child [1.2.1]; serialization
+        // must keep that MIME level instead of flattening the child to [1.2].
+        let eml = """
+        From: sender@example.com\r
+        To: recipient@example.com\r
+        Subject: Singleton Wrapper\r
+        Content-Type: multipart/mixed; boundary="outer"\r
+        \r
+        --outer\r
+        Content-Type: multipart/alternative; boundary="middle"\r
+        \r
+        --middle\r
+        Content-Type: text/plain; charset=UTF-8\r
+        Content-Transfer-Encoding: 7bit\r
+        \r
+        Plain text version.\r
+        --middle\r
+        Content-Type: multipart/related; boundary="inner"\r
+        \r
+        --inner\r
+        Content-Type: text/html; charset=UTF-8\r
+        Content-Transfer-Encoding: 7bit\r
+        \r
+        <html><body>HTML version.</body></html>\r
+        --inner--\r
+        --middle--\r
+        --outer\r
+        Content-Type: application/pdf; name="report.pdf"\r
+        Content-Disposition: attachment; filename="report.pdf"\r
+        Content-Transfer-Encoding: base64\r
+        \r
+        SGVsbG8gV29ybGQ=\r
+        --outer--\r
+        """
+
+        let original = try Message(emlData: Data(eml.utf8))
+        let originalSections = original.parts.map(\.section)
+        try #require(originalSections == [Section([1, 1]), Section([1, 2, 1]), Section([2])])
+
+        let serialized = try original.emlData()
+        let reparsed = try Message(emlData: serialized)
+
+        #expect(reparsed.parts.map(\.section) == originalSections)
+        #expect(reparsed.parts.map(\.contentType) == original.parts.map(\.contentType))
+        #expect(reparsed.htmlBody?.contains("HTML version.") == true)
+        #expect(reparsed.attachments.first?.filename == "report.pdf")
+    }
+
     @Test("Multipart serialization includes boundaries")
     func testMultipartSerialization() throws {
         let header = MessageInfo(
