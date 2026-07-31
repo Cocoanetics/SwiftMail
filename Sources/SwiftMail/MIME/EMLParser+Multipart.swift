@@ -37,10 +37,17 @@ extension EMLParser {
         }
     }
 
+    /// RFC 2046 §5.1: a boundary "must be no longer than 70 characters". The
+    /// limit also bounds the substring-search cost — an attacker-supplied
+    /// boundary of arbitrary length would make splitting quadratic in the
+    /// message size.
+    private static let maxBoundaryLength = 70
+
     /// Parse a multipart body, splitting by boundary.
     static func parseMultipart(contentType: String, bodyData: Data, sectionPath: [Int]) -> [MessagePart] {
-        guard let boundary = extractBoundary(from: contentType) else {
-            // Can't parse without boundary — treat as opaque
+        guard let boundary = extractBoundary(from: contentType),
+              !boundary.isEmpty, boundary.utf8.count <= maxBoundaryLength else {
+            // No usable boundary — treat as opaque
             let section = sectionPath.isEmpty ? [1] : sectionPath
             return [MessagePart(
                 section: Section(section),
@@ -50,6 +57,18 @@ extension EMLParser {
         }
 
         let rawParts = splitMultipartByBoundary(bodyData: bodyData, boundary: boundary)
+        guard !rawParts.isEmpty else {
+            // No recognizable delimiters (wrong or truncated boundary, or a
+            // preamble glued to the first delimiter) — keep the body as an
+            // opaque part rather than silently dropping its bytes.
+            let section = sectionPath.isEmpty ? [1] : sectionPath
+            return bodyData.isEmpty ? [] : [MessagePart(
+                section: Section(section),
+                contentType: extractMIMEType(from: contentType),
+                data: bodyData
+            )]
+        }
+
         return rawParts.enumerated().flatMap { index, rawPart -> [MessagePart] in
             buildMultipartChild(rawPart: rawPart, index: index, sectionPath: sectionPath)
         }

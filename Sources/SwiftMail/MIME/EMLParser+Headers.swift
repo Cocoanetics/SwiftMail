@@ -46,15 +46,37 @@ extension EMLParser {
         return (Data(data[data.startIndex..<headerEnd]), Data(data[separator.upperBound...]))
     }
 
-    /// Decode header bytes into a `String`.
+    /// Decode header bytes into a `String` of LF-separated lines.
     ///
     /// Headers are ASCII by specification (RFC 5322), with UTF-8 permitted by
     /// RFC 6532; Latin-1 maps every byte, so the decode is total and malformed
-    /// headers can never make parsing fail or lose body bytes.
+    /// headers can never make parsing fail or lose body bytes. Each line is
+    /// decoded independently: a single legacy 8-bit byte in one header must
+    /// not flip the whole block to Latin-1 and mangle valid UTF-8 elsewhere.
     static func decodeHeaderBlock(_ headerData: Data) -> String {
-        String(data: headerData, encoding: .utf8)
-            ?? String(data: headerData, encoding: .isoLatin1)
-            ?? ""
+        let lineFeed: UInt8 = 0x0A
+        let carriageReturn: UInt8 = 0x0D
+
+        return headerData
+            .split(separator: lineFeed, omittingEmptySubsequences: false)
+            .map { line -> String in
+                let lineData = Data(line.last == carriageReturn ? line.dropLast() : line)
+                return String(data: lineData, encoding: .utf8)
+                    ?? String(data: lineData, encoding: .isoLatin1)
+                    ?? ""
+            }
+            .joined(separator: "\n")
+    }
+
+    /// Split a header block into lines at CRLF/LF only. RFC 5322 recognizes no
+    /// other line breaks: Unicode "newlines" like NEL (which Latin-1 decoding
+    /// can produce from raw byte 0x85), VT, FF, or U+2028 are ordinary header
+    /// text, and splitting on them would truncate values or let crafted bytes
+    /// smuggle in whole headers.
+    private static func headerLines(_ block: String) -> [String] {
+        block.components(separatedBy: "\n").map { line in
+            line.hasSuffix("\r") ? String(line.dropLast()) : line
+        }
     }
 
     // MARK: - Header Parsing
@@ -67,7 +89,7 @@ extension EMLParser {
         var currentKey: String?
         var currentValue: String = ""
 
-        let lines = block.components(separatedBy: .newlines)
+        let lines = headerLines(block)
         for line in lines {
             if line.isEmpty { continue }
 
@@ -102,7 +124,7 @@ extension EMLParser {
         var currentKey: String?
         var currentValue: String = ""
 
-        let lines = block.components(separatedBy: .newlines)
+        let lines = headerLines(block)
         for line in lines {
             if line.isEmpty { continue }
 
