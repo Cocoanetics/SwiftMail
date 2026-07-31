@@ -115,8 +115,11 @@ public struct EMLSerializer {
                     output += stringFromData(data)
                 }
             } else {
-                // Nested multipart group
-                try serializeMultipart(parts: group, output: &output)
+                // Nested multipart group — drop the leading section component
+                // consumed by this level so the recursion descends the part
+                // tree instead of regrouping the same sections forever.
+                let children = group.map { droppingLeadingSectionComponent($0) }
+                try serializeMultipart(parts: children, output: &output)
             }
         }
 
@@ -187,6 +190,22 @@ public struct EMLSerializer {
         }
 
         return groups.keys.sorted().map { groups[$0]! }
+    }
+
+    /// Return a copy of the part with the first section component removed,
+    /// re-rooting it one level down the part tree (e.g. [1, 2] becomes [2]).
+    private static func droppingLeadingSectionComponent(_ part: MessagePart) -> MessagePart {
+        return MessagePart(
+            section: Section(Array(part.section.components.dropFirst())),
+            contentType: part.contentType,
+            disposition: part.disposition,
+            encoding: part.encoding,
+            filename: part.filename,
+            contentId: part.contentId,
+            size: part.size,
+            data: part.data,
+            embeddedMessageInfo: part.embeddedMessageInfo
+        )
     }
 
     // MARK: - Helpers
