@@ -93,11 +93,10 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     }
 
     private func applyCollectedThreadingHeaders() {
-        guard let headerBlock = String(data: currentHeaderLiteral, encoding: .utf8) ?? String(
-            data: currentHeaderLiteral,
-            encoding: .ascii
-        ) else { return }
-
+        // Legacy messages may contain raw 8-bit header bytes. Decode each line
+        // independently with the same total UTF-8/Latin-1 policy used by the
+        // EML parser so one malformed field cannot discard the entire literal.
+        let headerBlock = EMLParser.decodeHeaderBlock(currentHeaderLiteral)
         let allHeaders = EMLParser.parseHeaders(headerBlock)
 
         // Headers already exposed via ENVELOPE or stored in dedicated fields

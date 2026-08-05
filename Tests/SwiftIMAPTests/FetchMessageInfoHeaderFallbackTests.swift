@@ -82,6 +82,24 @@ struct FetchMessageInfoHeaderFallbackTests {
         #expect(infos[0].inReplyTo == MessageID("<root@example.com>"))
     }
 
+    @Test
+    func testLegacyEightBitHeaderDoesNotDiscardSelectiveHeaderBlock() async throws {
+        var headerBytes = Data("Subject: Legacy receipt\r\nFrom: Ren".utf8)
+        headerBytes.append(0xE9)
+        headerBytes.append(contentsOf: " <rene@example.com>\r\nMessage-ID: <legacy@example.com>\r\n\r\n".utf8)
+        let fields = ["Subject", "From", "Message-ID"]
+
+        let infos = try await executeFetch([
+            fetchResponse(sequenceNumber: 1, headerFields: fields, headerBytes: headerBytes),
+            Data("A001 OK FETCH completed\r\n".utf8)
+        ])
+
+        #expect(infos.count == 1)
+        #expect(infos[0].subject == "Legacy receipt")
+        #expect(infos[0].from == "René <rene@example.com>")
+        #expect(infos[0].messageId == MessageID("<legacy@example.com>"))
+    }
+
     private static func makeDate(_ components: DateComponents) -> Date? {
         var resolved = components
         resolved.timeZone = TimeZone(secondsFromGMT: 0)
@@ -89,6 +107,10 @@ struct FetchMessageInfoHeaderFallbackTests {
     }
 
     private func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
+        try await executeFetch(rawResponses.map { Data($0.utf8) })
+    }
+
+    private func executeFetch(_ rawResponses: [Data]) async throws -> [MessageInfo] {
         let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
         let promise = channel.eventLoop.makePromise(of: [MessageInfo].self)
         let handler = FetchMessageInfoHandler(commandTag: "A001", promise: promise)
@@ -99,8 +121,8 @@ struct FetchMessageInfoHeaderFallbackTests {
         _ = try await channel.readOutbound(as: ByteBuffer.self)
 
         for rawResponse in rawResponses {
-            var buffer = channel.allocator.buffer(capacity: rawResponse.utf8.count)
-            buffer.writeString(rawResponse)
+            var buffer = channel.allocator.buffer(capacity: rawResponse.count)
+            buffer.writeBytes(rawResponse)
             try await channel.writeInbound(buffer)
         }
         return try await promise.futureResult.get()
@@ -117,5 +139,19 @@ struct FetchMessageInfoHeaderFallbackTests {
         let count = headerBlock.utf8.count
         return "* \(sequenceNumber) FETCH (\(envelopeAttribute)BODY[HEADER.FIELDS (\(fieldsList))] {\(count)}\r\n"
             + "\(headerBlock))\r\n"
+    }
+
+    private func fetchResponse(
+        sequenceNumber: Int,
+        headerFields: [String],
+        headerBytes: Data
+    ) -> Data {
+        let fieldsList = headerFields.joined(separator: " ")
+        var response = Data(
+            "* \(sequenceNumber) FETCH (BODY[HEADER.FIELDS (\(fieldsList))] {\(headerBytes.count)}\r\n".utf8
+        )
+        response.append(headerBytes)
+        response.append(contentsOf: ")\r\n".utf8)
+        return response
     }
 }
