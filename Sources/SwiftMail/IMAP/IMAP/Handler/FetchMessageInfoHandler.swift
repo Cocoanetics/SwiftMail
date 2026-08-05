@@ -121,6 +121,8 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             guard let index = currentMessageIndex() else { return }
             var header = self.messageInfos[index]
 
+            Self.applyMissingStandardHeaders(allHeaders, to: &header)
+
             if let references = referencesValue, !references.isEmpty {
                 let parsed = Self.parseMessageIDs(from: references)
                 header.references = parsed.isEmpty ? nil : parsed
@@ -128,6 +130,28 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
             header.additionalFields = additionalHeaders.isEmpty ? nil : additionalHeaders
             self.messageInfos[index] = header
+        }
+    }
+
+    /// Populate standard message fields from a requested header literal when
+    /// ENVELOPE was omitted or left a field empty. ENVELOPE values stay
+    /// authoritative when both representations are present.
+    private static func applyMissingStandardHeaders(
+        _ fields: [String: String],
+        to header: inout MessageInfo
+    ) {
+        let parsed = EMLParser.buildMessageInfo(from: fields)
+        if header.subject?.isEmpty != false { header.subject = parsed.subject }
+        if header.from?.isEmpty != false { header.from = parsed.from }
+        if header.to.isEmpty { header.to = parsed.to }
+        if header.cc.isEmpty { header.cc = parsed.cc }
+        if header.bcc.isEmpty { header.bcc = parsed.bcc }
+        if header.date == nil, let rawDate = fields["date"] {
+            header.date = parseEnvelopeDate(rawDate)
+        }
+        if header.messageId == nil { header.messageId = parsed.messageId }
+        if header.inReplyTo == nil, let rawInReplyTo = fields["in-reply-to"] {
+            header.inReplyTo = MessageID(rawInReplyTo)
         }
     }
 
