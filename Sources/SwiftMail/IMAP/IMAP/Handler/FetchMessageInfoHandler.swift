@@ -93,11 +93,10 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     }
 
     private func applyCollectedThreadingHeaders() {
-        guard let headerBlock = String(data: currentHeaderLiteral, encoding: .utf8) ?? String(
-            data: currentHeaderLiteral,
-            encoding: .ascii
-        ) else { return }
-
+        // Legacy messages may contain raw 8-bit header bytes. Decode each line
+        // independently with the same total UTF-8/Latin-1 policy used by the
+        // EML parser so one malformed field cannot discard the entire literal.
+        let headerBlock = EMLParser.decodeHeaderBlock(currentHeaderLiteral)
         let allHeaders = EMLParser.parseHeaders(headerBlock)
 
         // Headers already exposed via ENVELOPE or stored in dedicated fields
@@ -121,6 +120,8 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             guard let index = currentMessageIndex() else { return }
             var header = self.messageInfos[index]
 
+            Self.applyMissingStandardHeaders(allHeaders, to: &header)
+
             if let references = referencesValue, !references.isEmpty {
                 let parsed = Self.parseMessageIDs(from: references)
                 header.references = parsed.isEmpty ? nil : parsed
@@ -128,6 +129,28 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
             header.additionalFields = additionalHeaders.isEmpty ? nil : additionalHeaders
             self.messageInfos[index] = header
+        }
+    }
+
+    /// Populate standard message fields from a requested header literal when
+    /// ENVELOPE was omitted or left a field nil. ENVELOPE values stay
+    /// authoritative when both representations are present.
+    private static func applyMissingStandardHeaders(
+        _ fields: [String: String],
+        to header: inout MessageInfo
+    ) {
+        let parsed = EMLParser.buildMessageInfo(from: fields)
+        if header.subject == nil { header.subject = parsed.subject }
+        if header.from == nil { header.from = parsed.from }
+        if header.to.isEmpty { header.to = parsed.to }
+        if header.cc.isEmpty { header.cc = parsed.cc }
+        if header.bcc.isEmpty { header.bcc = parsed.bcc }
+        if header.date == nil, let rawDate = fields["date"] {
+            header.date = parseEnvelopeDate(rawDate)
+        }
+        if header.messageId == nil { header.messageId = parsed.messageId }
+        if header.inReplyTo == nil, let rawInReplyTo = fields["in-reply-to"] {
+            header.inReplyTo = MessageID(rawInReplyTo)
         }
     }
 
