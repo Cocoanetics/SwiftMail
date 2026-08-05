@@ -83,6 +83,31 @@ struct FetchMessageInfoHeaderFallbackTests {
     }
 
     @Test
+    func testHeaderFieldsDoNotOverrideExplicitEmptyEnvelopeSubject() async throws {
+        let envelope = "(\"Wed, 05 Aug 2026 10:00:00 -0600\" \"\" NIL NIL NIL NIL NIL NIL NIL NIL)"
+        let headerBlock = """
+        Subject: Header subject\r
+        From: Header Sender <header@example.com>\r
+        \r
+        """
+        let fields = ["Subject", "From"]
+
+        let infos = try await executeFetch([
+            fetchResponse(
+                sequenceNumber: 1,
+                envelope: envelope,
+                headerFields: fields,
+                headerBlock: headerBlock
+            ),
+            "A001 OK FETCH completed\r\n"
+        ])
+
+        #expect(infos.count == 1)
+        #expect(infos[0].subject == "")
+        #expect(infos[0].from == "Header Sender <header@example.com>")
+    }
+
+    @Test
     func testLegacyEightBitHeaderDoesNotDiscardSelectiveHeaderBlock() async throws {
         var headerBytes = Data("Subject: Legacy receipt\r\nFrom: Ren".utf8)
         headerBytes.append(0xE9)

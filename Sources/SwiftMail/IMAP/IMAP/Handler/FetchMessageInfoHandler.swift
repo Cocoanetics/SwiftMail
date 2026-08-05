@@ -133,15 +133,15 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     }
 
     /// Populate standard message fields from a requested header literal when
-    /// ENVELOPE was omitted or left a field empty. ENVELOPE values stay
+    /// ENVELOPE was omitted or left a field nil. ENVELOPE values stay
     /// authoritative when both representations are present.
     private static func applyMissingStandardHeaders(
         _ fields: [String: String],
         to header: inout MessageInfo
     ) {
         let parsed = EMLParser.buildMessageInfo(from: fields)
-        if header.subject?.isEmpty != false { header.subject = parsed.subject }
-        if header.from?.isEmpty != false { header.from = parsed.from }
+        if header.subject == nil { header.subject = parsed.subject }
+        if header.from == nil { header.from = parsed.from }
         if header.to.isEmpty { header.to = parsed.to }
         if header.cc.isEmpty { header.cc = parsed.cc }
         if header.bcc.isEmpty { header.bcc = parsed.bcc }
