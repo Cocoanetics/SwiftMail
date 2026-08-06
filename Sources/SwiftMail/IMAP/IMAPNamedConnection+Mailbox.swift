@@ -26,6 +26,17 @@ extension IMAPNamedConnection {
         try await select(mailbox: mailboxName)
     }
 
+    /// Select a mailbox read-only using IMAP EXAMINE.
+    ///
+    /// The server enforces the read-only selection: STORE and EXPUNGE operations
+    /// are not permitted while the mailbox remains selected this way.
+    @discardableResult
+    public func examineMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
+        try await ensureAuthenticated()
+        let command = ExamineMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
+        return try await executeCommand(command)
+    }
+
     /// Close the currently selected mailbox (expunges `\Deleted` messages).
     public func closeMailbox() async throws {
         let command = CloseCommand()

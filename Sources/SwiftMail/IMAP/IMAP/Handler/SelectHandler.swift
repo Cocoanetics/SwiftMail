@@ -28,6 +28,12 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPComman
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
+        // SELECT/EXAMINE communicate READ-WRITE or READ-ONLY in the tagged
+        // completion response. Capture it before fulfilling the result.
+        if case .ok(let responseText) = response.state, let code = responseText.code {
+            applyResponseCode(code)
+        }
+
         // Call super to handle CLIENTBUG warnings
         super.handleTaggedOKResponse(response)
 
