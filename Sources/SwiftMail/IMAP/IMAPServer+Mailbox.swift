@@ -44,6 +44,24 @@ extension IMAPServer {
     }
 
     /**
+     Select a mailbox in read-only mode
+
+     This method uses IMAP EXAMINE to make the mailbox current while asking the server
+     to enforce read-only access. STORE and EXPUNGE operations are not permitted while
+     the mailbox remains selected this way.
+
+     - Parameter mailboxName: The name of the mailbox to select read-only
+     - Returns: Status information about the selected mailbox
+     - Throws:
+     - `IMAPError.selectFailed` if the mailbox cannot be selected
+     - `IMAPError.connectionFailed` if not connected
+     */
+    @discardableResult public func examineMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
+        let command = ExamineMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
+        return try await executeCommand(command)
+    }
+
+    /**
      Close the currently selected mailbox
 
      This method closes the currently selected mailbox and expunges any messages

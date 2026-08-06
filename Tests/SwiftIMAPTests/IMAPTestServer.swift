@@ -413,6 +413,18 @@ final class IMAPTestServer {
                     + "* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)]"
                     + " Flags permitted\r\n"
                     + "\(tag) OK [READ-WRITE] SELECT completed\r\n"
+            case "EXAMINE":
+                guard authenticated else { return "\(tag) NO Not authenticated\r\n" }
+                let mailbox = args.trimmingCharacters(in: .init(charactersIn: "\" "))
+                selectedMailbox = mailbox
+                let count = messages.count
+                let uidnext = (messages.last?.uid ?? 0) + 1
+                return "* \(count) EXISTS\r\n* 0 RECENT\r\n"
+                    + "* OK [UIDVALIDITY 1] UIDs valid\r\n"
+                    + "* OK [UIDNEXT \(uidnext)] Predicted next UID\r\n"
+                    + "* FLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft)\r\n"
+                    + "* OK [PERMANENTFLAGS ()] No permanent flags permitted\r\n"
+                    + "\(tag) OK [READ-ONLY] EXAMINE completed\r\n"
             case "UID":
                 guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
                 return handleUID(tag: tag, args: args)

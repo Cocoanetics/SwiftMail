@@ -46,6 +46,9 @@ import Testing
                 try await server.login(username: "testuser", password: "testpass")
                 let status = try await server.selectMailbox("INBOX")
                 #expect(status.messageCount == 1)
+                let readOnlyStatus = try await server.examineMailbox("INBOX")
+                #expect(readOnlyStatus.messageCount == 1)
+                #expect(readOnlyStatus.isReadOnly)
                 try await server.disconnect()
             }
         }
