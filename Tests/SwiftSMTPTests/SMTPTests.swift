@@ -1152,6 +1152,16 @@ struct SMTPTests {
         #expect(RsetCommand().toCommandString() == "RSET")
     }
 
+    @Test
+    func testSubmissionTimeoutDefaultsFollowRFCRecommendations() {
+        let timeouts = SMTPSubmissionTimeouts()
+        #expect(timeouts.mailFromResponse == 5 * 60)
+        #expect(timeouts.recipientResponse == 5 * 60)
+        #expect(timeouts.dataResponse == 2 * 60)
+        #expect(timeouts.contentUpload == 3 * 60)
+        #expect(timeouts.contentResponse == 10 * 60)
+    }
+
     #if os(macOS) || os(Linux)
 
     // MARK: - Submission outcome integration tests (scripted fake server)
@@ -1172,12 +1182,18 @@ struct SMTPTests {
     private func withScriptedServer(
         _ script: SMTPServerScript = SMTPServerScript(),
         ehloCapabilities: [String] = ["8BITMIME"],
+        submissionTimeouts: SMTPSubmissionTimeouts = SMTPSubmissionTimeouts(),
         _ body: (SMTPTestServer, SMTPServer) async throws -> Void
     ) async throws {
         let testServer = SMTPTestServer(script: script, ehloCapabilities: ehloCapabilities)
         try testServer.start()
         try await testServer.run {
-            let client = SMTPServer(host: "127.0.0.1", port: testServer.port, transportSecurity: .plainText)
+            let client = SMTPServer(
+                host: "127.0.0.1",
+                port: testServer.port,
+                transportSecurity: .plainText,
+                submissionTimeouts: submissionTimeouts
+            )
             try await client.connect()
             do {
                 try await body(testServer, client)
@@ -1288,8 +1304,8 @@ struct SMTPTests {
     func testSendEmailAmbiguousWhenFinalReplyTimesOut() async throws {
         var script = SMTPServerScript()
         script.onContent = [.silence]
-        try await withScriptedServer(script) { server, client in
-            await client.setSubmissionTimeoutSecondsForTesting(1)
+        let timeouts = SMTPSubmissionTimeouts(contentResponse: 0.2)
+        try await withScriptedServer(script, submissionTimeouts: timeouts) { server, client in
             let sendError = await #expect(throws: SMTPSendError.self) {
                 _ = try await client.sendEmail(Self.makeOutcomeTestEmail())
             }
@@ -1300,6 +1316,53 @@ struct SMTPTests {
             #expect(sendError?.retryDisposition == .unsafeToRetry)
             let hasChannel = await client.hasChannelForTesting
             #expect(!hasChannel)
+        }
+    }
+
+    @Test
+    func testFinalReplyGetsFreshTimeoutAfterContentUpload() async throws {
+        var script = SMTPServerScript()
+        script.onContent = [
+            .delayedReply("250 2.0.0 OK queued as DELAYED", delay: 1.25)
+        ]
+        let timeouts = SMTPSubmissionTimeouts(
+            contentUpload: 1,
+            contentResponse: 3
+        )
+
+        try await withScriptedServer(script, submissionTimeouts: timeouts) { server, client in
+            let result = try await client.sendEmail(Self.makeOutcomeTestEmail())
+            #expect(result.response.code == 250)
+            #expect(result.response.message.contains("queued as DELAYED"))
+            #expect(server.receivedContentMessages.count == 1)
+        }
+    }
+
+    @Test
+    func testContentUploadTimeoutIsAmbiguousAndUnsafeToRetry() async throws {
+        var script = SMTPServerScript()
+        script.contentReadDelay = 0.5
+        script.receiveBufferBytes = 4_096
+        let timeouts = SMTPSubmissionTimeouts(
+            contentUpload: 0.1,
+            contentResponse: 1
+        )
+        var rawMessage = Data("Subject: Upload timeout\r\n\r\n".utf8)
+        rawMessage.append(Data(repeating: 0x41, count: 8 * 1_024 * 1_024))
+
+        try await withScriptedServer(script, submissionTimeouts: timeouts) { server, client in
+            let error = await #expect(throws: SMTPSendError.self) {
+                _ = try await client.sendRawMessage(
+                    rawMessage,
+                    from: EmailAddress(address: "sender@example.com"),
+                    to: [EmailAddress(address: "recipient@example.com")]
+                )
+            }
+            #expect(error?.phase == .content)
+            #expect(error?.acceptance == .ambiguous)
+            #expect(error?.reason == .timedOut)
+            #expect(error?.retryDisposition == .unsafeToRetry)
+            #expect(server.receivedContentMessages.isEmpty)
         }
     }
 

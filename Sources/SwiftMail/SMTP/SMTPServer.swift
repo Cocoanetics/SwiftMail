@@ -73,6 +73,9 @@ public actor SMTPServer {
     /// Lowest TLS version any transport for this server may negotiate.
     let minimumTLSVersion: MailTLSMinimumVersion
 
+    /// Timeout budgets for the SMTP mail-submission dialogue.
+    public let submissionTimeouts: SMTPSubmissionTimeouts
+
     /** The event loop group for handling asynchronous operations */
     let group: EventLoopGroup
 
@@ -84,14 +87,6 @@ public actor SMTPServer {
 
     /** Server capabilities reported by EHLO command */
     var capabilities: [String] = []
-
-    /// Overrides the per-command response timeout of the submission dialogue.
-    /// Tests use short values to exercise timeout classification deterministically.
-    var submissionTimeoutSecondsForTesting: Int?
-
-    func setSubmissionTimeoutSecondsForTesting(_ seconds: Int?) {
-        submissionTimeoutSecondsForTesting = seconds
-    }
 
     /// Whether the server advertised the `8BITMIME` extension in the most recent EHLO response.
     public var supports8BitMIME: Bool {
@@ -152,6 +147,7 @@ public actor SMTPServer {
        - transportSecurity: The transport security policy to use for this connection
        - certificateVerificationPolicy: The certificate verification policy to use for TLS connections
        - numberOfThreads: The number of threads to use for the event loop group
+       - submissionTimeouts: Timeout budgets for the SMTP mail-submission dialogue
 
      `.automatic` infers the initial security mode from the port:
      - Port 25: Plain SMTP (not recommended)
@@ -167,13 +163,15 @@ public actor SMTPServer {
         transportSecurity: MailTransportSecurity = .automatic,
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
         minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
-        numberOfThreads: Int = 1
+        numberOfThreads: Int = 1,
+        submissionTimeouts: SMTPSubmissionTimeouts = SMTPSubmissionTimeouts()
     ) {
         self.host = host
         self.port = port
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
         self.minimumTLSVersion = minimumTLSVersion
+        self.submissionTimeouts = submissionTimeouts
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
         let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")

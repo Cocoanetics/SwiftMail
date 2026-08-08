@@ -194,7 +194,11 @@ extension SMTPServer {
         try Task.checkCancellation()
 
         do {
-            _ = try await executeSubmissionCommand(mailFrom)
+            _ = try await executeSubmissionCommand(
+                mailFrom,
+                writeTimeout: submissionTimeouts.mailFromResponse,
+                responseTimeout: submissionTimeouts.mailFromResponse
+            )
         } catch {
             throw await abortSubmission(with: .classifyingPreContent(error, phase: .mailFrom))
         }
@@ -203,7 +207,11 @@ extension SMTPServer {
         // transaction instead of continuing with a partial recipient set.
         for (command, recipient) in rcptCommands {
             do {
-                _ = try await executeSubmissionCommand(command)
+                _ = try await executeSubmissionCommand(
+                    command,
+                    writeTimeout: submissionTimeouts.recipientResponse,
+                    responseTimeout: submissionTimeouts.recipientResponse
+                )
             } catch {
                 throw await abortSubmission(
                     with: .classifyingPreContent(error, phase: .rcptTo, recipient: recipient)
@@ -212,7 +220,11 @@ extension SMTPServer {
         }
 
         do {
-            _ = try await executeSubmissionCommand(DataCommand())
+            _ = try await executeSubmissionCommand(
+                DataCommand(),
+                writeTimeout: submissionTimeouts.dataResponse,
+                responseTimeout: submissionTimeouts.dataResponse
+            )
         } catch {
             throw await abortSubmission(with: .classifyingPreContent(error, phase: .data))
         }
@@ -224,7 +236,11 @@ extension SMTPServer {
         }
 
         do {
-            let response = try await executeSubmissionCommand(SendContentCommand(data: contentData))
+            let response = try await executeSubmissionCommand(
+                SendContentCommand(data: contentData),
+                writeTimeout: submissionTimeouts.contentUpload,
+                responseTimeout: submissionTimeouts.contentResponse
+            )
             return SMTPSendResult(response: response)
         } catch {
             throw await abortSubmission(with: .classifyingPostContentDispatch(error))
@@ -291,63 +307,6 @@ extension SMTPServer {
             try await channel.close().get()
         } catch {
             logger.debug("Channel close after failed submission reported: \(error)")
-        }
-    }
-
-    /// Execute one command of the submission dialogue.
-    ///
-    /// Differs from ``executeCommand(_:)`` in three ways that the outcome
-    /// classification depends on:
-    /// - errors are rethrown untouched (no re-wrapping into
-    ///   `SMTPError.connectionFailed`), so the classifier sees original types;
-    /// - the response timeout fails with the internal marker
-    ///   `SMTPSubmissionTimeoutError` instead of a string-only error;
-    /// - awaiting the reply is cancellation-aware: `EventLoopFuture.get()`
-    ///   ignores task cancellation, so without this a task cancelled after the
-    ///   content terminator would silently keep waiting and could even return
-    ///   success. Cancellation fails the pending promise immediately; the
-    ///   caller then classifies the outcome and closes the connection.
-    private func executeSubmissionCommand<CommandType: SMTPCommand>(
-        _ command: CommandType
-    ) async throws -> CommandType.ResultType {
-        guard let channel = channel else {
-            throw SMTPError.connectionFailed("Not connected to SMTP server")
-        }
-
-        try command.validate()
-
-        let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
-        let commandTag = UUID().uuidString
-        let commandData = command.toCommandData()
-        let handler = command.makeHandler(commandTag: commandTag, promise: resultPromise)
-
-        let timeoutSeconds = submissionTimeoutSecondsForTesting ?? command.timeoutSeconds
-        let scheduledTask = channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
-            resultPromise.fail(SMTPSubmissionTimeoutError())
-        }
-        defer { scheduledTask.cancel() }
-
-        do {
-            try await channel.pipeline.addHandler(handler).get()
-
-            // Send the command to the server as raw bytes + CRLF
-            var buffer = channel.allocator.buffer(capacity: commandData.count + 2)
-            buffer.writeBytes(commandData)
-            buffer.writeBytes([0x0D, 0x0A]) // CRLF
-            try await channel.writeAndFlush(buffer).get()
-
-            let result = try await withTaskCancellationHandler {
-                try await resultPromise.futureResult.get()
-            } onCancel: {
-                resultPromise.fail(CancellationError())
-            }
-            duplexLogger.flushInboundBuffer()
-            return result
-        } catch {
-            // Ensure the promise is resolved to prevent NIO "leaking promise" fatal error
-            resultPromise.fail(error)
-            duplexLogger.flushInboundBuffer()
-            throw error
         }
     }
 

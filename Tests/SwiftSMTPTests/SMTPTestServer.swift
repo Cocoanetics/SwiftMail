@@ -17,6 +17,8 @@ enum SMTPTestError: Error {
 enum SMTPScriptAction {
     /// Send the reply line (CRLF appended) and keep the connection open.
     case reply(String)
+    /// Wait, then send the reply line (CRLF appended).
+    case delayedReply(String, delay: TimeInterval)
     /// Send the reply line, then immediately close the connection.
     case replyThenClose(String)
     /// Close the connection without sending any reply.
@@ -33,6 +35,8 @@ struct SMTPServerScript {
     var onRcptTo: [SMTPScriptAction] = [.reply("250 OK")]
     var onData: [SMTPScriptAction] = [.reply("354 End data with <CRLF>.<CRLF>")]
     var onContent: [SMTPScriptAction] = [.reply("250 2.0.0 OK queued as TEST42")]
+    var contentReadDelay: TimeInterval = 0
+    var receiveBufferBytes: Int32?
 }
 
 /// A minimal scripted SMTP server implemented with POSIX sockets.
@@ -309,6 +313,16 @@ final class SMTPTestServer {
     private func handleClient(fd fileDescriptor: Int32) {
         defer { closeTrackedClient(fd: fileDescriptor) }
 
+        if var receiveBufferBytes = script.receiveBufferBytes {
+            setsockopt(
+                fileDescriptor,
+                SOL_SOCKET,
+                SO_RCVBUF,
+                &receiveBufferBytes,
+                socklen_t(MemoryLayout<Int32>.size)
+            )
+        }
+
         sendLine(fd: fileDescriptor, "220 smtp.test ESMTP SMTPTestServer ready\r\n")
 
         var buffer = Data()
@@ -317,6 +331,9 @@ final class SMTPTestServer {
         defer { readBuf.deallocate() }
 
         while true {
+            if inDataMode && script.contentReadDelay > 0 {
+                Thread.sleep(forTimeInterval: script.contentReadDelay)
+            }
             let bytesRead = read(fileDescriptor, readBuf, 65536)
             if bytesRead <= 0 { break }
             buffer.append(readBuf, count: bytesRead)
@@ -331,6 +348,9 @@ final class SMTPTestServer {
 
                     switch nextContentAction() {
                         case .reply(let line):
+                            sendLine(fd: fileDescriptor, line + "\r\n")
+                        case .delayedReply(let line, let delay):
+                            Thread.sleep(forTimeInterval: delay)
                             sendLine(fd: fileDescriptor, line + "\r\n")
                         case .replyThenClose(let line):
                             sendLine(fd: fileDescriptor, line + "\r\n")
@@ -413,6 +433,10 @@ final class SMTPTestServer {
     private func apply(_ action: SMTPScriptAction, fd fileDescriptor: Int32) -> CommandOutcome {
         switch action {
             case .reply(let line):
+                sendLine(fd: fileDescriptor, line + "\r\n")
+                return .keepGoing
+            case .delayedReply(let line, let delay):
+                Thread.sleep(forTimeInterval: delay)
                 sendLine(fd: fileDescriptor, line + "\r\n")
                 return .keepGoing
             case .replyThenClose(let line):

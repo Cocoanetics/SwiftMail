@@ -21,6 +21,29 @@ Common SMTP ports:
 - 465: SSL/TLS
 - 25: Unencrypted (not recommended)
 
+## Configuring Submission Timeouts
+
+SwiftMail uses separate timeout budgets for the SMTP command replies, message
+content upload, and final acceptance reply. The defaults follow the client
+recommendations in [RFC 5321 section 4.5.3.2](https://www.rfc-editor.org/rfc/rfc5321.html#section-4.5.3.2).
+You can customize them for a server or network with different requirements:
+
+```swift
+let timeouts = SMTPSubmissionTimeouts(
+    contentUpload: 5 * 60,
+    contentResponse: 15 * 60
+)
+let smtpServer = SMTPServer(
+    host: "smtp.example.com",
+    port: 587,
+    submissionTimeouts: timeouts
+)
+```
+
+The final-response budget starts only after the message content and terminating
+dot have been flushed, so a slow upload cannot consume the server-processing
+allowance.
+
 ## Connecting and Authentication
 
 Connect to the server and authenticate with your credentials:
@@ -110,3 +133,4 @@ server ``SMTPSendError/response`` when one was received, and the
 ## Topics
 
 - ``SMTPServer``
+- ``SMTPSubmissionTimeouts``
