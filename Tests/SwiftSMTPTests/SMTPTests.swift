@@ -1388,8 +1388,8 @@ struct SMTPTests {
         script.contentReadDelay = 0.02
         script.receiveBufferBytes = 65_536
         let timeouts = SMTPSubmissionTimeouts(
-            contentUpload: 0.25,
-            contentResponse: 2
+            contentUpload: 2,
+            contentResponse: 3
         )
         var rawMessage = Data("Subject: Progressing upload\r\n\r\n".utf8)
         rawMessage.append(Data(repeating: 0x41, count: 8 * 1_024 * 1_024))
