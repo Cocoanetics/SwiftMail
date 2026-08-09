@@ -443,6 +443,8 @@ final class IMAPTestServer {
                 return "* ID NIL\r\n\(tag) OK ID completed\r\n"
             case "NOOP":
                 return "\(tag) OK NOOP completed\r\n"
+            case "EXPUNGE":
+                return "\(tag) OK EXPUNGE completed\r\n"
             case "LOGOUT":
                 return "* BYE IMAP server shutting down\r\n\(tag) OK LOGOUT completed\r\n"
             default:
@@ -463,17 +465,36 @@ final class IMAPTestServer {
                 let uids = messages.map { String($0.uid) }.joined(separator: " ")
                 return "* SEARCH \(uids)\r\n\(tag) OK UID SEARCH completed\r\n"
             case "MOVE":
-                guard advertisedCapabilities.contains("MOVE") else {
+                guard advertisesCapability("MOVE") else {
                     return "\(tag) BAD UID MOVE not supported\r\n"
                 }
                 let moveParts = subargs.split(separator: " ", maxSplits: 1).map(String.init)
                 guard moveParts.count == 2 else { return "\(tag) BAD Invalid UID MOVE\r\n" }
-                if advertisedCapabilities.contains("UIDPLUS") {
+                if advertisesCapability("UIDPLUS") {
                     return "\(tag) OK [COPYUID 2 \(moveParts[0]) 101] UID MOVE completed\r\n"
                 }
                 return "\(tag) OK UID MOVE completed\r\n"
+            case "COPY":
+                let copyParts = subargs.split(separator: " ", maxSplits: 1).map(String.init)
+                guard copyParts.count == 2 else { return "\(tag) BAD Invalid UID COPY\r\n" }
+                if advertisesCapability("UIDPLUS") {
+                    return "\(tag) OK [COPYUID 2 \(copyParts[0]) 101] UID COPY completed\r\n"
+                }
+                return "\(tag) OK UID COPY completed\r\n"
+            case "STORE":
+                return "\(tag) OK UID STORE completed\r\n"
+            case "EXPUNGE":
+                return "\(tag) OK UID EXPUNGE completed\r\n"
             default:
                 return "\(tag) BAD Unknown UID subcommand\r\n"
+        }
+    }
+
+    private func advertisesCapability(_ expected: String) -> Bool {
+        advertisedCapabilities.contains { capability in
+            capability.utf8.elementsEqual(expected.lowercased().utf8) { candidate, expectedByte in
+                (candidate | 0x20) == expectedByte
+            }
         }
     }
 

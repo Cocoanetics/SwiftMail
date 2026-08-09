@@ -6,32 +6,12 @@ import NIOIMAPCore
 
 extension IMAPServer {
     /**
-     Moves UIDs with the server's atomic MOVE extension and never falls back.
-
-     Unlike ``move(messages:to:)``, this entry point either emits one `UID MOVE`
-     or throws before issuing a manipulation command. UIDPLUS is deliberately
-     not required: RFC 6851 defines `UID MOVE` under the MOVE capability and
-     makes `COPYUID` evidence an optional UIDPLUS interaction.
-
-     - Throws: ``IMAPError/commandNotSupported(_:)`` when MOVE is not currently
-       advertised, before any COPY, STORE, MOVE, or EXPUNGE command is emitted.
-     */
-    @discardableResult
-    public func moveAtomically(
-        messages identifierSet: UIDSet,
-        to destinationMailbox: String
-    ) async throws -> CopyUID? {
-        guard capabilities.contains(.move) else {
-            throw IMAPError.commandNotSupported("MOVE command not supported by server")
-        }
-        return try await executeMove(messages: identifierSet, to: destinationMailbox)
-    }
-
-    /**
      Moves messages to another mailbox.
 
-     This method attempts to use the MOVE extension if available, falling back to
-     COPY+EXPUNGE if necessary.
+     By default this method attempts to use the MOVE extension and retains its
+     existing COPY+STORE+EXPUNGE fallback. Pass ``MoveFallbackPolicy/disabled``
+     to require MOVE and refuse before emitting a manipulation command when the
+     extension is unavailable. The disabled policy does not require UIDPLUS.
 
      The generic type T determines the identifier type:
      - Use `SequenceNumber` for temporary message numbers that may change
@@ -40,27 +20,41 @@ extension IMAPServer {
      - Parameters:
      - identifierSet: The set of messages to move
      - destinationMailbox: The name of the destination mailbox
+     - fallback: Whether COPY+STORE+EXPUNGE fallback is allowed.
      - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
        or `nil` when the server omits `COPYUID` (e.g. the server does not advertise UIDPLUS).
      - Throws:
      - `IMAPError.moveFailed` if the move operation fails
      - `IMAPError.emptyIdentifierSet` if the identifier set is empty
+     - ``IMAPError/commandNotSupported(_:)`` before a manipulation command when `fallback`
+       is ``MoveFallbackPolicy/disabled`` and MOVE is not advertised
+     - ``IMAPError/malformedCopyUIDAfterTaggedOK(_:)`` after a successful command with
+       malformed or conflicting COPYUID evidence; the command completed and must not be resent
      - Note: Logs move operations at info level with message count and destination
      */
     @discardableResult
     public func move<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>,
-        to destinationMailbox: String
+        to destinationMailbox: String,
+        fallback: MoveFallbackPolicy = .copyStoreExpunge
     ) async throws -> CopyUID? {
-        if capabilities.contains(.move) && (T.self != UID.self || capabilities.contains(.uidPlus)) {
+        if case .disabled = fallback {
+            guard capabilities.containsMoveCapability else {
+                throw IMAPError.commandNotSupported("MOVE command not supported by server")
+            }
             return try await executeMove(messages: identifierSet, to: destinationMailbox)
-        } else {
-            // Fall back to COPY + DELETE + targeted expunge when UIDPLUS is available.
-            let copyUID = try await copy(messages: identifierSet, to: destinationMailbox)
-            try await store(flags: [.deleted], on: identifierSet, operation: .add)
-            try await expungeMoveFallback(messages: identifierSet)
-            return copyUID
         }
+
+        if capabilities.containsMoveCapability
+            && (T.self != UID.self || capabilities.contains(.uidPlus)) {
+            return try await executeMove(messages: identifierSet, to: destinationMailbox)
+        }
+
+        // Preserve the existing fallback, including targeted UID EXPUNGE when UIDPLUS is available.
+        let copyUID = try await copy(messages: identifierSet, to: destinationMailbox)
+        try await store(flags: [.deleted], on: identifierSet, operation: .add)
+        try await expungeMoveFallback(messages: identifierSet)
+        return copyUID
     }
 
     /**
@@ -68,16 +62,19 @@ extension IMAPServer {
      - Parameters:
      - message: The message identifier to move
      - destinationMailbox: The name of the destination mailbox
+     - fallback: Whether COPY+STORE+EXPUNGE fallback is allowed.
      - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
        or `nil` when the server omits `COPYUID`.
      - Throws: An error if the move operation fails
      */
     @discardableResult
     public func move<T: MessageIdentifier>(
-        message identifier: T, to destinationMailbox: String
+        message identifier: T,
+        to destinationMailbox: String,
+        fallback: MoveFallbackPolicy = .copyStoreExpunge
     ) async throws -> CopyUID? {
         let set = MessageIdentifierSet<T>(identifier)
-        return try await move(messages: set, to: destinationMailbox)
+        return try await move(messages: set, to: destinationMailbox, fallback: fallback)
     }
 
     /**
@@ -85,17 +82,22 @@ extension IMAPServer {
      - Parameters:
      - header: The email header of the message to move
      - destinationMailbox: The name of the destination mailbox
+     - fallback: Whether COPY+STORE+EXPUNGE fallback is allowed.
      - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
        or `nil` when the server omits `COPYUID`.
      - Throws: An error if the move operation fails
      */
     @discardableResult
-    public func move(header: MessageInfo, to destinationMailbox: String) async throws -> CopyUID? {
+    public func move(
+        header: MessageInfo,
+        to destinationMailbox: String,
+        fallback: MoveFallbackPolicy = .copyStoreExpunge
+    ) async throws -> CopyUID? {
         if let uid = header.uid {
-            return try await move(message: uid, to: destinationMailbox)
+            return try await move(message: uid, to: destinationMailbox, fallback: fallback)
         } else {
             let sequenceNumber = header.sequenceNumber
-            return try await move(message: sequenceNumber, to: destinationMailbox)
+            return try await move(message: sequenceNumber, to: destinationMailbox, fallback: fallback)
         }
     }
 
@@ -111,6 +113,8 @@ extension IMAPServer {
      - Throws:
      - `IMAPError.copyFailed` if the copy operation fails
      - `IMAPError.emptyIdentifierSet` if the identifier set is empty
+     - ``IMAPError/malformedCopyUIDAfterTaggedOK(_:)`` after a successful COPY with
+       malformed COPYUID evidence; the COPY completed and must not be resent
      */
     @discardableResult
     public func copy<T: MessageIdentifier>(

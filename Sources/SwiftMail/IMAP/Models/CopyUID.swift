@@ -4,10 +4,11 @@ import NIOIMAPCore
 /// The verified COPYUID mapping returned by the server after a UID-based COPY or MOVE operation.
 ///
 /// When the server supports UIDPLUS (RFC 4315) and returns a `COPYUID` response code in the
-/// tagged `OK`, this value carries the exact source-to-destination UID mapping in the order
-/// the server provided it. When `COPYUID` is absent — either because the server doesn't
-/// advertise UIDPLUS or chose not to include the code — the corresponding method returns
-/// `nil` instead.
+/// successful `OK` response, this value carries the exact source-to-destination UID mapping
+/// in the order the server provided it. When `COPYUID` is absent — either because the server
+/// doesn't advertise UIDPLUS or chose not to include the code — the corresponding method
+/// returns `nil` instead. Malformed or conflicting evidence throws
+/// ``IMAPError/malformedCopyUIDAfterTaggedOK(_:)`` rather than being collapsed into absence.
 public struct CopyUID: Sendable {
     /// The UIDVALIDITY of the destination mailbox.
     ///
@@ -69,5 +70,17 @@ extension CopyUID {
             }
         }
         return result
+    }
+
+    func isEquivalent(to other: CopyUID) -> Bool {
+        guard destinationUIDValidity == other.destinationUIDValidity,
+              mapping.count == other.mapping.count
+        else {
+            return false
+        }
+
+        return zip(mapping, other.mapping).allSatisfy { lhs, rhs in
+            lhs.source == rhs.source && lhs.destination == rhs.destination
+        }
     }
 }

@@ -22,6 +22,9 @@ public enum IMAPError: Error {
     case storeFailed(String)
     case expungeFailed(String)
     case moveFailed(String)
+    /// The command completed with tagged OK, but its present COPYUID evidence was malformed
+    /// or internally conflicting. The provider operation completed; callers must not resend it.
+    case malformedCopyUIDAfterTaggedOK(String)
     case commandNotSupported(String)
     case authFailed(String)
     case unsupportedAuthMechanism(String)
@@ -69,6 +72,8 @@ extension IMAPError: CustomStringConvertible {
                 return "Expunge failed: \(reason)"
             case .moveFailed(let reason):
                 return "Move failed: \(reason)"
+            case .malformedCopyUIDAfterTaggedOK(let reason):
+                return "Command completed but returned malformed COPYUID data: \(reason)"
             case .commandNotSupported(let reason):
                 return "Command not supported: \(reason)"
             case .authFailed(let reason):
@@ -123,6 +128,8 @@ extension IMAPError: LocalizedError {
                 return "Failed to expunge deleted messages: \(reason)"
             case .moveFailed(let reason):
                 return "Failed to move messages: \(reason)"
+            case .malformedCopyUIDAfterTaggedOK(let reason):
+                return "The command completed, but its COPYUID mapping was invalid: \(reason)"
             case .commandNotSupported(let reason):
                 return "The requested command is not supported by the server: \(reason)"
             case .authFailed(let reason):

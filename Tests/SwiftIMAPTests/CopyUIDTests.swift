@@ -6,7 +6,7 @@ import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
-/// Tests for COPYUID extraction from UID COPY and UID MOVE tagged responses.
+/// Tests COPYUID extraction and malformed-evidence handling for UID COPY and UID MOVE.
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct CopyUIDTests {
 
@@ -85,12 +85,13 @@ struct CopyUIDTests {
     // MARK: - CopyHandler — cardinality mismatch
 
     @Test
-    func testCardinalityMismatchOnTaggedOKReturnsNil() async throws {
+    func testCopyCardinalityMismatchOnTaggedOKThrowsTypedCompletionError() async {
         // Source has 2 UIDs, destination has 1 — malformed.
-        let result = try await executeCopy(
-            responses: ["A001 OK [COPYUID 1 1:2 200] COPY completed\r\n"]
-        )
-        #expect(result == nil)
+        await expectMalformedCopyUID {
+            try await executeCopy(
+                responses: ["A001 OK [COPYUID 1 1:2 200] COPY completed\r\n"]
+            )
+        }
     }
 
     // MARK: - MoveHandler — COPYUID present
@@ -118,11 +119,87 @@ struct CopyUIDTests {
     }
 
     @Test
-    func testMoveCardinalityMismatchOnTaggedOKReturnsNil() async throws {
+    func testMoveCardinalityMismatchOnTaggedOKThrowsTypedCompletionError() async {
+        await expectMalformedCopyUID {
+            try await executeMove(
+                responses: ["A001 OK [COPYUID 1 1:2 200] MOVE completed\r\n"]
+            )
+        }
+    }
+
+    @Test
+    func testMoveRetainsUntaggedOKCopyUIDAcrossExpungeResponses() async throws {
         let result = try await executeMove(
-            responses: ["A001 OK [COPYUID 1 1:2 200] MOVE completed\r\n"]
+            responses: [
+                "* OK [COPYUID 10 3 300] Moved\r\n",
+                "* 1 EXPUNGE\r\n",
+                "* 2 EXPUNGE\r\n",
+                "A001 OK MOVE completed\r\n"
+            ]
         )
-        #expect(result == nil)
+
+        let copyUID = try #require(result)
+        #expect(copyUID.destinationUIDValidity == UIDValidity(10))
+        #expect(copyUID.mapping.map(\.source.value) == [3])
+        #expect(copyUID.mapping.map(\.destination.value) == [300])
+    }
+
+    @Test
+    func testMoveAcceptsMatchingUntaggedAndTaggedCopyUID() async throws {
+        let result = try await executeMove(
+            responses: [
+                "* OK [COPYUID 10 3 300] Moved\r\n",
+                "A001 OK [COPYUID 10 3 300] MOVE completed\r\n"
+            ]
+        )
+
+        let copyUID = try #require(result)
+        #expect(copyUID.mapping.map(\.destination.value) == [300])
+    }
+
+    @Test
+    func testMoveRejectsConflictingUntaggedAndTaggedCopyUID() async {
+        await expectMalformedCopyUID {
+            try await executeMove(
+                responses: [
+                    "* OK [COPYUID 10 3 300] Moved\r\n",
+                    "A001 OK [COPYUID 10 3 301] MOVE completed\r\n"
+                ]
+            )
+        }
+    }
+
+    @Test
+    func testMoveMalformedUntaggedCopyUIDThrowsOnlyAfterTaggedOK() async {
+        await expectMalformedCopyUID {
+            try await executeMove(
+                responses: [
+                    "* OK [COPYUID 1 1:2 200] Moved\r\n",
+                    "* 1 EXPUNGE\r\n",
+                    "A001 OK MOVE completed\r\n"
+                ]
+            )
+        }
+    }
+
+    @Test
+    func testMoveTaggedFailureWinsOverMalformedUntaggedCopyUID() async {
+        do {
+            _ = try await executeMove(
+                responses: [
+                    "* OK [COPYUID 1 1:2 200] Moved\r\n",
+                    "A001 NO MOVE denied\r\n"
+                ]
+            )
+            Issue.record("Expected tagged NO to throw moveFailed")
+        } catch let error as IMAPError {
+            guard case .moveFailed = error else {
+                Issue.record("Expected moveFailed, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Expected IMAPError.moveFailed, got \(error)")
+        }
     }
 
     @Test
@@ -209,5 +286,21 @@ struct CopyUIDTests {
         }
 
         return try await promise.futureResult.get()
+    }
+
+    private func expectMalformedCopyUID(
+        _ operation: () async throws -> CopyUID?
+    ) async {
+        do {
+            _ = try await operation()
+            Issue.record("Expected malformedCopyUIDAfterTaggedOK")
+        } catch let error as IMAPError {
+            guard case .malformedCopyUIDAfterTaggedOK = error else {
+                Issue.record("Expected malformedCopyUIDAfterTaggedOK, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Expected IMAPError.malformedCopyUIDAfterTaggedOK, got \(error)")
+        }
     }
 }
