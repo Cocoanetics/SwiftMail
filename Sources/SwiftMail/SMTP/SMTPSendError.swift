@@ -76,6 +76,21 @@ public struct SMTPSendError: Error, Sendable, Equatable {
         case ambiguous
     }
 
+    /// The submission operation whose timeout budget expired.
+    public enum TimeoutStage: Sendable, Equatable {
+        /// The client timed out while writing an SMTP command.
+        case commandWrite
+
+        /// The client timed out while awaiting an SMTP command reply.
+        case commandResponse
+
+        /// The client timed out while uploading one message-content buffer.
+        case contentUpload
+
+        /// The client timed out while awaiting the final reply after DATA.
+        case contentResponse
+    }
+
     /// Why the submission failed.
     public enum Reason: Sendable, Equatable {
         /// The server answered with an explicit final reply that does not
@@ -85,8 +100,8 @@ public struct SMTPSendError: Error, Sendable, Equatable {
         /// The surrounding task was cancelled.
         case cancelled
 
-        /// No reply arrived within the command timeout.
-        case timedOut
+        /// One submission operation exceeded its stage-specific timeout.
+        case timedOut(TimeoutStage)
 
         /// The connection closed (EOF or already-closed channel) before a
         /// final reply arrived.
@@ -180,8 +195,17 @@ extension SMTPSendError: CustomStringConvertible {
                 text += ": server replied \(response.code) \(response.message)"
             case .cancelled:
                 text += ": cancelled"
-            case .timedOut:
-                text += ": timed out waiting for the server's reply"
+            case .timedOut(let stage):
+                switch stage {
+                    case .commandWrite:
+                        text += ": timed out writing the SMTP command"
+                    case .commandResponse:
+                        text += ": timed out waiting for the server's reply"
+                    case .contentUpload:
+                        text += ": timed out uploading message content"
+                    case .contentResponse:
+                        text += ": timed out waiting for the final server reply"
+                }
             case .connectionLost:
                 text += ": connection lost"
             case .transport(let diagnostic):
@@ -228,9 +252,11 @@ extension SMTPSendError.Acceptance: CustomStringConvertible {
 
 // MARK: - Internal classification
 
-/// Marker failure used by the submission executor's response timeout so the
-/// classifier can identify a timed-out dialogue without matching error strings.
-struct SMTPSubmissionTimeoutError: Error {}
+/// Marker failure used by the submission executor so the classifier can
+/// preserve which timeout budget expired without matching error strings.
+struct SMTPSubmissionTimeoutError: Error {
+    let stage: SMTPSendError.TimeoutStage
+}
 
 extension SMTPSendError.Reason {
     /// Derive the reason from an error surfaced by the submission dialogue.
@@ -239,8 +265,8 @@ extension SMTPSendError.Reason {
             self = .reply(response)
         } else if error is CancellationError {
             self = .cancelled
-        } else if error is SMTPSubmissionTimeoutError {
-            self = .timedOut
+        } else if let timeout = error as? SMTPSubmissionTimeoutError {
+            self = .timedOut(timeout.stage)
         } else if case SMTPError.connectionFailed = error {
             // Within the submission dialogue this only arises from the channel
             // going away (BaseSMTPHandler.channelInactive or a vanished channel).

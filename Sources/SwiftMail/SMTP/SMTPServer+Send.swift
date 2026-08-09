@@ -239,7 +239,9 @@ extension SMTPServer {
             let response = try await executeSubmissionCommand(
                 SendContentCommand(data: contentData),
                 writeTimeout: submissionTimeouts.contentUpload,
-                responseTimeout: submissionTimeouts.contentResponse
+                responseTimeout: submissionTimeouts.contentResponse,
+                writeTimeoutStage: .contentUpload,
+                responseTimeoutStage: .contentResponse
             )
             return SMTPSendResult(response: response)
         } catch {

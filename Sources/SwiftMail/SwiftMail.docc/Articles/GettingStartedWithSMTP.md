@@ -123,6 +123,10 @@ the dialogue reached, what is known about the server's
 ``SMTPSendError/acceptance-swift.property`` of the message, the explicit
 server ``SMTPSendError/response`` when one was received, and the
 ``SMTPSendError/rejectedRecipient`` when a `RCPT TO` was refused.
+When the reason is `timedOut(let stage)`, the stage distinguishes a stalled
+SMTP command write, a command-response wait, a message-content upload buffer,
+and the final response after the DATA terminator. This lets diagnostics identify
+which configurable timeout budget expired without parsing description strings.
 
 ## Next Steps
 

@@ -978,8 +978,10 @@ struct SMTPTests {
     func testContentPhaseTransportClassification() {
         struct OpaqueTLSError: Error {}
 
-        let timedOut = SMTPSendError.classifyingPostContentDispatch(SMTPSubmissionTimeoutError())
-        #expect(timedOut.reason == .timedOut)
+        let timedOut = SMTPSendError.classifyingPostContentDispatch(
+            SMTPSubmissionTimeoutError(stage: .contentUpload)
+        )
+        #expect(timedOut.reason == .timedOut(.contentUpload))
         #expect(timedOut.acceptance == .ambiguous)
         #expect(timedOut.retryDisposition == .unsafeToRetry)
 
@@ -1043,12 +1045,12 @@ struct SMTPTests {
 
         // A RCPT TO timeout is not a rejection of that recipient.
         let recipientTimeout = SMTPSendError.classifyingPreContent(
-            SMTPSubmissionTimeoutError(),
+            SMTPSubmissionTimeoutError(stage: .commandResponse),
             phase: .rcptTo,
             recipient: recipient
         )
         #expect(recipientTimeout.rejectedRecipient == nil)
-        #expect(recipientTimeout.reason == .timedOut)
+        #expect(recipientTimeout.reason == .timedOut(.commandResponse))
         #expect(recipientTimeout.acceptance == .notAccepted)
         #expect(recipientTimeout.retryDisposition == .retryable)
 
@@ -1120,7 +1122,7 @@ struct SMTPTests {
         #expect(outboxAction(for: SMTPSendError(
             phase: .content,
             acceptance: .ambiguous,
-            reason: .timedOut
+            reason: .timedOut(.contentResponse)
         )) == .holdForManualReview)
         #expect(outboxAction(for: SMTPSendError(
             phase: .content,
@@ -1145,6 +1147,20 @@ struct SMTPTests {
         let ambiguous = SMTPSendError(phase: .content, acceptance: .ambiguous, reason: .connectionLost)
         #expect(ambiguous.description.contains("connection lost"))
         #expect(ambiguous.description.contains("acceptance unknown"))
+
+        let uploadTimeout = SMTPSendError(
+            phase: .content,
+            acceptance: .ambiguous,
+            reason: .timedOut(.contentUpload)
+        )
+        #expect(uploadTimeout.description.contains("uploading message content"))
+
+        let responseTimeout = SMTPSendError(
+            phase: .content,
+            acceptance: .ambiguous,
+            reason: .timedOut(.contentResponse)
+        )
+        #expect(responseTimeout.description.contains("final server reply"))
     }
 
     @Test
@@ -1312,7 +1328,7 @@ struct SMTPTests {
             #expect(server.receivedContentMessages.count == 1)
             #expect(sendError?.phase == .content)
             #expect(sendError?.acceptance == .ambiguous)
-            #expect(sendError?.reason == .timedOut)
+            #expect(sendError?.reason == .timedOut(.contentResponse))
             #expect(sendError?.retryDisposition == .unsafeToRetry)
             let hasChannel = await client.hasChannelForTesting
             #expect(!hasChannel)
@@ -1360,9 +1376,35 @@ struct SMTPTests {
             }
             #expect(error?.phase == .content)
             #expect(error?.acceptance == .ambiguous)
-            #expect(error?.reason == .timedOut)
+            #expect(error?.reason == .timedOut(.contentUpload))
             #expect(error?.retryDisposition == .unsafeToRetry)
             #expect(server.receivedContentMessages.isEmpty)
+        }
+    }
+
+    @Test
+    func testContentUploadTimeoutResetsAfterEachProgressingBuffer() async throws {
+        var script = SMTPServerScript()
+        script.contentReadDelay = 0.02
+        script.receiveBufferBytes = 65_536
+        let timeouts = SMTPSubmissionTimeouts(
+            contentUpload: 0.25,
+            contentResponse: 2
+        )
+        var rawMessage = Data("Subject: Progressing upload\r\n\r\n".utf8)
+        rawMessage.append(Data(repeating: 0x41, count: 8 * 1_024 * 1_024))
+
+        try await withScriptedServer(script, submissionTimeouts: timeouts) { server, client in
+            let startedAt = Date()
+            let result = try await client.sendRawMessage(
+                rawMessage,
+                from: EmailAddress(address: "sender@example.com"),
+                to: [EmailAddress(address: "recipient@example.com")]
+            )
+
+            #expect(Date().timeIntervalSince(startedAt) > timeouts.contentUpload)
+            #expect(result.response.code == 250)
+            #expect(server.receivedContentMessages.count == 1)
         }
     }
 

@@ -20,6 +20,10 @@ private final class SMTPSubmissionWriteResolution: @unchecked Sendable {
 }
 
 extension SMTPServer {
+    /// Keep DATA writes bounded so RFC 5321's per-buffer upload timeout grows
+    /// naturally with message size instead of timing the entire message.
+    static let submissionDataBufferBytes = 64 * 1_024
+
     /// Execute one command of the submission dialogue.
     ///
     /// Differs from ``executeCommand(_:)`` in three ways that the outcome
@@ -38,7 +42,9 @@ extension SMTPServer {
     func executeSubmissionCommand<CommandType: SMTPCommand>(
         _ command: CommandType,
         writeTimeout: TimeInterval,
-        responseTimeout: TimeInterval
+        responseTimeout: TimeInterval,
+        writeTimeoutStage: SMTPSendError.TimeoutStage = .commandWrite,
+        responseTimeoutStage: SMTPSendError.TimeoutStage = .commandResponse
     ) async throws -> CommandType.ResultType {
         guard let channel = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
@@ -54,14 +60,14 @@ extension SMTPServer {
         do {
             try await channel.pipeline.addHandler(handler).get()
 
-            // Send the command to the server as raw bytes + CRLF
-            var buffer = channel.allocator.buffer(capacity: commandData.count + 2)
-            buffer.writeBytes(commandData)
-            buffer.writeBytes([0x0D, 0x0A]) // CRLF
-            try await flushSubmissionBuffer(
-                buffer,
+            // Send the command as bounded buffers. Each successful flush
+            // advances progress and starts a fresh RFC 5321 upload budget for
+            // the next buffer instead of timing one monolithic DATA write.
+            try await flushSubmissionData(
+                commandData,
                 through: channel,
-                timeout: writeTimeout
+                timeout: writeTimeout,
+                timeoutStage: writeTimeoutStage
             )
 
             // Start the response budget only after the command bytes have
@@ -70,7 +76,7 @@ extension SMTPServer {
             let responseTimeoutTask = channel.eventLoop.scheduleTask(
                 in: Self.nioTimeAmount(seconds: responseTimeout)
             ) {
-                resultPromise.fail(SMTPSubmissionTimeoutError())
+                resultPromise.fail(SMTPSubmissionTimeoutError(stage: responseTimeoutStage))
             }
             defer { responseTimeoutTask.cancel() }
 
@@ -89,10 +95,47 @@ extension SMTPServer {
         }
     }
 
+    private func flushSubmissionData(
+        _ data: Data,
+        through channel: Channel,
+        timeout: TimeInterval,
+        timeoutStage: SMTPSendError.TimeoutStage
+    ) async throws {
+        var index = data.startIndex
+
+        repeat {
+            try Task.checkCancellation()
+
+            let remaining = data.distance(from: index, to: data.endIndex)
+            let contentCount = min(Self.submissionDataBufferBytes, remaining)
+            let nextIndex = data.index(index, offsetBy: contentCount)
+            let isFinalBuffer = nextIndex == data.endIndex
+
+            var buffer = channel.allocator.buffer(
+                capacity: contentCount + (isFinalBuffer ? 2 : 0)
+            )
+            if contentCount > 0 {
+                buffer.writeBytes(data[index..<nextIndex])
+            }
+            if isFinalBuffer {
+                buffer.writeBytes([0x0D, 0x0A]) // CRLF
+            }
+
+            try await flushSubmissionBuffer(
+                buffer,
+                through: channel,
+                timeout: timeout,
+                timeoutStage: timeoutStage
+            )
+            index = nextIndex
+        } while index != data.endIndex
+    }
+
     private func flushSubmissionBuffer(
         _ buffer: ByteBuffer,
         through channel: Channel,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        timeoutStage: SMTPSendError.TimeoutStage
     ) async throws {
         let resolution = SMTPSubmissionWriteResolution()
         let completionPromise = channel.eventLoop.makePromise(of: Void.self)
@@ -100,7 +143,7 @@ extension SMTPServer {
             in: Self.nioTimeAmount(seconds: timeout)
         ) {
             if resolution.claim() {
-                completionPromise.fail(SMTPSubmissionTimeoutError())
+                completionPromise.fail(SMTPSubmissionTimeoutError(stage: timeoutStage))
             }
         }
 
