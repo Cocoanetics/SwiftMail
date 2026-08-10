@@ -288,12 +288,10 @@ public actor IMAPServer {
         return .plainText
     }
 
-    #if DEBUG
     /// Test-only access to the response buffer limit configured on the primary connection.
     var primaryResponseBufferLimitForTesting: Int {
         primaryConnection.responseBufferLimit
     }
-    #endif
 
     deinit {
         // Same non-blocking pattern as SMTPServer.deinit. The callback form needs
