@@ -36,8 +36,8 @@ extension CopyUID {
     internal init(nio data: NIOIMAPCore.ResponseCodeCopy) throws {
         let validity = UIDValidity(nio: data.destinationUIDValidity)
 
-        let sourceUIDs = try Self.expand(data.sourceUIDs)
-        let destinationUIDs = try Self.expand(data.destinationUIDs)
+        let sourceUIDs = try Self.expand(data.sourceUIDs, role: "source")
+        let destinationUIDs = try Self.expand(data.destinationUIDs, role: "destination")
 
         guard sourceUIDs.count == destinationUIDs.count else {
             throw IMAPError.commandFailed(
@@ -51,8 +51,12 @@ extension CopyUID {
 
     private static let maxExpandedUIDs = 1_000_000
 
-    private static func expand(_ ranges: [NIOIMAPCore.UIDRange]) throws -> [UID] {
+    private static func expand(
+        _ ranges: [NIOIMAPCore.UIDRange],
+        role: String
+    ) throws -> [UID] {
         var result: [UID] = []
+        var seen: Set<UInt32> = []
         for nioRange in ranges {
             let lower = nioRange.range.lowerBound.rawValue
             let upper = nioRange.range.upperBound.rawValue
@@ -66,6 +70,9 @@ extension CopyUID {
                 throw IMAPError.commandFailed("COPYUID expansion exceeds \(maxExpandedUIDs) UIDs")
             }
             for raw in lower...upper {
+                guard seen.insert(raw).inserted else {
+                    throw IMAPError.commandFailed("COPYUID contains duplicate \(role) UID \(raw)")
+                }
                 result.append(UID(raw))
             }
         }

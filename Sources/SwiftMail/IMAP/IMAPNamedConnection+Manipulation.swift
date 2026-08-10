@@ -48,15 +48,29 @@ extension IMAPNamedConnection {
         try await executeCommand(command)
     }
 
-    /// Move messages to another mailbox.
+    /// Move messages using the established MOVE-or-COPY+STORE+EXPUNGE policy.
+    @discardableResult
+    public func move<T: MessageIdentifier>(
+        messages identifierSet: MessageIdentifierSet<T>,
+        to destinationMailbox: String
+    ) async throws -> CopyUID? {
+        try await move(
+            messages: identifierSet,
+            to: destinationMailbox,
+            fallback: .copyStoreExpunge
+        )
+    }
+
+    /// Move messages to another mailbox with an explicit fallback policy.
     ///
-    /// The default retains the existing MOVE-or-COPY+STORE+EXPUNGE behavior. Pass
-    /// ``MoveFallbackPolicy/disabled`` to require MOVE without requiring UIDPLUS.
+    /// Pass ``MoveFallbackPolicy/disabled`` to require MOVE without requiring UIDPLUS.
     ///
     /// - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
     ///   or `nil` when the server omits `COPYUID`.
     /// - Throws: ``IMAPError/commandNotSupported(_:)`` before a manipulation command when
     ///   `fallback` is ``MoveFallbackPolicy/disabled`` and MOVE is not advertised; or
+    ///   ``IMAPError/moveFailedAfterPartialCompletion(copyUID:reason:)`` when a tagged failure
+    ///   follows a verified partial mapping, which callers must use to reconcile both mailboxes; or
     ///   ``IMAPError/malformedCopyUIDAfterTaggedOK(_:)`` after a successful command with
     ///   malformed or conflicting COPYUID evidence. A command that throws the latter error
     ///   completed and must not be resent.
@@ -64,8 +78,11 @@ extension IMAPNamedConnection {
     public func move<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>,
         to destinationMailbox: String,
-        fallback: MoveFallbackPolicy = .copyStoreExpunge
+        fallback: MoveFallbackPolicy
     ) async throws -> CopyUID? {
+        try await ensureAuthenticated()
+        let capabilities = self.capabilities
+
         if case .disabled = fallback {
             guard capabilities.containsMoveCapability else {
                 throw IMAPError.commandNotSupported("MOVE command not supported by server")
@@ -84,7 +101,20 @@ extension IMAPNamedConnection {
         return copyUID
     }
 
-    /// Move a single message to another mailbox.
+    /// Move one message using the established MOVE-or-COPY+STORE+EXPUNGE policy.
+    @discardableResult
+    public func move<T: MessageIdentifier>(
+        message identifier: T,
+        to destinationMailbox: String
+    ) async throws -> CopyUID? {
+        try await move(
+            message: identifier,
+            to: destinationMailbox,
+            fallback: .copyStoreExpunge
+        )
+    }
+
+    /// Move a single message to another mailbox with an explicit fallback policy.
     ///
     /// - Returns: A ``CopyUID`` with the server-verified source-to-destination UID mapping,
     ///   or `nil` when the server omits `COPYUID`.
@@ -92,7 +122,7 @@ extension IMAPNamedConnection {
     public func move<T: MessageIdentifier>(
         message identifier: T,
         to destinationMailbox: String,
-        fallback: MoveFallbackPolicy = .copyStoreExpunge
+        fallback: MoveFallbackPolicy
     ) async throws -> CopyUID? {
         let set = MessageIdentifierSet<T>(identifier)
         return try await move(messages: set, to: destinationMailbox, fallback: fallback)

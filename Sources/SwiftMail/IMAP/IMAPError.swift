@@ -22,6 +22,9 @@ public enum IMAPError: Error {
     case storeFailed(String)
     case expungeFailed(String)
     case moveFailed(String)
+    /// MOVE completed for the verified subset in `copyUID` before ending with tagged NO/BAD.
+    /// Callers should reconcile both mailboxes from this mapping and must not retry blindly.
+    case moveFailedAfterPartialCompletion(copyUID: CopyUID, reason: String)
     /// The command completed with tagged OK, but its present COPYUID evidence was malformed
     /// or internally conflicting. The provider operation completed; callers must not resend it.
     case malformedCopyUIDAfterTaggedOK(String)
@@ -72,6 +75,8 @@ extension IMAPError: CustomStringConvertible {
                 return "Expunge failed: \(reason)"
             case .moveFailed(let reason):
                 return "Move failed: \(reason)"
+            case .moveFailedAfterPartialCompletion(_, let reason):
+                return "Move partially completed before failing: \(reason)"
             case .malformedCopyUIDAfterTaggedOK(let reason):
                 return "Command completed but returned malformed COPYUID data: \(reason)"
             case .commandNotSupported(let reason):
@@ -128,6 +133,8 @@ extension IMAPError: LocalizedError {
                 return "Failed to expunge deleted messages: \(reason)"
             case .moveFailed(let reason):
                 return "Failed to move messages: \(reason)"
+            case .moveFailedAfterPartialCompletion(_, let reason):
+                return "The server moved a verified subset of messages before failing: \(reason)"
             case .malformedCopyUIDAfterTaggedOK(let reason):
                 return "The command completed, but its COPYUID mapping was invalid: \(reason)"
             case .commandNotSupported(let reason):
@@ -161,6 +168,10 @@ extension IMAPError: LocalizedError {
                 return "Verify your OAuth credentials or request a fresh access token."
             case .unsupportedAuthMechanism:
                 return "Check that your email provider supports XOAUTH2 for IMAP connections."
+            case .moveFailedAfterPartialCompletion:
+                return "Do not retry blindly. Reconcile both mailboxes using the verified COPYUID mapping."
+            case .malformedCopyUIDAfterTaggedOK:
+                return "Do not retry. The command completed; refresh the affected mailboxes before continuing."
             default:
                 return "Check the error details and try again."
         }

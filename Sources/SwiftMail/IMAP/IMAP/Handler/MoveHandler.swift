@@ -64,7 +64,20 @@ final class MoveHandler: BaseIMAPCommandHandler<CopyUID?>, IMAPCommandHandler, @
     }
 
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
-        failWithError(IMAPError.moveFailed(String(describing: response.state)))
+        let reason = String(describing: response.state)
+        let partialCopyUID = lock.withLock {
+            malformedCopyUIDReason == nil ? retainedCopyUID : nil
+        }
+        if let partialCopyUID {
+            failWithError(
+                IMAPError.moveFailedAfterPartialCompletion(
+                    copyUID: partialCopyUID,
+                    reason: reason
+                )
+            )
+        } else {
+            failWithError(IMAPError.moveFailed(reason))
+        }
     }
 }
 

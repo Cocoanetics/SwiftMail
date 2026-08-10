@@ -304,3 +304,54 @@ struct CopyUIDTests {
         }
     }
 }
+
+extension CopyUIDTests {
+    @Test(
+        "COPY and MOVE reject repeated COPYUID members",
+        arguments: [
+            "A001 OK [COPYUID 42 1,1 101,102] completed\r\n",
+            "A001 OK [COPYUID 42 1:2,2 101:103] completed\r\n",
+            "A001 OK [COPYUID 42 1,2 101,101] completed\r\n",
+            "A001 OK [COPYUID 42 1:3 101:102,102] completed\r\n"
+        ]
+    )
+    func testRepeatedCopyUIDMembersAreRejected(_ response: String) async {
+        await expectMalformedCopyUID {
+            try await executeCopy(responses: [response])
+        }
+        await expectMalformedCopyUID {
+            try await executeMove(responses: [response])
+        }
+    }
+
+    @Test
+    func testMoveTaggedFailurePreservesVerifiedPartialMapping() async {
+        do {
+            _ = try await executeMove(
+                responses: [
+                    "* OK [COPYUID 10 3:4 300:301] Partially moved\r\n",
+                    "A001 NO MOVE failed after partial completion\r\n"
+                ]
+            )
+            Issue.record("Expected moveFailedAfterPartialCompletion")
+        } catch let error as IMAPError {
+            guard case .moveFailedAfterPartialCompletion(let copyUID, let reason) = error else {
+                Issue.record("Expected moveFailedAfterPartialCompletion, got \(error)")
+                return
+            }
+            #expect(copyUID.destinationUIDValidity == UIDValidity(10))
+            #expect(copyUID.mapping.map(\.source.value) == [3, 4])
+            #expect(copyUID.mapping.map(\.destination.value) == [300, 301])
+            #expect(reason.contains("MOVE failed after partial completion"))
+            #expect(error.recoverySuggestion?.contains("Do not retry blindly") == true)
+        } catch {
+            Issue.record("Expected IMAPError.moveFailedAfterPartialCompletion, got \(error)")
+        }
+    }
+
+    @Test
+    func testMalformedCopyUIDRecoveryDoesNotSuggestRetry() {
+        let error = IMAPError.malformedCopyUIDAfterTaggedOK("duplicate source UID")
+        #expect(error.recoverySuggestion?.contains("Do not retry") == true)
+    }
+}

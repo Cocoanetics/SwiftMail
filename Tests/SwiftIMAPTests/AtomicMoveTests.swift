@@ -102,6 +102,61 @@ import Testing
             }
         }
 
+        @Test("Original MOVE overloads remain usable as function values")
+        func originalMoveOverloadsRemainFunctionValues() async throws {
+            try await withServer(
+                capabilities: ["IMAP4rev1", "AUTH=PLAIN", "MOVE", "UIDPLUS"]
+            ) { server, _ in
+                let named = try await server.connection(named: "function-values")
+
+                let serverMessages: (SwiftMail.UIDSet, String) async throws -> CopyUID? =
+                    server.move(messages:to:)
+                let serverMessage: (SwiftMail.UID, String) async throws -> CopyUID? =
+                    server.move(message:to:)
+                let serverHeader: (MessageInfo, String) async throws -> CopyUID? =
+                    server.move(header:to:)
+                let namedMessages: (SwiftMail.UIDSet, String) async throws -> CopyUID? =
+                    named.move(messages:to:)
+                let namedMessage: (SwiftMail.UID, String) async throws -> CopyUID? =
+                    named.move(message:to:)
+
+                _ = (serverMessages, serverMessage, serverHeader, namedMessages, namedMessage)
+            }
+        }
+
+        @Test("MOVE capability is checked after server and named reauthentication")
+        func moveCapabilityIsCheckedAfterReauthentication() async throws {
+            try await withServer(
+                capabilities: ["IMAP4rev1", "AUTH=PLAIN", "MOVE"]
+            ) { server, testServer in
+                let named = try await server.connection(named: "reauthenticated-move")
+                _ = try await named.selectMailbox("INBOX")
+
+                try await server.primaryConnection.disconnect()
+                try await named.disconnect()
+
+                await expectMoveAttemptAfterReauthentication {
+                    try await server.move(
+                        messages: UIDSet(UID(1)),
+                        to: "Archive",
+                        fallback: .disabled
+                    )
+                }
+                await expectMoveAttemptAfterReauthentication {
+                    try await named.move(
+                        messages: UIDSet(UID(1)),
+                        to: "Archive",
+                        fallback: .disabled
+                    )
+                }
+
+                let moveCommands = testServer.commandLog
+                    .map { $0.uppercased() }
+                    .filter { $0.contains(" UID MOVE ") }
+                #expect(moveCommands.count == 2)
+            }
+        }
+
         private func withServer(
             capabilities: [String],
             body: (SwiftMail.IMAPServer, IMAPTestServer) async throws -> Void
@@ -141,6 +196,22 @@ import Testing
 
         private func assertOnlyAtomicMoveWasEmitted(_ commands: [String]) {
             assertOnlyMovesWereEmitted(commands, count: 1)
+        }
+
+        private func expectMoveAttemptAfterReauthentication(
+            _ operation: () async throws -> CopyUID?
+        ) async {
+            do {
+                _ = try await operation()
+                Issue.record("Expected MOVE to fail because reconnect does not restore SELECT")
+            } catch let error as IMAPError {
+                guard case .moveFailed = error else {
+                    Issue.record("Expected moveFailed after authenticated MOVE, got \(error)")
+                    return
+                }
+            } catch {
+                Issue.record("Expected IMAPError.moveFailed, got \(error)")
+            }
         }
 
         private func assertOnlyMovesWereEmitted(_ commands: [String], count: Int) {

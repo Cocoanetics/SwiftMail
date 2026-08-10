@@ -5,13 +5,25 @@ import NIOIMAPCore
 // MARK: - Message Manipulation Commands
 
 extension IMAPServer {
+    /// Moves messages using the established MOVE-or-COPY+STORE+EXPUNGE policy.
+    @discardableResult
+    public func move<T: MessageIdentifier>(
+        messages identifierSet: MessageIdentifierSet<T>,
+        to destinationMailbox: String
+    ) async throws -> CopyUID? {
+        try await move(
+            messages: identifierSet,
+            to: destinationMailbox,
+            fallback: .copyStoreExpunge
+        )
+    }
+
     /**
      Moves messages to another mailbox.
 
-     By default this method attempts to use the MOVE extension and retains its
-     existing COPY+STORE+EXPUNGE fallback. Pass ``MoveFallbackPolicy/disabled``
-     to require MOVE and refuse before emitting a manipulation command when the
-     extension is unavailable. The disabled policy does not require UIDPLUS.
+     Pass ``MoveFallbackPolicy/disabled`` to require MOVE and refuse before emitting
+     a manipulation command when the extension is unavailable. The disabled policy
+     does not require UIDPLUS.
 
      The generic type T determines the identifier type:
      - Use `SequenceNumber` for temporary message numbers that may change
@@ -25,6 +37,8 @@ extension IMAPServer {
        or `nil` when the server omits `COPYUID` (e.g. the server does not advertise UIDPLUS).
      - Throws:
      - `IMAPError.moveFailed` if the move operation fails
+     - ``IMAPError/moveFailedAfterPartialCompletion(copyUID:reason:)`` when a tagged failure
+       follows a verified partial mapping; reconcile both mailboxes before deciding whether to retry
      - `IMAPError.emptyIdentifierSet` if the identifier set is empty
      - ``IMAPError/commandNotSupported(_:)`` before a manipulation command when `fallback`
        is ``MoveFallbackPolicy/disabled`` and MOVE is not advertised
@@ -36,8 +50,11 @@ extension IMAPServer {
     public func move<T: MessageIdentifier>(
         messages identifierSet: MessageIdentifierSet<T>,
         to destinationMailbox: String,
-        fallback: MoveFallbackPolicy = .copyStoreExpunge
+        fallback: MoveFallbackPolicy
     ) async throws -> CopyUID? {
+        try await ensurePrimaryConnectionAuthenticated()
+        let capabilities = self.capabilities
+
         if case .disabled = fallback {
             guard capabilities.containsMoveCapability else {
                 throw IMAPError.commandNotSupported("MOVE command not supported by server")
@@ -57,6 +74,19 @@ extension IMAPServer {
         return copyUID
     }
 
+    /// Moves one message using the established MOVE-or-COPY+STORE+EXPUNGE policy.
+    @discardableResult
+    public func move<T: MessageIdentifier>(
+        message identifier: T,
+        to destinationMailbox: String
+    ) async throws -> CopyUID? {
+        try await move(
+            message: identifier,
+            to: destinationMailbox,
+            fallback: .copyStoreExpunge
+        )
+    }
+
     /**
      Move a single message from the current mailbox to another mailbox
      - Parameters:
@@ -71,10 +101,23 @@ extension IMAPServer {
     public func move<T: MessageIdentifier>(
         message identifier: T,
         to destinationMailbox: String,
-        fallback: MoveFallbackPolicy = .copyStoreExpunge
+        fallback: MoveFallbackPolicy
     ) async throws -> CopyUID? {
         let set = MessageIdentifierSet<T>(identifier)
         return try await move(messages: set, to: destinationMailbox, fallback: fallback)
+    }
+
+    /// Moves the message identified by `header` using the established fallback policy.
+    @discardableResult
+    public func move(
+        header: MessageInfo,
+        to destinationMailbox: String
+    ) async throws -> CopyUID? {
+        try await move(
+            header: header,
+            to: destinationMailbox,
+            fallback: .copyStoreExpunge
+        )
     }
 
     /**
@@ -91,7 +134,7 @@ extension IMAPServer {
     public func move(
         header: MessageInfo,
         to destinationMailbox: String,
-        fallback: MoveFallbackPolicy = .copyStoreExpunge
+        fallback: MoveFallbackPolicy
     ) async throws -> CopyUID? {
         if let uid = header.uid {
             return try await move(message: uid, to: destinationMailbox, fallback: fallback)
