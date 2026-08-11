@@ -12,7 +12,10 @@ import NIOConcurrencyHelpers
 /// Retains a valid `COPYUID` from either the untagged `OK` recommended before EXPUNGE
 /// responses or the final tagged `OK` (RFC 6851 §§3.3, 4.3). Returns `nil` only when
 /// the successful response contains no `COPYUID` evidence.
-final class MoveHandler: BaseIMAPCommandHandler<CopyUID?>, IMAPCommandHandler, @unchecked Sendable {
+final class MoveHandler:
+    BaseIMAPCommandHandler<CopyUID?>,
+    IMAPCommandHandler,
+    @unchecked Sendable {
     typealias ResultType = CopyUID?
 
     private var retainedCopyUID: CopyUID?
@@ -76,9 +79,10 @@ final class MoveHandler: BaseIMAPCommandHandler<CopyUID?>, IMAPCommandHandler, @
                 )
             )
         } else {
-            failWithError(IMAPError.moveFailed(reason))
+            failWithError(IMAPError.moveFailedAfterPossiblePartialCompletion(reason))
         }
     }
+
 }
 
 private extension MoveHandler {

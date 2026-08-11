@@ -46,6 +46,8 @@ final class IMAPTestServer {
     private let messages: [Message]
     private let advertisedCapabilities: [String]
     private let loginResponseDelay: TimeInterval
+    private let rejectedUIDSubcommand: String?
+    private let copyUIDSourceOverride: String?
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
     private var commandLogStorage: [String] = []
@@ -60,6 +62,8 @@ final class IMAPTestServer {
         username: String = "testuser",
         password: String = "testpass",
         loginResponseDelay: TimeInterval = 0,
+        rejectedUIDSubcommand: String? = nil,
+        copyUIDSourceOverride: String? = nil,
         advertisedCapabilities: [String] = [
             "IMAP4rev1", "AUTH=PLAIN", "LITERAL+", "ID", "NAMESPACE", "UIDPLUS", "IDLE"
         ],
@@ -70,6 +74,8 @@ final class IMAPTestServer {
         self.username = username
         self.password = password
         self.loginResponseDelay = loginResponseDelay
+        self.rejectedUIDSubcommand = rejectedUIDSubcommand?.uppercased()
+        self.copyUIDSourceOverride = copyUIDSourceOverride
         self.advertisedCapabilities = advertisedCapabilities
         self.messages = try Self.loadMaildir(maildirURL)
     }
@@ -458,6 +464,9 @@ final class IMAPTestServer {
             return "\(tag) BAD Missing UID subcommand\r\n"
         }
         let subargs = parts.count > 1 ? parts[1] : ""
+        if subcmd == rejectedUIDSubcommand {
+            return "\(tag) NO Injected UID \(subcmd) failure\r\n"
+        }
         switch subcmd {
             case "FETCH":
                 return handleFetch(tag: tag, args: subargs, uidMode: true)
@@ -471,14 +480,16 @@ final class IMAPTestServer {
                 let moveParts = subargs.split(separator: " ", maxSplits: 1).map(String.init)
                 guard moveParts.count == 2 else { return "\(tag) BAD Invalid UID MOVE\r\n" }
                 if advertisesCapability("UIDPLUS") {
-                    return "\(tag) OK [COPYUID 2 \(moveParts[0]) 101] UID MOVE completed\r\n"
+                    let sourceUIDs = copyUIDSourceOverride ?? moveParts[0]
+                    return "\(tag) OK [COPYUID 2 \(sourceUIDs) 101] UID MOVE completed\r\n"
                 }
                 return "\(tag) OK UID MOVE completed\r\n"
             case "COPY":
                 let copyParts = subargs.split(separator: " ", maxSplits: 1).map(String.init)
                 guard copyParts.count == 2 else { return "\(tag) BAD Invalid UID COPY\r\n" }
                 if advertisesCapability("UIDPLUS") {
-                    return "\(tag) OK [COPYUID 2 \(copyParts[0]) 101] UID COPY completed\r\n"
+                    let sourceUIDs = copyUIDSourceOverride ?? copyParts[0]
+                    return "\(tag) OK [COPYUID 2 \(sourceUIDs) 101] UID COPY completed\r\n"
                 }
                 return "\(tag) OK UID COPY completed\r\n"
             case "STORE":

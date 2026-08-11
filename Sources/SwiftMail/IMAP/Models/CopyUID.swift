@@ -7,7 +7,7 @@ import NIOIMAPCore
 /// successful `OK` response, this value carries the exact source-to-destination UID mapping
 /// in the order the server provided it. When `COPYUID` is absent — either because the server
 /// doesn't advertise UIDPLUS or chose not to include the code — the corresponding method
-/// returns `nil` instead. Malformed or conflicting evidence throws
+/// returns `nil` instead. Malformed, conflicting, or unverifiable evidence throws
 /// ``IMAPError/malformedCopyUIDAfterTaggedOK(_:)`` rather than being collapsed into absence.
 public struct CopyUID: Sendable {
     /// The UIDVALIDITY of the destination mailbox.
@@ -60,6 +60,15 @@ extension CopyUID {
         for nioRange in ranges {
             let lower = nioRange.range.lowerBound.rawValue
             let upper = nioRange.range.upperBound.rawValue
+            // NIOIMAPCore normalizes both wire `*` and numeric 4294967295 to `.max`.
+            // RFC 4315 forbids `*` in COPYUID, so fail closed on the ambiguous value rather
+            // than expose wildcard evidence as verified. This conservatively rejects the
+            // standards-valid numeric maximum until the parser preserves lexical provenance.
+            guard lower != UInt32.max, upper != UInt32.max else {
+                throw IMAPError.commandFailed(
+                    "COPYUID contains an indistinguishable wildcard or maximum \(role) UID"
+                )
+            }
             guard lower <= upper else {
                 throw IMAPError.commandFailed("COPYUID contains an invalid UID range")
             }
@@ -77,6 +86,21 @@ extension CopyUID {
             }
         }
         return result
+    }
+
+    func sourceValidationFailure<T: MessageIdentifier>(
+        for identifierSet: MessageIdentifierSet<T>
+    ) -> String? {
+        guard T.self == UID.self else { return nil }
+        // `UID.latest` encodes as unresolved `*`. Without the selected mailbox's highest UID,
+        // membership cannot be proven, so fail closed rather than expose unverified evidence.
+        guard !identifierSet.contains(T.latest) else {
+            return "COPYUID source UIDs cannot be verified against a wildcard request"
+        }
+        guard let unexpected = mapping.lazy.map(\.source).first(where: { source in
+            !identifierSet.contains(T(source.value))
+        }) else { return nil }
+        return "COPYUID contains unrequested source UID \(unexpected.value)"
     }
 
     func isEquivalent(to other: CopyUID) -> Bool {

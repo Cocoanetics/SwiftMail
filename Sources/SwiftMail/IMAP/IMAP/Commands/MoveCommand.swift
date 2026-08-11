@@ -23,6 +23,28 @@ struct MoveCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         }
     }
 
+    /// RFC 4315 forbids COPYUID from naming source UIDs outside the UID command's set.
+    func validate(copyUID: CopyUID?) throws -> CopyUID? {
+        guard let copyUID,
+              let reason = copyUID.sourceValidationFailure(for: identifierSet)
+        else {
+            return copyUID
+        }
+        throw IMAPError.malformedCopyUIDAfterTaggedOK(reason)
+    }
+
+    /// Never expose untrusted partial-failure evidence as a verified mapping.
+    func validate(error: IMAPError) -> IMAPError {
+        guard case .moveFailedAfterPartialCompletion(let copyUID, let reason) = error,
+              let validationFailure = copyUID.sourceValidationFailure(for: identifierSet)
+        else {
+            return error
+        }
+        return .moveFailedAfterPossiblePartialCompletion(
+            "MOVE returned unverified COPYUID evidence (\(validationFailure)): \(reason)"
+        )
+    }
+
     /// Convert to an IMAP tagged command
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server

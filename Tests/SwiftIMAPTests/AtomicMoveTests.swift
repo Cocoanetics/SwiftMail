@@ -159,6 +159,8 @@ import Testing
 
         private func withServer(
             capabilities: [String],
+            rejectedUIDSubcommand: String? = nil,
+            copyUIDSourceOverride: String? = nil,
             body: (SwiftMail.IMAPServer, IMAPTestServer) async throws -> Void
         ) async throws {
             let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -180,7 +182,10 @@ import Testing
             try #require(sample.data(using: .utf8)).write(to: curDir.appendingPathComponent("1.eml"))
 
             let testServer = try IMAPTestServer(
-                username: "u", password: "p", advertisedCapabilities: capabilities,
+                username: "u", password: "p",
+                rejectedUIDSubcommand: rejectedUIDSubcommand,
+                copyUIDSourceOverride: copyUIDSourceOverride,
+                advertisedCapabilities: capabilities,
                 maildirURL: maildir)
             try testServer.start()
             try await testServer.run {
@@ -203,14 +208,14 @@ import Testing
         ) async {
             do {
                 _ = try await operation()
-                Issue.record("Expected MOVE to fail because reconnect does not restore SELECT")
+                Issue.record("Expected MOVE to report possible partial completion")
             } catch let error as IMAPError {
-                guard case .moveFailed = error else {
-                    Issue.record("Expected moveFailed after authenticated MOVE, got \(error)")
+                guard case .moveFailedAfterPossiblePartialCompletion = error else {
+                    Issue.record("Expected possible partial completion after authenticated MOVE, got \(error)")
                     return
                 }
             } catch {
-                Issue.record("Expected IMAPError.moveFailed, got \(error)")
+                Issue.record("Expected IMAPError.moveFailedAfterPossiblePartialCompletion, got \(error)")
             }
         }
 
@@ -229,6 +234,148 @@ import Testing
             #expect(upper.filter { $0.contains(" UID COPY ") }.count == 1)
             #expect(upper.filter { $0.contains(" UID STORE ") }.count == 1)
             #expect(upper.filter { $0.contains(" EXPUNGE") }.count == 1)
+        }
+    }
+
+    extension AtomicMoveTests {
+        @Test("Lowercase UIDPLUS keeps UID MOVE atomic on both connection surfaces")
+        func lowercaseUIDPlusUsesMove() async throws {
+            try await withServer(
+                capabilities: ["IMAP4rev1", "AUTH=PLAIN", "move", "uidplus"]
+            ) { server, testServer in
+                #expect(await server.supportsUIDPlus)
+                _ = try await server.move(messages: UIDSet(UID(1)), to: "Archive")
+
+                let named = try await server.connection(named: "lowercase-uidplus-move")
+                #expect(await named.supportsUIDPlus)
+                _ = try await named.selectMailbox("INBOX")
+                _ = try await named.move(messages: UIDSet(UID(1)), to: "Archive")
+
+                assertOnlyMovesWereEmitted(testServer.commandLog, count: 2)
+            }
+        }
+
+        @Test("Lowercase UIDPLUS fallback uses targeted UID EXPUNGE")
+        func lowercaseUIDPlusUsesTargetedFallbackExpunge() async throws {
+            try await withServer(
+                capabilities: ["IMAP4rev1", "AUTH=PLAIN", "uidplus"]
+            ) { server, testServer in
+                _ = try await server.move(messages: UIDSet(UID(1)), to: "Archive")
+
+                let named = try await server.connection(named: "lowercase-uidplus-fallback")
+                _ = try await named.selectMailbox("INBOX")
+                _ = try await named.move(messages: UIDSet(UID(1)), to: "Archive")
+
+                let upper = testServer.commandLog.map { $0.uppercased() }
+                #expect(upper.filter { $0.contains(" UID COPY ") }.count == 2)
+                #expect(upper.filter { $0.contains(" UID STORE ") }.count == 2)
+                #expect(upper.filter { $0.contains(" UID EXPUNGE ") }.count == 2)
+                #expect(upper.allSatisfy { !$0.contains(" EXPUNGE") || $0.contains(" UID EXPUNGE ") })
+            }
+        }
+
+        @Test("Fallback failure preserves COPYUID on server and named connection")
+        func fallbackFailurePreservesCopyUID() async throws {
+            try await withServer(
+                capabilities: ["IMAP4rev1", "AUTH=PLAIN", "UIDPLUS"],
+                rejectedUIDSubcommand: "STORE"
+            ) { server, _ in
+                await expectVerifiedPartialFailure {
+                    try await server.move(messages: UIDSet(UID(1)), to: "Archive")
+                }
+
+                let named = try await server.connection(named: "partial-fallback")
+                _ = try await named.selectMailbox("INBOX")
+                await expectVerifiedPartialFailure {
+                    try await named.move(messages: UIDSet(UID(1)), to: "Archive")
+                }
+            }
+        }
+
+        @Test("Fallback failure without COPYUID is non-retryable")
+        func fallbackFailureWithoutCopyUIDIsNonRetryable() async throws {
+            try await withServer(
+                capabilities: ["IMAP4rev1", "AUTH=PLAIN"],
+                rejectedUIDSubcommand: "STORE"
+            ) { server, _ in
+                await expectPossiblePartialFailure {
+                    try await server.move(messages: UIDSet(UID(1)), to: "Archive")
+                }
+            }
+        }
+
+        @Test("COPYUID rejects source UIDs outside the requested command set")
+        func copyUIDRejectsUnrequestedSourceUIDs() async throws {
+            try await withServer(
+                capabilities: ["IMAP4rev1", "AUTH=PLAIN", "MOVE", "UIDPLUS"],
+                copyUIDSourceOverride: "2"
+            ) { server, _ in
+                await expectMalformedCompletion {
+                    try await server.copy(messages: UIDSet(UID(1)), to: "Archive")
+                }
+
+                let named = try await server.connection(named: "unrequested-copyuid")
+                _ = try await named.selectMailbox("INBOX")
+                await expectMalformedCompletion {
+                    try await named.move(
+                        messages: UIDSet(UID(1)),
+                        to: "Archive",
+                        fallback: .disabled
+                    )
+                }
+            }
+        }
+
+        private func expectVerifiedPartialFailure(
+            _ operation: () async throws -> CopyUID?
+        ) async {
+            do {
+                _ = try await operation()
+                Issue.record("Expected moveFallbackFailedAfterCopy")
+            } catch let error as IMAPError {
+                guard case .moveFallbackFailedAfterCopy(let copyUID, let reason) = error else {
+                    Issue.record("Expected verified fallback copy, got \(error)")
+                    return
+                }
+                #expect(copyUID.mapping.map(\.source.value) == [1])
+                #expect(copyUID.mapping.map(\.destination.value) == [101])
+                #expect(reason.contains("COPY completed before fallback failed"))
+            } catch {
+                Issue.record("Expected IMAPError.moveFallbackFailedAfterCopy, got \(error)")
+            }
+        }
+
+        private func expectPossiblePartialFailure(
+            _ operation: () async throws -> CopyUID?
+        ) async {
+            do {
+                _ = try await operation()
+                Issue.record("Expected moveFailedAfterPossiblePartialCompletion")
+            } catch let error as IMAPError {
+                guard case .moveFailedAfterPossiblePartialCompletion = error else {
+                    Issue.record("Expected possible partial completion, got \(error)")
+                    return
+                }
+                #expect(error.recoverySuggestion?.contains("Do not retry") == true)
+            } catch {
+                Issue.record("Expected possible-partial IMAPError, got \(error)")
+            }
+        }
+
+        private func expectMalformedCompletion(
+            _ operation: () async throws -> CopyUID?
+        ) async {
+            do {
+                _ = try await operation()
+                Issue.record("Expected malformedCopyUIDAfterTaggedOK")
+            } catch let error as IMAPError {
+                guard case .malformedCopyUIDAfterTaggedOK = error else {
+                    Issue.record("Expected malformed completion, got \(error)")
+                    return
+                }
+            } catch {
+                Issue.record("Expected malformed COPYUID IMAPError, got \(error)")
+            }
         }
     }
 #endif

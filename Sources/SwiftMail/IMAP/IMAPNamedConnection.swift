@@ -58,7 +58,7 @@ public actor IMAPNamedConnection {
 
     /// Whether the server advertised UIDPLUS for this connection.
     public var supportsUIDPlus: Bool {
-        capabilities.contains(.uidPlus)
+        capabilities.containsUIDPlusCapability
     }
 
     /// Whether the server advertised MOVE (RFC 6851) for this connection.

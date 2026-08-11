@@ -36,6 +36,16 @@ struct CopyCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         }
     }
 
+    /// RFC 4315 forbids COPYUID from naming source UIDs outside the UID command's set.
+    func validate(copyUID: CopyUID?) throws -> CopyUID? {
+        guard let copyUID,
+              let reason = copyUID.sourceValidationFailure(for: identifierSet)
+        else {
+            return copyUID
+        }
+        throw IMAPError.malformedCopyUIDAfterTaggedOK(reason)
+    }
+
     /// Convert to an IMAP tagged command
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server

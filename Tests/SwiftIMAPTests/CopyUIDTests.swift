@@ -191,29 +191,30 @@ struct CopyUIDTests {
                     "A001 NO MOVE denied\r\n"
                 ]
             )
-            Issue.record("Expected tagged NO to throw moveFailed")
+            Issue.record("Expected tagged NO to report possible partial completion")
         } catch let error as IMAPError {
-            guard case .moveFailed = error else {
-                Issue.record("Expected moveFailed, got \(error)")
+            guard case .moveFailedAfterPossiblePartialCompletion = error else {
+                Issue.record("Expected possible partial completion, got \(error)")
                 return
             }
         } catch {
-            Issue.record("Expected IMAPError.moveFailed, got \(error)")
+            Issue.record("Expected possible-partial IMAPError, got \(error)")
         }
     }
 
     @Test
-    func testMoveTaggedNOThrowsMoveFailed() async {
+    func testMoveTaggedNOReportsPossiblePartialCompletion() async {
         do {
             _ = try await executeMove(responses: ["A001 NO MOVE denied\r\n"])
-            Issue.record("Expected tagged NO to throw moveFailed")
+            Issue.record("Expected possible partial completion")
         } catch let error as IMAPError {
-            guard case .moveFailed = error else {
-                Issue.record("Expected moveFailed, got \(error)")
+            guard case .moveFailedAfterPossiblePartialCompletion = error else {
+                Issue.record("Expected possible partial completion, got \(error)")
                 return
             }
+            #expect(error.recoverySuggestion?.contains("Do not retry") == true)
         } catch {
-            Issue.record("Expected IMAPError.moveFailed, got \(error)")
+            Issue.record("Expected possible-partial IMAPError, got \(error)")
         }
     }
 
@@ -307,6 +308,34 @@ struct CopyUIDTests {
 
 extension CopyUIDTests {
     @Test(
+        "COPY and MOVE reject wildcard COPYUID members",
+        arguments: [
+            "A001 OK [COPYUID 42 * 101] completed\r\n",
+            "A001 OK [COPYUID 42 1 *] completed\r\n",
+            "A001 OK [COPYUID 42 1:* 101:102] completed\r\n"
+        ]
+    )
+    func testWildcardCopyUIDMembersAreRejected(_ response: String) async {
+        await expectMalformedCopyUID {
+            try await executeCopy(responses: [response])
+        }
+        await expectMalformedCopyUID {
+            try await executeMove(responses: [response])
+        }
+    }
+
+    @Test
+    func testNormalizedNumericMaximumIsConservativelyRejected() async {
+        let response = "A001 OK [COPYUID 42 4294967295 101] completed\r\n"
+        await expectMalformedCopyUID {
+            try await executeCopy(responses: [response])
+        }
+        await expectMalformedCopyUID {
+            try await executeMove(responses: [response])
+        }
+    }
+
+    @Test(
         "COPY and MOVE reject repeated COPYUID members",
         arguments: [
             "A001 OK [COPYUID 42 1,1 101,102] completed\r\n",
@@ -352,6 +381,12 @@ extension CopyUIDTests {
     @Test
     func testMalformedCopyUIDRecoveryDoesNotSuggestRetry() {
         let error = IMAPError.malformedCopyUIDAfterTaggedOK("duplicate source UID")
+        #expect(error.recoverySuggestion?.contains("Do not retry") == true)
+    }
+
+    @Test
+    func testLegacyMoveFailureRecoveryDoesNotSuggestRetry() {
+        let error = IMAPError.moveFailed("server rejected MOVE")
         #expect(error.recoverySuggestion?.contains("Do not retry") == true)
     }
 }

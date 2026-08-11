@@ -93,7 +93,7 @@ public actor IMAPServer {
 
     /// Whether the primary connection advertised UIDPLUS.
     public var supportsUIDPlus: Bool {
-        capabilities.contains(.uidPlus)
+        capabilities.containsUIDPlusCapability
     }
 
     /// Whether the primary connection advertised MOVE (RFC 6851).
