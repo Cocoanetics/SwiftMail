@@ -401,6 +401,8 @@ final class SMTPTestServer {
 
         var buffer = Data()
         var inDataMode = false
+        let contentTerminator = Data("\r\n.\r\n".utf8)
+        var contentTerminatorSearchOffset = 0
         let readBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 65536)
         defer { readBuf.deallocate() }
 
@@ -417,10 +419,23 @@ final class SMTPTestServer {
 
             while true {
                 if inDataMode {
-                    guard let terminatorRange = buffer.range(of: Data("\r\n.\r\n".utf8)) else { break }
+                    let searchStartOffset = min(contentTerminatorSearchOffset, buffer.count)
+                    let searchStart = buffer.index(buffer.startIndex, offsetBy: searchStartOffset)
+                    guard let terminatorRange = buffer.range(
+                        of: contentTerminator,
+                        options: [],
+                        in: searchStart..<buffer.endIndex
+                    ) else {
+                        // Only the last four bytes can begin a five-byte
+                        // terminator completed by the next socket read. Avoid
+                        // rescanning the entire growing message on every read.
+                        contentTerminatorSearchOffset = max(0, buffer.count - (contentTerminator.count - 1))
+                        break
+                    }
                     let content = Data(buffer[buffer.startIndex..<terminatorRange.lowerBound])
                     buffer = Data(buffer[terminatorRange.upperBound...])
                     inDataMode = false
+                    contentTerminatorSearchOffset = 0
                     recordContent(content)
 
                     switch nextContentAction() {
@@ -450,6 +465,9 @@ final class SMTPTestServer {
 
                     switch handleCommandLine(line, fd: fileDescriptor, inDataMode: &inDataMode) {
                         case .keepGoing:
+                            if inDataMode {
+                                contentTerminatorSearchOffset = 0
+                            }
                             continue
                         case .closeConnection:
                             return
