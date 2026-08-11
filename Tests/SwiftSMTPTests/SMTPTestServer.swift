@@ -21,7 +21,66 @@ final class SMTPTestReplyGate: @unchecked Sendable {
     }
 
     func wait() {
-        _ = semaphore.wait(timeout: .now() + 5)
+        let result = semaphore.wait(timeout: .now() + 5)
+        precondition(result == .success, "SMTP fake-server reply gate timed out before the test opened it")
+    }
+}
+
+/// Pauses the fake server exactly once after it has buffered the configured
+/// minimum amount of DATA content. Tests use this to apply deterministic
+/// backpressure before another public operation or cancellation is attempted.
+final class SMTPTestContentReadGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private let semaphore = DispatchSemaphore(value: 0)
+    private let minimumBytesBeforePause: Int
+    private var didPause = false
+    private var isOpen = false
+    private var pauseWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(minimumBytesBeforePause: Int = 0) {
+        precondition(minimumBytesBeforePause >= 0, "Content-read pause threshold cannot be negative")
+        self.minimumBytesBeforePause = minimumBytesBeforePause
+    }
+
+    func waitUntilPaused() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if didPause {
+                lock.unlock()
+                continuation.resume()
+                return
+            }
+            pauseWaiters.append(continuation)
+            lock.unlock()
+        }
+    }
+
+    func open() {
+        lock.lock()
+        isOpen = true
+        lock.unlock()
+        semaphore.signal()
+    }
+
+    func pauseOnce(receivedByteCount: Int) {
+        lock.lock()
+        guard !didPause, receivedByteCount >= minimumBytesBeforePause else {
+            lock.unlock()
+            return
+        }
+        didPause = true
+        let waiters = pauseWaiters
+        pauseWaiters.removeAll()
+        let shouldWait = !isOpen
+        lock.unlock()
+
+        for waiter in waiters {
+            waiter.resume()
+        }
+        if shouldWait {
+            let result = semaphore.wait(timeout: .now() + 5)
+            precondition(result == .success, "SMTP content-read gate timed out before the test opened it")
+        }
     }
 }
 
@@ -49,6 +108,7 @@ struct SMTPServerScript {
     var onRcptTo: [SMTPScriptAction] = [.reply("250 OK")]
     var onData: [SMTPScriptAction] = [.reply("354 End data with <CRLF>.<CRLF>")]
     var onContent: [SMTPScriptAction] = [.reply("250 2.0.0 OK queued as TEST42")]
+    var contentReadGate: SMTPTestContentReadGate?
     var contentReadDelay: TimeInterval = 0
     var receiveBufferBytes: Int32?
 }
@@ -345,6 +405,9 @@ final class SMTPTestServer {
         defer { readBuf.deallocate() }
 
         while true {
+            if inDataMode {
+                script.contentReadGate?.pauseOnce(receivedByteCount: buffer.count)
+            }
             if inDataMode && script.contentReadDelay > 0 {
                 Thread.sleep(forTimeInterval: script.contentReadDelay)
             }
@@ -421,6 +484,11 @@ final class SMTPTestServer {
 
         if upper.hasPrefix("MAIL FROM") {
             return apply(nextMailFromAction(), fd: fileDescriptor)
+        }
+
+        if upper.hasPrefix("AUTH PLAIN") {
+            sendLine(fd: fileDescriptor, "235 2.7.0 Authentication successful\r\n")
+            return .keepGoing
         }
 
         if upper.hasPrefix("RCPT TO") {

@@ -19,10 +19,17 @@ extension SMTPServer {
      */
     @discardableResult
     public func fetchCapabilities() async throws -> [String] {
+        let permit = try await operationGate.acquire()
+        defer { operationGate.release(permit) }
+        return try await fetchCapabilities(holding: permit)
+    }
+
+    @discardableResult
+    func fetchCapabilities(holding permit: SMTPOperationGate.Permit) async throws -> [String] {
         let command = EHLOCommand(hostname: ProcessInfo.processInfo.hostName)
 
         do {
-            let response = try await executeCommand(command)
+            let response = try await executeCommand(command, holding: permit)
 
             // Parse the capabilities from the raw response
             let capabilities = parseCapabilities(from: response)

@@ -21,17 +21,31 @@ private final class SMTPSubmissionWriteResolution: @unchecked Sendable {
 
 final class SMTPSubmissionContentDispatchState: @unchecked Sendable {
     private let lock = NIOLock()
-    private var dispatchedContent = false
+    private var dispatchedEndOfData = false
 
-    var hasDispatchedContent: Bool {
-        lock.withLock { dispatchedContent }
+    var hasDispatchedEndOfData: Bool {
+        lock.withLock { dispatchedEndOfData }
     }
 
-    func markContentDispatched() {
+    func markEndOfDataDispatched() {
         lock.withLock {
-            dispatchedContent = true
+            dispatchedEndOfData = true
         }
     }
+}
+
+private struct SMTPSubmissionWriteContext {
+    let channel: Channel
+    let permit: SMTPOperationGate.Permit
+    let timeout: TimeInterval
+    let timeoutStage: SMTPSendError.TimeoutStage
+    let contentDispatchState: SMTPSubmissionContentDispatchState?
+}
+
+struct SMTPSubmissionBufferPlan: Equatable, Sendable {
+    let offset: Int
+    let count: Int
+    let isFinal: Bool
 }
 
 extension SMTPServer {
@@ -41,7 +55,7 @@ extension SMTPServer {
 
     /// Execute one command of the submission dialogue.
     ///
-    /// Differs from ``executeCommand(_:)`` in three ways that the outcome
+    /// Differs from ``executeCommand(_:)`` in four ways that the outcome
     /// classification depends on:
     /// - errors are rethrown untouched (no re-wrapping into
     ///   `SMTPError.connectionFailed`), so the classifier sees original types;
@@ -56,12 +70,15 @@ extension SMTPServer {
     ///   caller then classifies the outcome and closes the connection.
     func executeSubmissionCommand<CommandType: SMTPCommand>(
         _ command: CommandType,
+        holding permit: SMTPOperationGate.Permit,
         writeTimeout: TimeInterval,
         responseTimeout: TimeInterval,
         writeTimeoutStage: SMTPSendError.TimeoutStage = .commandWrite,
         responseTimeoutStage: SMTPSendError.TimeoutStage = .commandResponse,
         contentDispatchState: SMTPSubmissionContentDispatchState? = nil
     ) async throws -> CommandType.ResultType {
+        precondition(operationGate.isHeld(permit), "SMTP submission command executed without owning the channel")
+
         guard let channel = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
         }
@@ -79,12 +96,16 @@ extension SMTPServer {
             // Send the command as bounded buffers. Each successful flush
             // advances progress and starts a fresh RFC 5321 upload budget for
             // the next buffer instead of timing one monolithic DATA write.
-            try await flushSubmissionData(
-                commandData,
-                through: channel,
+            let writeContext = SMTPSubmissionWriteContext(
+                channel: channel,
+                permit: permit,
                 timeout: writeTimeout,
                 timeoutStage: writeTimeoutStage,
                 contentDispatchState: contentDispatchState
+            )
+            try await flushSubmissionData(
+                commandData,
+                context: writeContext
             )
 
             // Start the response budget only after the command bytes have
@@ -114,63 +135,75 @@ extension SMTPServer {
 
     private func flushSubmissionData(
         _ data: Data,
-        through channel: Channel,
-        timeout: TimeInterval,
-        timeoutStage: SMTPSendError.TimeoutStage,
-        contentDispatchState: SMTPSubmissionContentDispatchState?
+        context: SMTPSubmissionWriteContext
     ) async throws {
-        var index = data.startIndex
-
-        repeat {
+        for plannedBuffer in Self.submissionBufferPlan(dataByteCount: data.count) {
             try Task.checkCancellation()
 
-            let remaining = data.distance(from: index, to: data.endIndex)
-            let contentCount = min(Self.submissionDataBufferBytes, remaining)
-            let nextIndex = data.index(index, offsetBy: contentCount)
-            let isFinalBuffer = nextIndex == data.endIndex
+            let lowerBound = data.index(data.startIndex, offsetBy: plannedBuffer.offset)
+            let upperBound = data.index(lowerBound, offsetBy: plannedBuffer.count)
 
-            var buffer = channel.allocator.buffer(
-                capacity: contentCount + (isFinalBuffer ? 2 : 0)
+            var buffer = context.channel.allocator.buffer(
+                capacity: plannedBuffer.count + (plannedBuffer.isFinal ? 2 : 0)
             )
-            if contentCount > 0 {
-                buffer.writeBytes(data[index..<nextIndex])
+            if plannedBuffer.count > 0 {
+                buffer.writeBytes(data[lowerBound..<upperBound])
             }
-            if isFinalBuffer {
+            if plannedBuffer.isFinal {
                 buffer.writeBytes([0x0D, 0x0A]) // CRLF
             }
 
             try await flushSubmissionBuffer(
                 buffer,
-                through: channel,
-                timeout: timeout,
-                timeoutStage: timeoutStage,
-                contentDispatchState: contentDispatchState
+                context: context,
+                dispatchesEndOfData: plannedBuffer.isFinal
             )
-            index = nextIndex
-        } while index != data.endIndex
+        }
+    }
+
+    static func submissionBufferPlan(dataByteCount: Int) -> [SMTPSubmissionBufferPlan] {
+        precondition(dataByteCount >= 0, "SMTP submission byte count cannot be negative")
+        var result: [SMTPSubmissionBufferPlan] = []
+        var offset = 0
+
+        repeat {
+            let count = min(submissionDataBufferBytes, dataByteCount - offset)
+            let nextOffset = offset + count
+            result.append(SMTPSubmissionBufferPlan(
+                offset: offset,
+                count: count,
+                isFinal: nextOffset == dataByteCount
+            ))
+            offset = nextOffset
+        } while offset != dataByteCount
+
+        return result
     }
 
     private func flushSubmissionBuffer(
         _ buffer: ByteBuffer,
-        through channel: Channel,
-        timeout: TimeInterval,
-        timeoutStage: SMTPSendError.TimeoutStage,
-        contentDispatchState: SMTPSubmissionContentDispatchState?
+        context: SMTPSubmissionWriteContext,
+        dispatchesEndOfData: Bool
     ) async throws {
+        precondition(operationGate.isHeld(context.permit), "SMTP buffer written without owning the channel")
         let resolution = SMTPSubmissionWriteResolution()
-        let completionPromise = channel.eventLoop.makePromise(of: Void.self)
-        let timeoutTask = channel.eventLoop.scheduleTask(
-            in: Self.nioTimeAmount(seconds: timeout)
+        let completionPromise = context.channel.eventLoop.makePromise(of: Void.self)
+        let timeoutTask = context.channel.eventLoop.scheduleTask(
+            in: Self.nioTimeAmount(seconds: context.timeout)
         ) {
             if resolution.claim() {
-                completionPromise.fail(SMTPSubmissionTimeoutError(stage: timeoutStage))
+                completionPromise.fail(SMTPSubmissionTimeoutError(stage: context.timeoutStage))
             }
         }
 
-        let writeFuture: EventLoopFuture<Void> = channel.writeAndFlush(buffer)
-        // Record only after the buffer has actually been handed to NIO. A
-        // cancellation caught before this call remains provably pre-content.
-        contentDispatchState?.markContentDispatched()
+        let writeFuture: EventLoopFuture<Void> = context.channel.writeAndFlush(buffer)
+        // Mark end-of-data only when the final buffer, including the completing
+        // CRLF, is handed to NIO. A prefix buffer may contain part of the
+        // terminator, but a failure before the final handoff is still provably
+        // pre-acceptance and remains safe to retry.
+        if dispatchesEndOfData {
+            context.contentDispatchState?.markEndOfDataDispatched()
+        }
         writeFuture.whenComplete { result in
             if resolution.claim() {
                 timeoutTask.cancel()

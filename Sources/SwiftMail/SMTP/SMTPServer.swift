@@ -74,8 +74,9 @@ public actor SMTPServer {
     /// Timeout budgets for the SMTP mail-submission dialogue.
     public let submissionTimeouts: SMTPSubmissionTimeouts
 
-    /// Serializes complete `MAIL FROM` through final-reply/cleanup transactions.
-    let submissionGate = SMTPSubmissionGate()
+    /// Serializes every operation that reads from, writes to, or mutates the
+    /// SMTP channel. The permit remains held across network awaits.
+    let operationGate = SMTPOperationGate()
 
     /** The event loop group for handling asynchronous operations */
     let group: EventLoopGroup
@@ -215,8 +216,11 @@ public actor SMTPServer {
      */
     @discardableResult
     func executeCommand<CommandType: SMTPCommand>(
-        _ command: CommandType
+        _ command: CommandType,
+        holding permit: SMTPOperationGate.Permit
     ) async throws -> CommandType.ResultType {
+        precondition(operationGate.isHeld(permit), "SMTP command executed without owning the channel")
+
         // Ensure we have a valid channel
         guard let channel = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")

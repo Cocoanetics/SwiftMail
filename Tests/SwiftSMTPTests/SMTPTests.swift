@@ -951,7 +951,7 @@ struct SMTPTests {
 
     @Test
     func testContentPhaseReplyClassification() {
-        let transient = SMTPSendError.classifyingPostContentDispatch(
+        let transient = SMTPSendError.classifyingPostEndOfDataDispatch(
             SMTPError.unexpectedResponse(SMTPResponse(code: 452, message: "452 4.2.2 Mailbox full"))
         )
         #expect(transient.phase == .content)
@@ -959,7 +959,7 @@ struct SMTPTests {
         #expect(transient.response?.code == 452)
         #expect(transient.retryDisposition == .retryable)
 
-        let permanent = SMTPSendError.classifyingPostContentDispatch(
+        let permanent = SMTPSendError.classifyingPostEndOfDataDispatch(
             SMTPError.unexpectedResponse(SMTPResponse(code: 554, message: "554 5.7.1 Rejected"))
         )
         #expect(permanent.acceptance == .rejectedPermanently)
@@ -967,7 +967,7 @@ struct SMTPTests {
 
         // A malformed or intermediate reply after the terminator proves nothing
         // about acceptance, so it must not be treated as a rejection.
-        let weird = SMTPSendError.classifyingPostContentDispatch(
+        let weird = SMTPSendError.classifyingPostEndOfDataDispatch(
             SMTPError.unexpectedResponse(SMTPResponse(code: 334, message: "334 unexpected"))
         )
         #expect(weird.acceptance == .ambiguous)
@@ -978,7 +978,7 @@ struct SMTPTests {
     func testContentPhaseTransportClassification() {
         struct OpaqueTLSError: Error {}
 
-        let timedOut = SMTPSendError.classifyingPostContentDispatch(
+        let timedOut = SMTPSendError.classifyingPostEndOfDataDispatch(
             SMTPSubmissionTimeoutError(stage: .contentUpload)
         )
         #expect(timedOut.reason == .timedOut)
@@ -986,29 +986,29 @@ struct SMTPTests {
         #expect(timedOut.acceptance == .ambiguous)
         #expect(timedOut.retryDisposition == .unsafeToRetry)
 
-        let eof = SMTPSendError.classifyingPostContentDispatch(
+        let eof = SMTPSendError.classifyingPostEndOfDataDispatch(
             SMTPError.connectionFailed("Connection closed")
         )
         #expect(eof.reason == .connectionLost)
         #expect(eof.acceptance == .ambiguous)
         #expect(eof.retryDisposition == .unsafeToRetry)
 
-        let cancelled = SMTPSendError.classifyingPostContentDispatch(CancellationError())
+        let cancelled = SMTPSendError.classifyingPostEndOfDataDispatch(CancellationError())
         #expect(cancelled.reason == .cancelled)
         #expect(cancelled.acceptance == .ambiguous)
         #expect(cancelled.retryDisposition == .unsafeToRetry)
 
-        let closedChannel = SMTPSendError.classifyingPostContentDispatch(ChannelError.ioOnClosedChannel)
+        let closedChannel = SMTPSendError.classifyingPostEndOfDataDispatch(ChannelError.ioOnClosedChannel)
         #expect(closedChannel.reason == .connectionLost)
         #expect(closedChannel.acceptance == .ambiguous)
 
-        let channelEOF = SMTPSendError.classifyingPostContentDispatch(ChannelError.eof)
+        let channelEOF = SMTPSendError.classifyingPostEndOfDataDispatch(ChannelError.eof)
         #expect(channelEOF.reason == .connectionLost)
 
-        let inputClosed = SMTPSendError.classifyingPostContentDispatch(ChannelError.inputClosed)
+        let inputClosed = SMTPSendError.classifyingPostEndOfDataDispatch(ChannelError.inputClosed)
         #expect(inputClosed.reason == .connectionLost)
 
-        let opaque = SMTPSendError.classifyingPostContentDispatch(OpaqueTLSError())
+        let opaque = SMTPSendError.classifyingPostEndOfDataDispatch(OpaqueTLSError())
         if case .transport = opaque.reason {
             // expected
         } else {
@@ -1019,10 +1019,10 @@ struct SMTPTests {
     }
 
     @Test
-    func testPreContentPhaseClassification() {
+    func testProvenNonAcceptancePhaseClassification() {
         let recipient = EmailAddress(address: "bob@example.com")
 
-        let mailFromRejected = SMTPSendError.classifyingPreContent(
+        let mailFromRejected = SMTPSendError.classifyingProvenNonAcceptance(
             SMTPError.unexpectedResponse(SMTPResponse(code: 451, message: "451 4.3.2 Try again")),
             phase: .mailFrom
         )
@@ -1032,7 +1032,7 @@ struct SMTPTests {
         #expect(mailFromRejected.retryDisposition == .retryable)
         #expect(mailFromRejected.rejectedRecipient == nil)
 
-        let recipientRejected = SMTPSendError.classifyingPreContent(
+        let recipientRejected = SMTPSendError.classifyingProvenNonAcceptance(
             SMTPError.unexpectedResponse(SMTPResponse(code: 550, message: "550 5.1.1 User unknown")),
             phase: .rcptTo,
             recipient: recipient
@@ -1045,7 +1045,7 @@ struct SMTPTests {
         #expect(recipientRejected.retryDisposition == .permanent)
 
         // A RCPT TO timeout is not a rejection of that recipient.
-        let recipientTimeout = SMTPSendError.classifyingPreContent(
+        let recipientTimeout = SMTPSendError.classifyingProvenNonAcceptance(
             SMTPSubmissionTimeoutError(stage: .commandResponse),
             phase: .rcptTo,
             recipient: recipient
@@ -1056,7 +1056,7 @@ struct SMTPTests {
         #expect(recipientTimeout.acceptance == .notAccepted)
         #expect(recipientTimeout.retryDisposition == .retryable)
 
-        let dataRejected = SMTPSendError.classifyingPreContent(
+        let dataRejected = SMTPSendError.classifyingProvenNonAcceptance(
             SMTPError.unexpectedResponse(SMTPResponse(code: 451, message: "451 4.3.2 Cannot accept now")),
             phase: .data
         )
@@ -1064,9 +1064,12 @@ struct SMTPTests {
         #expect(dataRejected.acceptance == .notAccepted)
         #expect(dataRejected.retryDisposition == .retryable)
 
-        // Cancellation caught immediately before the first content byte was
-        // written is the one provably-safe content-phase outcome.
-        let cancelledBeforeContent = SMTPSendError.classifyingPreContent(CancellationError(), phase: .content)
+        // Every content-phase failure before the end-of-data terminator is
+        // dispatched is a proven non-acceptance and remains safe to retry.
+        let cancelledBeforeContent = SMTPSendError.classifyingProvenNonAcceptance(
+            CancellationError(),
+            phase: .content
+        )
         #expect(cancelledBeforeContent.phase == .content)
         #expect(cancelledBeforeContent.acceptance == .notAccepted)
         #expect(cancelledBeforeContent.reason == .cancelled)
@@ -1077,7 +1080,7 @@ struct SMTPTests {
     func testCancellationBeforeFirstContentBufferRemainsSafeToRetry() {
         let sendError = SMTPSendError.classifyingContentFailure(
             CancellationError(),
-            contentWasDispatched: false
+            endOfDataWasDispatched: false
         )
         #expect(sendError.phase == .content)
         #expect(sendError.acceptance == .notAccepted)
@@ -1086,14 +1089,14 @@ struct SMTPTests {
     }
 
     @Test
-    func testSubmissionGateCancellationDoesNotLeakPermit() async throws {
-        let gate = SMTPSubmissionGate()
-        try await gate.acquire()
+    func testOperationGateCancellationDoesNotLeakPermit() async throws {
+        let gate = SMTPOperationGate()
+        let firstPermit = try await gate.acquire()
 
         let waiter = Task {
             try await gate.acquire()
         }
-        try await Task.sleep(nanoseconds: 10_000_000)
+        await gate.waitUntilOperationQueuedForTesting()
         waiter.cancel()
 
         if case .failure(let error) = await waiter.result {
@@ -1102,9 +1105,9 @@ struct SMTPTests {
             Issue.record("Expected the queued gate acquisition to be cancelled")
         }
 
-        gate.release()
-        try await gate.acquire()
-        gate.release()
+        gate.release(firstPermit)
+        let secondPermit = try await gate.acquire()
+        gate.release(secondPermit)
     }
 
     /// A consumer-style outbox policy built purely on typed fields — proving
@@ -1226,6 +1229,37 @@ struct SMTPTests {
         #expect(timeouts.contentResponse == 10 * 60)
     }
 
+    @Test
+    func testSubmissionBufferPlanPreservesTerminatorAcrossChunkBoundaries() {
+        let bufferBytes = SMTPServer.submissionDataBufferBytes
+        let contentByteCounts = [0, 1] + Array((bufferBytes - 3)...(bufferBytes + 3))
+        let terminator = Data([0x0D, 0x0A, 0x2E, 0x0D, 0x0A])
+
+        for contentByteCount in contentByteCounts {
+            let content = Data(repeating: 0x41, count: contentByteCount)
+            let commandData = SendContentCommand(data: content).toCommandData()
+            let plan = SMTPServer.submissionBufferPlan(dataByteCount: commandData.count)
+            var wireData = Data()
+
+            #expect(plan.filter(\.isFinal).count == 1)
+            #expect(plan.last?.isFinal == true)
+
+            for plannedBuffer in plan {
+                let lowerBound = commandData.index(commandData.startIndex, offsetBy: plannedBuffer.offset)
+                let upperBound = commandData.index(lowerBound, offsetBy: plannedBuffer.count)
+                wireData.append(contentsOf: commandData[lowerBound..<upperBound])
+                if plannedBuffer.isFinal {
+                    wireData.append(contentsOf: [0x0D, 0x0A])
+                }
+            }
+
+            var expectedWireData = commandData
+            expectedWireData.append(contentsOf: [0x0D, 0x0A])
+            #expect(wireData == expectedWireData)
+            #expect(wireData.suffix(terminator.count) == terminator)
+        }
+    }
+
     #if os(macOS) || os(Linux)
 
     // MARK: - Submission outcome integration tests (scripted fake server)
@@ -1308,7 +1342,7 @@ struct SMTPTests {
             // The fake server keeps reading while withholding the first final
             // reply. Actor reentrancy alone would let the second MAIL FROM
             // enter that unfinished transaction.
-            try await Task.sleep(nanoseconds: 100_000_000)
+            await client.waitUntilOperationQueuedForTesting()
             #expect(server.receivedCommandCount(withPrefix: "MAIL FROM") == 1)
             #expect(server.receivedContentMessages.count == 1)
 
@@ -1320,6 +1354,173 @@ struct SMTPTests {
             #expect(second.response.message.contains("queued as SECOND"))
             #expect(server.receivedCommandCount(withPrefix: "MAIL FROM") == 2)
             #expect(server.receivedContentMessages.count == 2)
+        }
+    }
+
+    @Test
+    func testAuthenticationWaitsForInFlightSubmissionToSettle() async throws {
+        let finalReplyGate = SMTPTestReplyGate()
+        var script = SMTPServerScript()
+        script.onContent = [
+            .gatedReply("250 2.0.0 OK queued as SERIALIZED", gate: finalReplyGate)
+        ]
+
+        try await withScriptedServer(
+            script,
+            ehloCapabilities: ["8BITMIME", "AUTH PLAIN"]
+        ) { server, client in
+            let sendTask = Task {
+                try await client.sendEmail(Self.makeOutcomeTestEmail())
+            }
+            await server.waitForContentTerminator()
+
+            let authenticationTask = Task {
+                try await client.login(username: "sender@example.com", password: "secret")
+            }
+
+            // The server has the complete message but has not issued its final
+            // acceptance reply. No other command may enter that unfinished
+            // SMTP transaction while the actor is reentrant across the await.
+            await client.waitUntilOperationQueuedForTesting()
+            #expect(server.receivedCommandCount(withPrefix: "AUTH PLAIN") == 0)
+
+            finalReplyGate.open()
+            let result = try await sendTask.value
+            try await authenticationTask.value
+
+            #expect(result.response.message.contains("queued as SERIALIZED"))
+            #expect(server.receivedCommandCount(withPrefix: "AUTH PLAIN") == 1)
+        }
+    }
+
+    @Test
+    func testAuthenticationCannotBeSplicedIntoChunkedDataUpload() async throws {
+        let contentReadGate = SMTPTestContentReadGate()
+        var script = SMTPServerScript()
+        script.contentReadGate = contentReadGate
+        script.receiveBufferBytes = 4_096
+
+        var rawMessage = Data("Subject: Serialized upload\r\n\r\n".utf8)
+        rawMessage.append(Data(repeating: 0x41, count: 8 * 1_024 * 1_024))
+
+        try await withScriptedServer(
+            script,
+            ehloCapabilities: ["8BITMIME", "AUTH PLAIN"],
+            submissionTimeouts: SMTPSubmissionTimeouts(contentUpload: 5, contentResponse: 5)
+        ) { server, client in
+            let sendTask = Task {
+                try await client.sendRawMessage(
+                    rawMessage,
+                    from: EmailAddress(address: "sender@example.com"),
+                    to: [EmailAddress(address: "recipient@example.com")]
+                )
+            }
+            await contentReadGate.waitUntilPaused()
+
+            let authenticationTask = Task {
+                try await client.login(username: "sender@example.com", password: "secret")
+            }
+
+            // Prove authentication reached the operation gate while the server
+            // is deliberately applying backpressure to the DATA upload.
+            await client.waitUntilOperationQueuedForTesting()
+            contentReadGate.open()
+
+            let result = try await sendTask.value
+            try await authenticationTask.value
+
+            #expect(result.response.code == 250)
+            let content = try #require(server.receivedContentMessages.first)
+            #expect(content.range(of: Data("AUTH PLAIN".utf8)) == nil)
+            #expect(server.receivedCommandCount(withPrefix: "AUTH PLAIN") == 1)
+        }
+    }
+
+    @Test
+    func testResetWaitsForInFlightSubmissionToSettle() async throws {
+        let finalReplyGate = SMTPTestReplyGate()
+        var script = SMTPServerScript()
+        script.onContent = [
+            .gatedReply("250 2.0.0 OK queued before reset", gate: finalReplyGate)
+        ]
+
+        try await withScriptedServer(script) { server, client in
+            let sendTask = Task {
+                try await client.sendEmail(Self.makeOutcomeTestEmail())
+            }
+            await server.waitForContentTerminator()
+
+            let resetTask = Task {
+                try await client.reset()
+            }
+            await client.waitUntilOperationQueuedForTesting()
+            #expect(server.receivedCommandCount(withPrefix: "RSET") == 0)
+
+            finalReplyGate.open()
+            _ = try await sendTask.value
+            let resetResponse = try await resetTask.value
+
+            #expect(resetResponse.code == 250)
+            #expect(server.receivedCommandCount(withPrefix: "RSET") == 1)
+        }
+    }
+
+    @Test
+    func testCapabilityRefreshWaitsForInFlightSubmissionToSettle() async throws {
+        let finalReplyGate = SMTPTestReplyGate()
+        var script = SMTPServerScript()
+        script.onContent = [
+            .gatedReply("250 2.0.0 OK queued before EHLO", gate: finalReplyGate)
+        ]
+
+        try await withScriptedServer(script) { server, client in
+            let sendTask = Task {
+                try await client.sendEmail(Self.makeOutcomeTestEmail())
+            }
+            await server.waitForContentTerminator()
+
+            let capabilitiesTask = Task {
+                try await client.fetchCapabilities()
+            }
+            await client.waitUntilOperationQueuedForTesting()
+            #expect(server.receivedCommandCount(withPrefix: "EHLO") == 1)
+
+            finalReplyGate.open()
+            _ = try await sendTask.value
+            let capabilities = try await capabilitiesTask.value
+
+            #expect(capabilities.contains("8BITMIME"))
+            #expect(server.receivedCommandCount(withPrefix: "EHLO") == 2)
+        }
+    }
+
+    @Test
+    func testDisconnectWaitsForInFlightSubmissionToSettle() async throws {
+        let finalReplyGate = SMTPTestReplyGate()
+        var script = SMTPServerScript()
+        script.onContent = [
+            .gatedReply("250 2.0.0 OK queued before disconnect", gate: finalReplyGate)
+        ]
+
+        try await withScriptedServer(script) { server, client in
+            let sendTask = Task {
+                try await client.sendEmail(Self.makeOutcomeTestEmail())
+            }
+            await server.waitForContentTerminator()
+
+            let disconnectTask = Task {
+                try await client.disconnect()
+            }
+            await client.waitUntilOperationQueuedForTesting()
+            #expect(server.receivedCommandCount(withPrefix: "QUIT") == 0)
+
+            finalReplyGate.open()
+            _ = try await sendTask.value
+            try await disconnectTask.value
+
+            #expect(server.receivedCommandCount(withPrefix: "QUIT") == 1)
+            let hasChannel = await client.hasChannelForTesting
+            #expect(!hasChannel)
         }
     }
 
@@ -1441,7 +1642,7 @@ struct SMTPTests {
     }
 
     @Test
-    func testContentUploadTimeoutIsAmbiguousAndUnsafeToRetry() async throws {
+    func testContentUploadTimeoutBeforeTerminatorIsSafeToRetry() async throws {
         var script = SMTPServerScript()
         script.contentReadDelay = 0.5
         script.receiveBufferBytes = 4_096
@@ -1461,11 +1662,55 @@ struct SMTPTests {
                 )
             }
             #expect(error?.phase == .content)
-            #expect(error?.acceptance == .ambiguous)
+            #expect(error?.acceptance == .notAccepted)
             #expect(error?.reason == .timedOut)
             #expect(error?.timeoutStage == .contentUpload)
-            #expect(error?.retryDisposition == .unsafeToRetry)
+            #expect(error?.retryDisposition == .retryable)
             #expect(server.receivedContentMessages.isEmpty)
+        }
+    }
+
+    @Test
+    func testCancellationAfterPartialContentUploadBeforeTerminatorIsSafeToRetry() async throws {
+        let contentReadGate = SMTPTestContentReadGate(
+            minimumBytesBeforePause: 2 * SMTPServer.submissionDataBufferBytes
+        )
+        var script = SMTPServerScript()
+        script.contentReadGate = contentReadGate
+        script.receiveBufferBytes = 4_096
+        let timeouts = SMTPSubmissionTimeouts(contentUpload: 5, contentResponse: 5)
+        var rawMessage = Data("Subject: Partial upload cancellation\r\n\r\n".utf8)
+        rawMessage.append(Data(repeating: 0x41, count: 8 * 1_024 * 1_024))
+
+        try await withScriptedServer(script, submissionTimeouts: timeouts) { server, client in
+            let sendTask = Task {
+                try await client.sendRawMessage(
+                    rawMessage,
+                    from: EmailAddress(address: "sender@example.com"),
+                    to: [EmailAddress(address: "recipient@example.com")]
+                )
+            }
+
+            await contentReadGate.waitUntilPaused()
+            #expect(server.receivedContentMessages.isEmpty)
+            sendTask.cancel()
+            let sendResult = await sendTask.result
+            contentReadGate.open()
+
+            switch sendResult {
+                case .success:
+                    Issue.record("Expected partial-upload cancellation to fail the send")
+                case .failure(let error):
+                    let sendError = try #require(error as? SMTPSendError)
+                    #expect(sendError.phase == .content)
+                    #expect(sendError.acceptance == .notAccepted)
+                    #expect(sendError.reason == .cancelled)
+                    #expect(sendError.retryDisposition == .retryable)
+            }
+
+            #expect(server.receivedContentMessages.isEmpty)
+            let hasChannel = await client.hasChannelForTesting
+            #expect(!hasChannel)
         }
     }
 

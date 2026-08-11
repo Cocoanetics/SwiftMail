@@ -28,12 +28,14 @@ struct SendContentCommand: SMTPCommand {
 
     /**
      Convert the command to raw bytes that can be sent to the server.
-     Applies RFC 5321 §4.5.2 dot-stuffing and appends the terminating sequence.
+     Applies RFC 5321 §4.5.2 dot-stuffing and appends the first three bytes of
+     the end-of-data sequence. The submission flush path appends the completing
+     CRLF to the final buffer.
      */
     func toCommandData() -> Data {
         let stuffed = Self.dotStuff(contentData)
         var result = stuffed
-        // Add terminating CRLF.CRLF (the DATA terminator)
+        // Begin the CRLF.CRLF DATA terminator. The flush path owns its final CRLF.
         result.append(contentsOf: [0x0D, 0x0A, 0x2E]) // \r\n.
         return result
     }

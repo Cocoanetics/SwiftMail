@@ -24,6 +24,12 @@ extension SMTPServer {
      - Note: Logs connection attempts and capability retrieval at info level
      */
     public func connect() async throws {
+        let permit = try await operationGate.acquire()
+        defer { operationGate.release(permit) }
+        try await connect(holding: permit)
+    }
+
+    private func connect(holding permit: SMTPOperationGate.Permit) async throws {
         logger.debug("Connecting to SMTP server at \(host):\(port)")
 
         let transportMode = Self.resolveTransportMode(
@@ -67,11 +73,12 @@ extension SMTPServer {
         }
 
         // Fetch capabilities using our new method
-        let capabilities = try await fetchCapabilities()
+        let capabilities = try await fetchCapabilities(holding: permit)
 
         try await applyPostEHLOTLSPolicy(
             transportMode: transportMode,
-            capabilities: capabilities
+            capabilities: capabilities,
+            holding: permit
         )
 
         logger.info("Connected to SMTP server \(self.host):\(self.port)")
@@ -157,6 +164,22 @@ extension SMTPServer {
         capabilities: [String],
         startTLSOverrideForTesting: (@Sendable () async throws -> Void)? = nil
     ) async throws {
+        let permit = try await operationGate.acquire()
+        defer { operationGate.release(permit) }
+        try await applyPostEHLOTLSPolicy(
+            transportMode: transportMode,
+            capabilities: capabilities,
+            holding: permit,
+            startTLSOverrideForTesting: startTLSOverrideForTesting
+        )
+    }
+
+    private func applyPostEHLOTLSPolicy(
+        transportMode: SMTPTransportMode,
+        capabilities: [String],
+        holding permit: SMTPOperationGate.Permit,
+        startTLSOverrideForTesting: (@Sendable () async throws -> Void)? = nil
+    ) async throws {
         if Self.requiresMissingSTARTTLSError(
             transportMode: transportMode,
             capabilities: capabilities
@@ -164,7 +187,7 @@ extension SMTPServer {
             let errorMessage = "STARTTLS required for \(host):\(port) but was not advertised. "
                 + "Cannot continue without encryption."
             logger.error("\(errorMessage)")
-            await closeAndClearChannelAfterSTARTTLSPolicyFailure()
+            await closeAndClearChannelAfterSTARTTLSPolicyFailure(holding: permit)
             throw SMTPError.tlsFailed("STARTTLS required but not advertised by server")
         }
 
@@ -176,13 +199,13 @@ extension SMTPServer {
                 if let startTLSOverrideForTesting {
                     try await startTLSOverrideForTesting()
                 } else {
-                    try await startTLS()
+                    try await startTLS(holding: permit)
                 }
             } catch {
                 let failureMessage = "STARTTLS failed for \(host):\(port): \(error.localizedDescription). "
                     + "Cannot continue without encryption."
                 logger.error("\(failureMessage)")
-                await closeAndClearChannelAfterSTARTTLSPolicyFailure()
+                await closeAndClearChannelAfterSTARTTLSPolicyFailure(holding: permit)
                 throw SMTPError.tlsFailed("STARTTLS upgrade failed: \(error.localizedDescription)")
             }
         }
@@ -238,11 +261,18 @@ extension SMTPServer {
         certificateVerificationPolicy
     }
 
+    func waitUntilOperationQueuedForTesting() async {
+        await operationGate.waitUntilOperationQueuedForTesting()
+    }
+
     func replaceChannelForTesting(_ channel: Channel?) {
         self.channel = channel
     }
 
-    func closeAndClearChannelAfterSTARTTLSPolicyFailure() async {
+    private func closeAndClearChannelAfterSTARTTLSPolicyFailure(
+        holding permit: SMTPOperationGate.Permit
+    ) async {
+        precondition(operationGate.isHeld(permit), "SMTP channel closed without owning it")
         let channel = self.channel
         self.channel = nil
         self.isTLSEnabled = false
@@ -273,6 +303,13 @@ extension SMTPServer {
      - Note: Logs disconnection at info level
      */
     public func disconnect() async throws {
+        let permit = try await operationGate.acquire()
+        defer { operationGate.release(permit) }
+        try await disconnect(holding: permit)
+    }
+
+    private func disconnect(holding permit: SMTPOperationGate.Permit) async throws {
+        precondition(operationGate.isHeld(permit), "SMTP channel closed without owning it")
         guard let channel = channel else {
             logger.warning("Attempted to disconnect when channel was already nil")
             return
@@ -282,7 +319,7 @@ extension SMTPServer {
         // The channel close below will clean up regardless.
         do {
             let quitCommand = QuitCommand()
-            try await executeCommand(quitCommand)
+            try await executeCommand(quitCommand, holding: permit)
         } catch {
             logger.warning("QUIT command failed (non-fatal): \(error)")
         }
@@ -307,10 +344,10 @@ extension SMTPServer {
        - `SMTPError.connectionFailed` if not connected
      - Note: Logs TLS upgrade attempts at info level
      */
-    func startTLS() async throws {
+    private func startTLS(holding permit: SMTPOperationGate.Permit) async throws {
         // Send STARTTLS command using the modernized command approach
         let command = StartTLSCommand()
-        let success = try await executeCommand(command)
+        let success = try await executeCommand(command, holding: permit)
 
         // Check if STARTTLS was accepted
         guard success else {
@@ -344,7 +381,7 @@ extension SMTPServer {
 
         // Send EHLO again after STARTTLS and update capabilities
         let ehloCommand = EHLOCommand(hostname: ProcessInfo.processInfo.hostName)
-        let rawResponse = try await executeCommand(ehloCommand)
+        let rawResponse = try await executeCommand(ehloCommand, holding: permit)
 
         // Parse capabilities from raw response
         let capabilities = parseCapabilities(from: rawResponse)
