@@ -1406,7 +1406,10 @@ struct SMTPTests {
         try await withScriptedServer(
             script,
             ehloCapabilities: ["8BITMIME", "AUTH PLAIN"],
-            submissionTimeouts: SMTPSubmissionTimeouts(contentUpload: 5, contentResponse: 5)
+            // This test targets operation serialization, not upload expiry.
+            // Leave enough headroom for the deliberately backpressured 8 MiB
+            // fixture while the Linux suite runs other tests concurrently.
+            submissionTimeouts: SMTPSubmissionTimeouts(contentUpload: 30, contentResponse: 5)
         ) { server, client in
             let sendTask = Task {
                 try await client.sendRawMessage(
