@@ -205,11 +205,9 @@ final class IMAPConnection {
         certificateVerificationPolicy
     }
 
-    #if DEBUG
     var responseBufferLimitForTesting: Int {
         responseBufferLimit
     }
-    #endif
 
     var namespacesSnapshot: NamespaceResponse? {
         namespaces
