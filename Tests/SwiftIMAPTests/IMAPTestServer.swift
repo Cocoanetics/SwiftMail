@@ -45,6 +45,8 @@ final class IMAPTestServer {
     private let queue = DispatchQueue(label: "IMAPTestServer")
     private let messages: [Message]
     private let loginResponseDelay: TimeInterval
+    private let personalNamespacePrefix: String
+    private let namespaceDelimiter: Character
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
     private var clientFds: Set<Int32> = []
@@ -58,6 +60,8 @@ final class IMAPTestServer {
         username: String = "testuser",
         password: String = "testpass",
         loginResponseDelay: TimeInterval = 0,
+        personalNamespacePrefix: String = "",
+        namespaceDelimiter: Character = "/",
         maildirURL: URL
     ) throws {
         self.host = host
@@ -65,6 +69,8 @@ final class IMAPTestServer {
         self.username = username
         self.password = password
         self.loginResponseDelay = loginResponseDelay
+        self.personalNamespacePrefix = personalNamespacePrefix
+        self.namespaceDelimiter = namespaceDelimiter
         self.messages = try Self.loadMaildir(maildirURL)
     }
 
@@ -86,6 +92,16 @@ final class IMAPTestServer {
 
     private func recordIDCommand() {
         metricsQueue.sync { idCommandCountStorage += 1 }
+    }
+
+    var lastExaminedMailbox: String? {
+        metricsQueue.sync { lastExaminedMailboxStorage }
+    }
+
+    private var lastExaminedMailboxStorage: String?
+
+    private func recordExaminedMailbox(_ mailbox: String) {
+        metricsQueue.sync { lastExaminedMailboxStorage = mailbox }
     }
 
     /// Total connections ever accepted. Catches re-dials that never reach an
@@ -416,6 +432,7 @@ final class IMAPTestServer {
             case "EXAMINE":
                 guard authenticated else { return "\(tag) NO Not authenticated\r\n" }
                 let mailbox = args.trimmingCharacters(in: .init(charactersIn: "\" "))
+                recordExaminedMailbox(mailbox)
                 selectedMailbox = mailbox
                 let count = messages.count
                 let uidnext = (messages.last?.uid ?? 0) + 1
@@ -432,7 +449,8 @@ final class IMAPTestServer {
                 guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
                 return handleFetch(tag: tag, args: args, uidMode: false)
             case "NAMESPACE":
-                return "* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n\(tag) OK NAMESPACE completed\r\n"
+                return "* NAMESPACE ((\"\(personalNamespacePrefix)\" \"\(namespaceDelimiter)\")) NIL NIL\r\n"
+                    + "\(tag) OK NAMESPACE completed\r\n"
             case "LIST":
                 return "* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n\(tag) OK LIST completed\r\n"
             case "ID":

@@ -14,13 +14,17 @@ extension IMAPServer {
     func executeCommand<CommandType: IMAPCommand>(
         _ command: CommandType
     ) async throws -> CommandType.ResultType {
+        try await ensurePrimaryConnectionAuthenticated()
+
+        return try await primaryConnection.executeCommand(command)
+    }
+
+    func ensurePrimaryConnectionAuthenticated() async throws {
         if let authentication, !primaryConnection.isAuthenticated {
             logger.info("Primary connection not authenticated; re-authenticating before command")
             try await authentication.authenticate(on: primaryConnection)
             namespaces = primaryConnection.namespacesSnapshot
         }
-
-        return try await primaryConnection.executeCommand(command)
     }
 
     func resolveMailboxPath(_ mailbox: String) -> String {

@@ -57,6 +57,7 @@ extension IMAPServer {
      - `IMAPError.connectionFailed` if not connected
      */
     @discardableResult public func examineMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
+        try await ensurePrimaryConnectionAuthenticated()
         let command = ExamineMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
         return try await executeCommand(command)
     }
