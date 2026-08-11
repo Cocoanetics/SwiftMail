@@ -46,6 +46,43 @@ import Testing
                 try await server.login(username: "testuser", password: "testpass")
                 let status = try await server.selectMailbox("INBOX")
                 #expect(status.messageCount == 1)
+                let readOnlyStatus = try await server.examineMailbox("INBOX")
+                #expect(readOnlyStatus.messageCount == 1)
+                #expect(readOnlyStatus.isReadOnly)
+                try await server.disconnect()
+            }
+        }
+
+        @Test(.timeLimit(.minutes(1)))
+        func reconnectsBeforeResolvingExamineMailboxPath() async throws {
+            let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let maildir = tempRoot.appendingPathComponent("Maildir")
+            try FileManager.default.createDirectory(at: maildir, withIntermediateDirectories: true)
+            defer {
+                try? FileManager.default.removeItem(at: tempRoot)
+            }
+
+            let testServer = try IMAPTestServer(
+                host: "localhost",
+                port: 0,
+                username: "testuser",
+                password: "testpass",
+                personalNamespacePrefix: "INBOX.",
+                namespaceDelimiter: ".",
+                maildirURL: maildir
+            )
+            try testServer.start()
+
+            try await testServer.run {
+                let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+                try await server.connect()
+                try await server.login(username: "testuser", password: "testpass")
+                try await server.disconnect()
+
+                let status = try await server.examineMailbox("Sent")
+
+                #expect(status.isReadOnly)
+                #expect(testServer.lastExaminedMailbox == "INBOX.Sent")
                 try await server.disconnect()
             }
         }

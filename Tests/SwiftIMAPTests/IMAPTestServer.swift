@@ -48,6 +48,8 @@ final class IMAPTestServer {
     private let loginResponseDelay: TimeInterval
     private let rejectedUIDSubcommand: String?
     private let copyUIDSourceOverride: String?
+    private let personalNamespacePrefix: String
+    private let namespaceDelimiter: Character
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
     private var commandLogStorage: [String] = []
@@ -67,6 +69,8 @@ final class IMAPTestServer {
         advertisedCapabilities: [String] = [
             "IMAP4rev1", "AUTH=PLAIN", "LITERAL+", "ID", "NAMESPACE", "UIDPLUS", "IDLE"
         ],
+        personalNamespacePrefix: String = "",
+        namespaceDelimiter: Character = "/",
         maildirURL: URL
     ) throws {
         self.host = host
@@ -77,6 +81,8 @@ final class IMAPTestServer {
         self.rejectedUIDSubcommand = rejectedUIDSubcommand?.uppercased()
         self.copyUIDSourceOverride = copyUIDSourceOverride
         self.advertisedCapabilities = advertisedCapabilities
+        self.personalNamespacePrefix = personalNamespacePrefix
+        self.namespaceDelimiter = namespaceDelimiter
         self.messages = try Self.loadMaildir(maildirURL)
     }
 
@@ -106,6 +112,16 @@ final class IMAPTestServer {
 
     private func recordCommand(_ line: String) {
         metricsQueue.sync { commandLogStorage.append(line) }
+    }
+
+    var lastExaminedMailbox: String? {
+        metricsQueue.sync { lastExaminedMailboxStorage }
+    }
+
+    private var lastExaminedMailboxStorage: String?
+
+    private func recordExaminedMailbox(_ mailbox: String) {
+        metricsQueue.sync { lastExaminedMailboxStorage = mailbox }
     }
 
     /// Total connections ever accepted. Catches re-dials that never reach an
@@ -434,6 +450,19 @@ final class IMAPTestServer {
                     + "* OK [PERMANENTFLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft \\*)]"
                     + " Flags permitted\r\n"
                     + "\(tag) OK [READ-WRITE] SELECT completed\r\n"
+            case "EXAMINE":
+                guard authenticated else { return "\(tag) NO Not authenticated\r\n" }
+                let mailbox = args.trimmingCharacters(in: .init(charactersIn: "\" "))
+                recordExaminedMailbox(mailbox)
+                selectedMailbox = mailbox
+                let count = messages.count
+                let uidnext = (messages.last?.uid ?? 0) + 1
+                return "* \(count) EXISTS\r\n* 0 RECENT\r\n"
+                    + "* OK [UIDVALIDITY 1] UIDs valid\r\n"
+                    + "* OK [UIDNEXT \(uidnext)] Predicted next UID\r\n"
+                    + "* FLAGS (\\Seen \\Answered \\Flagged \\Deleted \\Draft)\r\n"
+                    + "* OK [PERMANENTFLAGS ()] No permanent flags permitted\r\n"
+                    + "\(tag) OK [READ-ONLY] EXAMINE completed\r\n"
             case "UID":
                 guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
                 return handleUID(tag: tag, args: args)
@@ -441,7 +470,8 @@ final class IMAPTestServer {
                 guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
                 return handleFetch(tag: tag, args: args, uidMode: false)
             case "NAMESPACE":
-                return "* NAMESPACE ((\"\" \"/\")) NIL NIL\r\n\(tag) OK NAMESPACE completed\r\n"
+                return "* NAMESPACE ((\"\(personalNamespacePrefix)\" \"\(namespaceDelimiter)\")) NIL NIL\r\n"
+                    + "\(tag) OK NAMESPACE completed\r\n"
             case "LIST":
                 return "* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n\(tag) OK LIST completed\r\n"
             case "ID":
