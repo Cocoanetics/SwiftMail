@@ -1398,7 +1398,10 @@ struct SMTPTests {
         let contentReadGate = SMTPTestContentReadGate()
         var script = SMTPServerScript()
         script.contentReadGate = contentReadGate
-        script.receiveBufferBytes = 4_096
+        // Keep the receive window well below the 8 MiB fixture so the client
+        // still encounters deterministic backpressure, without the extreme
+        // delayed-ACK behavior a 4 KiB window triggers on Linux.
+        script.receiveBufferBytes = 256 * 1_024
 
         var rawMessage = Data("Subject: Serialized upload\r\n\r\n".utf8)
         rawMessage.append(Data(repeating: 0x41, count: 8 * 1_024 * 1_024))
@@ -1406,10 +1409,7 @@ struct SMTPTests {
         try await withScriptedServer(
             script,
             ehloCapabilities: ["8BITMIME", "AUTH PLAIN"],
-            // This test targets operation serialization, not upload expiry.
-            // Leave enough headroom for the deliberately backpressured 8 MiB
-            // fixture while the Linux suite runs other tests concurrently.
-            submissionTimeouts: SMTPSubmissionTimeouts(contentUpload: 30, contentResponse: 5)
+            submissionTimeouts: SMTPSubmissionTimeouts(contentUpload: 5, contentResponse: 5)
         ) { server, client in
             let sendTask = Task {
                 try await client.sendRawMessage(
