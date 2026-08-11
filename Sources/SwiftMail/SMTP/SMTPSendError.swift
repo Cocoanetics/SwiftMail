@@ -100,8 +100,9 @@ public struct SMTPSendError: Error, Sendable, Equatable {
         /// The surrounding task was cancelled.
         case cancelled
 
-        /// One submission operation exceeded its stage-specific timeout.
-        case timedOut(TimeoutStage)
+        /// One submission operation exceeded its timeout.
+        /// See ``SMTPSendError/timeoutStage`` for the stage, when known.
+        case timedOut
 
         /// The connection closed (EOF or already-closed channel) before a
         /// final reply arrived.
@@ -135,6 +136,11 @@ public struct SMTPSendError: Error, Sendable, Equatable {
 
     /// Why the submission failed.
     public let reason: Reason
+
+    /// The submission operation whose timeout budget expired. Set when
+    /// ``reason-swift.property`` is ``Reason-swift.enum/timedOut`` and the
+    /// timeout originated from SwiftMail's submission executor.
+    public let timeoutStage: TimeoutStage?
 
     /// The recipient whose `RCPT TO` was explicitly rejected. Set only when
     /// ``phase-swift.property`` is ``Phase-swift.enum/rcptTo`` and
@@ -173,12 +179,14 @@ public struct SMTPSendError: Error, Sendable, Equatable {
         phase: Phase,
         acceptance: Acceptance,
         reason: Reason,
-        rejectedRecipient: EmailAddress? = nil
+        rejectedRecipient: EmailAddress? = nil,
+        timeoutStage: TimeoutStage? = nil
     ) {
         self.phase = phase
         self.acceptance = acceptance
         self.reason = reason
         self.rejectedRecipient = rejectedRecipient
+        self.timeoutStage = timeoutStage
     }
 }
 
@@ -195,8 +203,8 @@ extension SMTPSendError: CustomStringConvertible {
                 text += ": server replied \(response.code) \(response.message)"
             case .cancelled:
                 text += ": cancelled"
-            case .timedOut(let stage):
-                switch stage {
+            case .timedOut:
+                switch timeoutStage {
                     case .commandWrite:
                         text += ": timed out writing the SMTP command"
                     case .commandResponse:
@@ -205,6 +213,8 @@ extension SMTPSendError: CustomStringConvertible {
                         text += ": timed out uploading message content"
                     case .contentResponse:
                         text += ": timed out waiting for the final server reply"
+                    case nil:
+                        text += ": timed out"
                 }
             case .connectionLost:
                 text += ": connection lost"
@@ -265,8 +275,8 @@ extension SMTPSendError.Reason {
             self = .reply(response)
         } else if error is CancellationError {
             self = .cancelled
-        } else if let timeout = error as? SMTPSubmissionTimeoutError {
-            self = .timedOut(timeout.stage)
+        } else if error is SMTPSubmissionTimeoutError {
+            self = .timedOut
         } else if case SMTPError.connectionFailed = error {
             // Within the submission dialogue this only arises from the channel
             // going away (BaseSMTPHandler.channelInactive or a vanished channel).
@@ -305,8 +315,21 @@ extension SMTPSendError {
             phase: phase,
             acceptance: .notAccepted,
             reason: reason,
-            rejectedRecipient: rejectedRecipient
+            rejectedRecipient: rejectedRecipient,
+            timeoutStage: (error as? SMTPSubmissionTimeoutError)?.stage
         )
+    }
+
+    /// Classify a content-phase failure according to whether any message byte
+    /// was actually handed to the transport.
+    static func classifyingContentFailure(
+        _ error: Error,
+        contentWasDispatched: Bool
+    ) -> SMTPSendError {
+        if contentWasDispatched {
+            return classifyingPostContentDispatch(error)
+        }
+        return classifyingPreContent(error, phase: .content)
     }
 
     /// Classify a failure that happened after message content was handed to
@@ -331,6 +354,11 @@ extension SMTPSendError {
         } else {
             acceptance = .ambiguous
         }
-        return SMTPSendError(phase: .content, acceptance: acceptance, reason: reason)
+        return SMTPSendError(
+            phase: .content,
+            acceptance: acceptance,
+            reason: reason,
+            timeoutStage: (error as? SMTPSubmissionTimeoutError)?.stage
+        )
     }
 }

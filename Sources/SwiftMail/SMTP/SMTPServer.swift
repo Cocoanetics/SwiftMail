@@ -7,8 +7,6 @@ import NIOCore
 import NIOSSL
 import Logging
 
-import NIOConcurrencyHelpers
-
 #if canImport(Glibc)
     import Glibc
 #elseif canImport(Musl)
@@ -75,6 +73,9 @@ public actor SMTPServer {
 
     /// Timeout budgets for the SMTP mail-submission dialogue.
     public let submissionTimeouts: SMTPSubmissionTimeouts
+
+    /// Serializes complete `MAIL FROM` through final-reply/cleanup transactions.
+    let submissionGate = SMTPSubmissionGate()
 
     /** The event loop group for handling asynchronous operations */
     let group: EventLoopGroup

@@ -981,7 +981,8 @@ struct SMTPTests {
         let timedOut = SMTPSendError.classifyingPostContentDispatch(
             SMTPSubmissionTimeoutError(stage: .contentUpload)
         )
-        #expect(timedOut.reason == .timedOut(.contentUpload))
+        #expect(timedOut.reason == .timedOut)
+        #expect(timedOut.timeoutStage == .contentUpload)
         #expect(timedOut.acceptance == .ambiguous)
         #expect(timedOut.retryDisposition == .unsafeToRetry)
 
@@ -1050,7 +1051,8 @@ struct SMTPTests {
             recipient: recipient
         )
         #expect(recipientTimeout.rejectedRecipient == nil)
-        #expect(recipientTimeout.reason == .timedOut(.commandResponse))
+        #expect(recipientTimeout.reason == .timedOut)
+        #expect(recipientTimeout.timeoutStage == .commandResponse)
         #expect(recipientTimeout.acceptance == .notAccepted)
         #expect(recipientTimeout.retryDisposition == .retryable)
 
@@ -1069,6 +1071,40 @@ struct SMTPTests {
         #expect(cancelledBeforeContent.acceptance == .notAccepted)
         #expect(cancelledBeforeContent.reason == .cancelled)
         #expect(cancelledBeforeContent.retryDisposition == .retryable)
+    }
+
+    @Test
+    func testCancellationBeforeFirstContentBufferRemainsSafeToRetry() {
+        let sendError = SMTPSendError.classifyingContentFailure(
+            CancellationError(),
+            contentWasDispatched: false
+        )
+        #expect(sendError.phase == .content)
+        #expect(sendError.acceptance == .notAccepted)
+        #expect(sendError.reason == .cancelled)
+        #expect(sendError.retryDisposition == .retryable)
+    }
+
+    @Test
+    func testSubmissionGateCancellationDoesNotLeakPermit() async throws {
+        let gate = SMTPSubmissionGate()
+        try await gate.acquire()
+
+        let waiter = Task {
+            try await gate.acquire()
+        }
+        try await Task.sleep(nanoseconds: 10_000_000)
+        waiter.cancel()
+
+        if case .failure(let error) = await waiter.result {
+            #expect(error is CancellationError)
+        } else {
+            Issue.record("Expected the queued gate acquisition to be cancelled")
+        }
+
+        gate.release()
+        try await gate.acquire()
+        gate.release()
     }
 
     /// A consumer-style outbox policy built purely on typed fields — proving
@@ -1122,7 +1158,7 @@ struct SMTPTests {
         #expect(outboxAction(for: SMTPSendError(
             phase: .content,
             acceptance: .ambiguous,
-            reason: .timedOut(.contentResponse)
+            reason: .timedOut, timeoutStage: .contentResponse
         )) == .holdForManualReview)
         #expect(outboxAction(for: SMTPSendError(
             phase: .content,
@@ -1151,16 +1187,28 @@ struct SMTPTests {
         let uploadTimeout = SMTPSendError(
             phase: .content,
             acceptance: .ambiguous,
-            reason: .timedOut(.contentUpload)
+            reason: .timedOut,
+            timeoutStage: .contentUpload
         )
         #expect(uploadTimeout.description.contains("uploading message content"))
 
         let responseTimeout = SMTPSendError(
             phase: .content,
             acceptance: .ambiguous,
-            reason: .timedOut(.contentResponse)
+            reason: .timedOut,
+            timeoutStage: .contentResponse
         )
         #expect(responseTimeout.description.contains("final server reply"))
+
+        // Preserve the payload-free case shipped in SwiftMail 1.10 so
+        // downstream switches and fabricated errors continue to compile.
+        let legacyTimeout = SMTPSendError(
+            phase: .mailFrom,
+            acceptance: .notAccepted,
+            reason: .timedOut
+        )
+        #expect(legacyTimeout.timeoutStage == nil)
+        #expect(legacyTimeout.description.contains("timed out"))
     }
 
     @Test
@@ -1233,6 +1281,43 @@ struct SMTPTests {
             let second = try await client.sendEmail(Self.makeOutcomeTestEmail())
             #expect(second.response.code == 250)
 
+            #expect(server.receivedCommandCount(withPrefix: "MAIL FROM") == 2)
+            #expect(server.receivedContentMessages.count == 2)
+        }
+    }
+
+    @Test
+    func testConcurrentSendsKeepCompleteTransactionsSerialized() async throws {
+        let firstReplyGate = SMTPTestReplyGate()
+        var script = SMTPServerScript()
+        script.onContent = [
+            .gatedReply("250 2.0.0 OK queued as FIRST", gate: firstReplyGate),
+            .reply("250 2.0.0 OK queued as SECOND")
+        ]
+
+        try await withScriptedServer(script) { server, client in
+            let firstTask = Task {
+                try await client.sendEmail(Self.makeOutcomeTestEmail())
+            }
+            await server.waitForContentTerminator()
+
+            let secondTask = Task {
+                try await client.sendEmail(Self.makeOutcomeTestEmail())
+            }
+
+            // The fake server keeps reading while withholding the first final
+            // reply. Actor reentrancy alone would let the second MAIL FROM
+            // enter that unfinished transaction.
+            try await Task.sleep(nanoseconds: 100_000_000)
+            #expect(server.receivedCommandCount(withPrefix: "MAIL FROM") == 1)
+            #expect(server.receivedContentMessages.count == 1)
+
+            firstReplyGate.open()
+            let first = try await firstTask.value
+            let second = try await secondTask.value
+
+            #expect(first.response.message.contains("queued as FIRST"))
+            #expect(second.response.message.contains("queued as SECOND"))
             #expect(server.receivedCommandCount(withPrefix: "MAIL FROM") == 2)
             #expect(server.receivedContentMessages.count == 2)
         }
@@ -1328,7 +1413,8 @@ struct SMTPTests {
             #expect(server.receivedContentMessages.count == 1)
             #expect(sendError?.phase == .content)
             #expect(sendError?.acceptance == .ambiguous)
-            #expect(sendError?.reason == .timedOut(.contentResponse))
+            #expect(sendError?.reason == .timedOut)
+            #expect(sendError?.timeoutStage == .contentResponse)
             #expect(sendError?.retryDisposition == .unsafeToRetry)
             let hasChannel = await client.hasChannelForTesting
             #expect(!hasChannel)
@@ -1376,7 +1462,8 @@ struct SMTPTests {
             }
             #expect(error?.phase == .content)
             #expect(error?.acceptance == .ambiguous)
-            #expect(error?.reason == .timedOut(.contentUpload))
+            #expect(error?.reason == .timedOut)
+            #expect(error?.timeoutStage == .contentUpload)
             #expect(error?.retryDisposition == .unsafeToRetry)
             #expect(server.receivedContentMessages.isEmpty)
         }

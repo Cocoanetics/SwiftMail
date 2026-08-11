@@ -19,6 +19,21 @@ private final class SMTPSubmissionWriteResolution: @unchecked Sendable {
     }
 }
 
+final class SMTPSubmissionContentDispatchState: @unchecked Sendable {
+    private let lock = NIOLock()
+    private var dispatchedContent = false
+
+    var hasDispatchedContent: Bool {
+        lock.withLock { dispatchedContent }
+    }
+
+    func markContentDispatched() {
+        lock.withLock {
+            dispatchedContent = true
+        }
+    }
+}
+
 extension SMTPServer {
     /// Keep DATA writes bounded so RFC 5321's per-buffer upload timeout grows
     /// naturally with message size instead of timing the entire message.
@@ -44,7 +59,8 @@ extension SMTPServer {
         writeTimeout: TimeInterval,
         responseTimeout: TimeInterval,
         writeTimeoutStage: SMTPSendError.TimeoutStage = .commandWrite,
-        responseTimeoutStage: SMTPSendError.TimeoutStage = .commandResponse
+        responseTimeoutStage: SMTPSendError.TimeoutStage = .commandResponse,
+        contentDispatchState: SMTPSubmissionContentDispatchState? = nil
     ) async throws -> CommandType.ResultType {
         guard let channel = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
@@ -67,7 +83,8 @@ extension SMTPServer {
                 commandData,
                 through: channel,
                 timeout: writeTimeout,
-                timeoutStage: writeTimeoutStage
+                timeoutStage: writeTimeoutStage,
+                contentDispatchState: contentDispatchState
             )
 
             // Start the response budget only after the command bytes have
@@ -99,7 +116,8 @@ extension SMTPServer {
         _ data: Data,
         through channel: Channel,
         timeout: TimeInterval,
-        timeoutStage: SMTPSendError.TimeoutStage
+        timeoutStage: SMTPSendError.TimeoutStage,
+        contentDispatchState: SMTPSubmissionContentDispatchState?
     ) async throws {
         var index = data.startIndex
 
@@ -125,7 +143,8 @@ extension SMTPServer {
                 buffer,
                 through: channel,
                 timeout: timeout,
-                timeoutStage: timeoutStage
+                timeoutStage: timeoutStage,
+                contentDispatchState: contentDispatchState
             )
             index = nextIndex
         } while index != data.endIndex
@@ -135,7 +154,8 @@ extension SMTPServer {
         _ buffer: ByteBuffer,
         through channel: Channel,
         timeout: TimeInterval,
-        timeoutStage: SMTPSendError.TimeoutStage
+        timeoutStage: SMTPSendError.TimeoutStage,
+        contentDispatchState: SMTPSubmissionContentDispatchState?
     ) async throws {
         let resolution = SMTPSubmissionWriteResolution()
         let completionPromise = channel.eventLoop.makePromise(of: Void.self)
@@ -147,7 +167,11 @@ extension SMTPServer {
             }
         }
 
-        channel.writeAndFlush(buffer).whenComplete { result in
+        let writeFuture: EventLoopFuture<Void> = channel.writeAndFlush(buffer)
+        // Record only after the buffer has actually been handed to NIO. A
+        // cancellation caught before this call remains provably pre-content.
+        contentDispatchState?.markContentDispatched()
+        writeFuture.whenComplete { result in
             if resolution.claim() {
                 timeoutTask.cancel()
                 completionPromise.completeWith(result)

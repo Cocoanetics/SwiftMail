@@ -7,8 +7,8 @@ import Foundation
 ///
 /// The defaults follow the recommendations in RFC 5321 section 4.5.3.2:
 /// five minutes for `MAIL FROM` and each `RCPT TO`, two minutes for `DATA`,
-/// three minutes while uploading message content, and ten minutes for the
-/// final reply after the content terminator has been flushed.
+/// three minutes for each message-content buffer, and ten minutes for the final
+/// reply after the content terminator has been flushed.
 public struct SMTPSubmissionTimeouts: Sendable, Equatable {
     /// Maximum time to wait for the reply to `MAIL FROM`.
     public let mailFromResponse: TimeInterval
@@ -19,7 +19,9 @@ public struct SMTPSubmissionTimeouts: Sendable, Equatable {
     /// Maximum time to wait for the reply to `DATA`.
     public let dataResponse: TimeInterval
 
-    /// Maximum time to flush the message content and terminating dot.
+    /// Maximum time to flush each message-content buffer. SwiftMail sends
+    /// content in bounded buffers and starts a fresh budget after each
+    /// successful flush, including for the buffer with the terminating dot.
     public let contentUpload: TimeInterval
 
     /// Maximum time to wait for the final acceptance reply after upload.

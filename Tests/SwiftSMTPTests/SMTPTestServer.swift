@@ -13,12 +13,26 @@ enum SMTPTestError: Error {
     case setup(String)
 }
 
+final class SMTPTestReplyGate: @unchecked Sendable {
+    private let semaphore = DispatchSemaphore(value: 0)
+
+    func open() {
+        semaphore.signal()
+    }
+
+    func wait() {
+        _ = semaphore.wait(timeout: .now() + 5)
+    }
+}
+
 /// What the scripted server does when it has to answer a client command.
 enum SMTPScriptAction {
     /// Send the reply line (CRLF appended) and keep the connection open.
     case reply(String)
     /// Wait, then send the reply line (CRLF appended).
     case delayedReply(String, delay: TimeInterval)
+    /// Keep reading the connection, but defer this reply until the test opens the gate.
+    case gatedReply(String, gate: SMTPTestReplyGate)
     /// Send the reply line, then immediately close the connection.
     case replyThenClose(String)
     /// Close the connection without sending any reply.
@@ -352,6 +366,11 @@ final class SMTPTestServer {
                         case .delayedReply(let line, let delay):
                             Thread.sleep(forTimeInterval: delay)
                             sendLine(fd: fileDescriptor, line + "\r\n")
+                        case .gatedReply(let line, let gate):
+                            DispatchQueue.global().async { [weak self] in
+                                gate.wait()
+                                self?.sendLine(fd: fileDescriptor, line + "\r\n")
+                            }
                         case .replyThenClose(let line):
                             sendLine(fd: fileDescriptor, line + "\r\n")
                             return
@@ -438,6 +457,12 @@ final class SMTPTestServer {
             case .delayedReply(let line, let delay):
                 Thread.sleep(forTimeInterval: delay)
                 sendLine(fd: fileDescriptor, line + "\r\n")
+                return .keepGoing
+            case .gatedReply(let line, let gate):
+                DispatchQueue.global().async { [weak self] in
+                    gate.wait()
+                    self?.sendLine(fd: fileDescriptor, line + "\r\n")
+                }
                 return .keepGoing
             case .replyThenClose(let line):
                 sendLine(fd: fileDescriptor, line + "\r\n")

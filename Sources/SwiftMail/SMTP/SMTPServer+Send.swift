@@ -35,6 +35,8 @@ extension SMTPServer {
          failures and can follow normal retry policy.
        - `CancellationError` if the task is cancelled before the dialogue starts.
      - Note:
+       - Concurrent send calls on one ``SMTPServer`` are queued so their SMTP
+         transactions cannot interleave.
        - After an explicit server rejection the connection stays usable for
          another attempt. After a timeout, cancellation, connection loss, or
          any ambiguous outcome the connection is closed; call ``connect()``
@@ -43,6 +45,9 @@ extension SMTPServer {
      */
     @discardableResult
     public func sendEmail(_ email: Email) async throws -> SMTPSendResult {
+        try await submissionGate.acquire()
+        defer { submissionGate.release() }
+
         // Check if we have a valid channel (meaning we're connected)
         guard channel != nil else {
             logger.error("Attempting to send email without an active connection")
@@ -117,6 +122,9 @@ extension SMTPServer {
         from sender: EmailAddress,
         to recipients: [EmailAddress]
     ) async throws -> SMTPSendResult {
+        try await submissionGate.acquire()
+        defer { submissionGate.release() }
+
         guard channel != nil else {
             throw SMTPError.connectionFailed("Not connected to SMTP server. Call connect() first.")
         }
@@ -229,23 +237,33 @@ extension SMTPServer {
             throw await abortSubmission(with: .classifyingPreContent(error, phase: .data))
         }
 
+        return try await performContentSubmission(contentData)
+    }
+
+    private func performContentSubmission(_ contentData: Data) async throws -> SMTPSendResult {
         // Last provably-safe abort point: no message byte has been handed to
         // the transport yet, so a cancellation here cannot cause a delivery.
         if Task.isCancelled {
             throw await abortSubmission(with: .classifyingPreContent(CancellationError(), phase: .content))
         }
 
+        let dispatchState = SMTPSubmissionContentDispatchState()
         do {
             let response = try await executeSubmissionCommand(
                 SendContentCommand(data: contentData),
                 writeTimeout: submissionTimeouts.contentUpload,
                 responseTimeout: submissionTimeouts.contentResponse,
                 writeTimeoutStage: .contentUpload,
-                responseTimeoutStage: .contentResponse
+                responseTimeoutStage: .contentResponse,
+                contentDispatchState: dispatchState
             )
             return SMTPSendResult(response: response)
         } catch {
-            throw await abortSubmission(with: .classifyingPostContentDispatch(error))
+            let sendError = SMTPSendError.classifyingContentFailure(
+                error,
+                contentWasDispatched: dispatchState.hasDispatchedContent
+            )
+            throw await abortSubmission(with: sendError)
         }
     }
 
