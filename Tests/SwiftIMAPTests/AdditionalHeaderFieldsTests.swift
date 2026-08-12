@@ -39,6 +39,47 @@ struct AdditionalHeaderFieldsTests {
     }
 
     @Test
+    func testDirectlyConstructedFieldMatchesParsedField() async throws {
+        let headerBlock = """
+        List-Unsubscribe: <mailto:leave@example.com>\r
+        \r
+        """
+
+        let infos = try await executeFetch(
+            [
+                fetchResponse(
+                    sequenceNumber: 1,
+                    envelope: envelopeAttribute(messageId: "<msg@example.com>"),
+                    headerFields: ["List-Unsubscribe"],
+                    headerBlock: headerBlock
+                ),
+                "A001 OK FETCH completed\r\n"
+            ]
+        )
+
+        let parsed = try #require(infos.first?.additionalHeaderFields?.first)
+
+        // A caller writing the header the way it appears on the wire must land on
+        // the same value, or equality and name filtering would depend on where the
+        // field came from.
+        #expect(HeaderField(name: "List-Unsubscribe", value: " <mailto:leave@example.com> ") == parsed)
+    }
+
+    @Test
+    func testHeaderFieldNormalizesNameCaseFoldedValueAndDecodedInput() throws {
+        let mixedCase = HeaderField(name: "  List-Unsubscribe  ", value: "  <mailto:leave@example.com>  ")
+        #expect(mixedCase.name == "list-unsubscribe")
+        #expect(mixedCase.value == "<mailto:leave@example.com>")
+
+        // Folded values rejoin with a single space, as the parser produces them.
+        #expect(HeaderField(name: "x", value: "first\r\n  second\r\n\tthird").value == "first second third")
+
+        // Decoding is a construction path too — it must not smuggle in raw input.
+        let raw = Data(#"{"name":"List-Unsubscribe","value":"  <mailto:leave@example.com>  "}"#.utf8)
+        #expect(try JSONDecoder().decode(HeaderField.self, from: raw) == mixedCase)
+    }
+
+    @Test
     func testAdditionalHeaderFieldsCodableRoundTrip() throws {
         let fields: [HeaderField] = [
             HeaderField(name: "list-unsubscribe", value: "<mailto:leave@example.com>"),
