@@ -47,8 +47,11 @@ public struct MessageInfo: Codable, Sendable {
     /// The message parts
     public var parts: [MessagePart]
 
-    /// Additional header fields
+    /// Additional header fields (last-value-wins dictionary, source-compatible).
     public var additionalFields: [String: String]?
+
+    /// Additional header fields in wire order, preserving repeated field instances.
+    public var additionalHeaderFields: [HeaderField]?
 
     /// The total size of the message in bytes, from `RFC822.SIZE`. Only populated when the fetch
     /// request asks for it.
@@ -70,6 +73,7 @@ public struct MessageInfo: Codable, Sendable {
         case flags
         case parts
         case additionalFields
+        case additionalHeaderFields
         case size
     }
 
@@ -86,7 +90,8 @@ public struct MessageInfo: Codable, Sendable {
     ///   - messageId: The message ID
     ///   - flags: The flags of the message
     ///   - parts: The message parts
-    ///   - additionalFields: Additional header fields
+    ///   - additionalFields: Additional header fields (last-value-wins dictionary)
+    ///   - additionalHeaderFields: Additional header fields in wire order, preserving repeated instances
     ///   - size: The total size of the message in bytes (RFC822.SIZE)
     public init(
         sequenceNumber: SequenceNumber,
@@ -104,6 +109,7 @@ public struct MessageInfo: Codable, Sendable {
         flags: [Flag] = [],
         parts: [MessagePart] = [],
         additionalFields: [String: String]? = nil,
+        additionalHeaderFields: [HeaderField]? = nil,
         size: Int? = nil
     ) {
         self.sequenceNumber = sequenceNumber
@@ -121,6 +127,7 @@ public struct MessageInfo: Codable, Sendable {
         self.flags = flags
         self.parts = parts
         self.additionalFields = additionalFields
+        self.additionalHeaderFields = additionalHeaderFields
         self.size = size
     }
 }
@@ -145,6 +152,7 @@ public extension MessageInfo {
             flags: try container.decodeIfPresent([Flag].self, forKey: .flags) ?? [],
             parts: try container.decodeIfPresent([MessagePart].self, forKey: .parts) ?? [],
             additionalFields: try container.decodeIfPresent([String: String].self, forKey: .additionalFields),
+            additionalHeaderFields: try container.decodeIfPresent([HeaderField].self, forKey: .additionalHeaderFields),
             size: try container.decodeIfPresent(Int.self, forKey: .size)
         )
     }

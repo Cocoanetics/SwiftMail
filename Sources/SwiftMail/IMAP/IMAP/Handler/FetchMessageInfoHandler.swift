@@ -97,7 +97,12 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         // independently with the same total UTF-8/Latin-1 policy used by the
         // EML parser so one malformed field cannot discard the entire literal.
         let headerBlock = EMLParser.decodeHeaderBlock(currentHeaderLiteral)
-        let allHeaders = EMLParser.parseHeaders(headerBlock)
+
+        // Parse once in lossless order; derive the legacy dict from the ordered result
+        // so repeated fields never require two passes.
+        let orderedHeaders = EMLParser.parseAllHeaders(headerBlock)
+        let allHeaders = Dictionary(orderedHeaders.map { ($0.key, $0.value) },
+                                    uniquingKeysWith: { _, last in last })
 
         // Headers already exposed via ENVELOPE or stored in dedicated fields
         let envelopeKeys: Set<String> = [
@@ -115,6 +120,9 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
         let referencesValue = allHeaders["references"]?.trimmingCharacters(in: .whitespacesAndNewlines)
         let additionalHeaders = allHeaders.filter { !envelopeKeys.contains($0.key) }
+        let additionalHeaderFields = orderedHeaders
+            .filter { !envelopeKeys.contains($0.key) }
+            .map { HeaderField(name: $0.key, value: $0.value) }
 
         lock.withLock {
             guard let index = currentMessageIndex() else { return }
@@ -128,6 +136,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             }
 
             header.additionalFields = additionalHeaders.isEmpty ? nil : additionalHeaders
+            header.additionalHeaderFields = additionalHeaderFields.isEmpty ? nil : additionalHeaderFields
             self.messageInfos[index] = header
         }
     }
