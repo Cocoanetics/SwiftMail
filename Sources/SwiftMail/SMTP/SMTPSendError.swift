@@ -321,12 +321,12 @@ extension SMTPSendError {
     }
 
     /// Classify a content-phase failure according to whether the final SMTP
-    /// end-of-data terminator was handed to the transport.
+    /// end-of-data terminator may have been handed to the transport.
     static func classifyingContentFailure(
         _ error: Error,
-        endOfDataWasDispatched: Bool
+        endOfDataMayHaveBeenDispatched: Bool
     ) -> SMTPSendError {
-        if endOfDataWasDispatched {
+        if endOfDataMayHaveBeenDispatched {
             return classifyingPostEndOfDataDispatch(error)
         }
         return classifyingProvenNonAcceptance(error, phase: .content)

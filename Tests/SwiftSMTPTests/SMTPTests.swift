@@ -1080,12 +1080,44 @@ struct SMTPTests {
     func testCancellationBeforeFirstContentBufferRemainsSafeToRetry() {
         let sendError = SMTPSendError.classifyingContentFailure(
             CancellationError(),
-            endOfDataWasDispatched: false
+            endOfDataMayHaveBeenDispatched: false
         )
         #expect(sendError.phase == .content)
         #expect(sendError.acceptance == .notAccepted)
         #expect(sendError.reason == .cancelled)
         #expect(sendError.retryDisposition == .retryable)
+    }
+
+    @Test
+    func testConfirmedFinalContentWriteFailureRemainsSafeToRetry() {
+        let dispatchState = SMTPSubmissionContentDispatchState()
+        dispatchState.beginEndOfDataWrite()
+        dispatchState.completeEndOfDataWrite(succeeded: false)
+
+        let sendError = SMTPSendError.classifyingContentFailure(
+            ChannelError.ioOnClosedChannel,
+            endOfDataMayHaveBeenDispatched: dispatchState.endOfDataMayHaveBeenDispatched
+        )
+        #expect(sendError.phase == .content)
+        #expect(sendError.acceptance == .notAccepted)
+        #expect(sendError.reason == .connectionLost)
+        #expect(sendError.retryDisposition == .retryable)
+    }
+
+    @Test
+    func testUnresolvedFinalContentWriteRemainsUnsafeToRetry() {
+        let dispatchState = SMTPSubmissionContentDispatchState()
+        dispatchState.beginEndOfDataWrite()
+
+        let sendError = SMTPSendError.classifyingContentFailure(
+            SMTPSubmissionTimeoutError(stage: .contentUpload),
+            endOfDataMayHaveBeenDispatched: dispatchState.endOfDataMayHaveBeenDispatched
+        )
+        #expect(sendError.phase == .content)
+        #expect(sendError.acceptance == .ambiguous)
+        #expect(sendError.reason == .timedOut)
+        #expect(sendError.timeoutStage == .contentUpload)
+        #expect(sendError.retryDisposition == .unsafeToRetry)
     }
 
     @Test

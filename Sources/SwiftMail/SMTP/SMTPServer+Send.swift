@@ -284,7 +284,7 @@ extension SMTPServer {
         } catch {
             let sendError = SMTPSendError.classifyingContentFailure(
                 error,
-                endOfDataWasDispatched: dispatchState.hasDispatchedEndOfData
+                endOfDataMayHaveBeenDispatched: dispatchState.endOfDataMayHaveBeenDispatched
             )
             throw await abortSubmission(with: sendError, holding: permit)
         }

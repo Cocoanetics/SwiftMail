@@ -20,16 +20,36 @@ private final class SMTPSubmissionWriteResolution: @unchecked Sendable {
 }
 
 final class SMTPSubmissionContentDispatchState: @unchecked Sendable {
-    private let lock = NIOLock()
-    private var dispatchedEndOfData = false
-
-    var hasDispatchedEndOfData: Bool {
-        lock.withLock { dispatchedEndOfData }
+    private enum EndOfDataWriteState {
+        case notStarted
+        case inFlight
+        case succeeded
+        case failed
     }
 
-    func markEndOfDataDispatched() {
+    private let lock = NIOLock()
+    private var endOfDataWriteState = EndOfDataWriteState.notStarted
+
+    var endOfDataMayHaveBeenDispatched: Bool {
         lock.withLock {
-            dispatchedEndOfData = true
+            switch endOfDataWriteState {
+                case .inFlight, .succeeded:
+                    return true
+                case .notStarted, .failed:
+                    return false
+            }
+        }
+    }
+
+    func beginEndOfDataWrite() {
+        lock.withLock {
+            endOfDataWriteState = .inFlight
+        }
+    }
+
+    func completeEndOfDataWrite(succeeded: Bool) {
+        lock.withLock {
+            endOfDataWriteState = succeeded ? .succeeded : .failed
         }
     }
 }
@@ -196,17 +216,28 @@ extension SMTPServer {
             }
         }
 
-        let writeFuture: EventLoopFuture<Void> = context.channel.writeAndFlush(buffer)
-        // Mark end-of-data only when the final buffer, including the completing
-        // CRLF, is handed to NIO. A prefix buffer may contain part of the
-        // terminator, but a failure before the final handoff is still provably
-        // pre-acceptance and remains safe to retry.
+        // Once the final write is in flight, a timeout or cancellation cannot
+        // prove whether the terminator reached the server. Only a write failure
+        // that wins this buffer's resolution race proves non-acceptance.
         if dispatchesEndOfData {
-            context.contentDispatchState?.markEndOfDataDispatched()
+            context.contentDispatchState?.beginEndOfDataWrite()
         }
+        let writeFuture: EventLoopFuture<Void> = context.channel.writeAndFlush(buffer)
         writeFuture.whenComplete { result in
             if resolution.claim() {
                 timeoutTask.cancel()
+                if dispatchesEndOfData {
+                    let writeSucceeded: Bool
+                    switch result {
+                        case .success:
+                            writeSucceeded = true
+                        case .failure:
+                            writeSucceeded = false
+                    }
+                    context.contentDispatchState?.completeEndOfDataWrite(
+                        succeeded: writeSucceeded
+                    )
+                }
                 completionPromise.completeWith(result)
             }
         }
