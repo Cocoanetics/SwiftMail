@@ -90,6 +90,15 @@ public actor IMAPServer {
         capabilities.contains(.uidPlus)
     }
 
+    /// Whether the primary connection advertised MOVE (RFC 6851).
+    ///
+    /// Exposed so callers can tell an atomic `MOVE` from the `COPY` + `STORE \Deleted` + `EXPUNGE`
+    /// fallback that `move(messages:to:)` performs when the extension is missing. A client with a
+    /// no-delete policy needs to know which one it is about to get, and cannot currently ask.
+    public var supportsMove: Bool {
+        capabilities.contains(.move)
+    }
+
     var certificatePolicyForTesting: MailCertificateVerificationPolicy {
         primaryConnection.certificateVerificationPolicyForTesting
     }
