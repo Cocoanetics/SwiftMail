@@ -8,6 +8,15 @@ import Foundation
 extension EmailAddress: LosslessStringConvertible {
     /**
      Initialize an email address from a string representation
+
+     A *bare* encoded-word display name is RFC 2047-decoded — that is how a
+     non-ASCII name written by ``description``, or read off the wire, arrives —
+     so the round trip yields the name the recipient actually sees, the same
+     treatment the IMAP `ENVELOPE` path gives a `personName`. A display name
+     inside a *quoted-string* is taken literally: RFC 2047 §5 forbids reading an
+     encoded-word there, so text that merely looks like `=?…?=` is returned
+     verbatim, not decoded.
+
      - Parameter description: The string representation of the email address
      */
     public init?(_ description: String) {
@@ -34,14 +43,21 @@ extension EmailAddress: LosslessStringConvertible {
 
                 // Check if we have a quoted name or a regular name
                 if nameRange1.location != NSNotFound {
-                    // Quoted name (with special characters)
+                    // Quoted name (with special characters). A quoted-string
+                    // always carries a LITERAL display name: RFC 2047 §5 forbids
+                    // reading an encoded-word inside a quoted-string, so a name
+                    // that merely *looks* like `=?UTF-8?B?…?=` is exactly that
+                    // text and must be handed back verbatim, never MIME-decoded.
+                    // A non-ASCII name never reaches this branch — `headerString`
+                    // emits it as a *bare* encoded-word, which the unquoted
+                    // branch below decodes.
                     let name = nsString.substring(with: nameRange1)
                     self.init(name: name, address: email)
                     return
                 } else if nameRange2.location != NSNotFound {
                     // Regular name
                     let name = nsString.substring(with: nameRange2).trimmingCharacters(in: .whitespaces)
-                    self.init(name: name, address: email)
+                    self.init(name: name.decodeMIMEHeader(), address: email)
                     return
                 } else {
                     // Just the email
@@ -56,20 +72,17 @@ extension EmailAddress: LosslessStringConvertible {
 
     /**
      Get the string representation of the email address
-     This uses the formatted representation which includes the name if available
+
+     This is the RFC 5322 address string, including the display name if there is
+     one — the same text ``headerString()`` writes into a header field, and the
+     text ``init(_:)`` reads back. It has always produced address syntax rather
+     than free text (a name with a comma comes back quoted), so a name that
+     syntax cannot carry literally is RFC 2047-encoded here too; see
+     ``headerString()`` for which names those are and why. Emitting a name raw
+     when it holds a CR or LF is what let a `Message` built from an `Email` grow
+     a header field its author never wrote.
      */
-    public var description: String {
-        if let name = name, !name.isEmpty {
-            // Use quotes if the name contains special characters
-            if name.contains(where: { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }) {
-                return "\"\(name)\" <\(address)>"
-            } else {
-                return "\(name) <\(address)>"
-            }
-        } else {
-            return address
-        }
-    }
+    public var description: String { headerString() }
 
     /**
      RFC 5322 address string for use in a header field (`From`/`To`/`Cc`/…).
@@ -90,7 +103,9 @@ extension EmailAddress: LosslessStringConvertible {
      removes the escape. Encoded-words must not appear inside a quoted-string, so
      an encoded name is emitted bare (never quoted).
 
-     Use this — not ``description`` — when writing an address into a header.
+     ``description`` returns this, so every caller that formats an address gets a
+     value a header field can hold. ``init(_:)`` decodes the name again, so the
+     round trip still yields the original text.
      */
     func headerString() -> String {
         guard let name = name, !name.isEmpty else { return address }
