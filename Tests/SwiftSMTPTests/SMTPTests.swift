@@ -2045,4 +2045,181 @@ struct SMTPTests {
         return offsets
     }
 }
-// swiftlint:enable file_length type_body_length
+// swiftlint:enable type_body_length
+
+/// MIME parameter and field-body serialization in ``Email/constructContent(use8BitMIME:)``.
+/// Every assertion is made on the final serialized bytes, or on what
+/// ``Message/init(emlData:)`` recovers from them.
+@Suite("MIME parameter encoding", .serialized, .timeLimit(.minutes(1)))
+struct MIMEParameterEncodingTests {
+
+    private static func email(
+        subject: String = "Attachments",
+        htmlBody: String? = nil,
+        attachments: [SwiftMail.Attachment]
+    ) -> Email {
+        Email(
+            sender: EmailAddress(address: "me@example.com"),
+            recipients: [EmailAddress(address: "you@example.com")],
+            subject: subject,
+            textBody: "body",
+            htmlBody: htmlBody,
+            attachments: attachments
+        )
+    }
+
+    private static func attachment(
+        filename: String,
+        mimeType: String = "application/pdf",
+        contentID: String? = nil,
+        isInline: Bool = false,
+        body: String = "attachment payload"
+    ) -> SwiftMail.Attachment {
+        SwiftMail.Attachment(
+            filename: filename,
+            mimeType: mimeType,
+            data: Data(body.utf8),
+            contentID: contentID,
+            isInline: isInline
+        )
+    }
+
+    // MARK: - Filename parameters
+
+    @Test("A quote in a filename cannot forge a second parameter")
+    func filenameQuoteCannotForgeAParameter() throws {
+        let filename = #"a"; boundary="X.pdf"#
+        let content = Self.email(attachments: [Self.attachment(filename: filename)]).constructContent()
+        let message = try Message(emlData: Data(content.utf8))
+
+        // Exactly one part carries a filename, and it is the caller's — not a
+        // prefix cut short at the embedded quote.
+        #expect(message.parts.compactMap { $0.filename } == [filename])
+    }
+
+    @Test("A non-ASCII filename does not put 8-bit octets in a header")
+    func nonASCIIFilenameStaysSevenBit() throws {
+        let filename = "발표자료.pdf"
+        let content = Self.email(attachments: [Self.attachment(filename: filename)]).constructContent()
+
+        // Subject, body and payload are all ASCII here, so the whole message
+        // must be 7-bit: RFC 5322 §2.2 admits nothing else in a header.
+        #expect(content.unicodeScalars.allSatisfy { $0.isASCII })
+
+        let message = try Message(emlData: Data(content.utf8))
+        #expect(message.parts.compactMap { $0.filename } == [filename])
+    }
+
+    @Test("A hostile filename is emitted in exactly one spelling")
+    func hostileFilenameHasExactlyOneSpelling() {
+        let content = Self.email(attachments: [
+            Self.attachment(filename: #"a"; boundary="X.pdf"#)
+        ]).constructContent()
+
+        // The extended spelling is present and the literal one is absent, so a
+        // receiver is never handed two candidate values to choose between.
+        #expect(content.contains(#"; filename*=UTF-8''a%22%3B%20boundary%3D%22X.pdf"#))
+        #expect(!content.contains(#"filename=""#))
+    }
+
+    @Test("A backslash in a filename cannot start a quoted-pair")
+    func backslashInFilenameIsEncoded() throws {
+        let filename = #"report\final.pdf"#
+        let content = Self.email(attachments: [Self.attachment(filename: filename)]).constructContent()
+
+        #expect(content.contains(#"; filename*=UTF-8''report%5Cfinal.pdf"#))
+        #expect(!content.contains(#"filename=""#))
+        #expect(try Message(emlData: Data(content.utf8)).parts.compactMap { $0.filename } == [filename])
+    }
+
+    @Test("An ordinary filename is emitted exactly as before")
+    func ordinaryFilenameIsByteIdentical() throws {
+        let content = Self.email(attachments: [Self.attachment(filename: "report.pdf")]).constructContent()
+
+        #expect(content.contains(#"Content-Disposition: attachment; filename="report.pdf""#))
+        let message = try Message(emlData: Data(content.utf8))
+        #expect(message.parts.compactMap { $0.filename } == ["report.pdf"])
+    }
+
+    @Test("A CRLF in an inline attachment filename cannot open a second header field")
+    func inlineFilenameCannotInjectAHeaderField() throws {
+        let filename = "logo\r\nBcc: attacker@example.com.png"
+        let email = Self.email(
+            htmlBody: "<p>hi</p>",
+            attachments: [Self.attachment(
+                filename: filename,
+                mimeType: "image/png",
+                contentID: "logo@example.com",
+                isInline: true
+            )]
+        )
+        let content = email.constructContent()
+
+        #expect(!content.components(separatedBy: "\r\n").contains { $0.lowercased().hasPrefix("bcc:") })
+        let message = try Message(emlData: Data(content.utf8))
+        #expect(message.parts.compactMap { $0.filename } == [filename])
+    }
+
+    // MARK: - Content-Type field bodies
+
+    @Test("A CRLF in an attachment content type cannot open a second header field")
+    func attachmentContentTypeCannotInjectAHeaderField() throws {
+        let email = Self.email(attachments: [Self.attachment(
+            filename: "a.txt",
+            mimeType: "text/plain\r\nBcc: attacker@example.com"
+        )])
+        let content = email.constructContent()
+
+        #expect(!content.components(separatedBy: "\r\n").contains { $0.lowercased().hasPrefix("bcc:") })
+        // The part structure is untouched: the text body and the attachment.
+        #expect(try Message(emlData: Data(content.utf8)).parts.count == 2)
+    }
+
+    @Test("A CRLF in a calendar invite content type cannot open a second header field")
+    func calendarContentTypeCannotInjectAHeaderField() {
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n"
+        let email = Self.email(attachments: [Self.attachment(
+            filename: "invite.ics",
+            mimeType: "text/calendar; method=REQUEST\r\nBcc: attacker@example.com",
+            body: ics
+        )])
+        let content = email.constructContent()
+        let lines = content.components(separatedBy: "\r\n")
+
+        // The invite still takes the multipart/alternative iMIP shape, so this
+        // exercises the calendar arm rather than falling back to base64.
+        #expect(content.contains("Content-Type: multipart/alternative;"))
+        #expect(!lines.contains { $0.lowercased().hasPrefix("bcc:") })
+    }
+
+    @Test("An ordinary content type is emitted exactly as before")
+    func ordinaryContentTypeIsByteIdentical() {
+        let content = Self.email(attachments: [Self.attachment(
+            filename: "a.txt",
+            mimeType: "text/plain; charset=windows-1252"
+        )]).constructContent()
+
+        #expect(content.contains("Content-Type: text/plain; charset=windows-1252\r\n"))
+    }
+
+    // MARK: - Content-ID
+
+    @Test("A CRLF in a Content-ID cannot open a second header field")
+    func contentIDCannotInjectAHeaderField() {
+        let email = Self.email(
+            htmlBody: "<p>hi</p>",
+            attachments: [Self.attachment(
+                filename: "logo.png",
+                mimeType: "image/png",
+                contentID: "logo@example.com>\r\nBcc: attacker@example.com",
+                isInline: true
+            )]
+        )
+        let lines = email.constructContent().components(separatedBy: "\r\n")
+
+        #expect(!lines.contains { $0.lowercased().hasPrefix("bcc:") })
+        #expect(lines.filter { $0.hasPrefix("Content-ID: ") }.count == 1)
+    }
+}
+
+// swiftlint:enable file_length

@@ -132,26 +132,26 @@ public struct EMLSerializer {
     private static func serializePartHeaders(_ part: MessagePart) -> String {
         var headers = ""
 
-        var contentType = part.contentType
+        var contentType = MIMEHeaderEncoding.fieldBody(part.contentType)
         if let filename = part.filename {
-            contentType += "; name=\"\(filename)\""
+            contentType += "; " + MIMEHeaderEncoding.parameter(name: "name", value: filename)
         }
         headers += "Content-Type: \(contentType)\r\n"
 
         if let encoding = part.encoding {
-            headers += "Content-Transfer-Encoding: \(encoding)\r\n"
+            headers += "Content-Transfer-Encoding: \(MIMEHeaderEncoding.fieldBody(encoding))\r\n"
         }
 
         if let disposition = part.disposition {
-            var dispValue = disposition
+            var dispValue = MIMEHeaderEncoding.fieldBody(disposition)
             if let filename = part.filename {
-                dispValue += "; filename=\"\(filename)\""
+                dispValue += "; " + MIMEHeaderEncoding.parameter(name: "filename", value: filename)
             }
             headers += "Content-Disposition: \(dispValue)\r\n"
         }
 
         if let contentId = part.contentId {
-            headers += "Content-ID: <\(contentId)>\r\n"
+            headers += "Content-ID: <\(MIMEHeaderEncoding.fieldBody(contentId))>\r\n"
         }
 
         return headers
