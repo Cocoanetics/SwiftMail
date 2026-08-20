@@ -74,18 +74,30 @@ extension EmailAddress: LosslessStringConvertible {
     /**
      RFC 5322 address string for use in a header field (`From`/`To`/`Cc`/…).
 
-     Identical to ``description`` for ASCII display names, but a non-ASCII name
-     is RFC 2047-encoded. Encoded-words must not appear inside a quoted-string,
-     so an encoded name is emitted bare (never quoted). Use this — not
-     ``description`` — when writing an address into a header so that non-ASCII
-     names survive transport instead of being mojibake'd.
+     A display name that cannot be written literally is RFC 2047-encoded. That
+     covers two cases:
+
+     - The name is not a valid field body — it holds non-ASCII text or a control
+       character. A CR or LF here *ends the header field*, so an unencoded name
+       turns the rest of the value into new header lines.
+     - The name holds a `"` or a `\`, the two characters that would escape the
+       quoted-string it would otherwise be wrapped in. An embedded `"` closes the
+       string early and lets the remainder be read as further address syntax; a
+       `\` is read as a quoted-pair, so the literal text is lost.
+
+     An encoded-word may replace a word inside a phrase (RFC 2047 §5) and its
+     output is bare printable ASCII, so encoding both carries the name intact and
+     removes the escape. Encoded-words must not appear inside a quoted-string, so
+     an encoded name is emitted bare (never quoted).
+
+     Use this — not ``description`` — when writing an address into a header.
      */
     func headerString() -> String {
         guard let name = name, !name.isEmpty else { return address }
-        if name.contains(where: { !$0.isASCII }) {
-            return "\(name.rfc2047EncodedHeader()) <\(address)>"
+        if name.rfc2047RequiresEncodingAsDisplayName {
+            return "\(name.rfc2047EncodedWords()) <\(address)>"
         }
-        // Use quotes if the (ASCII) name contains special characters
+        // Use quotes if the (plain ASCII) name contains special characters
         if name.contains(where: { !$0.isLetter && !$0.isNumber && !$0.isWhitespace }) {
             return "\"\(name)\" <\(address)>"
         }
