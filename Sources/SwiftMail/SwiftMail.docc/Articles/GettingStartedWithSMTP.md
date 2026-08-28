@@ -21,6 +21,30 @@ Common SMTP ports:
 - 465: SSL/TLS
 - 25: Unencrypted (not recommended)
 
+## Configuring the EHLO Client Identity
+
+SMTP begins a session by sending a client identity with `EHLO`. SwiftMail
+defaults to the RFC 5321 address literal `[127.0.0.1]`, which requires no
+hostname, Bonjour, DNS, or local-network lookup and does not disclose the
+device's name.
+
+If your SMTP provider expects a stable, fully-qualified domain name, configure
+one explicitly:
+
+```swift
+let smtpServer = SMTPServer(
+    host: "smtp.example.com",
+    port: 587,
+    clientIdentity: "mail.example.com"
+)
+```
+
+SwiftMail uses the configured value for the initial `EHLO` and again after a
+STARTTLS upgrade. Because the initial command can be sent before encryption,
+do not put private device or user information in this value. The identity must
+be a single printable ASCII domain or address literal as defined by
+[RFC 5321](https://www.rfc-editor.org/rfc/rfc5321.html#section-4.1.1.1).
+
 ## Configuring Submission Timeouts
 
 SwiftMail uses separate timeout budgets for the SMTP command replies, message

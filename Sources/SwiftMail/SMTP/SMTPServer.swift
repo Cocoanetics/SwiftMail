@@ -56,11 +56,21 @@ public actor SMTPServer {
 
     // MARK: - Properties
 
+    /// The privacy-safe identity used by default in SMTP `EHLO` commands.
+    ///
+    /// RFC 5321 permits an address literal when a client has no stable,
+    /// fully-qualified hostname. This loopback literal requires no hostname,
+    /// DNS, Bonjour, or local-network lookup.
+    public static let defaultClientIdentity = "[127.0.0.1]"
+
     /** The hostname of the SMTP server */
     let host: String
 
     /** The port number of the SMTP server */
     let port: Int
+
+    /// The domain or address literal sent as the client identity in every `EHLO` command.
+    public let clientIdentity: String
 
     /** The requested SMTP transport security policy */
     let transportSecurity: MailTransportSecurity
@@ -150,6 +160,10 @@ public actor SMTPServer {
        - certificateVerificationPolicy: The certificate verification policy to use for TLS connections
        - numberOfThreads: The number of threads to use for the event loop group
        - submissionTimeouts: Timeout budgets for the SMTP mail-submission dialogue
+       - clientIdentity: The RFC 5321 domain or address literal sent in `EHLO` commands. The
+         lookup-free default is ``SMTPServer/defaultClientIdentity``. A configured value is
+         sent before TLS as well as after STARTTLS, so it should not contain private device
+         information.
 
      `.automatic` infers the initial security mode from the port:
      - Port 25: Plain SMTP (not recommended)
@@ -166,10 +180,12 @@ public actor SMTPServer {
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
         minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
         numberOfThreads: Int = 1,
-        submissionTimeouts: SMTPSubmissionTimeouts = SMTPSubmissionTimeouts()
+        submissionTimeouts: SMTPSubmissionTimeouts = SMTPSubmissionTimeouts(),
+        clientIdentity: String = SMTPServer.defaultClientIdentity
     ) {
         self.host = host
         self.port = port
+        self.clientIdentity = clientIdentity
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
         self.minimumTLSVersion = minimumTLSVersion

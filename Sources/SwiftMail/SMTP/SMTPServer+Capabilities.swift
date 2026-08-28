@@ -26,7 +26,7 @@ extension SMTPServer {
 
     @discardableResult
     func fetchCapabilities(holding permit: SMTPOperationGate.Permit) async throws -> [String] {
-        let command = EHLOCommand(hostname: ProcessInfo.processInfo.hostName)
+        let command = EHLOCommand(clientIdentity: clientIdentity)
 
         do {
             let response = try await executeCommand(command, holding: permit)

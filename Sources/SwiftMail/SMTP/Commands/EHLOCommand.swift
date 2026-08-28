@@ -14,17 +14,28 @@ struct EHLOCommand: SMTPCommand {
     /// Timeout in seconds for EHLO command (typically quick to respond)
     let timeoutSeconds: Int = 30
 
-    /// The hostname to use for the EHLO command
-    let hostname: String
+    /// The client identity to use for the EHLO command
+    let clientIdentity: String
 
     /// Initialize a new EHLO command
-    /// - Parameter hostname: The hostname to use for the EHLO command
-    init(hostname: String) {
-        self.hostname = hostname
+    /// - Parameter clientIdentity: The RFC 5321 domain or address literal to use for the EHLO command
+    init(clientIdentity: String) {
+        self.clientIdentity = clientIdentity
     }
 
     /// Convert the command to a string that can be sent to the server
     func toCommandString() -> String {
-        return "EHLO \(hostname)"
+        return "EHLO \(clientIdentity)"
+    }
+
+    /// Reject malformed identities before they can alter the SMTP command stream.
+    func validate() throws {
+        let bytes = clientIdentity.utf8
+        guard (1...255).contains(bytes.count),
+            bytes.allSatisfy({ (33...126).contains($0) }) else {
+            throw SMTPError.commandFailed(
+                "EHLO client identity must be 1...255 printable ASCII characters without whitespace"
+            )
+        }
     }
 }
