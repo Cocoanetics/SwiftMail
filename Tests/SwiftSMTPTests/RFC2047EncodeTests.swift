@@ -179,7 +179,9 @@ struct RFC2047HeaderFieldBodyTests {
             firstWord + "\r\n " + secondWord,
             firstWord + "\r\n\t" + secondWord,
             firstWord + " \t\r\n   \t" + secondWord,
-            firstWord + "\r\n " + secondWord + "\r\n " + firstWord
+            firstWord + "\r\n " + secondWord + "\r\n " + firstWord,
+            "head\r\n !tail",
+            "head\r\n ~tail"
         ]
         for folded in foldedValues {
             #expect(folded.rfc2047EncodedHeader() == folded)
