@@ -67,38 +67,20 @@ final class IMAPLogger: MailLogger, @unchecked Sendable {
     override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         let response = unwrapInboundIn(data)
 
-        // Get log message, abbreviating FETCH responses if needed
-        let logMessage: String
-        if let resp = response as? Response {
-            logMessage = abbreviateResponse(resp)
-        } else {
-            logMessage = String(describing: response)
+        // The preceding streamingBegin event already records the literal size.
+        // Retaining one diagnostic string per fragment defeats bounded fetches.
+        if let response = response as? Response,
+           case .fetch(let fetchResponse) = response,
+           case .streamingBytes = fetchResponse {
+            context.fireChannelRead(data)
+            return
         }
 
         // Add the response to the buffer
-        bufferInboundResponse(decorate(logMessage))
+        bufferInboundResponse(decorate(String(describing: response)))
 
         // Forward the response to the next handler
         context.fireChannelRead(data)
     }
 
-    /// Abbreviate FETCH responses containing large body data
-    private func abbreviateResponse(_ response: Response) -> String {
-        // Check if this is a FETCH response
-        if case .fetch(let fetchResponse) = response {
-            // Check if it's streaming bytes (large body data)
-            if case .streamingBytes(let buffer) = fetchResponse {
-                let size = buffer.readableBytes
-                if size > 256 {
-                    // Truncate to first 256 bytes and show size
-                    var preview = buffer
-                    let previewData = preview.readString(length: min(256, size)) ?? ""
-                    return ".fetch(.streamingBytes(\(size) bytes): \(previewData)..."
-                }
-            }
-        }
-
-        // For non-FETCH or small responses, use default string representation
-        return String(describing: response)
-    }
 }

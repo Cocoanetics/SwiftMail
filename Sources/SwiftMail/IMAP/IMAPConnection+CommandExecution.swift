@@ -79,7 +79,7 @@ extension IMAPConnection {
 
         let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
         let tag = generateCommandTag()
-        let handler = CommandType.HandlerType.init(commandTag: tag, promise: resultPromise)
+        let handler = command.makeHandler(commandTag: tag, promise: resultPromise)
         let scheduledTask = scheduleCommandTimeout(
             channel: channel,
             timeoutSeconds: command.timeoutSeconds,

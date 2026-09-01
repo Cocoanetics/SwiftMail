@@ -307,6 +307,11 @@ extension IMAPConnection {
             }
         }
 
+        if let partialError = error as? PartialFetchError,
+           case .invalidResponse = partialError {
+            return true
+        }
+
         // Raw NIO transport failure (e.g. writeAndFlush on a closed channel). The substring
         // check below misses most ChannelError cases — `String(describing:)` returns just the
         // case name (`alreadyClosed`, `ioOnClosedChannel`, `connectPending`, `inputClosed`,

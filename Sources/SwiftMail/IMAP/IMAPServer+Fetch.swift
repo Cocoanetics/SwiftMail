@@ -49,6 +49,34 @@ extension IMAPServer {
     }
 
     /**
+     Fetches a validated byte range of a message part without setting `\\Seen`.
+
+     The wire request is `BODY.PEEK[section]<offset.count>`. The response must
+     echo the requested section and offset and contain at most `count` bytes.
+     Returned bytes remain transfer-encoded; callers should join chunks before decoding.
+     */
+    public func fetchPart<T: MessageIdentifier>(
+        section: Section,
+        of identifier: T,
+        offset: Int,
+        count: Int
+    ) async throws -> Data {
+        guard offset >= 0, count > 0,
+              let start = UInt32(exactly: offset),
+              UInt32(exactly: count) != nil,
+              let countMinusOne = UInt32(exactly: count - 1) else {
+            throw PartialFetchError.invalidRange
+        }
+        let end = start.addingReportingOverflow(countMinusOne)
+        guard !end.overflow else { throw PartialFetchError.invalidRange }
+        return try await executeCommand(FetchMessagePartCommand(
+            identifier: identifier,
+            section: section,
+            range: start...end.partialValue
+        ))
+    }
+
+    /**
      Fetch multiple body parts in a pipelined burst (RFC 3501 §5.5).
 
      Sends all FETCH BODY[section] commands without awaiting individual responses.

@@ -20,6 +20,14 @@ enum IMAPTestError: Error {
 /// A minimal IMAP4rev1 server implemented in Swift using POSIX sockets.
 /// Uses POSIX sockets directly since Network.framework doesn't work in the iOS simulator.
 final class IMAPTestServer {
+    enum PartialFetchBehavior {
+        case honor
+        case ignoreRange
+        case wrongOffset
+        case rejectWithBad
+        case rejectWithNo
+    }
+
     struct Message {
         let uid: Int
         let raw: Data
@@ -50,6 +58,7 @@ final class IMAPTestServer {
     private let copyUIDSourceOverride: String?
     private let personalNamespacePrefix: String
     private let namespaceDelimiter: Character
+    private let partialFetchBehavior: PartialFetchBehavior
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
     private var commandLogStorage: [String] = []
@@ -71,6 +80,7 @@ final class IMAPTestServer {
         ],
         personalNamespacePrefix: String = "",
         namespaceDelimiter: Character = "/",
+        partialFetchBehavior: PartialFetchBehavior = .honor,
         maildirURL: URL
     ) throws {
         self.host = host
@@ -83,6 +93,7 @@ final class IMAPTestServer {
         self.advertisedCapabilities = advertisedCapabilities
         self.personalNamespacePrefix = personalNamespacePrefix
         self.namespaceDelimiter = namespaceDelimiter
+        self.partialFetchBehavior = partialFetchBehavior
         self.messages = try Self.loadMaildir(maildirURL)
     }
 
@@ -281,6 +292,13 @@ final class IMAPTestServer {
             close(clientFd)
             return
         }
+        #if os(macOS)
+            var noSigPipe: Int32 = 1
+            setsockopt(
+                clientFd, SOL_SOCKET, SO_NOSIGPIPE,
+                &noSigPipe, socklen_t(MemoryLayout<Int32>.size)
+            )
+        #endif
         recordAcceptedConnection()
 
         // Handle on a background queue
@@ -411,7 +429,13 @@ final class IMAPTestServer {
             guard let ptr = buf.baseAddress else { return }
             var sent = 0
             while sent < data.count {
-                let bytesWritten = write(fileDescriptor, ptr + sent, data.count - sent)
+                #if os(Linux)
+                    let bytesWritten = Glibc.send(
+                        fileDescriptor, ptr + sent, data.count - sent, Int32(MSG_NOSIGNAL)
+                    )
+                #else
+                    let bytesWritten = write(fileDescriptor, ptr + sent, data.count - sent)
+                #endif
                 if bytesWritten <= 0 { return }
                 sent += bytesWritten
             }
@@ -555,6 +579,17 @@ final class IMAPTestServer {
         }
 
         let matched = parseSequenceSet(seqStr, uidMode: uidMode)
+        let partialRequest = parsePartialBodyRequest(itemsStr)
+        if partialRequest != nil {
+            switch partialFetchBehavior {
+                case .rejectWithBad:
+                    return "\(tag) BAD Partial FETCH ranges are unsupported\r\n"
+                case .rejectWithNo:
+                    return "\(tag) NO Partial FETCH is temporarily unavailable\r\n"
+                default:
+                    break
+            }
+        }
         var response = ""
 
         for msg in matched {
@@ -579,6 +614,14 @@ final class IMAPTestServer {
             if itemsStr.contains("BODYSTRUCTURE") {
                 fetchItems.append("BODYSTRUCTURE \(buildBodystructure(msg))")
             }
+            if let request = partialRequest, request.section == "1" {
+                fetchItems.append(partialBodyFetchItem(request, body: msg.body))
+            }
+            if partialRequest == nil,
+               itemsStr.contains("BODY.PEEK[1]") || itemsStr.contains("BODY[1]") {
+                let bodyString = String(data: msg.body, encoding: .utf8) ?? ""
+                fetchItems.append("BODY[1] {\(msg.body.count)}\r\n\(bodyString)")
+            }
             if itemsStr.contains("BODY[]") || itemsStr.contains("BODY.PEEK[]") {
                 let rawStr = String(data: msg.raw, encoding: .utf8) ?? ""
                 fetchItems.append("BODY[] {\(msg.raw.count)}\r\n\(rawStr)")
@@ -597,6 +640,45 @@ final class IMAPTestServer {
 
         response += "\(tag) OK \(uidMode ? "UID " : "")FETCH completed\r\n"
         return response
+    }
+
+    private struct PartialBodyRequest {
+        let section: String
+        let offset: Int
+        let count: Int
+    }
+
+    private func parsePartialBodyRequest(_ items: String) -> PartialBodyRequest? {
+        let pattern = #"BODY(?:\.PEEK)?\[([0-9]+(?:\.[0-9]+)*)\]<([0-9]+)\.([0-9]+)>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: items, range: NSRange(items.startIndex..., in: items)),
+              let sectionRange = Range(match.range(at: 1), in: items),
+              let offsetRange = Range(match.range(at: 2), in: items),
+              let countRange = Range(match.range(at: 3), in: items),
+              let offset = Int(items[offsetRange]),
+              let count = Int(items[countRange]) else {
+            return nil
+        }
+        return PartialBodyRequest(section: String(items[sectionRange]), offset: offset, count: count)
+    }
+
+    private func partialBodyFetchItem(
+        _ request: PartialBodyRequest,
+        body: Data
+    ) -> String {
+        let start = min(request.offset, body.count)
+        let end = min(start + request.count, body.count)
+        let bytes = body.subdata(in: start..<end)
+        let bodyString = String(data: bytes, encoding: .utf8) ?? ""
+        switch partialFetchBehavior {
+            case .honor, .rejectWithBad, .rejectWithNo:
+                return "BODY[\(request.section)]<\(request.offset)> {\(bytes.count)}\r\n\(bodyString)"
+            case .wrongOffset:
+                return "BODY[\(request.section)]<\(request.offset + 1)> {\(bytes.count)}\r\n\(bodyString)"
+            case .ignoreRange:
+                let wholeBody = String(data: body, encoding: .utf8) ?? ""
+                return "BODY[\(request.section)] {\(body.count)}\r\n\(wholeBody)"
+        }
     }
 
     private func parseSequenceSet(_ seqStr: String, uidMode: Bool) -> [Message] {

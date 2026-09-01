@@ -101,6 +101,9 @@ struct FetchMessagePartCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     /// The section path to fetch (e.g., [1], [1, 1], [2], etc.)
     let section: Section
 
+    /// Optional encoded-byte range for a partial body fetch.
+    let range: ClosedRange<UInt32>?
+
     /// Custom timeout for this operation
     var timeoutSeconds: Int { return 60 }
 
@@ -108,9 +111,29 @@ struct FetchMessagePartCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     /// - Parameters:
     ///   - identifier: The message identifier to fetch
     ///   - sectionPath: The section path to fetch as an array of integers
-    init(identifier: T, section: Section) {
+    init(identifier: T, section: Section, range: ClosedRange<UInt32>? = nil) {
         self.identifier = identifier
         self.section = section
+        self.range = range
+    }
+
+    func makeHandler(commandTag: String, promise: EventLoopPromise<Data>) -> FetchPartHandler {
+        guard let range else {
+            return FetchPartHandler(commandTag: commandTag, promise: promise)
+        }
+        let expectedIdentifier: PartialFetchIdentifier = T.self == UID.self
+            ? .uid(identifier.value)
+            : .sequenceNumber(identifier.value)
+        return FetchPartHandler(
+            commandTag: commandTag,
+            promise: promise,
+            partialRequest: .init(
+                identifier: expectedIdentifier,
+                section: SectionSpecifier(part: .init(section.components)),
+                offset: Int(range.lowerBound),
+                count: range.count
+            )
+        )
     }
 
     /// Convert to an IMAP tagged command
@@ -124,7 +147,7 @@ struct FetchMessagePartCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         let section = SectionSpecifier(part: part)
 
         let attributes: [FetchAttribute] = [
-            .bodySection(peek: true, section, nil)
+            .bodySection(peek: true, section, range)
         ]
 
         if T.self == UID.self {
