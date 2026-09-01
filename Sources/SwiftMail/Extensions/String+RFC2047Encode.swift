@@ -40,6 +40,40 @@ extension String {
         return scalar.value < 0x20 || scalar.value >= 0x7F
     }
 
+    /// Whether the receiver contains a scalar that cannot be written literally
+    /// in an unstructured header field body. A CRLF pair is allowed only when
+    /// followed by whitespace: that is RFC 5322 folding whitespace, not a new
+    /// header field. This preserves already-folded encoded-words supplied by a
+    /// caller while bare or malformed line breaks still trigger encoding.
+    private var rfc2047ContainsUnsafeHeaderScalar: Bool {
+        let scalars = unicodeScalars
+        var index = scalars.startIndex
+
+        while index != scalars.endIndex {
+            let scalar = scalars[index]
+            if scalar == "\r" {
+                let lineFeed = scalars.index(after: index)
+                guard lineFeed != scalars.endIndex, scalars[lineFeed] == "\n" else { return true }
+                let whitespace = scalars.index(after: lineFeed)
+                guard whitespace != scalars.endIndex,
+                      scalars[whitespace] == " " || scalars[whitespace] == "\t" else { return true }
+
+                var visible = whitespace
+                while visible != scalars.endIndex,
+                      scalars[visible] == " " || scalars[visible] == "\t" {
+                    visible = scalars.index(after: visible)
+                }
+                guard visible != scalars.endIndex,
+                      (0x21...0x7E).contains(scalars[visible].value) else { return true }
+                index = whitespace
+            } else if scalar == "\n" || Self.rfc2047RequiresEncoding(scalar) {
+                return true
+            }
+            index = scalars.index(after: index)
+        }
+        return false
+    }
+
     /// Encode the receiver as one or more RFC 2047 Base64 encoded-words when it
     /// contains anything a header field body cannot carry literally — non-ASCII
     /// text, a C0 control, DEL, or a C1 control. A value made only of printable
@@ -57,7 +91,7 @@ extension String {
     /// that decode each word in isolation). Round-trips through
     /// ``decodeMIMEHeader()``.
     public func rfc2047EncodedHeader() -> String {
-        guard self.unicodeScalars.contains(where: Self.rfc2047RequiresEncoding) else { return self }
+        guard rfc2047ContainsUnsafeHeaderScalar else { return self }
         return rfc2047EncodedWords()
     }
 

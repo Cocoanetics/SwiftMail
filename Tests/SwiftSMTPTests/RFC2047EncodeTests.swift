@@ -170,6 +170,40 @@ struct RFC2047HeaderFieldBodyTests {
         #expect(#""quoted" and \back\"#.rfc2047EncodedHeader() == #""quoted" and \back\"#)
     }
 
+    @Test("Legal folding whitespace is returned byte-identical")
+    func legalFoldingWhitespaceIsUnchanged() {
+        let firstWord = "=?UTF-8?B?8J+YgPCfmIDwn5iA8J+YgPCfmIA=?="
+        let secondWord = "=?UTF-8?B?8J+YgA==?="
+
+        let foldedValues = [
+            firstWord + "\r\n " + secondWord,
+            firstWord + "\r\n\t" + secondWord,
+            firstWord + " \t\r\n   \t" + secondWord,
+            firstWord + "\r\n " + secondWord + "\r\n " + firstWord
+        ]
+        for folded in foldedValues {
+            #expect(folded.rfc2047EncodedHeader() == folded)
+        }
+    }
+
+    @Test("Only complete folding whitespace may contain a literal line break")
+    func malformedFoldingWhitespaceIsEncoded() {
+        for value in [
+            "Hi\rthere",
+            "Hi\n there",
+            "Hi\r\nBcc: example@example.com",
+            "Hi\r\n",
+            "Hi\r\n ",
+            "Hi\r\n \r\n next",
+            "Hi\r\n okay\n Bcc: example@example.com"
+        ] {
+            let encoded = value.rfc2047EncodedHeader()
+            #expect(!encoded.contains("\r\nBcc:"))
+            #expect(encoded.hasPrefix("=?UTF-8?B?"))
+            #expect(encoded.decodeMIMEHeader() == value)
+        }
+    }
+
     // MARK: - 75-octet ceiling
 
     @Test("A grapheme cluster wider than one word cannot produce an oversized encoded-word")
