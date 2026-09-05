@@ -12,7 +12,9 @@ extension Set where Element == NIOIMAPCore.Capability {
         containsBareCapability(named: "uidplus")
     }
 
-    private func containsBareCapability(named expectedName: String) -> Bool {
+    /// Case-insensitive membership test for a value-less capability token,
+    /// shared by every `supports…` accessor on both connection surfaces.
+    func containsBareCapability(named expectedName: String) -> Bool {
         contains { capability in
             guard capability.value == nil else { return false }
             return capability.name.utf8.elementsEqual(expectedName.utf8) { candidate, expected in
