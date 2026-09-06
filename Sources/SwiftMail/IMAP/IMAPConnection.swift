@@ -36,6 +36,7 @@ final class IMAPConnection {
     let responseBuffer = UntaggedResponseBuffer()
     var startTLSUpgradeOverrideForTesting: (() async throws -> Void)?
     var capabilityRefreshOverrideForTesting: (() async throws -> Void)?
+    var authenticationFollowUpOverrideForTesting: (() async throws -> Void)?
     var connectOverrideForTesting: (() async throws -> Void)?
     /// Re-authenticates this connection inside the command queue after the command path
     /// or an IDLE start had to reopen the transport for a session that was authenticated.
@@ -46,7 +47,8 @@ final class IMAPConnection {
     /// authentication and by an explicit `disconnect()`.
     var lostAuthenticatedSession = false
     /// True while LOGIN, AUTHENTICATE PLAIN, or AUTHENTICATE XOAUTH2 runs, so the
-    /// capability refresh inside them cannot trigger a nested re-authentication.
+    /// capability and namespace refreshes inside it cannot recursively authenticate.
+    /// The outer authentication flow detects a replaced transport and retries itself.
     var authenticationInProgress = false
 
     let logger: Logging.Logger

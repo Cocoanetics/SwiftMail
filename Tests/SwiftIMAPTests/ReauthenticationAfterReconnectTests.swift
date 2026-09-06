@@ -80,6 +80,54 @@ struct ReauthenticationAfterReconnectTests {
     }
 
     @Test
+    func authenticationFollowUpThatReopensTransportReauthenticatesBeforeReturning() async throws {
+        try await withEventLoopGroup { group in
+            let connection = makeConnection(group: group)
+            let stale = try await makeTestingChannel(for: connection)
+            let replacement = NIOAsyncTestingChannel()
+            connection.replaceConnectForTesting {
+                try await replacement.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 143))
+                try await replacement.addIMAPClientHandler()
+                try await replacement.pipeline.addHandler(connection.duplexLogger)
+                try await replacement.pipeline.addHandler(connection.responseBuffer)
+                connection.replaceChannelForTesting(replacement)
+            }
+            connection.authenticationFollowUpOverrideForTesting = {
+                connection.authenticationFollowUpOverrideForTesting = nil
+                try await stale.close()
+            }
+
+            let login = Task { try await connection.login(username: "user", password: "secret") }
+            let firstLogin = try await nextOutboundLine(from: stale)
+            #expect(firstLogin?.hasPrefix("A001 LOGIN ") == true, "got \(firstLogin ?? "<nothing>")")
+            try await writeInboundLines(stale, "A001 OK LOGIN completed\r\n")
+
+            let preAuthCapability = try await nextOutboundLine(from: replacement)
+            #expect(
+                preAuthCapability == "A002 CAPABILITY\r\n",
+                "expected CAPABILITY on the replacement, got \(preAuthCapability ?? "<nothing>")"
+            )
+            try await writeInboundLines(
+                replacement,
+                "* CAPABILITY IMAP4rev1\r\nA002 OK CAPABILITY completed\r\n"
+            )
+
+            let retriedLogin = try await nextOutboundLine(from: replacement)
+            #expect(
+                retriedLogin?.hasPrefix("A003 LOGIN ") == true,
+                "authentication must be retried on the replacement, got \(retriedLogin ?? "<nothing>")"
+            )
+            try await writeInboundLines(
+                replacement,
+                "A003 OK [CAPABILITY IMAP4rev1] LOGIN completed\r\n"
+            )
+            try await login.value
+            #expect(connection.isAuthenticated)
+            #expect(!connection.lostAuthenticatedSession)
+        }
+    }
+
+    @Test
     func explicitDisconnectIsNotALostSession() async throws {
         try await withEventLoopGroup { group in
             let connection = makeConnection(group: group)

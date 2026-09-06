@@ -1,4 +1,5 @@
 import Foundation
+import NIO
 import NIOIMAPCore
 
 extension IMAPConnection {
@@ -49,13 +50,14 @@ extension IMAPConnection {
 
     /// LOGIN for a caller that already holds the command queue.
     func loginBody(username: String, password: String) async throws {
-        authenticationInProgress = true
-        defer { authenticationInProgress = false }
-        let command = LoginCommand(username: username, password: password)
-        let loginCapabilities = try await executeCommandBody(command)
-        markSessionAuthenticated()
-        try await refreshCapabilities(using: loginCapabilities, useCommandBody: true)
-        await fetchNamespacesIfSupported(useCommandBody: true)
+        try await authenticateUntilTransportIsStable(operation: "LOGIN") { [self] in
+            let command = LoginCommand(username: username, password: password)
+            let loginCapabilities = try await executeCommandBody(command)
+            guard let authenticatedChannel = channel, authenticatedChannel.isActive else {
+                throw IMAPError.connectionFailed("LOGIN completed after its transport closed")
+            }
+            return (authenticatedChannel, loginCapabilities)
+        }
     }
 
     /// ID for a caller that already holds the command queue.
@@ -71,5 +73,55 @@ extension IMAPConnection {
     func markSessionAuthenticated() {
         isSessionAuthenticated = true
         lostAuthenticatedSession = false
+    }
+
+    /// Authentication is not complete until its post-authentication discovery ran on
+    /// the transport that accepted the credentials. A dead authenticated channel can
+    /// be replaced by CAPABILITY or NAMESPACE while `authenticationInProgress` blocks
+    /// nested re-authentication. In that case the discovery command may succeed on the
+    /// replacement even though it is unauthenticated, so repeat the entire flow there.
+    func authenticateUntilTransportIsStable(
+        operation: String,
+        authenticate: () async throws -> (channel: Channel, capabilities: [Capability])
+    ) async throws {
+        authenticationInProgress = true
+        defer { authenticationInProgress = false }
+
+        let maximumAttempts = 2
+        for attempt in 1...maximumAttempts {
+            let result = try await authenticate()
+
+            guard channel === result.channel, result.channel.isActive else {
+                if attempt < maximumAttempts {
+                    logger.info(
+                        "\(connectionContext) \(operation) transport closed after authentication; retrying"
+                    )
+                    continue
+                }
+                throw IMAPError.connectionFailed(
+                    "\(operation) transport repeatedly closed after authentication"
+                )
+            }
+
+            markSessionAuthenticated()
+            try await authenticationFollowUpOverrideForTesting?()
+            try await refreshCapabilities(using: result.capabilities, useCommandBody: true)
+            await fetchNamespacesIfSupported(useCommandBody: true)
+            clearInvalidChannel()
+
+            if channel === result.channel, result.channel.isActive, !lostAuthenticatedSession {
+                return
+            }
+
+            if attempt < maximumAttempts {
+                logger.info(
+                    "\(connectionContext) \(operation) follow-up replaced the authenticated transport; retrying"
+                )
+                continue
+            }
+            throw IMAPError.connectionFailed(
+                "\(operation) follow-up repeatedly replaced the authenticated transport"
+            )
+        }
     }
 }

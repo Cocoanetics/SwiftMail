@@ -11,35 +11,36 @@ extension IMAPConnection {
     /// continuation-based exchange. Runs inside the command queue; the queue-taking
     /// entry points live in `IMAPConnection+Reauthentication.swift`.
     func authenticatePlainBody(username: String, password: String) async throws {
-        authenticationInProgress = true
-        defer { authenticationInProgress = false }
-        let mechanism = AuthenticationMechanism("PLAIN")
-        let channel = try await prepareAuthenticationChannel(
-            operation: "PLAIN authenticate", advertising: .authenticate(mechanism), name: "PLAIN"
-        )
-        let tag = generateCommandTag()
-
-        let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
-        let credentialBuffer = makePlainCredentialBuffer(username: username, password: password)
-        let (initialResponse, expectsChallenge) = resolveSASLIR(credentials: credentialBuffer)
-
-        let handler = PlainAuthenticationHandler(
-            commandTag: tag,
-            promise: handlerPromise,
-            credentials: credentialBuffer,
-            expectsChallenge: expectsChallenge
-        )
-
-        try await runPlainAuthentication(
-            PlainAuthenticationRun(
-                channel: channel,
-                tag: tag,
-                mechanism: mechanism,
-                initialResponse: initialResponse,
-                handler: handler,
-                handlerPromise: handlerPromise
+        try await authenticateUntilTransportIsStable(operation: "PLAIN authentication") { [self] in
+            let mechanism = AuthenticationMechanism("PLAIN")
+            let channel = try await prepareAuthenticationChannel(
+                operation: "PLAIN authenticate", advertising: .authenticate(mechanism), name: "PLAIN"
             )
-        )
+            let tag = generateCommandTag()
+
+            let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
+            let credentialBuffer = makePlainCredentialBuffer(username: username, password: password)
+            let (initialResponse, expectsChallenge) = resolveSASLIR(credentials: credentialBuffer)
+
+            let handler = PlainAuthenticationHandler(
+                commandTag: tag,
+                promise: handlerPromise,
+                credentials: credentialBuffer,
+                expectsChallenge: expectsChallenge
+            )
+
+            let capabilities = try await runPlainAuthentication(
+                PlainAuthenticationRun(
+                    channel: channel,
+                    tag: tag,
+                    mechanism: mechanism,
+                    initialResponse: initialResponse,
+                    handler: handler,
+                    handlerPromise: handlerPromise
+                )
+            )
+            return (channel, capabilities)
+        }
     }
 
     private struct PlainAuthenticationRun {
@@ -51,7 +52,7 @@ extension IMAPConnection {
         let handlerPromise: EventLoopPromise<[Capability]>
     }
 
-    private func runPlainAuthentication(_ run: PlainAuthenticationRun) async throws {
+    private func runPlainAuthentication(_ run: PlainAuthenticationRun) async throws -> [Capability] {
         let channel = run.channel
         let tag = run.tag
         let mechanism = run.mechanism
@@ -75,11 +76,9 @@ extension IMAPConnection {
 
             scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
-            markSessionAuthenticated()
 
             duplexLogger.flushInboundBuffer()
-            try await refreshCapabilities(using: postAuthCapabilities)
-            await fetchNamespacesIfSupported(useCommandBody: true)
+            return postAuthCapabilities
         } catch {
             scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
@@ -221,36 +220,40 @@ extension IMAPConnection {
     }
 
     func authenticateXOAUTH2Body(email: String, accessToken: String) async throws {
-        authenticationInProgress = true
-        defer { authenticationInProgress = false }
-        let mechanism = AuthenticationMechanism("XOAUTH2")
-        let channel = try await prepareAuthenticationChannel(
-            operation: "XOAUTH2 authenticate", advertising: .authenticate(mechanism), name: "XOAUTH2"
-        )
-        let tag = generateCommandTag()
-
-        let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
-        let credentialBuffer = makeXOAUTH2InitialResponseBuffer(email: email, accessToken: accessToken)
-        let (initialResponse, expectsChallenge) = resolveSASLIR(credentials: credentialBuffer, maxInlineBytes: 1024)
-
-        let handler = XOAUTH2AuthenticationHandler(
-            commandTag: tag,
-            promise: handlerPromise,
-            credentials: credentialBuffer,
-            expectsChallenge: expectsChallenge,
-            logger: logger
-        )
-
-        try await runXOAUTH2Authentication(
-            XOAUTH2AuthenticationRun(
-                channel: channel,
-                tag: tag,
-                mechanism: mechanism,
-                initialResponse: initialResponse,
-                handler: handler,
-                handlerPromise: handlerPromise
+        try await authenticateUntilTransportIsStable(operation: "XOAUTH2 authentication") { [self] in
+            let mechanism = AuthenticationMechanism("XOAUTH2")
+            let channel = try await prepareAuthenticationChannel(
+                operation: "XOAUTH2 authenticate", advertising: .authenticate(mechanism), name: "XOAUTH2"
             )
-        )
+            let tag = generateCommandTag()
+
+            let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
+            let credentialBuffer = makeXOAUTH2InitialResponseBuffer(email: email, accessToken: accessToken)
+            let (initialResponse, expectsChallenge) = resolveSASLIR(
+                credentials: credentialBuffer,
+                maxInlineBytes: 1024
+            )
+
+            let handler = XOAUTH2AuthenticationHandler(
+                commandTag: tag,
+                promise: handlerPromise,
+                credentials: credentialBuffer,
+                expectsChallenge: expectsChallenge,
+                logger: logger
+            )
+
+            let capabilities = try await runXOAUTH2Authentication(
+                XOAUTH2AuthenticationRun(
+                    channel: channel,
+                    tag: tag,
+                    mechanism: mechanism,
+                    initialResponse: initialResponse,
+                    handler: handler,
+                    handlerPromise: handlerPromise
+                )
+            )
+            return (channel, capabilities)
+        }
     }
 
     private struct XOAUTH2AuthenticationRun {
@@ -262,7 +265,7 @@ extension IMAPConnection {
         let handlerPromise: EventLoopPromise<[Capability]>
     }
 
-    private func runXOAUTH2Authentication(_ run: XOAUTH2AuthenticationRun) async throws {
+    private func runXOAUTH2Authentication(_ run: XOAUTH2AuthenticationRun) async throws -> [Capability] {
         let channel = run.channel
         let tag = run.tag
         let mechanism = run.mechanism
@@ -289,16 +292,7 @@ extension IMAPConnection {
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
 
-            markSessionAuthenticated()
-            // AUTHENTICATE often returns an OK without CAPABILITY data, and RFC 3501
-            // invalidates the pre-authentication capability set once authentication
-            // succeeds. Refresh from the server instead of retaining the stale
-            // snapshot — capability-gated features (like the RFC 2971 ID replay)
-            // would otherwise miss capabilities the server only advertises after
-            // authentication. useCommandBody avoids re-entering the command queue
-            // this method already holds, like the namespace fetch below.
-            try await refreshCapabilities(using: refreshedCapabilities, useCommandBody: true)
-            await fetchNamespacesIfSupported(useCommandBody: true)
+            return refreshedCapabilities
         } catch {
             await handleXOAUTH2Failure(
                 error: error,
