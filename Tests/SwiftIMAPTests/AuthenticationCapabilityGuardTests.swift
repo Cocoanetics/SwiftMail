@@ -21,7 +21,6 @@ struct AuthenticationCapabilityGuardTests {
     @Test
     func emptySnapshotIsRefreshedBeforeJudgingXOAUTH2() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
         let harness = try await makeLiveHarness(group: group, capabilities: [])
 
         let authTask = Task {
@@ -37,12 +36,12 @@ struct AuthenticationCapabilityGuardTests {
 
         try await authTask.value
         #expect(harness.connection.isAuthenticated)
+        await shutDownGracefully(group)
     }
 
     @Test
     func emptySnapshotIsRefreshedBeforeJudgingPLAIN() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
         let harness = try await makeLiveHarness(group: group, capabilities: [])
 
         let authTask = Task {
@@ -58,12 +57,12 @@ struct AuthenticationCapabilityGuardTests {
 
         try await authTask.value
         #expect(harness.connection.isAuthenticated)
+        await shutDownGracefully(group)
     }
 
     @Test
     func refreshedSnapshotWithoutTheMechanismIsStillRejected() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
         let harness = try await makeLiveHarness(group: group, capabilities: [])
 
         let authTask = Task {
@@ -82,12 +81,12 @@ struct AuthenticationCapabilityGuardTests {
             #expect(reason == "XOAUTH2 not advertised by server")
         }
         #expect(!harness.connection.isAuthenticated)
+        await shutDownGracefully(group)
     }
 
     @Test
     func disconnectedConnectionReconnectsBeforeJudgingTheMechanism() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
         // Port 1 refuses immediately: the transport attempt fails, which is the
         // point. Before the fix the empty snapshot short-circuited to
         // "not advertised" without any connection attempt.
@@ -102,6 +101,7 @@ struct AuthenticationCapabilityGuardTests {
         } catch {
             // Any transport-level failure is the expected outcome.
         }
+        await shutDownGracefully(group)
     }
 
     /// The empty-snapshot refresh runs through `executeCommandBody`, which recycles a
@@ -112,7 +112,6 @@ struct AuthenticationCapabilityGuardTests {
     @Test
     func refreshThatReplacedTheChannelAuthenticatesOnTheReplacement() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
         let stale = try await makeLiveHarness(group: group, capabilities: [])
         let connection = stale.connection
         let replacementChannel = NIOAsyncTestingChannel()
@@ -141,6 +140,7 @@ struct AuthenticationCapabilityGuardTests {
         #expect(connection.isAuthenticated)
         let staleWrite = try? await stale.channel.readOutbound(as: ByteBuffer.self)
         #expect(staleWrite == nil, "nothing may be written on the transport the refresh replaced")
+        await shutDownGracefully(group)
     }
 
     // MARK: - Harness
