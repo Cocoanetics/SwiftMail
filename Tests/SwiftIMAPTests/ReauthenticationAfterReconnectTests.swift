@@ -27,75 +27,75 @@ private actor ReauthenticationCounter {
 struct ReauthenticationAfterReconnectTests {
     @Test
     func commandThatReopensTheTransportReauthenticatesFirst() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
-        let connection = makeConnection(group: group)
-        let counter = ReauthenticationCounter()
-        let replacement = try await loseAuthenticatedSession(on: connection, counter: counter)
+        try await withEventLoopGroup { group in
+            let connection = makeConnection(group: group)
+            let counter = ReauthenticationCounter()
+            let replacement = try await loseAuthenticatedSession(on: connection, counter: counter)
 
-        let noop = Task { try await connection.executeCommand(NoopCommand()) }
-        let line = try await nextOutboundLine(from: replacement)
-        #expect(line == "A001 NOOP\r\n", "expected NOOP on the replacement, got \(line ?? "<nothing>")")
-        #expect(await counter.value() == 1, "re-authentication runs before the command goes out")
-        try await writeInboundLines(replacement, "A001 OK NOOP completed\r\n")
-        _ = try await noop.value
-        #expect(connection.isAuthenticated)
-        #expect(!connection.lostAuthenticatedSession)
+            let noop = Task { try await connection.executeCommand(NoopCommand()) }
+            let line = try await nextOutboundLine(from: replacement)
+            #expect(line == "A001 NOOP\r\n", "expected NOOP on the replacement, got \(line ?? "<nothing>")")
+            #expect(await counter.value() == 1, "re-authentication runs before the command goes out")
+            try await writeInboundLines(replacement, "A001 OK NOOP completed\r\n")
+            _ = try await noop.value
+            #expect(connection.isAuthenticated)
+            #expect(!connection.lostAuthenticatedSession)
+        }
     }
 
     @Test
     func idleStartThatReopensTheTransportReauthenticatesFirst() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
-        let connection = makeConnection(group: group)
-        let counter = ReauthenticationCounter()
-        let replacement = try await loseAuthenticatedSession(on: connection, counter: counter)
-        connection.replaceCapabilitiesForTesting([Capability("IMAP4rev1"), .idle])
+        try await withEventLoopGroup { group in
+            let connection = makeConnection(group: group)
+            let counter = ReauthenticationCounter()
+            let replacement = try await loseAuthenticatedSession(on: connection, counter: counter)
+            connection.replaceCapabilitiesForTesting([Capability("IMAP4rev1"), .idle])
 
-        let stream = try await connection.idle()
-        let line = try await nextOutboundLine(from: replacement)
-        #expect(line == "A001 IDLE\r\n", "expected IDLE on the replacement, got \(line ?? "<nothing>")")
-        #expect(await counter.value() == 1, "re-authentication runs before IDLE goes out")
-        #expect(connection.isAuthenticated)
-        _ = stream
-        try? await connection.disconnect()
+            let stream = try await connection.idle()
+            let line = try await nextOutboundLine(from: replacement)
+            #expect(line == "A001 IDLE\r\n", "expected IDLE on the replacement, got \(line ?? "<nothing>")")
+            #expect(await counter.value() == 1, "re-authentication runs before IDLE goes out")
+            #expect(connection.isAuthenticated)
+            _ = stream
+            try? await connection.disconnect()
+        }
     }
 
     @Test
     func reauthenticationWaitsWhileAuthenticationIsInProgress() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
-        let connection = makeConnection(group: group)
-        let counter = ReauthenticationCounter()
-        connection.lostAuthenticatedSession = true
-        connection.reauthenticateAfterReconnect = { _ in await counter.increment() }
+        try await withEventLoopGroup { group in
+            let connection = makeConnection(group: group)
+            let counter = ReauthenticationCounter()
+            connection.lostAuthenticatedSession = true
+            connection.reauthenticateAfterReconnect = { _ in await counter.increment() }
 
-        connection.authenticationInProgress = true
-        try await connection.reauthenticateIfSessionWasLost(before: "CAPABILITY")
-        #expect(await counter.value() == 0, "the refresh inside an authentication must not nest another")
+            connection.authenticationInProgress = true
+            try await connection.reauthenticateIfSessionWasLost(before: "CAPABILITY")
+            #expect(await counter.value() == 0, "the refresh inside an authentication must not nest another")
 
-        connection.authenticationInProgress = false
-        try await connection.reauthenticateIfSessionWasLost(before: "NOOP")
-        #expect(await counter.value() == 1)
+            connection.authenticationInProgress = false
+            try await connection.reauthenticateIfSessionWasLost(before: "NOOP")
+            #expect(await counter.value() == 1)
+        }
     }
 
     @Test
     func explicitDisconnectIsNotALostSession() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
-        let connection = makeConnection(group: group)
-        let channel = try await makeTestingChannel(for: connection)
-        connection.markSessionAuthenticated()
+        try await withEventLoopGroup { group in
+            let connection = makeConnection(group: group)
+            let channel = try await makeTestingChannel(for: connection)
+            connection.markSessionAuthenticated()
 
-        try await connection.disconnect()
-        #expect(!connection.lostAuthenticatedSession, "ending the session on purpose is not losing it")
+            try await connection.disconnect()
+            #expect(!connection.lostAuthenticatedSession, "ending the session on purpose is not losing it")
 
-        let second = try await makeTestingChannel(for: connection)
-        connection.markSessionAuthenticated()
-        try await second.close()
-        connection.clearInvalidChannel()
-        #expect(connection.lostAuthenticatedSession, "a dead channel under an authenticated session is a loss")
-        _ = channel
+            let second = try await makeTestingChannel(for: connection)
+            connection.markSessionAuthenticated()
+            try await second.close()
+            connection.clearInvalidChannel()
+            #expect(connection.lostAuthenticatedSession, "a dead channel under an authenticated session is a loss")
+            _ = channel
+        }
     }
 
     @Test
@@ -126,6 +126,20 @@ struct ReauthenticationAfterReconnectTests {
     }
 
     // MARK: - Harness
+
+    private func withEventLoopGroup(
+        _ body: (MultiThreadedEventLoopGroup) async throws -> Void
+    ) async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+
+        do {
+            try await body(group)
+            await shutDownGracefully(group)
+        } catch {
+            await shutDownGracefully(group)
+            throw error
+        }
+    }
 
     private func makeConnection(group: MultiThreadedEventLoopGroup) -> IMAPConnection {
         IMAPConnection(
