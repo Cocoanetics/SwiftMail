@@ -132,12 +132,12 @@ struct PartialFetchValidationTests {
                     .simpleAttribute(.uid(.init(rawValue: 999)))
                 ] + validBody,
                 identifier: .uid(1),
-                expected: .invalidResponse("missing or ambiguous requested body")
+                expected: .messageNotFound
             ),
             FailureCase(
                 responses: [.start(.init(rawValue: 2))] + validBody,
                 identifier: .sequenceNumber(1),
-                expected: .invalidResponse("missing or ambiguous requested body")
+                expected: .messageNotFound
             )
         ]
         await assertFailures(cases)
@@ -271,6 +271,39 @@ struct PartialFetchValidationTests {
 }
 
 extension PartialFetchValidationTests {
+    @Test("Concrete responses match wildcard identifiers")
+    func wildcardIdentifiers() async throws {
+        let section = SectionSpecifier(part: .init([1]))
+        let uidResult = try await partialCommandResult(
+            identifier: UID.latest,
+            responses: matchingStart() + bodyResponses(section: section)
+        ).get()
+        let sequenceResult = try await partialCommandResult(
+            identifier: SwiftMail.SequenceNumber.latest,
+            responses: [.start(.init(rawValue: 27))] + bodyResponses(section: section)
+        ).get()
+
+        #expect(uidResult == Data("data".utf8))
+        #expect(sequenceResult == Data("data".utf8))
+    }
+
+    @Test("Identified unrelated body groups are discarded")
+    func ignoresUnrelatedBodyGroups() async throws {
+        let section = SectionSpecifier(part: .init([1]))
+        let otherSection = SectionSpecifier(part: .init([2]))
+        let responses: [FetchResponse] = [
+            .start(.init(rawValue: 7)),
+            .simpleAttribute(.uid(.init(rawValue: 99))),
+            .streamingBegin(kind: .body(section: otherSection, offset: nil), byteCount: 4),
+            .streamingBytes(buffer("junk")),
+            .streamingEnd,
+            .finish
+        ] + matchingStart() + bodyResponses(section: section)
+
+        let result = try await partialHandlerResult(responses).get()
+        #expect(result == Data("data".utf8))
+    }
+
     @Test("Unrelated untagged responses do not complete the handler")
     func ignoresUnrelatedUntaggedResponse() async throws {
         let loop = EmbeddedEventLoop()
@@ -290,5 +323,30 @@ extension PartialFetchValidationTests {
         )))
         loop.run()
         #expect(try await promise.futureResult.get() == Data("data".utf8))
+    }
+
+    private func partialCommandResult<T: SwiftMail.MessageIdentifier>(
+        identifier: T,
+        responses: [FetchResponse]
+    ) async -> Result<Data, Error> {
+        let loop = EmbeddedEventLoop()
+        let promise = loop.makePromise(of: Data.self)
+        let command = FetchMessagePartCommand(
+            identifier: identifier,
+            section: Section([1]),
+            range: 0...3
+        )
+        let handler = command.makeHandler(commandTag: "P001", promise: promise)
+        for response in responses { _ = handler.processResponse(.fetch(response)) }
+        _ = handler.processResponse(.tagged(TaggedResponse(
+            tag: "P001",
+            state: .ok(ResponseText(text: "completed"))
+        )))
+        loop.run()
+        do {
+            return .success(try await promise.futureResult.get())
+        } catch {
+            return .failure(error)
+        }
     }
 }

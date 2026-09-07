@@ -9,6 +9,8 @@ import NIO
 enum PartialFetchIdentifier: Sendable {
     case uid(UInt32)
     case sequenceNumber(UInt32)
+    case latestUID
+    case latestSequenceNumber
 }
 
 struct PartialFetchRequest: Sendable {
@@ -20,6 +22,12 @@ struct PartialFetchRequest: Sendable {
 
 /// Handler for full and validated partial IMAP FETCH PART commands.
 final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, @unchecked Sendable {
+    private enum IdentityMatch {
+        case pending
+        case matches
+        case unrelated
+    }
+
     private let partialRequest: PartialFetchRequest?
     private var partData = Data()
     private var didFinishPart = false
@@ -152,8 +160,9 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
             case .uid(let uid):
                 recordUID(uid.rawValue, request: request)
             case .nilBody(let kind):
-                beginBody(kind: kind, declaredCount: 0, request: request)
-                currentError = .invalidResponse("requested body section was NIL")
+                if beginBody(kind: kind, declaredCount: 0, request: request) {
+                    currentError = .invalidResponse("requested body section was NIL")
+                }
             default:
                 break
         }
@@ -175,44 +184,56 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
     private func appendPartialBytes(_ bytes: ByteBuffer, request: PartialFetchRequest) {
         guard collectingBody else { return }
         guard bytes.readableBytes <= request.count - currentData.count else {
-            rejectUnsafeResponse("literal exceeded requested count")
+            rejectResponse("literal exceeded requested count", request: request)
             return
         }
         currentData.append(contentsOf: bytes.readableBytesView)
     }
 
-    private func beginBody(kind: StreamingKind, declaredCount: Int, request: PartialFetchRequest) {
+    @discardableResult
+    private func beginBody(
+        kind: StreamingKind,
+        declaredCount: Int,
+        request: PartialFetchRequest
+    ) -> Bool {
+        guard identityMatch(request.identifier) != .unrelated else { return false }
         currentBodyCount += 1
         guard currentBodyCount == 1 else {
-            rejectUnsafeResponse("multiple body literals")
-            return
+            rejectResponse("multiple body literals", request: request)
+            return true
         }
         guard case .body(let section, let offset) = kind,
               section == request.section,
               offset == request.offset else {
-            rejectUnsafeResponse("section or partial origin did not match request")
-            return
+            rejectResponse("section or partial origin did not match request", request: request)
+            return true
         }
         guard declaredCount <= request.count else {
-            rejectUnsafeResponse("literal exceeded requested count")
-            return
+            rejectResponse("literal exceeded requested count", request: request)
+            return true
         }
         currentDeclaredCount = declaredCount
         collectingBody = true
+        return true
     }
 
-    private func rejectUnsafeResponse(_ reason: String) {
+    private func rejectResponse(_ reason: String, request: PartialFetchRequest) {
         let error = PartialFetchError.invalidResponse(reason)
         currentError = error
         collectingBody = false
-        failWithError(error)
+        if identityMatch(request.identifier) == .matches {
+            failWithError(error)
+        }
     }
 
     private func finishCurrentGroup(request: PartialFetchRequest) {
-        if currentBodyCount > 0 { sawBodyGroup = true }
         guard identifierMatches(request.identifier) else { return }
         sawMatchingGroup = true
+        if let currentError, currentBodyCount == 0 {
+            validationError = currentError
+        }
         guard currentBodyCount > 0 else { return }
+        sawBodyGroup = true
         matchedCount += 1
         guard matchedCount == 1 else {
             validationError = .invalidResponse("multiple matching FETCH responses")
@@ -226,9 +247,21 @@ final class FetchPartHandler: BaseIMAPCommandHandler<Data>, IMAPCommandHandler, 
     }
 
     private func identifierMatches(_ expected: PartialFetchIdentifier) -> Bool {
+        identityMatch(expected) == .matches
+    }
+
+    private func identityMatch(_ expected: PartialFetchIdentifier) -> IdentityMatch {
         switch expected {
-            case .uid(let uid): currentUID == uid || currentIncludesExpectedUID
-            case .sequenceNumber(let sequence): currentSequence == sequence
+            case .uid(let uid):
+                guard currentUID != nil else { return .pending }
+                return currentIncludesExpectedUID || currentUID == uid ? .matches : .unrelated
+            case .sequenceNumber(let sequence):
+                guard let currentSequence else { return .pending }
+                return currentSequence == sequence ? .matches : .unrelated
+            case .latestUID:
+                return currentUID == nil ? .pending : .matches
+            case .latestSequenceNumber:
+                return currentSequence == nil ? .pending : .matches
         }
     }
 

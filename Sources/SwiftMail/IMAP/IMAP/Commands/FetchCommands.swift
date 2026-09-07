@@ -121,9 +121,14 @@ struct FetchMessagePartCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         guard let range else {
             return FetchPartHandler(commandTag: commandTag, promise: promise)
         }
-        let expectedIdentifier: PartialFetchIdentifier = T.self == UID.self
-            ? .uid(identifier.value)
-            : .sequenceNumber(identifier.value)
+        let expectedIdentifier: PartialFetchIdentifier
+        if T.self == UID.self {
+            expectedIdentifier = identifier == T.latest ? .latestUID : .uid(identifier.value)
+        } else {
+            expectedIdentifier = identifier == T.latest
+                ? .latestSequenceNumber
+                : .sequenceNumber(identifier.value)
+        }
         return FetchPartHandler(
             commandTag: commandTag,
             promise: promise,
