@@ -8,6 +8,9 @@ import NIOIMAP
 
 /// Base class for mail protocol loggers
 class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
+    static let maximumInboundBufferEntries = 256
+    static let maximumInboundBufferBytes = 64 * 1024
+
     // Type definitions
     typealias OutboundIn = Any
     typealias OutboundOut = Any
@@ -23,6 +26,8 @@ class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
 
     // Make inboundBuffer accessible for modification by subclasses
     var inboundBuffer: [String] = []
+    private(set) var inboundBufferByteCount = 0
+    private(set) var droppedInboundResponseCount = 0
 
     /// Initialize a new mail logger
     /// - Parameters:
@@ -36,17 +41,30 @@ class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
     /// Add a response to the inbound buffer
     func bufferInboundResponse(_ message: String) {
         lock.withLock {
+            let byteCount = message.utf8.count
+            guard inboundBuffer.count < Self.maximumInboundBufferEntries,
+                  byteCount <= Self.maximumInboundBufferBytes - inboundBufferByteCount else {
+                droppedInboundResponseCount += 1
+                return
+            }
             inboundBuffer.append(message)
+            inboundBufferByteCount += byteCount
         }
     }
 
     /// Flush the inbound buffer
     func flushInboundBuffer() {
         lock.withLock {
-            if !inboundBuffer.isEmpty {
-                let lines = inboundBuffer.joined(separator: ", ")
+            if !inboundBuffer.isEmpty || droppedInboundResponseCount > 0 {
+                var lines = inboundBuffer.joined(separator: ", ")
+                if droppedInboundResponseCount > 0 {
+                    let omission = "<\(droppedInboundResponseCount) responses omitted>"
+                    lines = lines.isEmpty ? omission : "\(lines), \(omission)"
+                }
                 inboundLogger.trace(Logger.Message(stringLiteral: lines))
                 inboundBuffer.removeAll()
+                inboundBufferByteCount = 0
+                droppedInboundResponseCount = 0
             }
         }
     }
@@ -54,7 +72,7 @@ class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
     /// Check if there are buffered messages
     func hasBufferedMessages() -> Bool {
         lock.withLock {
-            return !inboundBuffer.isEmpty
+            return !inboundBuffer.isEmpty || droppedInboundResponseCount > 0
         }
     }
 

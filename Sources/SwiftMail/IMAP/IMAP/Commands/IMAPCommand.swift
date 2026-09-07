@@ -22,6 +22,13 @@ protocol IMAPCommand where ResultType: Sendable {
 
     /// Send the command to the server.
     func send(on channel: Channel, tag: String) async throws
+
+    /// Build the response handler. Commands with request-specific validation
+    /// may override the default implementation.
+    func makeHandler(
+        commandTag: String,
+        promise: EventLoopPromise<ResultType>
+    ) -> HandlerType
 }
 
 /// A command that can be represented as a tagged IMAP command.
@@ -36,6 +43,13 @@ extension IMAPCommand {
 
     func validate() throws {
         // Default implementation does no validation
+    }
+
+    func makeHandler(
+        commandTag: String,
+        promise: EventLoopPromise<ResultType>
+    ) -> HandlerType {
+        HandlerType(commandTag: commandTag, promise: promise)
     }
 }
 
