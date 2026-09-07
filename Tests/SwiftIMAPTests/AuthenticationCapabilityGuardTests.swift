@@ -20,88 +20,88 @@ struct AuthenticationCapabilityGuardTests {
 
     @Test
     func emptySnapshotIsRefreshedBeforeJudgingXOAUTH2() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        let harness = try await makeLiveHarness(group: group, capabilities: [])
+        try await withEventLoopGroup { group in
+            let harness = try await makeLiveHarness(group: group, capabilities: [])
 
-        let authTask = Task {
-            try await harness.connection.authenticateXOAUTH2(email: "user@example.com", accessToken: "token")
+            let authTask = Task {
+                try await harness.connection.authenticateXOAUTH2(email: "user@example.com", accessToken: "token")
+            }
+            try await answerCapabilityRefresh(
+                harness,
+                tag: "A001",
+                capabilities: "IMAP4rev1 SASL-IR AUTH=XOAUTH2"
+            )
+            try await answerAuthenticate(harness, tag: "A002", mechanism: "XOAUTH2")
+            try await answerCapabilityRefresh(harness, tag: "A003", capabilities: "IMAP4rev1 AUTH=XOAUTH2")
+
+            try await authTask.value
+            #expect(harness.connection.isAuthenticated)
         }
-        try await answerCapabilityRefresh(
-            harness,
-            tag: "A001",
-            capabilities: "IMAP4rev1 SASL-IR AUTH=XOAUTH2"
-        )
-        try await answerAuthenticate(harness, tag: "A002", mechanism: "XOAUTH2")
-        try await answerCapabilityRefresh(harness, tag: "A003", capabilities: "IMAP4rev1 AUTH=XOAUTH2")
-
-        try await authTask.value
-        #expect(harness.connection.isAuthenticated)
-        await shutDownGracefully(group)
     }
 
     @Test
     func emptySnapshotIsRefreshedBeforeJudgingPLAIN() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        let harness = try await makeLiveHarness(group: group, capabilities: [])
+        try await withEventLoopGroup { group in
+            let harness = try await makeLiveHarness(group: group, capabilities: [])
 
-        let authTask = Task {
-            try await harness.connection.authenticatePlain(username: "user", password: "secret")
+            let authTask = Task {
+                try await harness.connection.authenticatePlain(username: "user", password: "secret")
+            }
+            try await answerCapabilityRefresh(
+                harness,
+                tag: "A001",
+                capabilities: "IMAP4rev1 SASL-IR AUTH=PLAIN"
+            )
+            try await answerAuthenticate(harness, tag: "A002", mechanism: "PLAIN")
+            try await answerCapabilityRefresh(harness, tag: "A003", capabilities: "IMAP4rev1 AUTH=PLAIN")
+
+            try await authTask.value
+            #expect(harness.connection.isAuthenticated)
         }
-        try await answerCapabilityRefresh(
-            harness,
-            tag: "A001",
-            capabilities: "IMAP4rev1 SASL-IR AUTH=PLAIN"
-        )
-        try await answerAuthenticate(harness, tag: "A002", mechanism: "PLAIN")
-        try await answerCapabilityRefresh(harness, tag: "A003", capabilities: "IMAP4rev1 AUTH=PLAIN")
-
-        try await authTask.value
-        #expect(harness.connection.isAuthenticated)
-        await shutDownGracefully(group)
     }
 
     @Test
     func refreshedSnapshotWithoutTheMechanismIsStillRejected() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        let harness = try await makeLiveHarness(group: group, capabilities: [])
+        try await withEventLoopGroup { group in
+            let harness = try await makeLiveHarness(group: group, capabilities: [])
 
-        let authTask = Task {
-            try await harness.connection.authenticateXOAUTH2(email: "user@example.com", accessToken: "token")
-        }
-        try await answerCapabilityRefresh(harness, tag: "A001", capabilities: "IMAP4rev1 AUTH=PLAIN")
-
-        do {
-            try await authTask.value
-            Issue.record("Expected XOAUTH2 to be rejected after the refresh")
-        } catch let error as IMAPError {
-            guard case .unsupportedAuthMechanism(let reason) = error else {
-                Issue.record("Unexpected IMAP error: \(error)")
-                return
+            let authTask = Task {
+                try await harness.connection.authenticateXOAUTH2(email: "user@example.com", accessToken: "token")
             }
-            #expect(reason == "XOAUTH2 not advertised by server")
+            try await answerCapabilityRefresh(harness, tag: "A001", capabilities: "IMAP4rev1 AUTH=PLAIN")
+
+            do {
+                try await authTask.value
+                Issue.record("Expected XOAUTH2 to be rejected after the refresh")
+            } catch let error as IMAPError {
+                guard case .unsupportedAuthMechanism(let reason) = error else {
+                    Issue.record("Unexpected IMAP error: \(error)")
+                    return
+                }
+                #expect(reason == "XOAUTH2 not advertised by server")
+            }
+            #expect(!harness.connection.isAuthenticated)
         }
-        #expect(!harness.connection.isAuthenticated)
-        await shutDownGracefully(group)
     }
 
     @Test
     func disconnectedConnectionReconnectsBeforeJudgingTheMechanism() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        // Port 1 refuses immediately: the transport attempt fails, which is the
-        // point. Before the fix the empty snapshot short-circuited to
-        // "not advertised" without any connection attempt.
-        let connection = makeConnection(group: group, port: 1)
+        try await withEventLoopGroup { group in
+            // Port 1 refuses immediately: the transport attempt fails, which is the
+            // point. Before the fix the empty snapshot short-circuited to
+            // "not advertised" without any connection attempt.
+            let connection = makeConnection(group: group, port: 1)
 
-        do {
-            try await connection.authenticateXOAUTH2(email: "user@example.com", accessToken: "token")
-            Issue.record("Expected the transport attempt to fail")
-        } catch let error as IMAPError {
-            guard case .unsupportedAuthMechanism = error else { return }
-            Issue.record("Disconnected connection judged the mechanism instead of reconnecting: \(error)")
-        } catch {
-            // Any transport-level failure is the expected outcome.
+            do {
+                try await connection.authenticateXOAUTH2(email: "user@example.com", accessToken: "token")
+                Issue.record("Expected the transport attempt to fail")
+            } catch let error as IMAPError {
+                guard case .unsupportedAuthMechanism = error else { return }
+                Issue.record("Disconnected connection judged the mechanism instead of reconnecting: \(error)")
+            } catch {
+                // Any transport-level failure is the expected outcome.
+            }
         }
-        await shutDownGracefully(group)
     }
 
     /// The empty-snapshot refresh runs through `executeCommandBody`, which recycles a
@@ -111,39 +111,59 @@ struct AuthenticationCapabilityGuardTests {
     /// too (review on #221).
     @Test
     func refreshThatReplacedTheChannelAuthenticatesOnTheReplacement() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        let stale = try await makeLiveHarness(group: group, capabilities: [])
-        let connection = stale.connection
-        let replacementChannel = NIOAsyncTestingChannel()
-        connection.replaceCapabilityRefreshForTesting {
-            // The transport died under the refresh; the connection reconnected and
-            // took its capabilities from the new channel.
-            try await stale.channel.close()
-            try await replacementChannel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 143))
-            try await replacementChannel.addIMAPClientHandler()
-            try await replacementChannel.pipeline.addHandler(connection.duplexLogger)
-            try await replacementChannel.pipeline.addHandler(connection.responseBuffer)
-            connection.replaceChannelForTesting(replacementChannel)
-            connection.replaceCapabilitiesForTesting([
-                Capability("IMAP4rev1"),
-                Capability("SASL-IR"),
-                .authenticate(AuthenticationMechanism("PLAIN"))
-            ])
+        try await withEventLoopGroup { group in
+            let stale = try await makeLiveHarness(group: group, capabilities: [])
+            let connection = stale.connection
+            let replacementChannel = NIOAsyncTestingChannel()
+            connection.replaceCapabilityRefreshForTesting {
+                // The transport died under the refresh; the connection reconnected and
+                // took its capabilities from the new channel.
+                try await stale.channel.close()
+                try await replacementChannel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 143))
+                try await replacementChannel.addIMAPClientHandler()
+                try await replacementChannel.pipeline.addHandler(connection.duplexLogger)
+                try await replacementChannel.pipeline.addHandler(connection.responseBuffer)
+                connection.replaceChannelForTesting(replacementChannel)
+                connection.replaceCapabilitiesForTesting([
+                    Capability("IMAP4rev1"),
+                    Capability("SASL-IR"),
+                    .authenticate(AuthenticationMechanism("PLAIN"))
+                ])
+            }
+            let replacement = Harness(connection: connection, channel: replacementChannel)
+            let authTask = Task {
+                try await connection.authenticatePlain(username: "user", password: "secret")
+            }
+            try await answerAuthenticate(replacement, tag: "A001", mechanism: "PLAIN")
+            try await answerCapabilityRefresh(replacement, tag: "A002", capabilities: "IMAP4rev1 AUTH=PLAIN")
+            try await authTask.value
+            #expect(connection.isAuthenticated)
+            let staleWrite = try? await stale.channel.readOutbound(as: ByteBuffer.self)
+            #expect(staleWrite == nil, "nothing may be written on the transport the refresh replaced")
         }
-        let replacement = Harness(connection: connection, channel: replacementChannel)
-        let authTask = Task {
-            try await connection.authenticatePlain(username: "user", password: "secret")
-        }
-        try await answerAuthenticate(replacement, tag: "A001", mechanism: "PLAIN")
-        try await answerCapabilityRefresh(replacement, tag: "A002", capabilities: "IMAP4rev1 AUTH=PLAIN")
-        try await authTask.value
-        #expect(connection.isAuthenticated)
-        let staleWrite = try? await stale.channel.readOutbound(as: ByteBuffer.self)
-        #expect(staleWrite == nil, "nothing may be written on the transport the refresh replaced")
-        await shutDownGracefully(group)
     }
 
     // MARK: - Harness
+
+    /// Runs `body` with a fresh group and shuts that group down on every exit path.
+    ///
+    /// A trailing `await shutDownGracefully(group)` is skipped when a test throws or
+    /// returns early, leaving the group running; `defer` cannot hold the call because
+    /// the shutdown is async. See `EventLoopGroupTestSupport.swift` for why the
+    /// synchronous shutdown is not an option here.
+    private func withEventLoopGroup(
+        _ body: (MultiThreadedEventLoopGroup) async throws -> Void
+    ) async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+
+        do {
+            try await body(group)
+            await shutDownGracefully(group)
+        } catch {
+            await shutDownGracefully(group)
+            throw error
+        }
+    }
 
     private func makeConnection(group: MultiThreadedEventLoopGroup, port: Int) -> IMAPConnection {
         IMAPConnection(
