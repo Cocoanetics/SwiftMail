@@ -13,9 +13,9 @@ extension EmailAddress: LosslessStringConvertible {
      non-ASCII name written by ``description``, or read off the wire, arrives —
      so the round trip yields the name the recipient actually sees, the same
      treatment the IMAP `ENVELOPE` path gives a `personName`. A display name
-     inside a *quoted-string* is taken literally: RFC 2047 §5 forbids reading an
-     encoded-word there, so text that merely looks like `=?…?=` is returned
-     verbatim, not decoded.
+     inside a *quoted-string* is not RFC 2047-decoded: text that merely looks
+     like `=?…?=` is returned verbatim. RFC 5322 quoted-pair escapes are still
+     syntax and are removed to recover the literal display-name characters.
 
      - Parameter description: The string representation of the email address
      */
@@ -30,12 +30,15 @@ extension EmailAddress: LosslessStringConvertible {
 
         // Email address with a name
         // Format: "Name <email@example.com>" or "\"Name with, special chars\" <email@example.com>"
-        guard trimmed.last == ">",
-              let addressStart = trimmed.dropLast().lastIndex(of: "<") else {
-            return nil
+        let addressEnd = trimmed.indices.reversed().first { index in
+            trimmed[index] == ">" && trimmed[trimmed.index(after: index)...].isTrailingRFC5322CFWS
         }
+        guard let addressEnd else { return nil }
 
-        let address = trimmed[trimmed.index(after: addressStart)..<trimmed.index(before: trimmed.endIndex)]
+        let mailbox = trimmed[...addressEnd]
+        guard let addressStart = mailbox.dropLast().lastIndex(of: "<") else { return nil }
+
+        let address = mailbox[mailbox.index(after: addressStart)..<addressEnd]
         guard !address.isEmpty, !address.contains("<"), !address.contains(">") else {
             return nil
         }
@@ -48,9 +51,12 @@ extension EmailAddress: LosslessStringConvertible {
 
         if phrase.first == "\"" {
             // A quoted-string always carries a literal display name: RFC 2047
-            // §5 forbids reading an encoded-word inside one.
-            guard phrase.last == "\"", phrase.count >= 2 else { return nil }
-            self.init(name: String(phrase.dropFirst().dropLast()), address: String(address))
+            // §5 forbids reading an encoded-word inside one. RFC 5322
+            // quoted-pairs are syntax, though, so remove their escape character
+            // before storing the logical display name.
+            guard phrase.last == "\"", phrase.count >= 2,
+                  let name = phrase.dropFirst().dropLast().unescapingRFC5322QuotedPairs() else { return nil }
+            self.init(name: name, address: String(address))
         } else {
             // Decode only complete encoded-word tokens. Decoding the `=?…?=`
             // substring of an ordinary atom would corrupt the phrase and can
@@ -110,6 +116,56 @@ extension EmailAddress: LosslessStringConvertible {
 }
 
 private extension StringProtocol {
+    /// Remove quoted-pair escape characters and reject an unescaped quote or a
+    /// dangling escape inside an RFC 5322 quoted-string.
+    func unescapingRFC5322QuotedPairs() -> String? {
+        var result = ""
+        var isEscaped = false
+
+        for character in self {
+            if isEscaped {
+                result.append(character)
+                isEscaped = false
+            } else if character == "\\" {
+                isEscaped = true
+            } else if character == "\"" {
+                return nil
+            } else {
+                result.append(character)
+            }
+        }
+        return isEscaped ? nil : result
+    }
+
+    /// Whether the suffix after an angle-addr consists only of balanced RFC
+    /// 5322 comments and horizontal whitespace. Header unfolding has already
+    /// replaced legal folding whitespace with SP before this parser is called.
+    var isTrailingRFC5322CFWS: Bool {
+        var commentDepth = 0
+        var isEscaped = false
+
+        for character in self {
+            if commentDepth > 0 {
+                if isEscaped {
+                    isEscaped = false
+                } else if character == "\\" {
+                    isEscaped = true
+                } else if character == "(" {
+                    commentDepth += 1
+                } else if character == ")" {
+                    commentDepth -= 1
+                } else if character.unicodeScalars.contains(where: { $0 == "\r" || $0 == "\n" }) {
+                    return false
+                }
+            } else if character == "(" {
+                commentDepth = 1
+            } else if character != " " && character != "\t" {
+                return false
+            }
+        }
+        return commentDepth == 0 && !isEscaped
+    }
+
     /// Decode encoded-words only when each occupies a complete phrase token.
     /// RFC 2047 whitespace between adjacent encoded-words is not displayed.
     func decodingRFC2047Phrase() -> String {

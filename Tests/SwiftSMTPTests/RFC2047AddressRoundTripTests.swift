@@ -9,6 +9,41 @@ import Testing
 @Suite("RFC 2047 address parse and serialization", .serialized, .timeLimit(.minutes(1)))
 struct RFC2047AddressRoundTripTests {
 
+    @Test("Quoted-pairs recover their literal display-name characters")
+    func quotedPairsRoundTripThroughEML() throws {
+        let cases = [
+            (#""Alice \"Boss\"" <alice@example.com>"#, #"Alice "Boss""#),
+            (#""Team\\Ops" <alice@example.com>"#, #"Team\Ops"#)
+        ]
+
+        for (from, expectedName) in cases {
+            let eml = "From: \(from)\r\nContent-Type: text/plain\r\n\r\nbody\r\n"
+            let parsed = try Message(emlData: Data(eml.utf8))
+            let firstEmail = try Email(message: parsed)
+            let reparsed = try Message(emlData: parsed.emlData())
+            let secondEmail = try Email(message: reparsed)
+
+            #expect(firstEmail.sender.name == expectedName)
+            #expect(secondEmail.sender.name == expectedName)
+            #expect(secondEmail.sender.address == "alice@example.com")
+        }
+    }
+
+    @Test("Trailing comments after an angle address remain convertible")
+    func trailingCFWSIsAccepted() throws {
+        let header = MessageInfo(
+            sequenceNumber: SequenceNumber(0),
+            from: "Alice <alice@example.com> (work)"
+        )
+        let restored = try Email(message: Message(header: header, parts: []))
+
+        #expect(restored.sender.name == "Alice")
+        #expect(restored.sender.address == "alice@example.com")
+        #expect(EmailAddress("Alice <alice@example.com> (outer (nested))") != nil)
+        #expect(EmailAddress("Alice <alice@example.com> (work > remote)") != nil)
+        #expect(EmailAddress("Alice <alice@example.com> arbitrary") == nil)
+    }
+
     @Test("A decoded display name cannot inject a field on a second serialization")
     func parsedMessageCannotInjectOnReserialization() throws {
         let name = "Bob\r\nBcc: attacker@example.com\r\nX-Ignore:"
