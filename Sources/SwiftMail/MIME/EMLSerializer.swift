@@ -43,13 +43,12 @@ public struct EMLSerializer {
 
     /// Emit the RFC 822 header block (`From:`, `To:`, …) and then `MIME-Version`.
     private static func writeHeaders(_ header: MessageInfo, into output: inout String) {
-        appendHeaderIfPresent("From", header.from, into: &output)
-        appendListHeader("To", header.to, into: &output)
-        appendListHeader("Cc", header.cc, into: &output)
-        appendListHeader("Bcc", header.bcc, into: &output)
-        // Subject is free text — RFC 2047-encode it if non-ASCII. (From/To/Cc here
-        // are already-formatted address strings, so they are left as-is; per-name
-        // encoding of those would require re-parsing each address.)
+        appendHeaderIfPresent("From", header.from.map(headerSafeAddress), into: &output)
+        appendListHeader("To", header.to.map(headerSafeAddress), into: &output)
+        appendListHeader("Cc", header.cc.map(headerSafeAddress), into: &output)
+        appendListHeader("Bcc", header.bcc.map(headerSafeAddress), into: &output)
+        // Subject is free text; address display names were re-encoded above
+        // without treating their surrounding address syntax as unstructured text.
         appendHeaderIfPresent("Subject", header.subject?.rfc2047EncodedHeader(), into: &output)
         if let date = header.date {
             output += "Date: \(formatRFC2822Date(date))\r\n"
@@ -72,6 +71,19 @@ public struct EMLSerializer {
     private static func appendListHeader(_ name: String, _ values: [String], into output: inout String) {
         guard !values.isEmpty else { return }
         output += "\(name): \(values.joined(separator: ", "))\r\n"
+    }
+
+    /// Re-encode display names whenever a MessageInfo value is serialized.
+    /// Parsed EML keeps addresses in wire form, while callers may also provide a
+    /// decoded display name directly; both paths must produce safe field bytes.
+    private static func headerSafeAddress(_ value: String) -> String {
+        guard let parsed = EmailAddress(value) else {
+            return value.rfc2047EncodedHeader()
+        }
+        if parsed.name?.rfc2047RequiresEncodingAsDisplayName == true {
+            return parsed.headerString()
+        }
+        return value.rfc2047EncodedHeader()
     }
 
     /// Emit the body: empty placeholder, single-part inline, or multipart.

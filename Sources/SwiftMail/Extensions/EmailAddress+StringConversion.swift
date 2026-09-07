@@ -20,54 +20,43 @@ extension EmailAddress: LosslessStringConvertible {
      - Parameter description: The string representation of the email address
      */
     public init?(_ description: String) {
+        let trimmed = description.trimmingCharacters(in: .whitespaces)
+
         // Simple email address without a name
-        if description.contains("@") && !description.contains("<") {
-            self.init(address: description)
+        if trimmed.contains("@") && !trimmed.contains("<") && !trimmed.contains(">") {
+            self.init(address: trimmed)
             return
         }
 
         // Email address with a name
         // Format: "Name <email@example.com>" or "\"Name with, special chars\" <email@example.com>"
-        let namePattern = "(?:\"([^\"]+)\"|([^<]*))\\s*<([^>]+)>"
-        let nameRegex = try? NSRegularExpression(pattern: namePattern, options: [])
-
-        let descriptionRange = NSRange(location: 0, length: description.count)
-        if let match = nameRegex?.firstMatch(in: description, options: [], range: descriptionRange) {
-            let nameRange1 = match.range(at: 1)
-            let nameRange2 = match.range(at: 2)
-            let emailRange = match.range(at: 3)
-
-            if emailRange.location != NSNotFound {
-                let nsString = description as NSString
-                let email = nsString.substring(with: emailRange)
-
-                // Check if we have a quoted name or a regular name
-                if nameRange1.location != NSNotFound {
-                    // Quoted name (with special characters). A quoted-string
-                    // always carries a LITERAL display name: RFC 2047 §5 forbids
-                    // reading an encoded-word inside a quoted-string, so a name
-                    // that merely *looks* like `=?UTF-8?B?…?=` is exactly that
-                    // text and must be handed back verbatim, never MIME-decoded.
-                    // A non-ASCII name never reaches this branch — `headerString`
-                    // emits it as a *bare* encoded-word, which the unquoted
-                    // branch below decodes.
-                    let name = nsString.substring(with: nameRange1)
-                    self.init(name: name, address: email)
-                    return
-                } else if nameRange2.location != NSNotFound {
-                    // Regular name
-                    let name = nsString.substring(with: nameRange2).trimmingCharacters(in: .whitespaces)
-                    self.init(name: name.decodeMIMEHeader(), address: email)
-                    return
-                } else {
-                    // Just the email
-                    self.init(address: email)
-                    return
-                }
-            }
+        guard trimmed.last == ">",
+              let addressStart = trimmed.dropLast().lastIndex(of: "<") else {
+            return nil
         }
 
-        return nil
+        let address = trimmed[trimmed.index(after: addressStart)..<trimmed.index(before: trimmed.endIndex)]
+        guard !address.isEmpty, !address.contains("<"), !address.contains(">") else {
+            return nil
+        }
+
+        let phrase = trimmed[..<addressStart].trimmingCharacters(in: .whitespaces)
+        guard !phrase.isEmpty else {
+            self.init(address: String(address))
+            return
+        }
+
+        if phrase.first == "\"" {
+            // A quoted-string always carries a literal display name: RFC 2047
+            // §5 forbids reading an encoded-word inside one.
+            guard phrase.last == "\"", phrase.count >= 2 else { return nil }
+            self.init(name: String(phrase.dropFirst().dropLast()), address: String(address))
+        } else {
+            // Decode only complete encoded-word tokens. Decoding the `=?…?=`
+            // substring of an ordinary atom would corrupt the phrase and can
+            // even manufacture control characters that were not on the wire.
+            self.init(name: phrase.decodingRFC2047Phrase(), address: String(address))
+        }
     }
 
     /**
@@ -117,5 +106,52 @@ extension EmailAddress: LosslessStringConvertible {
             return "\"\(name)\" <\(address)>"
         }
         return "\(name) <\(address)>"
+    }
+}
+
+private extension StringProtocol {
+    /// Decode encoded-words only when each occupies a complete phrase token.
+    /// RFC 2047 whitespace between adjacent encoded-words is not displayed.
+    func decodingRFC2047Phrase() -> String {
+        var result = ""
+        var pendingWhitespace = ""
+        var token = ""
+        var previousWasEncoded = false
+
+        func appendToken() {
+            guard !token.isEmpty else { return }
+            let decoded = token.decodeMIMEHeader()
+            let isEncoded = decoded != token && token.isCompleteRFC2047EncodedWord
+
+            if !(previousWasEncoded && isEncoded) {
+                result += pendingWhitespace
+            }
+            result += isEncoded ? decoded : token
+            pendingWhitespace = ""
+            previousWasEncoded = isEncoded
+            token = ""
+        }
+
+        for character in self {
+            let isWhitespace = character.unicodeScalars.allSatisfy { scalar in
+                scalar == " " || scalar == "\t" || scalar == "\r" || scalar == "\n"
+            }
+            if isWhitespace {
+                appendToken()
+                pendingWhitespace.append(character)
+            } else {
+                token.append(character)
+            }
+        }
+        appendToken()
+        result += pendingWhitespace
+        return result
+    }
+}
+
+private extension String {
+    var isCompleteRFC2047EncodedWord: Bool {
+        let pattern = #"^=\?[^?]+\?[bBqQ]\?[^?]*\?=$"#
+        return range(of: pattern, options: .regularExpression) == startIndex..<endIndex
     }
 }

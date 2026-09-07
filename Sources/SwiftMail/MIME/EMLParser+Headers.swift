@@ -159,7 +159,10 @@ extension EMLParser {
     // MARK: - MessageInfo Construction
 
     static func buildMessageInfo(from headers: [String: String]) -> MessageInfo {
-        let from = headers["from"].flatMap { decodeRFC2047($0) } ?? headers["from"]
+        // Address fields remain structured wire values. Display names are
+        // decoded only after EmailAddress has isolated the real addr-spec.
+        let parsedFrom = parseAddressList(headers["from"])
+        let from = parsedFrom.isEmpty ? headers["from"] : parsedFrom.joined(separator: ", ")
         let subject = headers["subject"].flatMap { decodeRFC2047($0) } ?? headers["subject"]
         let messageId = headers["message-id"].flatMap { MessageID($0) }
 

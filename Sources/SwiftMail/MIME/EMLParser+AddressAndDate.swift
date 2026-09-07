@@ -31,7 +31,10 @@ extension EMLParser {
                 case "," where !inQuotes && !inAngle:
                     let trimmed = current.trimmingCharacters(in: .whitespaces)
                     if !trimmed.isEmpty {
-                        addresses.append(decodeRFC2047(trimmed) ?? trimmed)
+                        // Keep the structured address in wire form. Decoding the
+                        // whole value can turn display-name text into address
+                        // syntax before the real addr-spec has been identified.
+                        addresses.append(trimmed)
                     }
                     current = ""
                 default:
@@ -41,7 +44,7 @@ extension EMLParser {
 
         let trimmed = current.trimmingCharacters(in: .whitespaces)
         if !trimmed.isEmpty {
-            addresses.append(decodeRFC2047(trimmed) ?? trimmed)
+            addresses.append(trimmed)
         }
 
         return addresses
