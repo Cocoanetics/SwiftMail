@@ -25,3 +25,24 @@ func shutDownGracefully(_ group: MultiThreadedEventLoopGroup) async {
         }
     }
 }
+
+/// Runs `body` with a fresh group and shuts that group down on every exit path.
+///
+/// A trailing `await shutDownGracefully(group)` is skipped whenever the body throws or
+/// returns early, leaving the group running for the rest of the test run; `defer` cannot
+/// hold the call because the shutdown is async. This wrapper is the only shape that
+/// covers the success, early-return and throwing paths alike.
+func withEventLoopGroup(
+    numberOfThreads: Int = 1,
+    _ body: (MultiThreadedEventLoopGroup) async throws -> Void
+) async throws {
+    let group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
+
+    do {
+        try await body(group)
+        await shutDownGracefully(group)
+    } catch {
+        await shutDownGracefully(group)
+        throw error
+    }
+}

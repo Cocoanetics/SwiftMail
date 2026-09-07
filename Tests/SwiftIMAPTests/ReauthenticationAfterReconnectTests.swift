@@ -175,20 +175,6 @@ struct ReauthenticationAfterReconnectTests {
 
     // MARK: - Harness
 
-    private func withEventLoopGroup(
-        _ body: (MultiThreadedEventLoopGroup) async throws -> Void
-    ) async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-
-        do {
-            try await body(group)
-            await shutDownGracefully(group)
-        } catch {
-            await shutDownGracefully(group)
-            throw error
-        }
-    }
-
     private func makeConnection(group: MultiThreadedEventLoopGroup) -> IMAPConnection {
         IMAPConnection(
             host: "127.0.0.1",

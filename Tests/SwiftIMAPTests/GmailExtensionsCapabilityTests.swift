@@ -37,19 +37,19 @@ struct GmailExtensionsCapabilityTests {
 
     @Test("Named connection reports Gmail extensions unsupported when they are not advertised")
     func namedConnectionWithoutGmailExtensions() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
-        let named = makeNamedConnection(capabilities: [.idle, .uidPlus], group: group)
-        #expect(await named.supportsGmailExtensions == false)
+        try await withEventLoopGroup { group in
+            let named = makeNamedConnection(capabilities: [.idle, .uidPlus], group: group)
+            #expect(await named.supportsGmailExtensions == false)
+        }
     }
 
     @Test("Named connection accepts every spelling of X-GM-EXT-1")
     func namedConnectionAcceptsEverySpelling() async throws {
-        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
-        defer { try? group.syncShutdownGracefully() }
-        for spelling in Self.spellings {
-            let named = makeNamedConnection(capabilities: [.idle, spelling], group: group)
-            #expect(await named.supportsGmailExtensions, "spelling \(spelling)")
+        try await withEventLoopGroup { group in
+            for spelling in Self.spellings {
+                let named = makeNamedConnection(capabilities: [.idle, spelling], group: group)
+                #expect(await named.supportsGmailExtensions, "spelling \(spelling)")
+            }
         }
     }
 
