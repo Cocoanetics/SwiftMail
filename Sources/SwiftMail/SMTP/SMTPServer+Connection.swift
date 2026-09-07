@@ -30,6 +30,11 @@ extension SMTPServer {
     }
 
     private func connect(holding permit: SMTPOperationGate.Permit) async throws {
+        // Validate configuration before opening a socket. Command execution
+        // validates again, but doing it here prevents a malformed identity from
+        // leaving a newly connected channel behind when the first EHLO fails.
+        try EHLOCommand(clientIdentity: clientIdentity).validate()
+
         logger.debug("Connecting to SMTP server at \(host):\(port)")
 
         let transportMode = Self.resolveTransportMode(

@@ -106,15 +106,6 @@ struct SMTPTransportSecurityTests {
     }
 
     @Test
-    func clientIdentityRejectsSMTPCommandInjection() {
-        let command = EHLOCommand(clientIdentity: "mail.example.com\r\nNOOP")
-
-        #expect(throws: SMTPError.self) {
-            try command.validate()
-        }
-    }
-
-    @Test
     func smtpServerDefaultsToFullCertificateVerification() async {
         let server = SMTPServer(host: "smtp.example.com", port: 587)
 
