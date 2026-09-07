@@ -30,6 +30,11 @@ extension SMTPServer {
     }
 
     private func connect(holding permit: SMTPOperationGate.Permit) async throws {
+        // Validate configuration before opening a socket. Command execution
+        // validates again, but doing it here prevents a malformed identity from
+        // leaving a newly connected channel behind when the first EHLO fails.
+        try EHLOCommand(clientIdentity: clientIdentity).validate()
+
         logger.debug("Connecting to SMTP server at \(host):\(port)")
 
         let transportMode = Self.resolveTransportMode(
@@ -201,6 +206,11 @@ extension SMTPServer {
                 } else {
                     try await startTLS(holding: permit)
                 }
+
+                // RFC 3207 resets the SMTP protocol state after STARTTLS. Use
+                // the same stored client identity when establishing the new
+                // EHLO state and refreshing the encrypted capabilities.
+                try await fetchCapabilities(holding: permit)
             } catch {
                 let failureMessage = "STARTTLS failed for \(host):\(port): \(error.localizedDescription). "
                     + "Cannot continue without encryption."
@@ -335,8 +345,8 @@ extension SMTPServer {
      Upgrade the connection to use TLS
 
      This method upgrades a plain connection to use TLS encryption using the
-     STARTTLS command. After successful upgrade, it re-fetches server capabilities
-     as they may change.
+     STARTTLS command. The caller re-fetches server capabilities after a successful
+     upgrade, as they may change.
 
      - Throws:
        - `SMTPError.tlsFailed` if TLS negotiation fails
@@ -378,15 +388,5 @@ extension SMTPServer {
 
         // Set TLS flag
         isTLSEnabled = true
-
-        // Send EHLO again after STARTTLS and update capabilities
-        let ehloCommand = EHLOCommand(hostname: ProcessInfo.processInfo.hostName)
-        let rawResponse = try await executeCommand(ehloCommand, holding: permit)
-
-        // Parse capabilities from raw response
-        let capabilities = parseCapabilities(from: rawResponse)
-
-        // Store capabilities for later use
-        self.capabilities = capabilities
     }
 }
