@@ -2110,6 +2110,17 @@ struct MIMEParameterEncodingTests {
         #expect(message.parts.compactMap { $0.filename } == [filename])
     }
 
+    @Test("A long non-ASCII filename is folded below the physical line limit")
+    func longNonASCIIFilenameIsFolded() throws {
+        let filename = String(repeating: "한", count: 110) + ".pdf"
+        let content = Self.email(attachments: [Self.attachment(filename: filename)]).constructContent()
+
+        #expect(content.components(separatedBy: "\r\n").allSatisfy { $0.utf8.count <= 998 })
+        #expect(content.contains("filename*0*=UTF-8''"))
+        let message = try Message(emlData: Data(content.utf8))
+        #expect(message.parts.compactMap { $0.filename } == [filename])
+    }
+
     @Test("A hostile filename is emitted in exactly one spelling")
     func hostileFilenameHasExactlyOneSpelling() {
         let content = Self.email(attachments: [
@@ -2219,6 +2230,25 @@ struct MIMEParameterEncodingTests {
 
         #expect(!lines.contains { $0.lowercased().hasPrefix("bcc:") })
         #expect(lines.filter { $0.hasPrefix("Content-ID: ") }.count == 1)
+    }
+
+    @Test("An RFC 6532 UTF-8 Content-ID is preserved")
+    func utf8ContentIDIsPreserved() throws {
+        let contentID = "café@example.com"
+        let email = Self.email(
+            htmlBody: "<img src=\"cid:\(contentID)\">",
+            attachments: [Self.attachment(
+                filename: "logo.png",
+                mimeType: "image/png",
+                contentID: contentID,
+                isInline: true
+            )]
+        )
+        let content = email.constructContent()
+
+        #expect(content.contains("Content-ID: <\(contentID)>"))
+        let message = try Message(emlData: Data(content.utf8))
+        #expect(message.parts.compactMap(\.contentId) == [contentID])
     }
 }
 

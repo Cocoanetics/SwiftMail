@@ -13,6 +13,8 @@ extension EMLParser {
         return parts.first.map { String($0).trimmingCharacters(in: .whitespaces) } ?? contentType
     }
 
+    // The branches are the MIME lexical states rather than independent paths.
+    // swiftlint:disable cyclomatic_complexity
     /// Split a header field body into its top-level `;`-separated segments.
     ///
     /// A `;` between the quotes of a parameter value is part of that value —
@@ -20,9 +22,11 @@ extension EMLParser {
     /// where the quotes are, or a value the sender chooses decides where the
     /// parameters are.
     ///
-    /// An RFC 2045 quoted-pair inside the quotes — a `\` before any character —
-    /// is honored: the escaped character stands for itself, so a `\"` does not
-    /// close the value. The quoted-string reader in
+    /// RFC 822 comments are ignored as grammar, including nested comments, so a
+    /// quote or semicolon in a comment cannot change the parameter structure.
+    /// An RFC 2045 quoted-pair inside quotes or a comment — a `\` before any
+    /// character — is honored: the escaped character stands for itself, so a
+    /// `\"` does not close the value. The quoted-string reader in
     /// ``extractHeaderParam(from:named:)`` applies the identical rule, so the
     /// two agree on where a value ends; if they did not, a parameter could be
     /// found in a segment whose value the reader then runs past.
@@ -31,29 +35,39 @@ extension EMLParser {
         var start = header.startIndex
         var index = header.startIndex
         var inQuotes = false
+        var commentDepth = 0
+        let scalars = header.unicodeScalars
 
-        while index < header.endIndex {
-            let character = header[index]
-            if inQuotes && character == "\\" {
+        while index < scalars.endIndex {
+            let scalar = scalars[index]
+            if (inQuotes || commentDepth > 0) && scalar == "\\" {
                 // Quoted-pair: the next character is literal, so it can neither
                 // close the quote nor separate parameters. Skip both here, as
                 // the value reader unescapes them, or the two disagree on where
                 // the quoted value ends.
-                index = header.index(after: index)
-                if index < header.endIndex {
-                    index = header.index(after: index)
+                index = scalars.index(after: index)
+                if index < scalars.endIndex {
+                    index = scalars.index(after: index)
                 }
                 continue
             }
-            if character == "\"" {
+            if commentDepth > 0 {
+                if scalar == "(" {
+                    commentDepth += 1
+                } else if scalar == ")" {
+                    commentDepth -= 1
+                }
+            } else if !inQuotes && scalar == "(" {
+                commentDepth = 1
+            } else if scalar == "\"" {
                 inQuotes.toggle()
-            } else if character == ";" && !inQuotes {
+            } else if scalar == ";" && !inQuotes {
                 if start < index {
                     segments.append(header[start..<index])
                 }
-                start = header.index(after: index)
+                start = scalars.index(after: index)
             }
-            index = header.index(after: index)
+            index = scalars.index(after: index)
         }
 
         if start < header.endIndex {
@@ -61,6 +75,7 @@ extension EMLParser {
         }
         return segments
     }
+    // swiftlint:enable cyclomatic_complexity
 
     /// Clean a Content-Type value for storage in MessagePart.
     /// Preserves charset and other relevant params, strips name/filename/boundary.
@@ -75,10 +90,10 @@ extension EMLParser {
         let skipParams: Set<String> = ["name", "filename", "boundary", "name*", "filename*"]
 
         for component in components.dropFirst() {
-            let trimmed = String(component).trimmingCharacters(in: .whitespaces)
+            let trimmed = removingComments(from: component).trimmingCharacters(in: .whitespaces)
             let paramName = trimmed.split(separator: "=", maxSplits: 1).first
                 .map { String($0).trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
-            if !skipParams.contains(paramName) {
+            if !skipParams.contains(paramName) && !isFilenameContinuation(paramName) {
                 result += "; \(trimmed)"
             }
         }
@@ -103,7 +118,8 @@ extension EMLParser {
     static func extractHeaderParam(from header: String, named name: String) -> String? {
         let attribute = name.lowercased()
 
-        for segment in parameterSegments(of: header) {
+        for rawSegment in parameterSegments(of: header) {
+            let segment = removingComments(from: rawSegment)
             guard let equals = segment.firstIndex(of: "=") else { continue }
             let candidate = segment[..<equals].trimmingCharacters(in: .whitespaces).lowercased()
             guard candidate == attribute else { continue }
@@ -116,7 +132,7 @@ extension EMLParser {
             // the same RFC 2045 quoted-pair rule the splitter used to find this
             // segment — a `\` escapes the next character — and unescaped as it
             // is read, so `"a\"b"` yields `a"b`.
-            if value.hasPrefix("\"") {
+            if value.unicodeScalars.first == "\"" {
                 return unquote(value)
             }
 
@@ -130,25 +146,26 @@ extension EMLParser {
     /// unescaping each RFC 2045 quoted-pair (`\x` → `x`). `quoted` must begin
     /// with the opening `"`.
     private static func unquote(_ quoted: String) -> String {
-        var result = ""
-        var index = quoted.index(after: quoted.startIndex) // past the opening quote
+        var result = String.UnicodeScalarView()
+        let scalars = quoted.unicodeScalars
+        var index = scalars.index(after: scalars.startIndex) // past the opening quote
 
-        while index < quoted.endIndex {
-            let character = quoted[index]
-            if character == "\\" {
-                let next = quoted.index(after: index)
-                guard next < quoted.endIndex else { break }
-                result.append(quoted[next])
-                index = quoted.index(after: next)
-            } else if character == "\"" {
+        while index < scalars.endIndex {
+            let scalar = scalars[index]
+            if scalar == "\\" {
+                let next = scalars.index(after: index)
+                guard next < scalars.endIndex else { break }
+                result.append(scalars[next])
+                index = scalars.index(after: next)
+            } else if scalar == "\"" {
                 break
             } else {
-                result.append(character)
-                index = quoted.index(after: index)
+                result.append(scalar)
+                index = scalars.index(after: index)
             }
         }
 
-        return result
+        return String(result)
     }
 
     /// The `filename`/`name` spellings a part's filename can be written as, in
@@ -198,14 +215,143 @@ extension EMLParser {
     }
 
     /// Extract an RFC 2231 extended parameter (`name*=charset'language'value`)
-    /// and percent-decode its value. A single segment only — continuations
-    /// (`name*0*=`) are not read.
+    /// and percent-decode its value. Encoded continuations (`name*0*=`,
+    /// `name*1*=`) are joined before decoding, so the serializer can fold a long
+    /// filename without exceeding the RFC 5322 physical-line limit.
     static func extractExtendedHeaderParam(from header: String, named name: String) -> String? {
-        guard let raw = extractHeaderParam(from: header, named: name + "*") else { return nil }
-        // Strip the encoding prefix, e.g. "UTF-8''filename.txt".
-        guard let separator = raw.range(of: "''") else { return raw }
-        let value = String(raw[separator.upperBound...])
-        return value.removingPercentEncoding ?? value
+        let raw: String?
+        if let single = extractHeaderParam(from: header, named: name + "*") {
+            raw = single
+        } else {
+            var pieces: [String] = []
+            var index = 0
+            while let piece = extractHeaderParam(from: header, named: "\(name)*\(index)*") {
+                pieces.append(piece)
+                index += 1
+            }
+            raw = pieces.isEmpty ? nil : pieces.joined()
+        }
+
+        guard let raw,
+              let charsetEnd = raw.firstIndex(of: "'")
+        else { return nil }
+        let languageStart = raw.index(after: charsetEnd)
+        guard let languageEnd = raw[languageStart...].firstIndex(of: "'") else { return nil }
+
+        let charset = raw[..<charsetEnd].lowercased()
+        let encodedValue = raw[raw.index(after: languageEnd)...]
+        guard let bytes = percentDecodedBytes(encodedValue) else { return nil }
+
+        switch charset {
+            case "utf-8", "utf8":
+                return String(bytes: bytes, encoding: .utf8)
+            case "us-ascii", "ascii":
+                guard bytes.allSatisfy({ $0 < 0x80 }) else { return nil }
+                return String(bytes: bytes, encoding: .ascii)
+            case "iso-8859-1", "iso8859-1", "latin1":
+                return String(bytes: bytes, encoding: .isoLatin1)
+            default:
+                return nil
+        }
+    }
+
+    // The branches mirror the scanner above while deciding which scalars remain.
+    // swiftlint:disable cyclomatic_complexity
+    /// Remove RFC 822 comments outside quoted-strings. A single space replaces
+    /// each comment so tokens on its two sides cannot be joined accidentally.
+    private static func removingComments(from value: Substring) -> String {
+        var result = String.UnicodeScalarView()
+        var inQuotes = false
+        var commentDepth = 0
+        var index = value.unicodeScalars.startIndex
+        let scalars = value.unicodeScalars
+
+        while index < scalars.endIndex {
+            let scalar = scalars[index]
+            if (inQuotes || commentDepth > 0) && scalar == "\\" {
+                if commentDepth == 0 {
+                    result.append(scalar)
+                }
+                let next = scalars.index(after: index)
+                if next < scalars.endIndex {
+                    if commentDepth == 0 {
+                        result.append(scalars[next])
+                    }
+                    index = scalars.index(after: next)
+                } else {
+                    index = next
+                }
+                continue
+            }
+            if commentDepth > 0 {
+                if scalar == "(" {
+                    commentDepth += 1
+                } else if scalar == ")" {
+                    commentDepth -= 1
+                    if commentDepth == 0 {
+                        result.append(" ")
+                    }
+                }
+            } else if !inQuotes && scalar == "(" {
+                commentDepth = 1
+            } else {
+                result.append(scalar)
+                if scalar == "\"" {
+                    inQuotes.toggle()
+                }
+            }
+            index = scalars.index(after: index)
+        }
+
+        return String(result)
+    }
+    // swiftlint:enable cyclomatic_complexity
+
+    private static func isFilenameContinuation(_ attribute: String) -> Bool {
+        for name in ["name", "filename"] where attribute.hasPrefix(name + "*") {
+            var suffix = attribute.dropFirst(name.count + 1)
+            if suffix.last == "*" {
+                suffix.removeLast()
+            }
+            if !suffix.isEmpty && suffix.allSatisfy(\.isNumber) {
+                return true
+            }
+        }
+        return false
+    }
+
+    private static func percentDecodedBytes(_ value: Substring) -> [UInt8]? {
+        let bytes = Array(value.utf8)
+        var result: [UInt8] = []
+        var index = 0
+
+        while index < bytes.count {
+            if bytes[index] == UInt8(ascii: "%") {
+                guard index + 2 < bytes.count,
+                      let high = hexValue(bytes[index + 1]),
+                      let low = hexValue(bytes[index + 2])
+                else { return nil }
+                result.append(high << 4 | low)
+                index += 3
+            } else {
+                result.append(bytes[index])
+                index += 1
+            }
+        }
+        return result
+    }
+
+    private static func hexValue(_ byte: UInt8) -> UInt8? {
+        switch byte {
+            case UInt8(ascii: "0")...UInt8(ascii: "9"):
+                return byte - UInt8(ascii: "0")
+            case UInt8(ascii: "A")...UInt8(ascii: "F"):
+                return byte - UInt8(ascii: "A") + 10
+            case UInt8(ascii: "a")...UInt8(ascii: "f"):
+                return byte - UInt8(ascii: "a") + 10
+            default:
+                return nil
+        }
     }
 
     /// Extract the disposition type (e.g. "attachment", "inline") from Content-Disposition.

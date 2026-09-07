@@ -134,7 +134,12 @@ public struct EMLSerializer {
 
         var contentType = MIMEHeaderEncoding.fieldBody(part.contentType)
         if let filename = part.filename {
-            contentType += "; " + MIMEHeaderEncoding.parameter(name: "name", value: filename)
+            contentType = MIMEHeaderEncoding.appendingParameter(
+                name: "name",
+                value: filename,
+                to: contentType,
+                headerName: "Content-Type"
+            )
         }
         headers += "Content-Type: \(contentType)\r\n"
 
@@ -145,7 +150,12 @@ public struct EMLSerializer {
         if let disposition = part.disposition {
             var dispValue = MIMEHeaderEncoding.fieldBody(disposition)
             if let filename = part.filename {
-                dispValue += "; " + MIMEHeaderEncoding.parameter(name: "filename", value: filename)
+                dispValue = MIMEHeaderEncoding.appendingParameter(
+                    name: "filename",
+                    value: filename,
+                    to: dispValue,
+                    headerName: "Content-Disposition"
+                )
             }
             headers += "Content-Disposition: \(dispValue)\r\n"
         }

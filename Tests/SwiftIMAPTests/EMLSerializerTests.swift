@@ -283,6 +283,17 @@ struct EMLSerializerParameterEncodingTests {
         #expect(try Message(emlData: data).parts.compactMap { $0.filename } == [filename])
     }
 
+    @Test("A long non-ASCII filename is folded below the physical line limit")
+    func longNonASCIIFilenameIsFolded() throws {
+        let filename = String(repeating: "한", count: 110) + ".pdf"
+        let data = try Self.message(filename: filename).emlData()
+        let text = String(data: data, encoding: .utf8)!
+
+        #expect(text.components(separatedBy: "\r\n").allSatisfy { $0.utf8.count <= 998 })
+        #expect(text.contains("filename*0*=UTF-8''"))
+        #expect(try Message(emlData: data).parts.compactMap { $0.filename } == [filename])
+    }
+
     @Test("An ordinary part filename is emitted exactly as before")
     func ordinaryFilenameIsByteIdentical() throws {
         let data = try Self.message(filename: "report.pdf").emlData()
@@ -315,6 +326,32 @@ struct EMLSerializerParameterEncodingTests {
 
         #expect(!lines.contains { $0.lowercased().hasPrefix("bcc:") })
         #expect(lines.filter { $0.hasPrefix("Content-ID: ") }.count == 1)
+    }
+
+    @Test("An RFC 6532 UTF-8 Content-ID is preserved")
+    func utf8ContentIdRoundTrips() throws {
+        let contentId = "café@example.com"
+        let original = Self.message(filename: "logo.png", contentId: contentId)
+        let textPart = MessagePart(
+            section: Section([1]),
+            contentType: "text/plain",
+            encoding: "7bit",
+            data: Data("body".utf8)
+        )
+        let cidPart = MessagePart(
+            section: Section([2]),
+            contentType: "image/png",
+            disposition: "inline",
+            encoding: "base64",
+            filename: "logo.png",
+            contentId: contentId,
+            data: Data("cGF5bG9hZA==".utf8)
+        )
+        let data = try Message(header: original.header, parts: [textPart, cidPart]).emlData()
+        let text = String(data: data, encoding: .utf8)!
+
+        #expect(text.contains("Content-ID: <\(contentId)>"))
+        #expect(try Message(emlData: data).parts.compactMap(\.contentId) == [contentId])
     }
 
     @Test("A CRLF in a part disposition cannot open a second header field")

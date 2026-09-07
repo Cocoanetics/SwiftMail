@@ -5,6 +5,8 @@ import Testing
 import Foundation
 @testable import SwiftMail
 
+// swiftlint:disable file_length
+
 @Suite("EML Parser Tests", .serialized, .tags(.mime), .timeLimit(.minutes(1)))
 struct EMLParserTests {
 
@@ -248,6 +250,42 @@ struct MIMEParameterParsingTests {
         #expect(EMLParser.extractBoundary(from: contentType) == "real")
     }
 
+    @Test("A combining mark cannot hide the quote that closes a parameter")
+    func combiningMarkCannotHideClosingQuote() {
+        let contentType = "multipart/mixed; x=\"\u{0301}a; boundary=evil\"; boundary=real"
+
+        #expect(EMLParser.extractBoundary(from: contentType) == "real")
+    }
+
+    @Test("A combining mark after an opening quote stays in the value")
+    func combiningMarkAfterOpeningQuoteIsRead() {
+        let filename = "\u{0301}report.pdf"
+        let header = "attachment; filename=\"\(filename)\""
+
+        #expect(EMLParser.extractFilename(from: header) == filename)
+    }
+
+    @Test("Quotes and semicolons inside comments are ignored as grammar")
+    func commentsCannotHideOrForgeBoundary() throws {
+        let contentType = #"multipart/mixed (size 6"; boundary=evil); boundary=outer"#
+        let eml = """
+        From: sender@example.com\r
+        To: recipient@example.com\r
+        Content-Type: \(contentType)\r
+        \r
+        --outer\r
+        Content-Type: text/plain\r
+        \r
+        body\r
+        --outer--\r
+        """
+
+        #expect(EMLParser.extractBoundary(from: contentType) == "outer")
+        let message = try Message(emlData: Data(eml.utf8))
+        #expect(message.parts.count == 1)
+        #expect(message.textBody?.contains("body") == true)
+    }
+
     @Test("A semicolon inside a quoted filename does not split the content type")
     func semicolonInQuotedValueDoesNotSplitTheContentType() {
         let contentType = #"application/pdf; name="a;b.pdf"; charset=UTF-8"#
@@ -261,6 +299,21 @@ struct MIMEParameterParsingTests {
         let header = "attachment; filename=\"fallback.pdf\"; filename*=UTF-8''r%C3%A9sum%C3%A9.pdf"
 
         #expect(EMLParser.extractFilename(from: header) == "résumé.pdf")
+    }
+
+    @Test("An extended parameter with a language tag is decoded")
+    func extendedParameterLanguageTagIsDecoded() {
+        let contentType = "application/pdf; name=\"fallback.pdf\"; name*=UTF-8'en'r%C3%A9sum%C3%A9.pdf"
+
+        #expect(EMLParser.extractFilename(from: contentType) == "résumé.pdf")
+    }
+
+    @Test("Encoded continuation segments are joined before decoding")
+    func encodedContinuationsAreDecoded() {
+        let contentType = "application/pdf; name*0*=UTF-8''r%C3%A9; name*1*=sum%C3%A9.pdf"
+
+        #expect(EMLParser.extractFilename(from: contentType) == "résumé.pdf")
+        #expect(EMLParser.cleanContentType(contentType) == "application/pdf")
     }
 
     @Test("An extended name parameter reads back from a Content-Type")
@@ -380,3 +433,5 @@ struct MIMEParameterParsingTests {
         return message.parts[1].filename
     }
 }
+
+// swiftlint:enable file_length

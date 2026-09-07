@@ -22,9 +22,7 @@ enum MIMEHeaderEncoding {
     ///
     /// Exactly one of the two forms is emitted, selected by the value; the two
     /// are never emitted side by side, so a receiver has nothing to choose
-    /// between. The extended form is deliberately a single segment: RFC 2231 §3
-    /// continuations (`name*0*=`, `name*1*=`) would be legal but are far less
-    /// widely implemented, and the value has to survive one header line.
+    /// between.
     static func parameter(name: String, value: String) -> String {
         guard value.unicodeScalars.allSatisfy(isSafeInQuotedString) else {
             return "\(name)*=UTF-8''\(percentEncoded(value))"
@@ -32,14 +30,33 @@ enum MIMEHeaderEncoding {
         return "\(name)=\"\(value)\""
     }
 
+    /// Append a parameter to a field body without exceeding RFC 5322's
+    /// 998-octet hard limit. Short values retain their original one-line bytes;
+    /// only a parameter that would overrun the line uses RFC 2231 continuation
+    /// segments on folded continuation lines.
+    static func appendingParameter(
+        name: String,
+        value: String,
+        to fieldBody: String,
+        headerName: String
+    ) -> String {
+        let single = parameter(name: name, value: value)
+        let candidate = "\(headerName): \(fieldBody); \(single)"
+        guard candidate.utf8.count > maximumHeaderLineLength else {
+            return "\(fieldBody); \(single)"
+        }
+
+        return "\(fieldBody);\r\n \(continuedParameter(name: name, value: value))"
+    }
+
     /// Make `value` safe to interpolate into a header field body.
     ///
-    /// RFC 5322 §2.2 limits a field body to printable US-ASCII plus SP and HTAB,
-    /// and a CR or LF *ends the field*, so anything after one is read as a new
-    /// header. Values that carry their own parameter syntax — a content type
-    /// such as `text/calendar; method=REQUEST`, a Content-ID — cannot be wrapped
-    /// in an encoded-word or an extended parameter without destroying that
-    /// syntax, so the scalars a field body cannot hold are removed instead.
+    /// RFC 5322 plus RFC 6532 permits printable ASCII, UTF-8 non-ASCII text, SP
+    /// and HTAB in a field body. A CR or LF *ends the field*, so anything after
+    /// one is read as a new header. Values that carry their own parameter syntax
+    /// — a content type such as `text/calendar; method=REQUEST`, a Content-ID —
+    /// cannot be wrapped in an encoded-word or an extended parameter without
+    /// destroying that syntax, so forbidden controls are removed instead.
     ///
     /// A value that is already a valid field body is returned unchanged, so this
     /// only ever alters a value that could not have been emitted correctly.
@@ -70,15 +87,15 @@ enum MIMEHeaderEncoding {
     }
 
     /// Whether `scalar` is one a header field body cannot carry literally: a C0
-    /// control, DEL, a C1 control, or non-ASCII text. HTAB is excluded — it is
-    /// WSP, which RFC 5322 §3.2.5 allows literally.
+    /// control or DEL. HTAB is excluded — it is WSP, which RFC 5322 §3.2.5
+    /// allows literally — and RFC 6532 permits UTF-8 non-ASCII text.
     ///
     /// Decided on the Unicode SCALAR, never on `Character`: CR-LF is a single
     /// extended grapheme cluster, so `Character.isASCII` answers `true` for a
     /// whole `\r\n` pair and cannot see it.
     private static func isForbiddenInFieldBody(_ scalar: Unicode.Scalar) -> Bool {
         if scalar.value == 0x09 { return false } // HTAB is legal WSP
-        return scalar.value < 0x20 || scalar.value >= 0x7F
+        return scalar.value < 0x20 || scalar.value == 0x7F
     }
 
     // MARK: - RFC 2231 percent-encoding
@@ -97,17 +114,48 @@ enum MIMEHeaderEncoding {
 
     private static let hexDigits = Array("0123456789ABCDEF".utf8)
 
-    private static func percentEncoded(_ value: String) -> String {
-        var encoded = ""
-        for byte in value.utf8 {
-            if attributeCharacters.contains(byte) {
-                encoded.unicodeScalars.append(Unicode.Scalar(byte))
-            } else {
-                encoded.unicodeScalars.append("%")
-                encoded.unicodeScalars.append(Unicode.Scalar(hexDigits[Int(byte >> 4)]))
-                encoded.unicodeScalars.append(Unicode.Scalar(hexDigits[Int(byte & 0x0F)]))
+    private static let maximumHeaderLineLength = 998
+
+    /// RFC 2231 continuation form for a value too long for its current line.
+    /// Each encoded atom is one ASCII byte or one complete `%XX` triplet, so a
+    /// fold never bisects an escape. A conservative payload size keeps every
+    /// continuation line well below the hard limit even with its attribute and
+    /// segment number.
+    private static func continuedParameter(name: String, value: String) -> String {
+        let atoms = percentEncodedAtoms(value)
+        let maximumPayloadLength = 900
+        var chunks: [String] = []
+        var chunk = ""
+
+        for atom in atoms {
+            if chunk.utf8.count + atom.utf8.count > maximumPayloadLength {
+                chunks.append(chunk)
+                chunk = ""
             }
+            chunk += atom
         }
-        return encoded
+        if !chunk.isEmpty || chunks.isEmpty {
+            chunks.append(chunk)
+        }
+
+        return chunks.enumerated().map { index, chunk in
+            let prefix = index == 0 ? "UTF-8''" : ""
+            return "\(name)*\(index)*=\(prefix)\(chunk)"
+        }.joined(separator: ";\r\n ")
+    }
+
+    private static func percentEncodedAtoms(_ value: String) -> [String] {
+        value.utf8.map { byte in
+            if attributeCharacters.contains(byte) {
+                return String(Unicode.Scalar(byte))
+            }
+            let high = Character(Unicode.Scalar(hexDigits[Int(byte >> 4)]))
+            let low = Character(Unicode.Scalar(hexDigits[Int(byte & 0x0F)]))
+            return "%\(high)\(low)"
+        }
+    }
+
+    private static func percentEncoded(_ value: String) -> String {
+        percentEncodedAtoms(value).joined()
     }
 }
