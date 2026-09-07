@@ -35,6 +35,11 @@ extension SMTPServer {
         holding permit: SMTPOperationGate.Permit
     ) async throws {
 
+        // Each attempt's AuthResult already carries the server's reply in
+        // `errorMessage`; collect them so the caller can tell a bad password from a
+        // disabled account or a provider demanding an app-specific password.
+        var failures: [String] = []
+
         // Check if we have PLAIN auth support
         if capabilities.contains("AUTH PLAIN") {
             let plainCommand = PlainAuthCommand(username: username, password: password)
@@ -43,6 +48,9 @@ extension SMTPServer {
             // If successful, return success
             if result.success {
                 return
+            }
+            if let message = result.errorMessage {
+                failures.append("PLAIN: \(message)")
             }
         }
 
@@ -55,9 +63,16 @@ extension SMTPServer {
             if result.success {
                 return
             }
+            if let message = result.errorMessage {
+                failures.append("LOGIN: \(message)")
+            }
         }
 
-        // If we get here, authentication failed
+        // If we get here, authentication failed. Report what the server said when it
+        // said anything, matching what authenticateXOAUTH2 already does.
+        guard failures.isEmpty else {
+            throw SMTPError.authenticationFailed(failures.joined(separator: "; "))
+        }
         throw SMTPError.authenticationFailed("Authentication failed with all available methods")
     }
 
