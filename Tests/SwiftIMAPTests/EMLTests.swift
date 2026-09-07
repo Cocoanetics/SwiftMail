@@ -316,6 +316,16 @@ struct MIMEParameterParsingTests {
         #expect(EMLParser.cleanContentType(contentType) == "application/pdf")
     }
 
+    @Test("Mixed encoded and literal continuation segments are preserved")
+    func mixedContinuationsAreDecodedBySegment() {
+        let contentType = "application/pdf; name*0*=UTF-8''r%C3%A9; name*1=sum%C3%A9.pdf"
+
+        // Without a trailing `*`, the second segment is literal: its percent
+        // sequences are filename text, not RFC 2231 encoding.
+        #expect(EMLParser.extractFilename(from: contentType) == "résum%C3%A9.pdf")
+        #expect(EMLParser.cleanContentType(contentType) == "application/pdf")
+    }
+
     @Test("An extended name parameter reads back from a Content-Type")
     func extendedNameParameterReadsBack() {
         let contentType = "application/pdf; name*=UTF-8''%EB%B0%9C%ED%91%9C.pdf"

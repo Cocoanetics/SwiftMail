@@ -215,33 +215,36 @@ extension EMLParser {
     }
 
     /// Extract an RFC 2231 extended parameter (`name*=charset'language'value`)
-    /// and percent-decode its value. Encoded continuations (`name*0*=`,
-    /// `name*1*=`) are joined before decoding, so the serializer can fold a long
-    /// filename without exceeding the RFC 5322 physical-line limit.
+    /// and percent-decode its value. Continuations may mix encoded segments
+    /// (`name*0*=`, `name*1*=`) with literal ones (`name*2=`). Encoded segments
+    /// are percent-decoded individually while literal segments retain `%`
+    /// sequences as text, per RFC 2231 §4.1.
     static func extractExtendedHeaderParam(from header: String, named name: String) -> String? {
-        let raw: String?
+        let raw: String
+        let continuations: [(value: String, encoded: Bool)]
         if let single = extractHeaderParam(from: header, named: name + "*") {
             raw = single
+            continuations = []
+        } else if let continued = extendedContinuation(from: header, named: name) {
+            raw = continued.initial
+            continuations = continued.following
         } else {
-            var pieces: [String] = []
-            var index = 0
-            while let piece = extractHeaderParam(from: header, named: "\(name)*\(index)*") {
-                pieces.append(piece)
-                index += 1
-            }
-            raw = pieces.isEmpty ? nil : pieces.joined()
+            return nil
         }
 
-        guard let raw,
-              let charsetEnd = raw.firstIndex(of: "'")
-        else { return nil }
+        guard let charsetEnd = raw.firstIndex(of: "'") else { return nil }
         let languageStart = raw.index(after: charsetEnd)
         guard let languageEnd = raw[languageStart...].firstIndex(of: "'") else { return nil }
 
         let charset = raw[..<charsetEnd].lowercased()
         let encodedValue = raw[raw.index(after: languageEnd)...]
-        guard let bytes = percentDecodedBytes(encodedValue) else { return nil }
+        guard var bytes = percentDecodedBytes(encodedValue) else { return nil }
+        guard let continuationBytes = decodedContinuationBytes(continuations) else { return nil }
+        bytes.append(contentsOf: continuationBytes)
+        return decodeExtendedBytes(bytes, charset: charset)
+    }
 
+    private static func decodeExtendedBytes(_ bytes: [UInt8], charset: String) -> String? {
         switch charset {
             case "utf-8", "utf8":
                 return String(bytes: bytes, encoding: .utf8)
@@ -253,6 +256,40 @@ extension EMLParser {
             default:
                 return nil
         }
+    }
+
+    private static func extendedContinuation(
+        from header: String,
+        named name: String
+    ) -> (initial: String, following: [(value: String, encoded: Bool)])? {
+        guard let initial = extractHeaderParam(from: header, named: "\(name)*0*") else { return nil }
+        var following: [(value: String, encoded: Bool)] = []
+        var index = 1
+
+        while true {
+            if let encoded = extractHeaderParam(from: header, named: "\(name)*\(index)*") {
+                following.append((encoded, true))
+            } else if let literal = extractHeaderParam(from: header, named: "\(name)*\(index)") {
+                following.append((literal, false))
+            } else {
+                break
+            }
+            index += 1
+        }
+        return (initial, following)
+    }
+
+    private static func decodedContinuationBytes(_ continuations: [(value: String, encoded: Bool)]) -> [UInt8]? {
+        var bytes: [UInt8] = []
+        for continuation in continuations {
+            if continuation.encoded {
+                guard let decoded = percentDecodedBytes(continuation.value[...]) else { return nil }
+                bytes.append(contentsOf: decoded)
+            } else {
+                bytes.append(contentsOf: continuation.value.utf8)
+            }
+        }
+        return bytes
     }
 
     // The branches mirror the scanner above while deciding which scalars remain.
