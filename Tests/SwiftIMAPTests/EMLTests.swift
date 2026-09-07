@@ -5,6 +5,8 @@ import Testing
 import Foundation
 @testable import SwiftMail
 
+// swiftlint:disable file_length
+
 @Suite("EML Parser Tests", .serialized, .tags(.mime), .timeLimit(.minutes(1)))
 struct EMLParserTests {
 
@@ -223,3 +225,223 @@ struct EMLParserTests {
         #expect(EMLParser.extractBoundary(from: ct3) == nil)
     }
 }
+
+/// Parameter extraction is anchored to parameter boundaries: an attribute is
+/// only an attribute where a parameter can start, never inside another
+/// parameter's quoted value. A sender chooses those values, so a substring
+/// match there is a sender-chosen parse.
+@Suite("MIME parameter parsing", .serialized, .tags(.mime), .timeLimit(.minutes(1)))
+struct MIMEParameterParsingTests {
+
+    @Test("An attribute inside a quoted value is not a parameter")
+    func quotedValueCannotForgeAParameter() {
+        // One legal parameter whose value happens to contain `name*=`. Reading
+        // that as an extended parameter reports `invoice.pdf"` for a file the
+        // sender named `evil.exe …`.
+        let header = #"attachment; filename="evil.exe name*=UTF-8''invoice.pdf""#
+
+        #expect(EMLParser.extractFilename(from: header) == #"evil.exe name*=UTF-8''invoice.pdf"#)
+    }
+
+    @Test("A boundary inside a quoted value is not the boundary")
+    func quotedValueCannotForgeABoundary() {
+        let contentType = #"multipart/mixed; name="x boundary=forged"; boundary=real"#
+
+        #expect(EMLParser.extractBoundary(from: contentType) == "real")
+    }
+
+    @Test("A combining mark cannot hide the quote that closes a parameter")
+    func combiningMarkCannotHideClosingQuote() {
+        let contentType = "multipart/mixed; x=\"\u{0301}a; boundary=evil\"; boundary=real"
+
+        #expect(EMLParser.extractBoundary(from: contentType) == "real")
+    }
+
+    @Test("A combining mark after an opening quote stays in the value")
+    func combiningMarkAfterOpeningQuoteIsRead() {
+        let filename = "\u{0301}report.pdf"
+        let header = "attachment; filename=\"\(filename)\""
+
+        #expect(EMLParser.extractFilename(from: header) == filename)
+    }
+
+    @Test("Quotes and semicolons inside comments are ignored as grammar")
+    func commentsCannotHideOrForgeBoundary() throws {
+        let contentType = #"multipart/mixed (size 6"; boundary=evil); boundary=outer"#
+        let eml = """
+        From: sender@example.com\r
+        To: recipient@example.com\r
+        Content-Type: \(contentType)\r
+        \r
+        --outer\r
+        Content-Type: text/plain\r
+        \r
+        body\r
+        --outer--\r
+        """
+
+        #expect(EMLParser.extractBoundary(from: contentType) == "outer")
+        let message = try Message(emlData: Data(eml.utf8))
+        #expect(message.parts.count == 1)
+        #expect(message.textBody?.contains("body") == true)
+    }
+
+    @Test("A semicolon inside a quoted filename does not split the content type")
+    func semicolonInQuotedValueDoesNotSplitTheContentType() {
+        let contentType = #"application/pdf; name="a;b.pdf"; charset=UTF-8"#
+
+        #expect(EMLParser.cleanContentType(contentType) == "application/pdf; charset=UTF-8")
+        #expect(EMLParser.extractFilename(from: contentType) == "a;b.pdf")
+    }
+
+    @Test("The extended spelling still wins over the literal one")
+    func extendedParameterKeepsPrecedence() {
+        let header = "attachment; filename=\"fallback.pdf\"; filename*=UTF-8''r%C3%A9sum%C3%A9.pdf"
+
+        #expect(EMLParser.extractFilename(from: header) == "résumé.pdf")
+    }
+
+    @Test("An extended parameter with a language tag is decoded")
+    func extendedParameterLanguageTagIsDecoded() {
+        let contentType = "application/pdf; name=\"fallback.pdf\"; name*=UTF-8'en'r%C3%A9sum%C3%A9.pdf"
+
+        #expect(EMLParser.extractFilename(from: contentType) == "résumé.pdf")
+    }
+
+    @Test("Encoded continuation segments are joined before decoding")
+    func encodedContinuationsAreDecoded() {
+        let contentType = "application/pdf; name*0*=UTF-8''r%C3%A9; name*1*=sum%C3%A9.pdf"
+
+        #expect(EMLParser.extractFilename(from: contentType) == "résumé.pdf")
+        #expect(EMLParser.cleanContentType(contentType) == "application/pdf")
+    }
+
+    @Test("Mixed encoded and literal continuation segments are preserved")
+    func mixedContinuationsAreDecodedBySegment() {
+        let contentType = "application/pdf; name*0*=UTF-8''r%C3%A9; name*1=sum%C3%A9.pdf"
+
+        // Without a trailing `*`, the second segment is literal: its percent
+        // sequences are filename text, not RFC 2231 encoding.
+        #expect(EMLParser.extractFilename(from: contentType) == "résum%C3%A9.pdf")
+        #expect(EMLParser.cleanContentType(contentType) == "application/pdf")
+    }
+
+    @Test("An extended name parameter reads back from a Content-Type")
+    func extendedNameParameterReadsBack() {
+        let contentType = "application/pdf; name*=UTF-8''%EB%B0%9C%ED%91%9C.pdf"
+
+        #expect(EMLParser.extractFilename(from: contentType) == "발표.pdf")
+        #expect(EMLParser.cleanContentType(contentType) == "application/pdf")
+    }
+
+    @Test("An extended name parameter still outranks a literal one")
+    func extendedNameOutranksLiteralName() {
+        // RFC 2231 §4, within ONE attribute: where a sender writes both
+        // spellings of `name`, the extended one carries the characters the
+        // literal one could not.
+        let contentType = "application/pdf; name=\"lit.pdf\"; name*=UTF-8''ext.pdf"
+
+        #expect(EMLParser.extractFilename(from: contentType) == "ext.pdf")
+    }
+
+    @Test("A literal filename outranks an extended name")
+    func literalFilenameOutranksExtendedName() {
+        // RFC 2183 §2.3 ranks the ATTRIBUTES: `filename` names the file, `name`
+        // is the deprecated Content-Type spelling. RFC 2231 §4 ranks only the
+        // two spellings of ONE attribute, so `name*` does not reach past
+        // `filename` — it is the deprecated attribute however it is spelled.
+        let header = "application/pdf; filename=\"lit.pdf\"; name*=UTF-8''ext.pdf"
+
+        #expect(EMLParser.extractFilename(from: header) == "lit.pdf")
+    }
+
+    @Test("A Content-Disposition filename outranks a Content-Type extended name")
+    func dispositionFilenameOutranksContentTypeExtendedName() throws {
+        // The attribute ranking has to hold across the two headers a part's
+        // filename can come from, not only within each of them: resolving the
+        // Content-Type to completion first would let its `name*` win over the
+        // Content-Disposition's `filename`, reversing RFC 2183 §2.3.
+        let filename = try attachmentFilename(
+            contentType: "application/pdf; name*=UTF-8''display.pdf",
+            disposition: "attachment; filename=\"real.pdf\""
+        )
+
+        #expect(filename == "real.pdf")
+    }
+
+    @Test("A Content-Disposition filename outranks a Content-Type literal name")
+    func dispositionFilenameOutranksContentTypeLiteralName() throws {
+        // Same ranking, neither parameter encoded. The two headers normally
+        // carry the same value — this library's own serializer writes them that
+        // way — so this only decides a part whose headers disagree, and RFC 2183
+        // §2.3 says the disagreement is settled by `filename`.
+        let filename = try attachmentFilename(
+            contentType: "application/pdf; name=\"display.pdf\"",
+            disposition: "attachment; filename=\"real.pdf\""
+        )
+
+        #expect(filename == "real.pdf")
+    }
+
+    // MARK: - RFC 2045 quoted-pairs
+
+    @Test("An escaped quote does not expose a quoted value's interior")
+    func escapedQuoteDoesNotExposeInteriorParameter() {
+        // `\"` is an escaped quote inside the value, so the quoted-string does
+        // not close until the final `"`: `name` is one parameter whose value is
+        // the whole literal, and there is no separate `name*` to be read.
+        let header = #"attachment; name="a\"; name*=UTF-8''evil.pdf""#
+
+        #expect(EMLParser.extractFilename(from: header) == #"a"; name*=UTF-8''evil.pdf"#)
+    }
+
+    @Test("An escaped quote does not expose a forged boundary")
+    func escapedQuoteDoesNotExposeForgedBoundary() {
+        let contentType = #"multipart/mixed; x="a\"; boundary=evil"; boundary=real"#
+
+        #expect(EMLParser.extractBoundary(from: contentType) == "real")
+    }
+
+    @Test("A quoted value's escaped quote is unescaped, not truncated")
+    func quotedPairIsUnescaped() {
+        // `filename="a\"b.pdf"` is the single value `a"b.pdf`.
+        let header = #"attachment; filename="a\"b.pdf""#
+
+        #expect(EMLParser.extractFilename(from: header) == #"a"b.pdf"#)
+    }
+
+    @Test("A value with no quoted-pair is returned byte-identically")
+    func ordinaryQuotedValueIsUnchanged() {
+        #expect(EMLParser.extractFilename(from: #"attachment; filename="report.pdf""#) == "report.pdf")
+    }
+
+    /// Parse a two-part multipart/mixed whose second part carries the given
+    /// headers, and return that part's resolved filename.
+    private func attachmentFilename(contentType: String, disposition: String) throws -> String? {
+        let eml = """
+        From: sender@example.com\r
+        To: recipient@example.com\r
+        Subject: Filename precedence\r
+        Content-Type: multipart/mixed; boundary="outer"\r
+        \r
+        --outer\r
+        Content-Type: text/plain; charset=UTF-8\r
+        \r
+        Message body here.\r
+        --outer\r
+        Content-Type: \(contentType)\r
+        Content-Disposition: \(disposition)\r
+        Content-Transfer-Encoding: base64\r
+        \r
+        SGVsbG8gV29ybGQ=\r
+        --outer--\r
+        """
+
+        let message = try Message(emlData: Data(eml.utf8))
+
+        try #require(message.parts.count == 2, "Expected 2 parts, got \(message.parts.count)")
+        return message.parts[1].filename
+    }
+}
+
+// swiftlint:enable file_length

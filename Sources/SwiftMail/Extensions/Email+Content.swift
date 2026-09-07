@@ -181,7 +181,7 @@ extension Email {
 
         for attachment in self.regularAttachments {
             content += "--\(context.mainBoundary)\r\n"
-            content += "Content-Type: \(attachment.mimeType)\r\n"
+            content += "Content-Type: \(MIMEHeaderEncoding.fieldBody(attachment.mimeType))\r\n"
             if let invite = calendarInviteText(for: attachment, use8BitMIME: context.use8BitMIME) {
                 // RFC 6047 iMIP: calendar invites need an inline (or absent)
                 // Content-Disposition for clients to render the Accept/Decline UI,
@@ -192,11 +192,11 @@ extension Email {
                 // The filename keeps non-calendar clients able to save the .ics,
                 // mirroring how Gmail's own outgoing invites are formatted.
                 content += "Content-Transfer-Encoding: \(invite.encoding)\r\n"
-                content += "Content-Disposition: inline; filename=\"\(attachment.filename)\"\r\n\r\n"
+                content += "Content-Disposition: \(Self.contentDisposition("inline", for: attachment))\r\n\r\n"
                 content += terminatedICSBody(invite.text)
             } else {
                 content += "Content-Transfer-Encoding: base64\r\n"
-                content += "Content-Disposition: attachment; filename=\"\(attachment.filename)\"\r\n\r\n"
+                content += "Content-Disposition: \(Self.contentDisposition("attachment", for: attachment))\r\n\r\n"
                 content += encodedAttachmentBody(attachment.data) + "\r\n\r\n"
             }
         }
@@ -275,7 +275,7 @@ extension Email {
         content += "\(context.textBody)\r\n\r\n"
 
         content += "--\(context.altBoundary)\r\n"
-        content += "Content-Type: \(invite.mimeType)\r\n"
+        content += "Content-Type: \(MIMEHeaderEncoding.fieldBody(invite.mimeType))\r\n"
         content += "Content-Transfer-Encoding: \(encoding)\r\n\r\n"
         content += terminatedICSBody(icsText)
 
@@ -295,12 +295,18 @@ extension Email {
 
         for attachment in self.inlineAttachments {
             content += "--\(context.relatedBoundary)\r\n"
-            content += "Content-Type: \(attachment.mimeType); name=\"\(attachment.filename)\"\r\n"
+            let contentType = MIMEHeaderEncoding.appendingParameter(
+                name: "name",
+                value: attachment.filename,
+                to: MIMEHeaderEncoding.fieldBody(attachment.mimeType),
+                headerName: "Content-Type"
+            )
+            content += "Content-Type: \(contentType)\r\n"
             content += "Content-Transfer-Encoding: base64\r\n"
             if let contentID = attachment.contentID {
-                content += "Content-ID: <\(contentID)>\r\n"
+                content += "Content-ID: <\(MIMEHeaderEncoding.fieldBody(contentID))>\r\n"
             }
-            content += "Content-Disposition: inline; filename=\"\(attachment.filename)\"\r\n\r\n"
+            content += "Content-Disposition: \(Self.contentDisposition("inline", for: attachment))\r\n\r\n"
             content += encodedAttachmentBody(attachment.data) + "\r\n\r\n"
         }
 
@@ -332,6 +338,16 @@ extension Email {
             .endLineWithCarriageReturn,
             .endLineWithLineFeed
         ])
+    }
+
+    /// A disposition with an encoded, line-length-safe `filename` parameter.
+    private static func contentDisposition(_ disposition: String, for attachment: Attachment) -> String {
+        MIMEHeaderEncoding.appendingParameter(
+            name: "filename",
+            value: attachment.filename,
+            to: disposition,
+            headerName: "Content-Disposition"
+        )
     }
 
     /// Formats the current date in RFC 2822 format for the Date header.

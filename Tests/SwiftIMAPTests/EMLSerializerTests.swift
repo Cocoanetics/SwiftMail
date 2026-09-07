@@ -195,3 +195,189 @@ struct EMLSerializerTests {
         #expect(str.contains("<p>HTML</p>"))
     }
 }
+
+/// MIME parameter and field-body serialization in ``EMLSerializer``. Every
+/// assertion is made on the serialized bytes, or on what ``EMLParser`` recovers
+/// from them.
+@Suite("EML Serializer parameter encoding", .serialized, .tags(.mime), .timeLimit(.minutes(1)))
+struct EMLSerializerParameterEncodingTests {
+
+    private static func message(
+        contentType: String = "application/pdf",
+        disposition: String? = "attachment",
+        filename: String?,
+        contentId: String? = nil
+    ) -> Message {
+        let header = MessageInfo(
+            sequenceNumber: SequenceNumber(0),
+            subject: "Parameters",
+            from: "sender@example.com",
+            to: ["recipient@example.com"]
+        )
+        let part = MessagePart(
+            section: Section([1]),
+            contentType: contentType,
+            disposition: disposition,
+            encoding: "base64",
+            filename: filename,
+            contentId: contentId,
+            data: Data("cGF5bG9hZA==".utf8)
+        )
+        return Message(header: header, parts: [part])
+    }
+
+    @Test("A quote in a part filename cannot forge a second parameter")
+    func filenameQuoteCannotForgeAParameter() throws {
+        let filename = #"a"; boundary="X.pdf"#
+        let reparsed = try Message(emlData: Self.message(filename: filename).emlData())
+
+        #expect(reparsed.parts.compactMap { $0.filename } == [filename])
+    }
+
+    @Test("A hostile part filename is emitted in exactly one spelling")
+    func hostileFilenameHasExactlyOneSpelling() throws {
+        let data = try Self.message(filename: #"a"; boundary="X.pdf"#).emlData()
+        let text = String(data: data, encoding: .utf8)!
+
+        // The extended spelling on both the Content-Type `name` and the
+        // Content-Disposition `filename`, and the literal spelling on neither:
+        // a receiver is never handed two candidate values to choose between.
+        #expect(text.contains(#"; name*=UTF-8''a%22%3B%20boundary%3D%22X.pdf"#))
+        #expect(text.contains(#"; filename*=UTF-8''a%22%3B%20boundary%3D%22X.pdf"#))
+        #expect(!text.contains(#"name=""#))
+        #expect(!text.contains(#"filename=""#))
+    }
+
+    @Test("A backslash in a part filename cannot start a quoted-pair")
+    func backslashInFilenameIsEncoded() throws {
+        let filename = #"report\final.pdf"#
+        let data = try Self.message(filename: filename).emlData()
+        let text = String(data: data, encoding: .utf8)!
+
+        #expect(text.contains(#"; filename*=UTF-8''report%5Cfinal.pdf"#))
+        #expect(!text.contains(#"filename=""#))
+        #expect(try Message(emlData: data).parts.compactMap { $0.filename } == [filename])
+    }
+
+    @Test("A semicolon in a part filename does not corrupt the stored content type")
+    func semicolonInFilenameDoesNotCorruptTheContentType() throws {
+        let filename = "a;b.pdf"
+        let data = try Self.message(filename: filename).emlData()
+        let text = String(data: data, encoding: .utf8)!
+        let reparsed = try Message(emlData: data)
+
+        // A `;` is legal between the quotes, so it stays literal on the wire —
+        // and the parameter it sits in is still one parameter on the way back.
+        #expect(text.contains(#"; name="a;b.pdf""#))
+        #expect(reparsed.parts.compactMap { $0.filename } == [filename])
+        #expect(reparsed.parts.map { $0.contentType } == ["application/pdf"])
+    }
+
+    @Test("A non-ASCII part filename does not put 8-bit octets in a header")
+    func nonASCIIFilenameStaysSevenBit() throws {
+        let filename = "발표자료.pdf"
+        let data = try Self.message(filename: filename).emlData()
+        let text = String(data: data, encoding: .utf8)!
+
+        #expect(text.unicodeScalars.allSatisfy { $0.isASCII })
+        #expect(try Message(emlData: data).parts.compactMap { $0.filename } == [filename])
+    }
+
+    @Test("A long non-ASCII filename is folded below the physical line limit")
+    func longNonASCIIFilenameIsFolded() throws {
+        let filename = String(repeating: "한", count: 110) + ".pdf"
+        let data = try Self.message(filename: filename).emlData()
+        let text = String(data: data, encoding: .utf8)!
+
+        #expect(text.components(separatedBy: "\r\n").allSatisfy { $0.utf8.count <= 998 })
+        #expect(text.contains("filename*0*=UTF-8''"))
+        #expect(try Message(emlData: data).parts.compactMap { $0.filename } == [filename])
+    }
+
+    @Test("An ordinary part filename is emitted exactly as before")
+    func ordinaryFilenameIsByteIdentical() throws {
+        let data = try Self.message(filename: "report.pdf").emlData()
+        let text = String(data: data, encoding: .utf8)!
+
+        #expect(text.contains(#"Content-Type: application/pdf; name="report.pdf""#))
+        #expect(text.contains(#"Content-Disposition: attachment; filename="report.pdf""#))
+        #expect(try Message(emlData: data).parts.compactMap { $0.filename } == ["report.pdf"])
+    }
+
+    @Test("A CRLF in a part content type cannot open a second header field")
+    func contentTypeCannotInjectAHeaderField() throws {
+        let message = Self.message(
+            contentType: "application/pdf\r\nBcc: attacker@example.com",
+            filename: "report.pdf"
+        )
+        let lines = String(data: try message.emlData(), encoding: .utf8)!.components(separatedBy: "\r\n")
+
+        #expect(!lines.contains { $0.lowercased().hasPrefix("bcc:") })
+        #expect(lines.filter { $0.lowercased().hasPrefix("content-type:") }.count == 1)
+    }
+
+    @Test("A CRLF in a part Content-ID cannot open a second header field")
+    func contentIdCannotInjectAHeaderField() throws {
+        let message = Self.message(
+            filename: "logo.png",
+            contentId: "logo@example.com>\r\nBcc: attacker@example.com"
+        )
+        let lines = String(data: try message.emlData(), encoding: .utf8)!.components(separatedBy: "\r\n")
+
+        #expect(!lines.contains { $0.lowercased().hasPrefix("bcc:") })
+        #expect(lines.filter { $0.hasPrefix("Content-ID: ") }.count == 1)
+    }
+
+    @Test("An RFC 6532 UTF-8 Content-ID is preserved")
+    func utf8ContentIdRoundTrips() throws {
+        let contentId = "café@example.com"
+        let original = Self.message(filename: "logo.png", contentId: contentId)
+        let textPart = MessagePart(
+            section: Section([1]),
+            contentType: "text/plain",
+            encoding: "7bit",
+            data: Data("body".utf8)
+        )
+        let cidPart = MessagePart(
+            section: Section([2]),
+            contentType: "image/png",
+            disposition: "inline",
+            encoding: "base64",
+            filename: "logo.png",
+            contentId: contentId,
+            data: Data("cGF5bG9hZA==".utf8)
+        )
+        let data = try Message(header: original.header, parts: [textPart, cidPart]).emlData()
+        let text = String(data: data, encoding: .utf8)!
+
+        #expect(text.contains("Content-ID: <\(contentId)>"))
+        #expect(try Message(emlData: data).parts.compactMap(\.contentId) == [contentId])
+    }
+
+    @Test("A CRLF in a part disposition cannot open a second header field")
+    func dispositionCannotInjectAHeaderField() throws {
+        let message = Self.message(
+            disposition: "attachment\r\nBcc: attacker@example.com",
+            filename: "report.pdf"
+        )
+        let lines = String(data: try message.emlData(), encoding: .utf8)!.components(separatedBy: "\r\n")
+
+        #expect(!lines.contains { $0.lowercased().hasPrefix("bcc:") })
+        #expect(lines.filter { $0.lowercased().hasPrefix("content-disposition:") }.count == 1)
+    }
+
+    @Test("A literal quote in a part filename round-trips through the extended form")
+    func embeddedQuoteFilenameRoundTrips() throws {
+        // The serializer never emits an RFC 2045 quoted-pair — a `"` is not safe
+        // in a quoted-string, so the name is written `name*=`/`filename*=` — and
+        // the parser recovers the literal quote, so the library reads back its
+        // own output without the reader's quoted-pair path ever being exercised.
+        let filename = #"a"b.pdf"#
+        let data = try Self.message(filename: filename).emlData()
+        let text = String(data: data, encoding: .utf8)!
+
+        #expect(text.contains(#"; filename*=UTF-8''a%22b.pdf"#))
+        #expect(!text.contains(#"filename=""#))
+        #expect(try Message(emlData: data).parts.compactMap { $0.filename } == [filename])
+    }
+}

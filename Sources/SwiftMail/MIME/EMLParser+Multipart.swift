@@ -204,7 +204,10 @@ extension EMLParser {
         let partDisposition = headers["content-disposition"]
         let partContentId = headers["content-id"]?.trimmingCharacters(in: .init(charactersIn: "<>"))
 
-        let filename = extractFilename(from: partContentType) ?? extractFilename(from: partDisposition ?? "")
+        // Both headers are handed to one call so the `filename`-over-`name`
+        // ranking holds across them; resolving the Content-Type to completion
+        // first would let its `name*` outrank the disposition's `filename`.
+        let filename = extractFilename(from: partContentType, partDisposition ?? "")
 
         if partContentType.lowercased().hasPrefix("multipart/") {
             // Recursive multipart
