@@ -165,6 +165,39 @@ public indirect enum SearchCriteria: Sendable {
         }
     }
 
+    /// Whether this criteria (or any nested child) carries a search string that is not
+    /// pure US-ASCII. RFC 3501 §6.4.4 assumes US-ASCII when the optional `CHARSET`
+    /// argument is omitted, so such strings must be sent as `CHARSET UTF-8`; Gmail rejects
+    /// the whole command (`BAD Could not parse command`) when the argument is missing.
+    var requiresUTF8Charset: Bool {
+        switch self {
+            case .bcc(let value), .body(let value), .cc(let value), .from(let value),
+                 .subject(let value), .text(let value), .to(let value):
+                return !Self.isASCII(value)
+            case .header(_, let value):
+                return !Self.isASCII(value)
+            case .and(let criterias):
+                return criterias.contains { $0.requiresUTF8Charset }
+            case .not(let criteria):
+                return criteria.requiresUTF8Charset
+            case .or(let left, let right):
+                return left.requiresUTF8Charset || right.requiresUTF8Charset
+            default:
+                return false
+        }
+    }
+
+    /// The `CHARSET` argument a `SEARCH` command needs for `criteria`: `"UTF-8"` when any
+    /// search string is not pure US-ASCII, otherwise `nil` so ASCII-only searches keep their
+    /// existing wire shape.
+    static func searchCharset(for criteria: [SearchCriteria]) -> String? {
+        criteria.contains { $0.requiresUTF8Charset } ? "UTF-8" : nil
+    }
+
+    private static func isASCII(_ value: String) -> Bool {
+        value.utf8.allSatisfy { $0 < 0x80 }
+    }
+
     /** Converts a Swift string to an NIO ByteBuffer.
      * - Parameter str: The string to convert.
      * - Returns: A ByteBuffer containing the string data.

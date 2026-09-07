@@ -11,6 +11,10 @@ extension IMAPConnection {
             logger.debug("\(connectionContext) connect requested while channel is already active")
             return
         }
+        if let connectOverrideForTesting {
+            try await connectOverrideForTesting()
+            return
+        }
 
         // Any buffered state belongs to a previous transport and must not leak.
         responseBuffer.reset()
@@ -247,6 +251,9 @@ extension IMAPConnection {
     }
 
     func disconnectBody() async throws {
+        if isSessionAuthenticated {
+            lostAuthenticatedSession = true
+        }
         guard let channel = self.channel else {
             logger.warning("\(connectionContext) Attempted to disconnect when channel was already nil")
             isSessionAuthenticated = false
@@ -276,6 +283,9 @@ extension IMAPConnection {
         if let channel = self.channel, !channel.isActive {
             logger.info("\(connectionContext) Channel is no longer active, clearing channel reference")
             self.channel = nil
+            if isSessionAuthenticated {
+                lostAuthenticatedSession = true
+            }
             self.isSessionAuthenticated = false
             self.idleHandler = nil
             self.idleTerminationInProgress = false

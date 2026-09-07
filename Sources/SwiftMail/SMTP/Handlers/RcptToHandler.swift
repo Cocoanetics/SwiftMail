@@ -5,7 +5,7 @@ import Logging
 /**
  Handler for the RCPT TO command response
  */
-final class RcptToHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
+final class RcptToHandler: BaseSMTPHandler<SMTPResponse>, @unchecked Sendable {
 
     /**
      Process a response from the server
@@ -14,12 +14,13 @@ final class RcptToHandler: BaseSMTPHandler<Bool>, @unchecked Sendable {
      */
     override func processResponse(_ response: SMTPResponse) -> Bool {
 
-        // 2xx responses are considered successful
+        // 2xx responses are considered successful (250, or 251 "will forward")
         if response.code >= 200 && response.code < 300 {
-            promise.succeed(true)
+            promise.succeed(response)
         } else {
-            // Any other response is considered a failure
-            promise.succeed(false)
+            // Any other reply rejects the recipient; fail so the transaction
+            // aborts instead of silently skipping the recipient.
+            promise.fail(SMTPError.unexpectedResponse(response))
         }
 
         return true // Always complete after a single response

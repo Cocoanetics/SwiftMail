@@ -94,6 +94,48 @@ struct FetchGmailAttributesTests {
         #expect(result[UID(10)]?.labels == ["\\Important"])
     }
 
+    @Test
+    func testNamedConnectionResultsAreKeyedByReturnedUID() async throws {
+        let (server, channel) = try await makeGmailHarness()
+        let primaryConnection = await server.primaryConnection
+        let connection = IMAPNamedConnection(
+            name: "gmail-attributes-test",
+            connection: primaryConnection,
+            authenticateOnConnection: { _ in }
+        )
+
+        let resultTask = Task {
+            try await connection.fetchGmailAttributes(for: UIDSet([UID(10), UID(20)]))
+        }
+
+        guard let commandLine = try await nextOutboundLine(from: channel) else {
+            Issue.record("Expected outbound UID FETCH command")
+            return
+        }
+        #expect(commandLine.contains("UID FETCH"))
+        #expect(commandLine.contains("X-GM-MSGID"))
+
+        var response = channel.allocator.buffer(capacity: 0)
+        response.writeString(
+            "* 1 FETCH (UID 20 X-GM-MSGID 2222222222222222 X-GM-THRID 3333333333333333 "
+                + "X-GM-LABELS (\\Inbox \"Work\"))\r\n"
+                + "* 2 FETCH (UID 10 X-GM-MSGID 4444444444444444 X-GM-THRID 5555555555555555 "
+                + "X-GM-LABELS (\\Important))\r\n"
+                + "A001 OK UID FETCH completed\r\n"
+        )
+        try await channel.writeInbound(response)
+
+        let result = try await resultTask.value
+
+        #expect(result[UID(20)]?.messageID == 2_222_222_222_222_222)
+        #expect(result[UID(20)]?.threadID == 3_333_333_333_333_333)
+        #expect(result[UID(20)]?.labels == ["\\Inbox", "Work"])
+
+        #expect(result[UID(10)]?.messageID == 4_444_444_444_444_444)
+        #expect(result[UID(10)]?.threadID == 5_555_555_555_555_555)
+        #expect(result[UID(10)]?.labels == ["\\Important"])
+    }
+
     // MARK: - Validation
 
     @Test

@@ -22,6 +22,18 @@ public enum IMAPError: Error {
     case storeFailed(String)
     case expungeFailed(String)
     case moveFailed(String)
+    /// MOVE may have changed server state before failing, but no trustworthy mapping is available.
+    /// Callers must refresh both mailboxes and must not retry the original identifiers.
+    case moveFailedAfterPossiblePartialCompletion(String)
+    /// MOVE completed for the verified subset in `copyUID` before ending with tagged NO/BAD.
+    /// Callers should reconcile both mailboxes from this mapping and must not retry blindly.
+    case moveFailedAfterPartialCompletion(copyUID: CopyUID, reason: String)
+    /// Fallback COPY completed and created the verified destinations in `copyUID`, but a later
+    /// STORE or EXPUNGE failed. Source flags/removal are unknown and must be refreshed.
+    case moveFallbackFailedAfterCopy(copyUID: CopyUID, reason: String)
+    /// The command completed with tagged OK, but its present COPYUID evidence was malformed,
+    /// conflicting, or unverifiable. The provider operation completed; callers must not resend it.
+    case malformedCopyUIDAfterTaggedOK(String)
     case commandNotSupported(String)
     case authFailed(String)
     case unsupportedAuthMechanism(String)
@@ -69,6 +81,14 @@ extension IMAPError: CustomStringConvertible {
                 return "Expunge failed: \(reason)"
             case .moveFailed(let reason):
                 return "Move failed: \(reason)"
+            case .moveFailedAfterPossiblePartialCompletion(let reason):
+                return "Move may have partially completed before failing: \(reason)"
+            case .moveFailedAfterPartialCompletion(_, let reason):
+                return "Move partially completed before failing: \(reason)"
+            case .moveFallbackFailedAfterCopy(_, let reason):
+                return "Move fallback copied messages before failing: \(reason)"
+            case .malformedCopyUIDAfterTaggedOK(let reason):
+                return "Command completed but returned untrusted COPYUID data: \(reason)"
             case .commandNotSupported(let reason):
                 return "Command not supported: \(reason)"
             case .authFailed(let reason):
@@ -123,6 +143,14 @@ extension IMAPError: LocalizedError {
                 return "Failed to expunge deleted messages: \(reason)"
             case .moveFailed(let reason):
                 return "Failed to move messages: \(reason)"
+            case .moveFailedAfterPossiblePartialCompletion(let reason):
+                return "The server may have moved or copied messages before failing: \(reason)"
+            case .moveFailedAfterPartialCompletion(_, let reason):
+                return "The server moved a verified subset of messages before failing: \(reason)"
+            case .moveFallbackFailedAfterCopy(_, let reason):
+                return "The fallback created verified destination copies, but source state is unknown: \(reason)"
+            case .malformedCopyUIDAfterTaggedOK(let reason):
+                return "The command completed, but its COPYUID mapping could not be trusted: \(reason)"
             case .commandNotSupported(let reason):
                 return "The requested command is not supported by the server: \(reason)"
             case .authFailed(let reason):
@@ -154,8 +182,26 @@ extension IMAPError: LocalizedError {
                 return "Verify your OAuth credentials or request a fresh access token."
             case .unsupportedAuthMechanism:
                 return "Check that your email provider supports XOAUTH2 for IMAP connections."
+            case .moveFailedAfterPartialCompletion:
+                return "Do not retry blindly. Reconcile both mailboxes using the verified COPYUID mapping."
+            case .moveFallbackFailedAfterCopy:
+                return "Do not retry. Reconcile the destination copies using COPYUID and refresh the source mailbox."
+            case .moveFailed, .moveFailedAfterPossiblePartialCompletion:
+                return "Do not retry. Refresh both mailboxes and reconcile their current state first."
+            case .malformedCopyUIDAfterTaggedOK:
+                return "Do not retry. The command completed; refresh the affected mailboxes before continuing."
             default:
                 return "Check the error details and try again."
         }
+    }
+}
+
+extension IMAPError {
+    static func moveFallbackFailed(after copyUID: CopyUID?, underlying error: Error) -> IMAPError {
+        let reason = "COPY completed before fallback failed: \(error)"
+        if let copyUID {
+            return .moveFallbackFailedAfterCopy(copyUID: copyUID, reason: reason)
+        }
+        return .moveFailedAfterPossiblePartialCompletion(reason)
     }
 }

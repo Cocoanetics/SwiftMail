@@ -14,13 +14,31 @@ extension IMAPServer {
     func executeCommand<CommandType: IMAPCommand>(
         _ command: CommandType
     ) async throws -> CommandType.ResultType {
-        if let authentication, !primaryConnection.isAuthenticated {
-            logger.info("Primary connection not authenticated; re-authenticating before command")
-            try await authentication.authenticate(on: primaryConnection)
-            namespaces = primaryConnection.namespacesSnapshot
-        }
+        try await ensurePrimaryConnectionAuthenticated()
 
         return try await primaryConnection.executeCommand(command)
+    }
+
+    /// Refreshes session-scoped state before a capability-dependent command decision.
+    ///
+    /// One recovery at a time: concurrent primary callers that all found the session
+    /// gone share the same authentication instead of each sending LOGIN or
+    /// AUTHENTICATE, which failed the later ones on an already-authenticated session
+    /// and could invoke an OAuth token provider twice.
+    func ensurePrimaryConnectionAuthenticated() async throws {
+        guard let authentication, !primaryConnection.isAuthenticated else { return }
+        if let inFlight = primaryAuthenticationInFlight {
+            try await inFlight.value
+            return
+        }
+        logger.info("Primary connection not authenticated; re-authenticating before command")
+        let task = Task { [primaryConnection] in
+            try await authentication.authenticate(on: primaryConnection)
+        }
+        primaryAuthenticationInFlight = task
+        defer { primaryAuthenticationInFlight = nil }
+        try await task.value
+        namespaces = primaryConnection.namespacesSnapshot
     }
 
     func resolveMailboxPath(_ mailbox: String) -> String {

@@ -4,63 +4,43 @@ import NIOIMAPCore
 import NIO
 
 extension IMAPConnection {
-    func login(username: String, password: String) async throws {
-        let command = LoginCommand(username: username, password: password)
-        let loginCapabilities = try await executeCommand(command)
-        isSessionAuthenticated = true
-        try await refreshCapabilities(using: loginCapabilities)
-        await fetchNamespacesIfSupported(useCommandBody: false)
-    }
-
     /// Authenticate using AUTHENTICATE PLAIN (RFC 4616) with optional SASL-IR (RFC 4959).
     ///
     /// When the server advertises `SASL-IR`, the credentials are sent inline with the
     /// AUTHENTICATE command (saving a round trip). Otherwise falls back to the standard
-    /// continuation-based exchange.
-    func authenticatePlain(username: String, password: String) async throws {
-        try await commandQueue.run { [self] in
-            try await self.authenticatePlainBody(username: username, password: password)
-        }
-    }
-
-    func authenticateXOAUTH2(email: String, accessToken: String) async throws {
-        try await commandQueue.run { [self] in
-            try await self.authenticateXOAUTH2Body(email: email, accessToken: accessToken)
-        }
-    }
-
+    /// continuation-based exchange. Runs inside the command queue; the queue-taking
+    /// entry points live in `IMAPConnection+Reauthentication.swift`.
     func authenticatePlainBody(username: String, password: String) async throws {
-        let mechanism = AuthenticationMechanism("PLAIN")
-        let plainCapability = Capability.authenticate(mechanism)
-
-        guard capabilities.contains(plainCapability) else {
-            throw IMAPError.unsupportedAuthMechanism("PLAIN not advertised by server")
-        }
-
-        let channel = try await prepareAuthenticationChannel(operation: "PLAIN authenticate")
-        let tag = generateCommandTag()
-
-        let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
-        let credentialBuffer = makePlainCredentialBuffer(username: username, password: password)
-        let (initialResponse, expectsChallenge) = resolveSASLIR(credentials: credentialBuffer)
-
-        let handler = PlainAuthenticationHandler(
-            commandTag: tag,
-            promise: handlerPromise,
-            credentials: credentialBuffer,
-            expectsChallenge: expectsChallenge
-        )
-
-        try await runPlainAuthentication(
-            PlainAuthenticationRun(
-                channel: channel,
-                tag: tag,
-                mechanism: mechanism,
-                initialResponse: initialResponse,
-                handler: handler,
-                handlerPromise: handlerPromise
+        try await authenticateUntilTransportIsStable(operation: "PLAIN authentication") { [self] in
+            let mechanism = AuthenticationMechanism("PLAIN")
+            let channel = try await prepareAuthenticationChannel(
+                operation: "PLAIN authenticate", advertising: .authenticate(mechanism), name: "PLAIN"
             )
-        )
+            let tag = generateCommandTag()
+
+            let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
+            let credentialBuffer = makePlainCredentialBuffer(username: username, password: password)
+            let (initialResponse, expectsChallenge) = resolveSASLIR(credentials: credentialBuffer)
+
+            let handler = PlainAuthenticationHandler(
+                commandTag: tag,
+                promise: handlerPromise,
+                credentials: credentialBuffer,
+                expectsChallenge: expectsChallenge
+            )
+
+            let capabilities = try await runPlainAuthentication(
+                PlainAuthenticationRun(
+                    channel: channel,
+                    tag: tag,
+                    mechanism: mechanism,
+                    initialResponse: initialResponse,
+                    handler: handler,
+                    handlerPromise: handlerPromise
+                )
+            )
+            return (channel, capabilities)
+        }
     }
 
     private struct PlainAuthenticationRun {
@@ -72,7 +52,7 @@ extension IMAPConnection {
         let handlerPromise: EventLoopPromise<[Capability]>
     }
 
-    private func runPlainAuthentication(_ run: PlainAuthenticationRun) async throws {
+    private func runPlainAuthentication(_ run: PlainAuthenticationRun) async throws -> [Capability] {
         let channel = run.channel
         let tag = run.tag
         let mechanism = run.mechanism
@@ -96,11 +76,9 @@ extension IMAPConnection {
 
             scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
-            isSessionAuthenticated = true
 
             duplexLogger.flushInboundBuffer()
-            try await refreshCapabilities(using: postAuthCapabilities)
-            await fetchNamespacesIfSupported(useCommandBody: true)
+            return postAuthCapabilities
         } catch {
             scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
@@ -144,6 +122,40 @@ extension IMAPConnection {
         )
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
         try await channel.writeAndFlush(wrapped)
+    }
+
+    /// Returns the channel to authenticate on, judged against a capability snapshot
+    /// taken on that same channel. The check runs after the channel is prepared: a
+    /// disconnect clears the snapshot with the channel, and judging the stale empty
+    /// set first turned every re-authentication on a dropped connection into "not
+    /// advertised by server" without contacting the server. An empty snapshot on a
+    /// live channel is refreshed with an explicit CAPABILITY; that refresh runs through
+    /// `executeCommandBody`, which may recycle or reconnect the transport, so the
+    /// channel is prepared again afterwards and the caller authenticates on the
+    /// transport that is live now, never on one the refresh replaced.
+    private func prepareAuthenticationChannel(
+        operation: String,
+        advertising capability: Capability,
+        name: String
+    ) async throws -> Channel {
+        var channel = try await prepareAuthenticationChannel(operation: operation)
+        var refreshes = 0
+        while capabilities.isEmpty {
+            guard refreshes < 2 else {
+                throw IMAPError.connectionFailed("\(operation): capability snapshot stayed empty across reconnects")
+            }
+            refreshes += 1
+            if let override = capabilityRefreshOverrideForTesting {
+                try await override()
+            } else {
+                try await refreshCapabilities(using: [], useCommandBody: true)
+            }
+            channel = try await prepareAuthenticationChannel(operation: operation)
+        }
+        guard capabilities.contains(capability) else {
+            throw IMAPError.unsupportedAuthMechanism("\(name) not advertised by server")
+        }
+        return channel
     }
 
     private func prepareAuthenticationChannel(operation: String) async throws -> Channel {
@@ -208,38 +220,40 @@ extension IMAPConnection {
     }
 
     func authenticateXOAUTH2Body(email: String, accessToken: String) async throws {
-        let mechanism = AuthenticationMechanism("XOAUTH2")
-        let xoauthCapability = Capability.authenticate(mechanism)
-
-        guard capabilities.contains(xoauthCapability) else {
-            throw IMAPError.unsupportedAuthMechanism("XOAUTH2 not advertised by server")
-        }
-
-        let channel = try await prepareAuthenticationChannel(operation: "XOAUTH2 authenticate")
-        let tag = generateCommandTag()
-
-        let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
-        let credentialBuffer = makeXOAUTH2InitialResponseBuffer(email: email, accessToken: accessToken)
-        let (initialResponse, expectsChallenge) = resolveSASLIR(credentials: credentialBuffer, maxInlineBytes: 1024)
-
-        let handler = XOAUTH2AuthenticationHandler(
-            commandTag: tag,
-            promise: handlerPromise,
-            credentials: credentialBuffer,
-            expectsChallenge: expectsChallenge,
-            logger: logger
-        )
-
-        try await runXOAUTH2Authentication(
-            XOAUTH2AuthenticationRun(
-                channel: channel,
-                tag: tag,
-                mechanism: mechanism,
-                initialResponse: initialResponse,
-                handler: handler,
-                handlerPromise: handlerPromise
+        try await authenticateUntilTransportIsStable(operation: "XOAUTH2 authentication") { [self] in
+            let mechanism = AuthenticationMechanism("XOAUTH2")
+            let channel = try await prepareAuthenticationChannel(
+                operation: "XOAUTH2 authenticate", advertising: .authenticate(mechanism), name: "XOAUTH2"
             )
-        )
+            let tag = generateCommandTag()
+
+            let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
+            let credentialBuffer = makeXOAUTH2InitialResponseBuffer(email: email, accessToken: accessToken)
+            let (initialResponse, expectsChallenge) = resolveSASLIR(
+                credentials: credentialBuffer,
+                maxInlineBytes: 1024
+            )
+
+            let handler = XOAUTH2AuthenticationHandler(
+                commandTag: tag,
+                promise: handlerPromise,
+                credentials: credentialBuffer,
+                expectsChallenge: expectsChallenge,
+                logger: logger
+            )
+
+            let capabilities = try await runXOAUTH2Authentication(
+                XOAUTH2AuthenticationRun(
+                    channel: channel,
+                    tag: tag,
+                    mechanism: mechanism,
+                    initialResponse: initialResponse,
+                    handler: handler,
+                    handlerPromise: handlerPromise
+                )
+            )
+            return (channel, capabilities)
+        }
     }
 
     private struct XOAUTH2AuthenticationRun {
@@ -251,7 +265,7 @@ extension IMAPConnection {
         let handlerPromise: EventLoopPromise<[Capability]>
     }
 
-    private func runXOAUTH2Authentication(_ run: XOAUTH2AuthenticationRun) async throws {
+    private func runXOAUTH2Authentication(_ run: XOAUTH2AuthenticationRun) async throws -> [Capability] {
         let channel = run.channel
         let tag = run.tag
         let mechanism = run.mechanism
@@ -278,8 +292,7 @@ extension IMAPConnection {
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
 
-            applyXOAUTH2Capabilities(refreshedCapabilities)
-            await fetchNamespacesIfSupported(useCommandBody: true)
+            return refreshedCapabilities
         } catch {
             await handleXOAUTH2Failure(
                 error: error,
@@ -317,18 +330,6 @@ extension IMAPConnection {
         )
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
         try await channel.writeAndFlush(wrapped).get()
-    }
-
-    private func applyXOAUTH2Capabilities(_ refreshedCapabilities: [Capability]) {
-        isSessionAuthenticated = true
-        if !refreshedCapabilities.isEmpty {
-            self.capabilities = Set(refreshedCapabilities)
-        } else {
-            // AUTHENTICATE often returns an OK without CAPABILITY data.
-            // Avoid issuing a follow-up CAPABILITY command here because we're already
-            // inside commandQueue.run, and a nested executeCommand would deadlock.
-            logger.debug("XOAUTH2 completed without capability data; retaining existing capability snapshot")
-        }
     }
 
     private func handleXOAUTH2Failure(

@@ -76,6 +76,7 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         }
 
         let key = SearchKey.and(nioCriteria)
+        let charset = SearchCriteria.searchCharset(for: criteria)
 
         let returnOptions: [SearchReturnOption]
         if useEsearch {
@@ -107,9 +108,15 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
                 )
             }
         } else if T.self == UID.self {
-            return TaggedCommand(tag: tag, command: .uidSearch(key: key, returnOptions: returnOptions))
+            return TaggedCommand(
+                tag: tag,
+                command: .uidSearch(key: key, charset: charset, returnOptions: returnOptions)
+            )
         } else {
-            return TaggedCommand(tag: tag, command: .search(key: key, returnOptions: returnOptions))
+            return TaggedCommand(
+                tag: tag,
+                command: .search(key: key, charset: charset, returnOptions: returnOptions)
+            )
         }
     }
 }

@@ -7,7 +7,7 @@ import NIOIMAP
 
 /// Command for moving messages from one mailbox to another
 struct MoveCommand<T: MessageIdentifier>: IMAPTaggedCommand {
-    typealias ResultType = Void
+    typealias ResultType = CopyUID?
     typealias HandlerType = MoveHandler
 
     /// The set of message identifiers to move
@@ -21,6 +21,28 @@ struct MoveCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         guard !identifierSet.isEmpty else {
             throw IMAPError.emptyIdentifierSet
         }
+    }
+
+    /// RFC 4315 forbids COPYUID from naming source UIDs outside the UID command's set.
+    func validate(copyUID: CopyUID?) throws -> CopyUID? {
+        guard let copyUID,
+              let reason = copyUID.sourceValidationFailure(for: identifierSet)
+        else {
+            return copyUID
+        }
+        throw IMAPError.malformedCopyUIDAfterTaggedOK(reason)
+    }
+
+    /// Never expose untrusted partial-failure evidence as a verified mapping.
+    func validate(error: IMAPError) -> IMAPError {
+        guard case .moveFailedAfterPartialCompletion(let copyUID, let reason) = error,
+              let validationFailure = copyUID.sourceValidationFailure(for: identifierSet)
+        else {
+            return error
+        }
+        return .moveFailedAfterPossiblePartialCompletion(
+            "MOVE returned unverified COPYUID evidence (\(validationFailure)): \(reason)"
+        )
     }
 
     /// Convert to an IMAP tagged command

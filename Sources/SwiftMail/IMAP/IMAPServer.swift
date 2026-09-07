@@ -69,7 +69,18 @@ public actor IMAPServer {
     var pendingNamedConnectionWaiters: [String: [CheckedContinuation<IMAPNamedConnection, any Error>]] = [:]
 
     /// Authentication configuration for spawning new connections.
-    var authentication: Authentication?
+    var authentication: Authentication? {
+        didSet { installReauthenticationOnOwnedConnections() }
+    }
+    /// The primary re-authentication in flight, shared by every caller that finds the
+    /// session gone at the same time.
+    var primaryAuthenticationInFlight: Task<Void, Error>?
+
+    /// RFC 2971 client identity replayed after every successful
+    /// authentication on every connection this server opens (primary,
+    /// dedicated IDLE connections, and transparent re-authentication).
+    /// Set it before calling `login`/`authenticatePlain`/`authenticateXOAUTH2`.
+    var clientIdentification: Identification?
 
     /** The list of all mailboxes with their attributes */
     public private(set) var mailboxes: [Mailbox.Info] = []
@@ -87,16 +98,21 @@ public actor IMAPServer {
 
     /// Whether the primary connection advertised UIDPLUS.
     public var supportsUIDPlus: Bool {
-        capabilities.contains(.uidPlus)
+        capabilities.containsUIDPlusCapability
     }
 
     /// Whether the primary connection advertised MOVE (RFC 6851).
     ///
-    /// Exposed so callers can tell an atomic `MOVE` from the `COPY` + `STORE \Deleted` + `EXPUNGE`
-    /// fallback that `move(messages:to:)` performs when the extension is missing. A client with a
-    /// no-delete policy needs to know which one it is about to get, and cannot currently ask.
+    /// This reports the latest advertised capability snapshot. Callers with a no-delete policy
+    /// should pass ``MoveFallbackPolicy/disabled`` to ``move(messages:to:fallback:)`` instead of
+    /// relying on this value as a separate guard; the operation refreshes authentication state,
+    /// requires MOVE directly (without requiring UIDPLUS), and refuses before any fallback command.
     public var supportsMove: Bool {
-        capabilities.contains(.move)
+        capabilities.containsMoveCapability
+    }
+
+    func replaceAuthenticationForTesting(_ authentication: Authentication?) {
+        self.authentication = authentication
     }
 
     var certificatePolicyForTesting: MailCertificateVerificationPolicy {
@@ -130,13 +146,18 @@ public actor IMAPServer {
         let handle: IMAPNamedConnection
     }
 
-    enum Authentication {
+    enum AuthenticationMethod {
         case login(username: String, password: String)
         case plain(username: String, password: String)
         case xoauth2(email: String, accessTokenProvider: @Sendable () async throws -> String)
+    }
+
+    struct Authentication {
+        let method: AuthenticationMethod
+        var identification: Identification?
 
         func authenticate(on connection: IMAPConnection) async throws {
-            switch self {
+            switch method {
                 case .login(let username, let password):
                     try await connection.login(username: username, password: password)
                 case .plain(let username, let password):
@@ -144,6 +165,37 @@ public actor IMAPServer {
                 case .xoauth2(let email, let accessTokenProvider):
                     let accessToken = try await accessTokenProvider()
                     try await connection.authenticateXOAUTH2(email: email, accessToken: accessToken)
+            }
+            // RFC 2971: some servers (e.g. NetEase 163/126) reject SELECT on any
+            // authenticated connection that has not identified itself, so the
+            // stored identity is replayed after every authentication.
+            guard let identification else { return }
+            try await Self.identify(connection, with: identification)
+        }
+
+        /// Replays the stored RFC 2971 identity on a freshly authenticated
+        /// connection. Servers that do not advertise the ID capability are
+        /// never sent the command — the snapshot is authoritative here because
+        /// every authentication path refreshes it before returning. A server
+        /// refusing ID (NO/BAD) is tolerated: the session stays authenticated
+        /// and usable. But an ID failure that recycles the connection (socket
+        /// closed, timeout) must propagate — swallowing it would report
+        /// authentication success for a connection that is no longer
+        /// connected or authenticated.
+        static func identify(
+            _ connection: IMAPConnection,
+            with identification: Identification
+        ) async throws {
+            guard connection.capabilitiesSnapshot.contains(.id) else { return }
+
+            do {
+                _ = try await connection.id(identification)
+            } catch let error as CancellationError {
+                throw error
+            } catch {
+                guard connection.isConnected, connection.isAuthenticated else {
+                    throw error
+                }
             }
         }
     }
@@ -255,12 +307,10 @@ public actor IMAPServer {
         return .plainText
     }
 
-    #if DEBUG
     /// Test-only access to the response buffer limit configured on the primary connection.
     var primaryResponseBufferLimitForTesting: Int {
         primaryConnection.responseBufferLimit
     }
-    #endif
 
     deinit {
         // Same non-blocking pattern as SMTPServer.deinit. The callback form needs

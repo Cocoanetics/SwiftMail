@@ -35,6 +35,21 @@ final class IMAPConnection {
     let commandQueue = IMAPCommandQueue()
     let responseBuffer = UntaggedResponseBuffer()
     var startTLSUpgradeOverrideForTesting: (() async throws -> Void)?
+    var capabilityRefreshOverrideForTesting: (() async throws -> Void)?
+    var authenticationFollowUpOverrideForTesting: (() async throws -> Void)?
+    var connectOverrideForTesting: (() async throws -> Void)?
+    /// Re-authenticates this connection inside the command queue after the command path
+    /// or an IDLE start had to reopen the transport for a session that was authenticated.
+    /// Installed by `IMAPServer` on every connection it authenticates; nil until then.
+    var reauthenticateAfterReconnect: (@Sendable (IMAPConnection) async throws -> Void)?
+    /// Set when an authenticated session's channel is lost (peer reset, buffered BYE,
+    /// timeout recycle) rather than ended on purpose. Cleared by the next successful
+    /// authentication and by an explicit `disconnect()`.
+    var lostAuthenticatedSession = false
+    /// True while LOGIN, AUTHENTICATE PLAIN, or AUTHENTICATE XOAUTH2 runs, so the
+    /// capability and namespace refreshes inside it cannot recursively authenticate.
+    /// The outer authentication flow detects a replaced transport and retries itself.
+    var authenticationInProgress = false
 
     let logger: Logging.Logger
     let duplexLogger: IMAPLogger
@@ -205,18 +220,20 @@ final class IMAPConnection {
         certificateVerificationPolicy
     }
 
-    #if DEBUG
     var responseBufferLimitForTesting: Int {
         responseBufferLimit
     }
-    #endif
 
     var namespacesSnapshot: NamespaceResponse? {
         namespaces
     }
 
+    /// An authenticated session needs a live channel. A transport the peer reset leaves
+    /// `isSessionAuthenticated` set until the next command notices the dead channel, and a
+    /// caller that trusted the flag alone then sent an authenticated-state command on the
+    /// fresh transport `executeCommandBody` reopens (Gmail answers `BAD Unknown command`).
     var isAuthenticated: Bool {
-        isSessionAuthenticated
+        isSessionAuthenticated && isConnected
     }
 
     var identifier: String {
@@ -243,6 +260,14 @@ final class IMAPConnection {
         self.startTLSUpgradeOverrideForTesting = upgrade
     }
 
+    func replaceCapabilityRefreshForTesting(_ refresh: (() async throws -> Void)?) {
+        self.capabilityRefreshOverrideForTesting = refresh
+    }
+
+    func replaceConnectForTesting(_ connect: (() async throws -> Void)?) {
+        self.connectOverrideForTesting = connect
+    }
+
     func connect() async throws {
         try await commandQueue.run { [self] in
             try await self.connectBody()
@@ -258,6 +283,8 @@ final class IMAPConnection {
     func disconnect() async throws {
         try await commandQueue.run { [self] in
             try await self.disconnectBody()
+            // Ending the session on purpose is not losing it.
+            self.lostAuthenticatedSession = false
         }
     }
 }

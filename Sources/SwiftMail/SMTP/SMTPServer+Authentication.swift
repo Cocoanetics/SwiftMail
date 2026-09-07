@@ -24,11 +24,21 @@ extension SMTPServer {
      - Note: Logs authentication attempts at info level (without credentials)
      */
     public func login(username: String, password: String) async throws {
+        let permit = try await operationGate.acquire()
+        defer { operationGate.release(permit) }
+        try await login(username: username, password: password, holding: permit)
+    }
+
+    private func login(
+        username: String,
+        password: String,
+        holding permit: SMTPOperationGate.Permit
+    ) async throws {
 
         // Check if we have PLAIN auth support
         if capabilities.contains("AUTH PLAIN") {
             let plainCommand = PlainAuthCommand(username: username, password: password)
-            let result = try await executeCommand(plainCommand)
+            let result = try await executeCommand(plainCommand, holding: permit)
 
             // If successful, return success
             if result.success {
@@ -39,7 +49,7 @@ extension SMTPServer {
         // If PLAIN auth failed or is not supported, try LOGIN auth
         if capabilities.contains("AUTH LOGIN") {
             let loginCommand = LoginAuthCommand(username: username, password: password)
-            let result = try await executeCommand(loginCommand)
+            let result = try await executeCommand(loginCommand, holding: permit)
 
             // If successful, return success
             if result.success {
@@ -66,12 +76,15 @@ extension SMTPServer {
        - `SMTPError.connectionFailed` if not connected
      */
     public func authenticateXOAUTH2(email: String, accessToken: String) async throws {
+        let permit = try await operationGate.acquire()
+        defer { operationGate.release(permit) }
+
         guard capabilities.contains("AUTH XOAUTH2") else {
             throw SMTPError.authenticationFailed("Server does not support XOAUTH2 authentication")
         }
 
         let command = XOAuth2AuthCommand(email: email, accessToken: accessToken)
-        let result = try await executeCommand(command)
+        let result = try await executeCommand(command, holding: permit)
 
         guard result.success else {
             throw SMTPError.authenticationFailed(result.errorMessage ?? "XOAUTH2 authentication failed")

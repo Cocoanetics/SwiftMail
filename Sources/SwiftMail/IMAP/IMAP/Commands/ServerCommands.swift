@@ -20,7 +20,7 @@ struct CapabilityCommand: IMAPTaggedCommand {
 
 /// Command for copying messages from one mailbox to another
 struct CopyCommand<T: MessageIdentifier>: IMAPTaggedCommand {
-    typealias ResultType = Void
+    typealias ResultType = CopyUID?
     typealias HandlerType = CopyHandler
 
     /// The set of message identifiers to copy
@@ -34,6 +34,16 @@ struct CopyCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         guard !identifierSet.isEmpty else {
             throw IMAPError.emptyIdentifierSet
         }
+    }
+
+    /// RFC 4315 forbids COPYUID from naming source UIDs outside the UID command's set.
+    func validate(copyUID: CopyUID?) throws -> CopyUID? {
+        guard let copyUID,
+              let reason = copyUID.sourceValidationFailure(for: identifierSet)
+        else {
+            return copyUID
+        }
+        throw IMAPError.malformedCopyUIDAfterTaggedOK(reason)
     }
 
     /// Convert to an IMAP tagged command

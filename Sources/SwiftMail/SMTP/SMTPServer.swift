@@ -7,8 +7,6 @@ import NIOCore
 import NIOSSL
 import Logging
 
-import NIOConcurrencyHelpers
-
 #if canImport(Glibc)
     import Glibc
 #elseif canImport(Musl)
@@ -72,6 +70,13 @@ public actor SMTPServer {
 
     /// Lowest TLS version any transport for this server may negotiate.
     let minimumTLSVersion: MailTLSMinimumVersion
+
+    /// Timeout budgets for the SMTP mail-submission dialogue.
+    public let submissionTimeouts: SMTPSubmissionTimeouts
+
+    /// Serializes every operation that reads from, writes to, or mutates the
+    /// SMTP channel. The permit remains held across network awaits.
+    let operationGate = SMTPOperationGate()
 
     /** The event loop group for handling asynchronous operations */
     let group: EventLoopGroup
@@ -144,6 +149,7 @@ public actor SMTPServer {
        - transportSecurity: The transport security policy to use for this connection
        - certificateVerificationPolicy: The certificate verification policy to use for TLS connections
        - numberOfThreads: The number of threads to use for the event loop group
+       - submissionTimeouts: Timeout budgets for the SMTP mail-submission dialogue
 
      `.automatic` infers the initial security mode from the port:
      - Port 25: Plain SMTP (not recommended)
@@ -159,13 +165,15 @@ public actor SMTPServer {
         transportSecurity: MailTransportSecurity = .automatic,
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
         minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
-        numberOfThreads: Int = 1
+        numberOfThreads: Int = 1,
+        submissionTimeouts: SMTPSubmissionTimeouts = SMTPSubmissionTimeouts()
     ) {
         self.host = host
         self.port = port
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
         self.minimumTLSVersion = minimumTLSVersion
+        self.submissionTimeouts = submissionTimeouts
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
         let outboundLogger = Logger(label: "com.cocoanetics.SwiftMail.SMTP_OUT")
@@ -208,8 +216,11 @@ public actor SMTPServer {
      */
     @discardableResult
     func executeCommand<CommandType: SMTPCommand>(
-        _ command: CommandType
+        _ command: CommandType,
+        holding permit: SMTPOperationGate.Permit
     ) async throws -> CommandType.ResultType {
+        precondition(operationGate.isHeld(permit), "SMTP command executed without owning the channel")
+
         // Ensure we have a valid channel
         guard let channel = channel else {
             throw SMTPError.connectionFailed("Not connected to SMTP server")
@@ -263,65 +274,6 @@ public actor SMTPServer {
     }
 
     /**
-     Execute a handler without sending a command
-
-     This method is used for handling server-initiated responses like the initial
-     greeting. It sets up the handler and manages timeouts without sending any
-     command to the server.
-
-     - Parameters:
-       - handlerType: The type of handler to use
-       - timeoutSeconds: The timeout duration in seconds (default: 5)
-     - Returns: The result from the handler
-     - Throws:
-       - `SMTPError.connectionFailed` if not connected
-       - `SMTPError.timeout` if the operation times out
-     - Note: Logs handler execution at debug level
-     */
-    func executeHandlerOnly<T: Sendable, HandlerType: SMTPCommandHandler>(
-        handlerType: HandlerType.Type,
-        timeoutSeconds: Int = 5
-    ) async throws -> T where HandlerType.ResultType == T {
-        guard let channel = channel else {
-            throw SMTPError.connectionFailed("Not connected to SMTP server")
-        }
-
-        // Create the handler promise
-        let promise = channel.eventLoop.makePromise(of: T.self)
-
-        // Create the handler directly using initializer
-        let handler = HandlerType.init(commandTag: "", promise: promise)
-
-        do {
-            // Wait for the handler to complete with a timeout
-            return try await withTimeout(seconds: Double(timeoutSeconds), operation: {
-                // Add the handler to the pipeline
-                try await channel.pipeline.addHandler(handler).get()
-
-                // Wait for the result
-                let result = try await promise.futureResult.get()
-
-                // Flush the DuplexLogger's buffer even if there was an error
-                self.duplexLogger.flushInboundBuffer()
-
-                return result
-            }, onTimeout: {
-                // Fulfill the promise with an error to prevent leaks
-                promise.fail(SMTPError.connectionFailed("Response timeout"))
-                throw SMTPError.connectionFailed("Response timeout")
-            })
-        } catch {
-            // If any error occurs, fail the promise to prevent leaks
-            promise.fail(error)
-
-            // Flush the DuplexLogger's buffer even if there was an error
-            duplexLogger.flushInboundBuffer()
-
-            throw error
-        }
-    }
-
-    /**
      Handle errors in the SMTP channel
      - Parameter error: The error that occurred
      */
@@ -334,42 +286,5 @@ public actor SMTPServer {
         }
 
         // Error handling is now done directly by the handlers
-    }
-
-    /**
-     Execute an async operation with a timeout
-     - Parameters:
-        - seconds: The timeout in seconds
-        - operation: The async operation to execute
-        - onTimeout: The closure to execute on timeout
-     - Returns: The result of the operation
-     - Throws: An error if the operation fails or times out
-     */
-    private func withTimeout<T: Sendable>(
-        seconds: TimeInterval,
-        operation: @escaping @Sendable () async throws -> T,
-        onTimeout: @escaping @Sendable () throws -> Void
-    ) async throws -> T {
-        return try await withThrowingTaskGroup(of: T.self) { group in
-            // Add the main operation
-            group.addTask {
-                return try await operation()
-            }
-
-            // Add a timeout task
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
-                try onTimeout()
-                throw SMTPError.connectionFailed("Timeout")
-            }
-
-            // Wait for the first task to complete
-            let result = try await group.next()!
-
-            // Cancel the remaining tasks
-            group.cancelAll()
-
-            return result
-        }
     }
 }

@@ -26,6 +26,18 @@ private actor AuthenticationGate {
     }
 }
 
+private actor AuthenticationCounter {
+    private var count = 0
+
+    func increment() {
+        count += 1
+    }
+
+    func value() -> Int {
+        count
+    }
+}
+
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPNamedConnectionTests {
     private struct NamedConnectionHarness {
@@ -256,6 +268,38 @@ struct IMAPNamedConnectionTests {
         } catch {
             Issue.record("Expected IMAPError.commandNotSupported, got \(error)")
         }
+        try? await group.shutdownGracefully()
+    }
+
+    /// A peer reset leaves the session flag set until the next command notices the dead
+    /// channel, so `ensureAuthenticated` used to skip re-authentication and the command
+    /// went out on the reopened, unauthenticated transport. The session counts as
+    /// authenticated only while its channel is live.
+    @Test
+    func ensureAuthenticatedReauthenticatesWhenTheSessionFlagOutlivesTheChannel() async throws {
+        let counter = AuthenticationCounter()
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+        let connection = IMAPConnection(
+            host: "localhost",
+            port: 1,
+            useTLS: false,
+            group: group,
+            loggerLabel: "test.imap",
+            outboundLabel: "test.imap.out",
+            inboundLabel: "test.imap.in",
+            connectionID: "test-stale-session",
+            connectionRole: "test"
+        )
+        connection.isSessionAuthenticated = true
+        let named = IMAPNamedConnection(
+            name: "test",
+            connection: connection,
+            authenticateOnConnection: { _ in await counter.increment() }
+        )
+
+        #expect(await named.isAuthenticated == false)
+        try await named.ensureAuthenticated()
+        #expect(await counter.value() == 1)
         try? await group.shutdownGracefully()
     }
 }

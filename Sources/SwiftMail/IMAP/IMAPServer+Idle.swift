@@ -59,6 +59,7 @@ extension IMAPServer {
         // IDLE cycle task (which is Task.detached and can outlive the server).
         let idleGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let connection = makeIdleConnection(sessionID: sessionID, mailbox: resolvedMailbox, group: idleGroup)
+        installReauthentication(on: connection)
         idleConnections[sessionID] = IdleConnection(
             mailbox: resolvedMailbox,
             connection: connection,

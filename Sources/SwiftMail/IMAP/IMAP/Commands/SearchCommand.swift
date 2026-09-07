@@ -84,6 +84,7 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
         }
 
         let key = SearchKey.and(nioCriteria)
+        let charset = SearchCriteria.searchCharset(for: criteria)
 
         if useSort {
             if T.self == UID.self {
@@ -98,9 +99,9 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
                 )
             }
         } else if T.self == UID.self {
-            return TaggedCommand(tag: tag, command: .uidSearch(key: key))
+            return TaggedCommand(tag: tag, command: .uidSearch(key: key, charset: charset))
         } else {
-            return TaggedCommand(tag: tag, command: .search(key: key))
+            return TaggedCommand(tag: tag, command: .search(key: key, charset: charset))
         }
     }
 }
