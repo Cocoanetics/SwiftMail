@@ -30,11 +30,15 @@ final class SearchHandler<T: MessageIdentifier>:
             switch status {
                 case .bad(let responseText):
                     // Handle BAD response (protocol error)
-                    failWithError(IMAPError.commandFailed("Search failed: BAD \(responseText.text)"))
+                    failWithError(
+                        IMAPError.searchRejected(operation: "Search", status: "BAD", responseText: responseText)
+                    )
                     return true
                 case .no(let responseText):
                     // Handle NO response (operational error)
-                    failWithError(IMAPError.commandFailed("Search failed: NO \(responseText.text)"))
+                    failWithError(
+                        IMAPError.searchRejected(operation: "Search", status: "NO", responseText: responseText)
+                    )
                     return true
                 default:
                     // Other status responses are handled by the base class
@@ -78,9 +82,13 @@ final class SearchHandler<T: MessageIdentifier>:
         // If the search command fails, report the error with more specific information
         switch response.state {
             case .bad(let responseText):
-                failWithError(IMAPError.commandFailed("Search failed: BAD \(responseText.text)"))
+                failWithError(
+                    IMAPError.searchRejected(operation: "Search", status: "BAD", responseText: responseText)
+                )
             case .no(let responseText):
-                failWithError(IMAPError.commandFailed("Search failed: NO \(responseText.text)"))
+                failWithError(
+                    IMAPError.searchRejected(operation: "Search", status: "NO", responseText: responseText)
+                )
             default:
                 failWithError(IMAPError.commandFailed("Search failed: \(String(describing: response.state))"))
         }

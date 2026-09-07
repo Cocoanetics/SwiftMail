@@ -49,10 +49,14 @@ final class ExtendedSearchHandler<T: MessageIdentifier>:
     private func failOnNegativeStatus(_ status: UntaggedStatus) -> Bool {
         switch status {
             case .bad(let text):
-                failWithError(IMAPError.commandFailed("Extended search failed: BAD \(text.text)"))
+                failWithError(
+                    IMAPError.searchRejected(operation: "Extended search", status: "BAD", responseText: text)
+                )
                 return true
             case .no(let text):
-                failWithError(IMAPError.commandFailed("Extended search failed: NO \(text.text)"))
+                failWithError(
+                    IMAPError.searchRejected(operation: "Extended search", status: "NO", responseText: text)
+                )
                 return true
             default:
                 return false
@@ -134,9 +138,13 @@ final class ExtendedSearchHandler<T: MessageIdentifier>:
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         switch response.state {
             case .bad(let responseText):
-                failWithError(IMAPError.commandFailed("Extended search failed: BAD \(responseText.text)"))
+                failWithError(
+                    IMAPError.searchRejected(operation: "Extended search", status: "BAD", responseText: responseText)
+                )
             case .no(let responseText):
-                failWithError(IMAPError.commandFailed("Extended search failed: NO \(responseText.text)"))
+                failWithError(
+                    IMAPError.searchRejected(operation: "Extended search", status: "NO", responseText: responseText)
+                )
             default:
                 failWithError(IMAPError.commandFailed("Extended search failed: \(String(describing: response.state))"))
         }

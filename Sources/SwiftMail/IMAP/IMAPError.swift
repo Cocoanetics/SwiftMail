@@ -2,6 +2,7 @@
 // Custom IMAP errors
 
 import Foundation
+import NIOIMAPCore
 
 /// Errors that can occur during IMAP operations
 public enum IMAPError: Error {
@@ -15,6 +16,10 @@ public enum IMAPError: Error {
     case invalidArgument(String)
     case emptyIdentifierSet
     case commandFailed(String)
+    /// SEARCH, UID SEARCH, or SORT was answered `NO [BADCHARSET ...]` (RFC 3501 §7.1, RFC 9051 §7.1):
+    /// the server does not support the CHARSET the command carried. `supportedCharsets` is the
+    /// server's optional list of charsets it does accept; empty when it named none.
+    case searchCharsetNotSupported(supportedCharsets: [String], reason: String)
     case createFailed(String)
     case deleteFailed(String)
     case renameFailed(String)
@@ -67,6 +72,8 @@ extension IMAPError: CustomStringConvertible {
                 return "Empty identifier set provided"
             case .commandFailed(let reason):
                 return "Command failed: \(reason)"
+            case .searchCharsetNotSupported(_, let reason):
+                return "Search charset not supported: \(reason)"
             case .createFailed(let reason):
                 return "Create mailbox failed: \(reason)"
             case .deleteFailed(let reason):
@@ -129,6 +136,12 @@ extension IMAPError: LocalizedError {
                 return "An empty set of message identifiers was provided"
             case .commandFailed(let reason):
                 return "The IMAP command failed to execute: \(reason)"
+            case .searchCharsetNotSupported(let supportedCharsets, _):
+                if supportedCharsets.isEmpty {
+                    return "The server does not support the charset the search used"
+                }
+                return "The server does not support the charset the search used; "
+                    + "it supports \(supportedCharsets.joined(separator: ", "))"
             case .createFailed(let reason):
                 return "Failed to create mailbox: \(reason)"
             case .deleteFailed(let reason):
@@ -190,6 +203,9 @@ extension IMAPError: LocalizedError {
                 return "Do not retry. Refresh both mailboxes and reconcile their current state first."
             case .malformedCopyUIDAfterTaggedOK:
                 return "Do not retry. The command completed; refresh the affected mailboxes before continuing."
+            case .searchCharsetNotSupported:
+                return "Retry with a charset the server supports: US-ASCII-only search text for SEARCH, "
+                    + "or a supported sortCharset for SORT."
             default:
                 return "Check the error details and try again."
         }
@@ -197,6 +213,24 @@ extension IMAPError: LocalizedError {
 }
 
 extension IMAPError {
+    /// The error for a rejected SEARCH, UID SEARCH, or SORT: the typed BADCHARSET case when the
+    /// response carries that code, otherwise `commandFailed` with the response code kept in wire
+    /// form, so `[NONEXISTENT]`, `[THROTTLED]` and the like stay readable in the message.
+    static func searchRejected(operation: String, status: String, responseText: ResponseText) -> IMAPError {
+        // Rendered by hand rather than through ResponseText's description: NIO accepts a NO or
+        // BAD with no text (iCloud, Oracle) and the description substitutes a placeholder space,
+        // which would turn the established "NO " wording of a code-less rejection into "NO  ".
+        var reason = "\(operation) failed: \(status)"
+        if let code = responseText.code {
+            reason += " [\(code.debugDescription)]"
+        }
+        reason += " \(responseText.text)"
+        if case .badCharset(let supportedCharsets)? = responseText.code {
+            return .searchCharsetNotSupported(supportedCharsets: supportedCharsets, reason: reason)
+        }
+        return .commandFailed(reason)
+    }
+
     static func moveFallbackFailed(after copyUID: CopyUID?, underlying error: Error) -> IMAPError {
         let reason = "COPY completed before fallback failed: \(error)"
         if let copyUID {
