@@ -151,6 +151,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         let parsed = EMLParser.buildMessageInfo(from: fields)
         if header.subject == nil { header.subject = parsed.subject }
         if header.from == nil { header.from = parsed.from }
+        if header.replyTo.isEmpty { header.replyTo = parsed.replyTo }
         if header.to.isEmpty { header.to = parsed.to }
         if header.cc.isEmpty { header.cc = parsed.cc }
         if header.bcc.isEmpty { header.bcc = parsed.bcc }
@@ -237,6 +238,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         if !envelope.from.isEmpty {
             header.from = formatAddress(envelope.from[0])
         }
+        header.replyTo = envelope.reply.map { formatAddress($0) }
         header.to = envelope.to.map { formatAddress($0) }
         header.cc = envelope.cc.map { formatAddress($0) }
         header.bcc = envelope.bcc.map { formatAddress($0) }
