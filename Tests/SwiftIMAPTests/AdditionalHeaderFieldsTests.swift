@@ -97,6 +97,22 @@ struct AdditionalHeaderFieldsTests {
         #expect(decoded.additionalHeaderFields?[1].value == "<https://example.com/unsubscribe>")
     }
 
+    @Test
+    func testReplyToCodableRoundTripAndBackwardCompatibility() throws {
+        var info = MessageInfo(sequenceNumber: SequenceNumber(1))
+        info.replyTo = ["alice@example.com", "Bob <bob@example.com>"]
+
+        let data = try JSONEncoder().encode(info)
+        let decoded = try JSONDecoder().decode(MessageInfo.self, from: data)
+        #expect(decoded.replyTo == info.replyTo)
+
+        var legacyObject = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        legacyObject.removeValue(forKey: "replyTo")
+        let legacyData = try JSONSerialization.data(withJSONObject: legacyObject)
+        let legacyDecoded = try JSONDecoder().decode(MessageInfo.self, from: legacyData)
+        #expect(legacyDecoded.replyTo.isEmpty)
+    }
+
     private func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
         let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 

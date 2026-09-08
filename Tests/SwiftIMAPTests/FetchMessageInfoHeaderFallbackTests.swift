@@ -9,6 +9,25 @@ import Testing
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct FetchMessageInfoHeaderFallbackTests {
     @Test
+    func testEnvelopeReplyToIsProjectedOntoMessageInfo() async throws {
+        let envelope = "(NIL NIL NIL NIL ((NIL NIL \"replies\" \"example.com\"))"
+            + " NIL NIL NIL NIL \"<message@example.com>\")"
+
+        let infos = try await executeFetch([
+            fetchResponse(
+                sequenceNumber: 1,
+                envelope: envelope,
+                headerFields: ["Reply-To"],
+                headerBlock: "\r\n"
+            ),
+            "A001 OK FETCH completed\r\n"
+        ])
+
+        #expect(infos.count == 1)
+        #expect(infos[0].replyTo == ["replies@example.com"])
+    }
+
+    @Test
     func testHeaderFieldsPopulateStandardFieldsWithoutEnvelope() async throws {
         let headerBlock = """
         Date: Wed, 05 Aug 2026 12:13:59 -0600\r
@@ -47,20 +66,37 @@ struct FetchMessageInfoHeaderFallbackTests {
     }
 
     @Test
+    func testSelectiveReplyToHeaderPopulatesMessageInfoWithoutEnvelope() async throws {
+        let headerBlock = "Reply-To: Reply Desk <replies@example.com>\r\n\r\n"
+
+        let infos = try await executeFetch([
+            fetchResponse(sequenceNumber: 1, headerFields: ["Reply-To"], headerBlock: headerBlock),
+            "A001 OK FETCH completed\r\n"
+        ])
+
+        #expect(infos.count == 1)
+        #expect(infos[0].replyTo == ["Reply Desk <replies@example.com>"])
+        #expect(infos[0].additionalFields?["reply-to"] == nil)
+        #expect(infos[0].additionalHeaderFields == nil)
+    }
+
+    @Test
     func testHeaderFieldsDoNotOverrideEnvelopeFields() async throws {
         let envelope = "(\"Wed, 05 Aug 2026 10:00:00 -0600\" \"Envelope subject\""
-            + " ((\"Envelope Sender\" NIL \"envelope\" \"example.com\")) NIL NIL"
+            + " ((\"Envelope Sender\" NIL \"envelope\" \"example.com\")) NIL"
+            + " ((NIL NIL \"envelope-reply\" \"example.com\"))"
             + " ((NIL NIL \"recipient\" \"example.com\")) NIL NIL NIL \"<envelope@example.com>\")"
         let headerBlock = """
         Date: Wed, 05 Aug 2026 12:13:59 -0600\r
         Subject: Header subject\r
         From: Header Sender <header@example.com>\r
+        Reply-To: Header Reply <header-reply@example.com>\r
         To: Header Recipient <header-recipient@example.com>\r
         Message-ID: <header@example.com>\r
         In-Reply-To: <root@example.com>\r
         \r
         """
-        let fields = ["Date", "Subject", "From", "To", "Message-ID", "In-Reply-To"]
+        let fields = ["Date", "Subject", "From", "Reply-To", "To", "Message-ID", "In-Reply-To"]
 
         let infos = try await executeFetch([
             fetchResponse(
@@ -75,6 +111,7 @@ struct FetchMessageInfoHeaderFallbackTests {
         #expect(infos.count == 1)
         #expect(infos[0].subject == "Envelope subject")
         #expect(infos[0].from == "\"Envelope Sender\" <envelope@example.com>")
+        #expect(infos[0].replyTo == ["envelope-reply@example.com"])
         #expect(infos[0].to == ["recipient@example.com"])
         let expectedDate = Self.makeDate(DateComponents(year: 2026, month: 8, day: 5, hour: 16))
         #expect(infos[0].date == expectedDate)
