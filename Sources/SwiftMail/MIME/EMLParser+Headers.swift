@@ -166,6 +166,7 @@ extension EMLParser {
         let subject = headers["subject"].flatMap { decodeRFC2047($0) } ?? headers["subject"]
         let messageId = headers["message-id"].flatMap { MessageID($0) }
 
+        let replyTo = parseAddressList(headers["reply-to"])
         let to = parseAddressList(headers["to"])
         let cc = parseAddressList(headers["cc"])
         let bcc = parseAddressList(headers["bcc"])
@@ -174,7 +175,7 @@ extension EMLParser {
 
         // Collect additional headers (everything except standard ones)
         let standardKeys: Set<String> = [
-            "from", "to", "cc", "bcc", "subject", "date", "message-id",
+            "from", "reply-to", "to", "cc", "bcc", "subject", "date", "message-id",
             "content-type", "content-transfer-encoding", "mime-version"
         ]
         var additional: [String: String] = [:]
@@ -187,6 +188,7 @@ extension EMLParser {
             uid: nil,
             subject: subject,
             from: from,
+            replyTo: replyTo,
             to: to,
             cc: cc,
             bcc: bcc,

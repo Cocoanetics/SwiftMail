@@ -16,7 +16,7 @@ public struct FetchMessageInfoOptions: OptionSet, Sendable {
         self.rawValue = rawValue
     }
 
-    /// Request `ENVELOPE` (subject, from/to/cc/bcc, date, Message-ID, In-Reply-To).
+    /// Request `ENVELOPE` (subject, from/reply-to/to/cc/bcc, date, Message-ID, In-Reply-To).
     public static let envelope      = FetchMessageInfoOptions(rawValue: 1 << 0)
 
     /// Request `INTERNALDATE` (server-side delivery timestamp).

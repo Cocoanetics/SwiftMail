@@ -17,6 +17,9 @@ public struct MessageInfo: Codable, Sendable {
     /// The sender of the message
     public var from: String?
 
+    /// The addresses to which replies should be sent
+    public var replyTo: [String] = []
+
     /// The recipients of the message
     public var to: [String] = []
 
@@ -62,6 +65,7 @@ public struct MessageInfo: Codable, Sendable {
         case uid
         case subject
         case from
+        case replyTo
         case to
         case cc
         case bcc
@@ -83,6 +87,7 @@ public struct MessageInfo: Codable, Sendable {
     ///   - uid: The UID of the message (if available)
     ///   - subject: The subject of the message
     ///   - from: The sender of the message
+    ///   - replyTo: The addresses to which replies should be sent
     ///   - to: The recipients of the message
     ///   - cc: The CC recipients of the message
     ///   - date: The date of the message (envelope Date: header)
@@ -98,6 +103,7 @@ public struct MessageInfo: Codable, Sendable {
         uid: SwiftMail.UID? = nil,
         subject: String? = nil,
         from: String? = nil,
+        replyTo: [String] = [],
         to: [String] = [],
         cc: [String] = [],
         bcc: [String] = [],
@@ -116,6 +122,7 @@ public struct MessageInfo: Codable, Sendable {
         self.uid = uid
         self.subject = subject
         self.from = from
+        self.replyTo = replyTo
         self.to = to
         self.cc = cc
         self.bcc = bcc
@@ -141,6 +148,7 @@ public extension MessageInfo {
             uid: try container.decodeIfPresent(UID.self, forKey: .uid),
             subject: try container.decodeIfPresent(String.self, forKey: .subject),
             from: try container.decodeIfPresent(String.self, forKey: .from),
+            replyTo: try container.decodeIfPresent([String].self, forKey: .replyTo) ?? [],
             to: try container.decodeIfPresent([String].self, forKey: .to) ?? [],
             cc: try container.decodeIfPresent([String].self, forKey: .cc) ?? [],
             bcc: try container.decodeIfPresent([String].self, forKey: .bcc) ?? [],
