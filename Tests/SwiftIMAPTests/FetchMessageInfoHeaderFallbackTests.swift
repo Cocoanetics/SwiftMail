@@ -23,7 +23,7 @@ struct FetchMessageInfoHeaderFallbackTests {
             "A001 OK FETCH completed\r\n"
         ])
 
-        #expect(infos.count == 1)
+        try #require(infos.count == 1)
         #expect(infos[0].replyTo == ["replies@example.com"])
     }
 
@@ -49,7 +49,7 @@ struct FetchMessageInfoHeaderFallbackTests {
             "A001 OK FETCH completed\r\n"
         ])
 
-        #expect(infos.count == 1)
+        try #require(infos.count == 1)
         #expect(infos[0].subject == "What's New at A-Basin This Winter?")
         #expect(infos[0].from == "Arapahoe Basin <info@connect.arapahoebasin.com>")
         #expect(infos[0].to == ["Joel <joel@example.com>", "Michelle <michelle@example.com>"])
@@ -74,7 +74,7 @@ struct FetchMessageInfoHeaderFallbackTests {
             "A001 OK FETCH completed\r\n"
         ])
 
-        #expect(infos.count == 1)
+        try #require(infos.count == 1)
         #expect(infos[0].replyTo == ["Reply Desk <replies@example.com>"])
         #expect(infos[0].additionalFields?["reply-to"] == nil)
         #expect(infos[0].additionalHeaderFields == nil)
@@ -108,7 +108,7 @@ struct FetchMessageInfoHeaderFallbackTests {
             "A001 OK FETCH completed\r\n"
         ])
 
-        #expect(infos.count == 1)
+        try #require(infos.count == 1)
         #expect(infos[0].subject == "Envelope subject")
         #expect(infos[0].from == "\"Envelope Sender\" <envelope@example.com>")
         #expect(infos[0].replyTo == ["envelope-reply@example.com"])
@@ -139,7 +139,7 @@ struct FetchMessageInfoHeaderFallbackTests {
             "A001 OK FETCH completed\r\n"
         ])
 
-        #expect(infos.count == 1)
+        try #require(infos.count == 1)
         #expect(infos[0].subject == "")
         #expect(infos[0].from == "Header Sender <header@example.com>")
     }
@@ -156,7 +156,7 @@ struct FetchMessageInfoHeaderFallbackTests {
             Data("A001 OK FETCH completed\r\n".utf8)
         ])
 
-        #expect(infos.count == 1)
+        try #require(infos.count == 1)
         #expect(infos[0].subject == "Legacy receipt")
         #expect(infos[0].from == "René <rene@example.com>")
         #expect(infos[0].messageId == MessageID("<legacy@example.com>"))
