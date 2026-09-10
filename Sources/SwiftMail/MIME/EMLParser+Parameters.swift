@@ -117,29 +117,38 @@ extension EMLParser {
     /// distinct attributes, so neither is found inside the other.
     static func extractHeaderParam(from header: String, named name: String) -> String? {
         let attribute = name.lowercased()
+        return parameters(of: header).first { $0.attribute == attribute }?.value
+    }
+
+    /// Every `attribute=value` parameter of a header field body, in order,
+    /// with the attribute lower-cased and a quoted value already unquoted.
+    ///
+    /// This is the one place a header is tokenized. Every lookup reads from
+    /// the list it returns, so the cost of reading N parameters out of a
+    /// header is one scan, not N: a sender chooses how many parameters a
+    /// header carries, and a lookup that re-tokenizes the header per
+    /// parameter it asks for does work that grows with the square of what
+    /// the sender wrote.
+    ///
+    /// A quoted value ends at the first unescaped `"`; an unquoted value
+    /// already ends at the segment's `;`. The quoted form is read with the
+    /// same RFC 2045 quoted-pair rule the splitter used to find the segment —
+    /// a `\` escapes the next character — and unescaped as it is read, so
+    /// `"a\"b"` yields `a"b`.
+    static func parameters(of header: String) -> [(attribute: String, value: String)] {
+        var parameters: [(attribute: String, value: String)] = []
 
         for rawSegment in parameterSegments(of: header) {
             let segment = removingComments(from: rawSegment)
             guard let equals = segment.firstIndex(of: "=") else { continue }
-            let candidate = segment[..<equals].trimmingCharacters(in: .whitespaces).lowercased()
-            guard candidate == attribute else { continue }
-
+            let attribute = segment[..<equals].trimmingCharacters(in: .whitespaces).lowercased()
             let value = String(segment[segment.index(after: equals)...])
                 .trimmingCharacters(in: .whitespaces)
 
-            // A quoted value ends at the first unescaped `"`; an unquoted value
-            // already ends at the segment's `;`. The quoted form is read with
-            // the same RFC 2045 quoted-pair rule the splitter used to find this
-            // segment — a `\` escapes the next character — and unescaped as it
-            // is read, so `"a\"b"` yields `a"b`.
-            if value.unicodeScalars.first == "\"" {
-                return unquote(value)
-            }
-
-            return value
+            parameters.append((attribute, value.unicodeScalars.first == "\"" ? unquote(value) : value))
         }
 
-        return nil
+        return parameters
     }
 
     /// Read a MIME quoted-string, stopping at the first unescaped `"` and
@@ -214,84 +223,6 @@ extension EMLParser {
         return nil
     }
 
-    /// Extract an RFC 2231 extended parameter (`name*=charset'language'value`)
-    /// and percent-decode its value. Continuations may mix encoded segments
-    /// (`name*0*=`, `name*1*=`) with literal ones (`name*2=`). Encoded segments
-    /// are percent-decoded individually while literal segments retain `%`
-    /// sequences as text, per RFC 2231 §4.1.
-    static func extractExtendedHeaderParam(from header: String, named name: String) -> String? {
-        let raw: String
-        let continuations: [(value: String, encoded: Bool)]
-        if let single = extractHeaderParam(from: header, named: name + "*") {
-            raw = single
-            continuations = []
-        } else if let continued = extendedContinuation(from: header, named: name) {
-            raw = continued.initial
-            continuations = continued.following
-        } else {
-            return nil
-        }
-
-        guard let charsetEnd = raw.firstIndex(of: "'") else { return nil }
-        let languageStart = raw.index(after: charsetEnd)
-        guard let languageEnd = raw[languageStart...].firstIndex(of: "'") else { return nil }
-
-        let charset = raw[..<charsetEnd].lowercased()
-        let encodedValue = raw[raw.index(after: languageEnd)...]
-        guard var bytes = percentDecodedBytes(encodedValue) else { return nil }
-        guard let continuationBytes = decodedContinuationBytes(continuations) else { return nil }
-        bytes.append(contentsOf: continuationBytes)
-        return decodeExtendedBytes(bytes, charset: charset)
-    }
-
-    private static func decodeExtendedBytes(_ bytes: [UInt8], charset: String) -> String? {
-        switch charset {
-            case "utf-8", "utf8":
-                return String(bytes: bytes, encoding: .utf8)
-            case "us-ascii", "ascii":
-                guard bytes.allSatisfy({ $0 < 0x80 }) else { return nil }
-                return String(bytes: bytes, encoding: .ascii)
-            case "iso-8859-1", "iso8859-1", "latin1":
-                return String(bytes: bytes, encoding: .isoLatin1)
-            default:
-                return nil
-        }
-    }
-
-    private static func extendedContinuation(
-        from header: String,
-        named name: String
-    ) -> (initial: String, following: [(value: String, encoded: Bool)])? {
-        guard let initial = extractHeaderParam(from: header, named: "\(name)*0*") else { return nil }
-        var following: [(value: String, encoded: Bool)] = []
-        var index = 1
-
-        while true {
-            if let encoded = extractHeaderParam(from: header, named: "\(name)*\(index)*") {
-                following.append((encoded, true))
-            } else if let literal = extractHeaderParam(from: header, named: "\(name)*\(index)") {
-                following.append((literal, false))
-            } else {
-                break
-            }
-            index += 1
-        }
-        return (initial, following)
-    }
-
-    private static func decodedContinuationBytes(_ continuations: [(value: String, encoded: Bool)]) -> [UInt8]? {
-        var bytes: [UInt8] = []
-        for continuation in continuations {
-            if continuation.encoded {
-                guard let decoded = percentDecodedBytes(continuation.value[...]) else { return nil }
-                bytes.append(contentsOf: decoded)
-            } else {
-                bytes.append(contentsOf: continuation.value.utf8)
-            }
-        }
-        return bytes
-    }
-
     // The branches mirror the scanner above while deciding which scalars remain.
     // swiftlint:disable cyclomatic_complexity
     /// Remove RFC 822 comments outside quoted-strings. A single space replaces
@@ -343,53 +274,6 @@ extension EMLParser {
         return String(result)
     }
     // swiftlint:enable cyclomatic_complexity
-
-    private static func isFilenameContinuation(_ attribute: String) -> Bool {
-        for name in ["name", "filename"] where attribute.hasPrefix(name + "*") {
-            var suffix = attribute.dropFirst(name.count + 1)
-            if suffix.last == "*" {
-                suffix.removeLast()
-            }
-            if !suffix.isEmpty && suffix.allSatisfy(\.isNumber) {
-                return true
-            }
-        }
-        return false
-    }
-
-    private static func percentDecodedBytes(_ value: Substring) -> [UInt8]? {
-        let bytes = Array(value.utf8)
-        var result: [UInt8] = []
-        var index = 0
-
-        while index < bytes.count {
-            if bytes[index] == UInt8(ascii: "%") {
-                guard index + 2 < bytes.count,
-                      let high = hexValue(bytes[index + 1]),
-                      let low = hexValue(bytes[index + 2])
-                else { return nil }
-                result.append(high << 4 | low)
-                index += 3
-            } else {
-                result.append(bytes[index])
-                index += 1
-            }
-        }
-        return result
-    }
-
-    private static func hexValue(_ byte: UInt8) -> UInt8? {
-        switch byte {
-            case UInt8(ascii: "0")...UInt8(ascii: "9"):
-                return byte - UInt8(ascii: "0")
-            case UInt8(ascii: "A")...UInt8(ascii: "F"):
-                return byte - UInt8(ascii: "A") + 10
-            case UInt8(ascii: "a")...UInt8(ascii: "f"):
-                return byte - UInt8(ascii: "a") + 10
-            default:
-                return nil
-        }
-    }
 
     /// Extract the disposition type (e.g. "attachment", "inline") from Content-Disposition.
     static func extractDispositionType(from disposition: String?) -> String? {
