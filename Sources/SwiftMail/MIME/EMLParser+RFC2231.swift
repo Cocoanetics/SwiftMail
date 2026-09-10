@@ -60,16 +60,32 @@ extension EMLParser {
         return String(bytes: bytes, encoding: encoding)
     }
 
-    /// Whether a charset label names UTF-8 itself (or its US-ASCII subset).
+    /// Whether a charset label names UTF-8 itself.
     ///
     /// On platforms without CoreFoundation, `String.Encoding(ianaCharsetName:)`
     /// resolves legacy charsets it has no converter for (GBK, Big5, EUC-KR,
     /// KOI8-R, …) to `.utf8` as a best-effort placeholder. Here a wrong
     /// decode is worse than none, because `nil` lets the sender's literal
-    /// spelling win, so a UTF-8 result is trusted only for a UTF-8 label.
+    /// spelling win, so a `.utf8` result is trusted only for a label that
+    /// really names UTF-8. The label is normalized the way the resolver
+    /// normalizes it before lookup — trimmed, unquoted, lowercased, `_` read
+    /// as `-`, repeated hyphens collapsed, a `$esc` suffix dropped — so every
+    /// spelling the resolver accepts as UTF-8 (`utf_8`, `UTF8`, `utf8mb4`, …)
+    /// is accepted here too. A UTF-8 alias unknown to this list fails safe:
+    /// the literal parameter is used, nothing is misread.
     private static func isUTF8Label(_ charset: String) -> Bool {
-        let label = charset.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return ["utf-8", "utf8", "utf8mb4", "us-ascii", "ascii", "iso646-us"].contains(label)
+        var label = charset
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+        while label.contains("--") {
+            label = label.replacingOccurrences(of: "--", with: "-")
+        }
+        if label.hasSuffix("$esc") {
+            label = String(label.dropLast(4))
+        }
+        return ["utf-8", "utf8", "utf8mb4"].contains(label)
     }
 
     /// Collect the RFC 2231 §3 continuation sections of an extended

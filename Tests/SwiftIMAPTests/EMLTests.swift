@@ -370,6 +370,17 @@ struct MIMEParameterParsingTests {
         #endif
     }
 
+    @Test("Every spelling of UTF-8 the resolver accepts is decoded as UTF-8")
+    func extendedParameterUTF8AliasesAreHonored() {
+        // The resolver folds `_` to `-`, collapses hyphens, drops `$esc` and
+        // knows the `utf8`/`utf8mb4` aliases. A guard against its Linux
+        // placeholder for unsupported charsets must not reject any of these.
+        for charset in ["utf-8", "UTF-8", "utf8", "UTF8", "utf8mb4", "utf_8", "utf--8", "utf-8$esc"] {
+            let header = "attachment; filename=\"fallback.pdf\"; filename*=\(charset)''r%C3%A9sum%C3%A9.pdf"
+            #expect(EMLParser.extractFilename(from: header) == "r\u{00E9}sum\u{00E9}.pdf", "charset \(charset)")
+        }
+    }
+
     @Test("Continuation sections end at the first gap and reject leading zeroes")
     func continuationSectionsAreContiguousDecimals() {
         // RFC 2231 §3: "neither leading zeroes nor gaps in the sequence are
