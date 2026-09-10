@@ -55,8 +55,21 @@ extension EMLParser {
             // still rejects a byte sequence that is not text.
             return String(bytes: bytes, encoding: .utf8)
         }
-        guard let encoding = String.Encoding(ianaCharsetName: charset) else { return nil }
+        guard let encoding = String.Encoding(ianaCharsetName: charset),
+              encoding != .utf8 || isUTF8Label(charset) else { return nil }
         return String(bytes: bytes, encoding: encoding)
+    }
+
+    /// Whether a charset label names UTF-8 itself (or its US-ASCII subset).
+    ///
+    /// On platforms without CoreFoundation, `String.Encoding(ianaCharsetName:)`
+    /// resolves legacy charsets it has no converter for (GBK, Big5, EUC-KR,
+    /// KOI8-R, …) to `.utf8` as a best-effort placeholder. Here a wrong
+    /// decode is worse than none, because `nil` lets the sender's literal
+    /// spelling win, so a UTF-8 result is trusted only for a UTF-8 label.
+    private static func isUTF8Label(_ charset: String) -> Bool {
+        let label = charset.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["utf-8", "utf8", "utf8mb4", "us-ascii", "ascii", "iso646-us"].contains(label)
     }
 
     /// Collect the RFC 2231 §3 continuation sections of an extended

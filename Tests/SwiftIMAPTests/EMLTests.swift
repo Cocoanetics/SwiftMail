@@ -354,6 +354,22 @@ struct MIMEParameterParsingTests {
         #expect(EMLParser.extractFilename(from: header) == "fallback.pdf")
     }
 
+    @Test("A legacy charset with no converter yields the literal spelling, never a UTF-8 misread")
+    func extendedParameterLegacyCharsetIsNeverMisreadAsUTF8() {
+        // C2 A3 is "£" in UTF-8 but a different character in GBK. A platform
+        // that cannot decode GBK must fall back to the literal parameter
+        // rather than present the UTF-8 reading; one that can must decode it
+        // as GBK. Either way the UTF-8 misread is never the answer.
+        let header = "attachment; filename=\"fallback.txt\"; filename*=gbk''%C2%A3.txt"
+        let filename = EMLParser.extractFilename(from: header)
+
+        #expect(filename != "\u{00A3}.txt")
+        #expect(filename == "fallback.txt" || filename == "\u{62E2}.txt")
+        #if canImport(Darwin)
+        #expect(filename == "\u{62E2}.txt")
+        #endif
+    }
+
     @Test("Continuation sections end at the first gap and reject leading zeroes")
     func continuationSectionsAreContiguousDecimals() {
         // RFC 2231 §3: "neither leading zeroes nor gaps in the sequence are
