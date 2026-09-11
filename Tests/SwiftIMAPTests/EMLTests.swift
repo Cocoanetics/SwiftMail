@@ -326,6 +326,128 @@ struct MIMEParameterParsingTests {
         #expect(EMLParser.cleanContentType(contentType) == "application/pdf")
     }
 
+    @Test("An extended parameter may leave the charset field blank")
+    func extendedParameterWithBlankCharsetIsDecoded() {
+        // RFC 2231 §4: "it is perfectly permissible to leave either the
+        // character set or language field blank", the `'` delimiters staying.
+        let header = "attachment; filename*=''invoice.pdf"
+
+        #expect(EMLParser.extractFilename(from: header) == "invoice.pdf")
+    }
+
+    @Test("A blank charset gives non-ASCII bytes no meaning, so the literal spelling wins")
+    func extendedParameterWithBlankCharsetDecodesOnlyASCII() {
+        // RFC 2231 §4: leaving the charset blank "MUST NOT be done in order
+        // to indicate a default character set". C2 A3 is "£" in UTF-8, "Â£"
+        // in Latin-1 and "拢" in GBK; undeclared, it decodes as none of them.
+        let withLiteral = "attachment; filename=\"fallback.txt\"; filename*=''%C2%A3.txt"
+        #expect(EMLParser.extractFilename(from: withLiteral) == "fallback.txt")
+
+        let withoutLiteral = "attachment; filename*=''%C2%A3.txt"
+        #expect(EMLParser.extractFilename(from: withoutLiteral) == nil)
+
+        // US-ASCII bytes keep their meaning, percent-encoded or not, and a
+        // language field alone does not name a charset.
+        #expect(EMLParser.extractFilename(from: "attachment; filename*=''a%20b.pdf") == "a b.pdf")
+        #expect(EMLParser.extractFilename(from: "attachment; filename*='en'invoice.pdf") == "invoice.pdf")
+    }
+
+    @Test("An extended parameter decodes in any charset the platform names")
+    func extendedParameterHonorsPlatformCharsets() {
+        #expect(EMLParser.extractFilename(from: "attachment; filename*=windows-1252''invoice.pdf") == "invoice.pdf")
+        #expect(EMLParser.extractFilename(from: "attachment; filename*=ISO-8859-1''caf%E9.txt") == "café.txt")
+        #if canImport(Darwin)
+        // swift-corelibs-foundation names ISO-8859-15 but has no converter for
+        // it, so on Linux this value decodes to nil and the literal spelling is
+        // used instead; only the Darwin converter set reaches the euro sign.
+        #expect(EMLParser.extractFilename(from: "attachment; filename*=iso-8859-15''%A4.txt") == "€.txt")
+        #endif
+    }
+
+    @Test("An extended parameter in an unknown charset yields the literal spelling")
+    func extendedParameterUnknownCharsetFallsBackToLiteral() {
+        let header = "attachment; filename=\"fallback.pdf\"; filename*=x-no-such-charset''a.pdf"
+
+        #expect(EMLParser.extractFilename(from: header) == "fallback.pdf")
+    }
+
+    @Test("A legacy charset with no converter yields the literal spelling, never a UTF-8 misread")
+    func extendedParameterLegacyCharsetIsNeverMisreadAsUTF8() {
+        // C2 A3 is "£" in UTF-8 but a different character in GBK. A platform
+        // that cannot decode GBK must fall back to the literal parameter
+        // rather than present the UTF-8 reading; one that can must decode it
+        // as GBK. Either way the UTF-8 misread is never the answer.
+        let header = "attachment; filename=\"fallback.txt\"; filename*=gbk''%C2%A3.txt"
+        let filename = EMLParser.extractFilename(from: header)
+
+        #expect(filename != "\u{00A3}.txt")
+        #expect(filename == "fallback.txt" || filename == "\u{62E2}.txt")
+        #if canImport(Darwin)
+        #expect(filename == "\u{62E2}.txt")
+        #endif
+
+        // Every label the portable resolver stands in for with UTF-8, in the
+        // spellings it folds to them, must likewise never yield the misread.
+        let placeholders = [
+            "gb2312", "gb18030", "big5", "euc-kr", "koi8-r", "macintosh", "ks-c-5601-1987", "macroman", "gbk/gb2312"
+        ]
+        for label in placeholders {
+            let placeholder = "attachment; filename=\"fallback.txt\"; filename*=\(label)''%C2%A3.txt"
+            #expect(EMLParser.extractFilename(from: placeholder) != "\u{00A3}.txt", "charset \(label)")
+        }
+    }
+
+    @Test("Every spelling of UTF-8 the resolver accepts is decoded as UTF-8")
+    func extendedParameterUTF8AliasesAreHonored() {
+        // The resolver folds `_` to `-`, collapses hyphens, drops `$esc` and
+        // knows the `utf8`/`utf8mb4` aliases. A guard against its Linux
+        // placeholder for unsupported charsets must not reject any of these.
+        var charsets = ["utf-8", "UTF-8", "utf8", "UTF8", "utf8mb4", "utf_8", "utf--8", "utf-8$esc"]
+        let alias = "attachment; filename=\"fallback.pdf\"; filename*=unicode-1-1-utf-8''r%C3%A9sum%C3%A9.pdf"
+        #if canImport(Darwin)
+        // CoreFoundation's IANA table is authoritative on Apple platforms and
+        // knows aliases the portable table does not; its `.utf8` is trusted.
+        charsets.append("unicode-1-1-utf-8")
+        #else
+        // The portable table does not know this alias, so the literal wins.
+        #expect(EMLParser.extractFilename(from: alias) == "fallback.pdf")
+        #endif
+        for charset in charsets {
+            let header = "attachment; filename=\"fallback.pdf\"; filename*=\(charset)''r%C3%A9sum%C3%A9.pdf"
+            #expect(EMLParser.extractFilename(from: header) == "r\u{00E9}sum\u{00E9}.pdf", "charset \(charset)")
+        }
+    }
+
+    @Test("Continuation sections end at the first gap and reject leading zeroes")
+    func continuationSectionsAreContiguousDecimals() {
+        // RFC 2231 §3: "neither leading zeroes nor gaps in the sequence are
+        // allowed" — `*01*` is not section 1, and section 2 is unreachable
+        // without it.
+        #expect(EMLParser.extractFilename(from: "application/pdf; name*0*=UTF-8''a; name*01*=b; name*2*=c") == "a")
+        #expect(EMLParser.extractFilename(from: "application/pdf; name*0*=UTF-8''a; name*2*=c") == "a")
+        // The first occurrence of a repeated section stands.
+        #expect(EMLParser.extractFilename(from: "application/pdf; name*0*=UTF-8''a; name*1*=b; name*1*=z") == "ab")
+    }
+
+    @Test("Reading a parameter with many continuation sections stays linear")
+    func manyContinuationSectionsStayLinear() {
+        // A sender chooses the section count. Each section used to be found
+        // by re-tokenizing the whole header, so 4096 legal sections cost
+        // seconds; one pass over the parameters costs milliseconds.
+        let sections = 4096
+        let header = "attachment; filename*0*=UTF-8''a; "
+            + (1..<sections).map { "filename*\($0)*=a" }.joined(separator: "; ")
+
+        let clock = ContinuousClock()
+        var filename: String?
+        let elapsed = clock.measure {
+            filename = EMLParser.extractFilename(from: header)
+        }
+
+        #expect(filename == String(repeating: "a", count: sections))
+        #expect(elapsed < .seconds(2))
+    }
+
     @Test("An extended name parameter reads back from a Content-Type")
     func extendedNameParameterReadsBack() {
         let contentType = "application/pdf; name*=UTF-8''%EB%B0%9C%ED%91%9C.pdf"
