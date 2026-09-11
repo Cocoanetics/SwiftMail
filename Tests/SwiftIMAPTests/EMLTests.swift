@@ -335,6 +335,23 @@ struct MIMEParameterParsingTests {
         #expect(EMLParser.extractFilename(from: header) == "invoice.pdf")
     }
 
+    @Test("A blank charset gives non-ASCII bytes no meaning, so the literal spelling wins")
+    func extendedParameterWithBlankCharsetDecodesOnlyASCII() {
+        // RFC 2231 §4: leaving the charset blank "MUST NOT be done in order
+        // to indicate a default character set". C2 A3 is "£" in UTF-8, "Â£"
+        // in Latin-1 and "拢" in GBK; undeclared, it decodes as none of them.
+        let withLiteral = "attachment; filename=\"fallback.txt\"; filename*=''%C2%A3.txt"
+        #expect(EMLParser.extractFilename(from: withLiteral) == "fallback.txt")
+
+        let withoutLiteral = "attachment; filename*=''%C2%A3.txt"
+        #expect(EMLParser.extractFilename(from: withoutLiteral) == nil)
+
+        // US-ASCII bytes keep their meaning, percent-encoded or not, and a
+        // language field alone does not name a charset.
+        #expect(EMLParser.extractFilename(from: "attachment; filename*=''a%20b.pdf") == "a b.pdf")
+        #expect(EMLParser.extractFilename(from: "attachment; filename*='en'invoice.pdf") == "invoice.pdf")
+    }
+
     @Test("An extended parameter decodes in any charset the platform names")
     func extendedParameterHonorsPlatformCharsets() {
         #expect(EMLParser.extractFilename(from: "attachment; filename*=windows-1252''invoice.pdf") == "invoice.pdf")
@@ -368,6 +385,16 @@ struct MIMEParameterParsingTests {
         #if canImport(Darwin)
         #expect(filename == "\u{62E2}.txt")
         #endif
+
+        // Every label the portable resolver stands in for with UTF-8, in the
+        // spellings it folds to them, must likewise never yield the misread.
+        let placeholders = [
+            "gb2312", "gb18030", "big5", "euc-kr", "koi8-r", "macintosh", "ks-c-5601-1987", "macroman", "gbk/gb2312"
+        ]
+        for label in placeholders {
+            let placeholder = "attachment; filename=\"fallback.txt\"; filename*=\(label)''%C2%A3.txt"
+            #expect(EMLParser.extractFilename(from: placeholder) != "\u{00A3}.txt", "charset \(label)")
+        }
     }
 
     @Test("Every spelling of UTF-8 the resolver accepts is decoded as UTF-8")
@@ -375,7 +402,17 @@ struct MIMEParameterParsingTests {
         // The resolver folds `_` to `-`, collapses hyphens, drops `$esc` and
         // knows the `utf8`/`utf8mb4` aliases. A guard against its Linux
         // placeholder for unsupported charsets must not reject any of these.
-        for charset in ["utf-8", "UTF-8", "utf8", "UTF8", "utf8mb4", "utf_8", "utf--8", "utf-8$esc"] {
+        var charsets = ["utf-8", "UTF-8", "utf8", "UTF8", "utf8mb4", "utf_8", "utf--8", "utf-8$esc"]
+        let alias = "attachment; filename=\"fallback.pdf\"; filename*=unicode-1-1-utf-8''r%C3%A9sum%C3%A9.pdf"
+        #if canImport(Darwin)
+        // CoreFoundation's IANA table is authoritative on Apple platforms and
+        // knows aliases the portable table does not; its `.utf8` is trusted.
+        charsets.append("unicode-1-1-utf-8")
+        #else
+        // The portable table does not know this alias, so the literal wins.
+        #expect(EMLParser.extractFilename(from: alias) == "fallback.pdf")
+        #endif
+        for charset in charsets {
             let header = "attachment; filename=\"fallback.pdf\"; filename*=\(charset)''r%C3%A9sum%C3%A9.pdf"
             #expect(EMLParser.extractFilename(from: header) == "r\u{00E9}sum\u{00E9}.pdf", "charset \(charset)")
         }

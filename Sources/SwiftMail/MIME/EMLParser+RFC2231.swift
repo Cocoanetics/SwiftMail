@@ -42,50 +42,46 @@ extension EMLParser {
     /// `charset'language'` prefix names.
     ///
     /// RFC 2231 §4 makes the charset field optional — `filename*=''a.pdf`
-    /// is legal, and the value is the bytes as written. Any charset the
-    /// platform can name is honored, so a filename labelled `windows-1252`
-    /// or `iso-8859-15` decodes as such rather than being discarded; a
-    /// charset the platform does not know, or bytes that are not valid in
-    /// the charset named, yield `nil` and the literal spelling of the
-    /// parameter, if the sender wrote one, is used instead.
+    /// is legal — but leaving it blank "MUST NOT be done in order to
+    /// indicate a default character set", so only US-ASCII bytes have a
+    /// meaning there; anything else yields `nil`. Any charset the platform can name is honored, so a filename
+    /// labelled `windows-1252` or `iso-8859-15` decodes as such rather than
+    /// being discarded; a charset the platform does not know, or bytes that
+    /// are not valid in the charset named, yield `nil`. A `nil` result lets
+    /// the literal spelling of the parameter, if the sender wrote one, win.
     private static func decodeExtendedBytes(_ bytes: [UInt8], charset: String) -> String? {
         if charset.isEmpty {
-            // No charset was named, so the bytes carry no declared meaning
-            // beyond US-ASCII. UTF-8 reads every US-ASCII value unchanged and
-            // still rejects a byte sequence that is not text.
-            return String(bytes: bytes, encoding: .utf8)
+            guard bytes.allSatisfy({ $0 < 0x80 }) else { return nil }
+            return String(bytes: bytes, encoding: .ascii)
         }
         guard let encoding = String.Encoding(ianaCharsetName: charset),
-              encoding != .utf8 || isUTF8Label(charset) else { return nil }
+              encoding != .utf8 || isGenuineUTF8Label(charset) else { return nil }
         return String(bytes: bytes, encoding: encoding)
     }
 
-    /// Whether a charset label names UTF-8 itself.
+    /// Whether a `.utf8` resolution of `charset` names UTF-8 rather than
+    /// standing in for a charset the platform cannot decode.
     ///
-    /// On platforms without CoreFoundation, `String.Encoding(ianaCharsetName:)`
-    /// resolves legacy charsets it has no converter for (GBK, Big5, EUC-KR,
-    /// KOI8-R, …) to `.utf8` as a best-effort placeholder. Here a wrong
-    /// decode is worse than none, because `nil` lets the sender's literal
-    /// spelling win, so a `.utf8` result is trusted only for a label that
-    /// really names UTF-8. The label is normalized the way the resolver
-    /// normalizes it before lookup — trimmed, unquoted, lowercased, `_` read
-    /// as `-`, repeated hyphens collapsed, a `$esc` suffix dropped — so every
-    /// spelling the resolver accepts as UTF-8 (`utf_8`, `UTF8`, `utf8mb4`, …)
-    /// is accepted here too. A UTF-8 alias unknown to this list fails safe:
-    /// the literal parameter is used, nothing is misread.
-    private static func isUTF8Label(_ charset: String) -> Bool {
-        var label = charset
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
-            .lowercased()
-            .replacingOccurrences(of: "_", with: "-")
-        while label.contains("--") {
-            label = label.replacingOccurrences(of: "--", with: "-")
-        }
-        if label.hasSuffix("$esc") {
-            label = String(label.dropLast(4))
-        }
-        return ["utf-8", "utf8", "utf8mb4"].contains(label)
+    /// On Apple platforms CoreFoundation's IANA table is authoritative, so
+    /// every `.utf8` it returns is trusted, aliases such as
+    /// `unicode-1-1-utf-8` included. Without CoreFoundation, SwiftCross's
+    /// hand table resolves legacy charsets it has no converter for (GBK,
+    /// Big5, EUC-KR, KOI8-R, macintosh, …) to `.utf8` as a best-effort
+    /// placeholder, and a wrong decode is worse than none because `nil` lets
+    /// the sender's literal spelling win. There the label itself decides:
+    /// stripped of everything but letters and digits, every UTF-8 spelling
+    /// the resolver accepts (`utf-8`, `utf8`, `utf8mb4`, `utf_8`,
+    /// `utf-8$esc`) starts with `utf8` and no placeholder label does. On
+    /// those platforms a placeholder added to the table later is still
+    /// rejected, and a UTF-8 alias spelled some other way fails safe to the
+    /// literal parameter.
+    private static func isGenuineUTF8Label(_ charset: String) -> Bool {
+        #if canImport(CoreFoundation) && (os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS))
+        return true
+        #else
+        let alphanumerics = charset.lowercased().filter { $0.isASCII && ($0.isLetter || $0.isNumber) }
+        return alphanumerics.hasPrefix("utf8")
+        #endif
     }
 
     /// Collect the RFC 2231 §3 continuation sections of an extended
