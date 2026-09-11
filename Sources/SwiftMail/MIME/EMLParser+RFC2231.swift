@@ -3,6 +3,7 @@
 // numbered continuation sections.
 
 import Foundation
+import SwiftCross
 
 extension EMLParser {
 
