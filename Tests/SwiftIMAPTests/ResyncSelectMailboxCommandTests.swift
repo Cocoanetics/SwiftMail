@@ -109,6 +109,10 @@ struct ResyncSelectMailboxCommandTests {
         try await writeInbound(channel, "A002 OK [READ-WRITE] Selected\r\n")
 
         let result = try await promise.futureResult.get()
+        assertWorkedInterleavedResult(result)
+    }
+
+    private func assertWorkedInterleavedResult(_ result: Mailbox.ResyncSelection) {
         #expect(result.selection.messageCount == 5)
         #expect(result.selection.recentCount == 1)
         #expect(result.selection.firstUnseen == 2)
