@@ -60,10 +60,10 @@
 
 #### Other Commands
 
-- [ ] ENABLE - Allows the client to enable server-side extensions.
+- [x] ENABLE - Allows the client to enable server-side extensions.
  - [x] ID - Allows the client to identify itself to the server.
 - [ ] CONDSTORE - Provides support for conditional STORE operations.
-- [ ] QRESYNC - Provides support for quick resynchronization of the mailbox.
+- [x] QRESYNC - Provides support for quick resynchronization of the mailbox.
 - [ ] METADATA - Allows the client to retrieve and store metadata associated with mailboxes.
 - [ ] LIST-EXTENDED - Extended LIST command that provides additional listing capabilities.
 

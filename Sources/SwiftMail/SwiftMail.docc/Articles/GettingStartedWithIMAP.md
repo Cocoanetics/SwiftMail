@@ -54,6 +54,49 @@ different pattern if needed:
 let mailboxes = try await imapServer.listMailboxes(wildcard: "%")
 ```
 
+### Resynchronizing with QRESYNC
+
+QRESYNC can return mailbox metadata, vanished UIDs, and complete flag updates
+in one selection. Enable it after authentication and before any SELECT on that
+connection. ENABLE state is connection-local, so enable it again after a
+replacement connection is established.
+
+```swift
+let advertised = try await imapServer.fetchCapabilities()
+guard advertised.contains(.enable), advertised.contains(.qresync) else {
+    throw IMAPError.commandNotSupported("QRESYNC is unavailable")
+}
+
+let enabled = try await imapServer.enable([.qresync, .condStore])
+guard enabled.contains(.qresync) else {
+    throw IMAPError.commandNotSupported("The server did not enable QRESYNC")
+}
+
+let storedValidity: UIDValidity = 777
+let changes = try await imapServer.selectMailbox(
+    "INBOX",
+    resyncingFrom: storedValidity,
+    modificationSequence: 900
+)
+
+guard changes.selection.uidValidity == storedValidity else {
+    // UIDVALIDITY changed, so discard the stored UIDs and rebuild local state.
+    return
+}
+
+for vanishedRange in changes.vanishedEarlier.ranges {
+    removeStoredMessages(in: vanishedRange)
+}
+for (uid, flags) in changes.changedFlags {
+    replaceStoredFlags(for: uid, with: flags)
+}
+
+// Persist a new checkpoint only when the server supplied one.
+if let checkpoint = changes.selection.highestModSequence {
+    saveCheckpoint(checkpoint)
+}
+```
+
 ## Fetching Messages
 
 Fetch messages from the selected mailbox. By default these methods fetch only the first message to keep payloads small. For large mailboxes you can

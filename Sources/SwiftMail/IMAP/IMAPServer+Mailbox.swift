@@ -43,6 +43,34 @@ extension IMAPServer {
         return try await executeCommand(command)
     }
 
+    /// Selects a mailbox and asks the server to return QRESYNC changes from a checkpoint.
+    ///
+    /// QRESYNC must have been successfully enabled on this live connection first.
+    /// Compare the returned UIDVALIDITY with `uidValidity` before applying vanished
+    /// UIDs or flag replacements. A nil highest modification sequence is not a
+    /// reusable checkpoint. Each changed-flags value replaces the message's full flag set.
+    ///
+    /// - Throws: ``IMAPError/commandNotSupported(_:)`` when QRESYNC was not advertised,
+    ///   ``IMAPError/invalidArgument(_:)`` for an invalid mailbox or checkpoint, or
+    ///   ``IMAPError/selectFailed(_:)`` when the server rejects the selection.
+    @discardableResult
+    public func selectMailbox(
+        _ mailboxName: String,
+        resyncingFrom uidValidity: UIDValidity,
+        modificationSequence: ModificationSequenceValue
+    ) async throws -> Mailbox.ResyncSelection {
+        try await ensurePrimaryConnectionAuthenticated()
+        guard primaryConnection.capabilitiesSnapshot.contains(.qresync) else {
+            throw IMAPError.commandNotSupported("QRESYNC not supported by server")
+        }
+        let command = ResyncSelectMailboxCommand(
+            mailboxName: resolveMailboxPath(mailboxName),
+            uidValidity: uidValidity,
+            modificationSequence: modificationSequence
+        )
+        return try await primaryConnection.executeCommand(command)
+    }
+
     /**
      Select a mailbox in read-only mode
 

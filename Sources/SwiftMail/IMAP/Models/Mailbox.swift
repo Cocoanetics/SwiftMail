@@ -171,6 +171,9 @@ public enum Mailbox {
         /// The flags that can be permanently stored
         public var permanentFlags: [Flag] = []
 
+        /// The server-reported highest modification sequence, when available.
+        public var highestModSequence: ModificationSequenceValue? = nil
+
         /// Get a sequence number set for the latest n messages in the mailbox
         /// - Parameter count: The number of latest messages to include
         /// - Returns: A sequence number set containing the latest n messages, or nil if the mailbox is empty
