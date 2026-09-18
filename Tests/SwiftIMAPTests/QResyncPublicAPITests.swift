@@ -95,6 +95,26 @@ struct PrimaryQResyncPublicAPITests {
         #expect(try await selectHarness.channel.readOutbound(as: ByteBuffer.self) == nil)
         try await selectHarness.channel.close()
     }
+
+    @Test
+    func primaryEnableRejectsInjectionWithoutSendingBytes() async throws {
+        let harness = try await makeQResyncHarness(capabilities: [.enable])
+
+        do {
+            _ = try await harness.server.enable([Capability("QRESYNC\r\nA999 LOGOUT")])
+            Issue.record("Expected IMAPError.invalidArgument")
+        } catch let error as IMAPError {
+            guard case .invalidArgument = error else {
+                Issue.record("Expected invalidArgument, got \(error)")
+                return
+            }
+        }
+
+        #expect(
+            try await nextQResyncOutboundLine(from: harness.channel, timeoutNanoseconds: 100_000_000) == nil
+        )
+        try await harness.channel.close()
+    }
 }
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
@@ -178,6 +198,31 @@ struct NamedQResyncPublicAPITests {
             _ = try await named.select(mailbox: "INBOX", resyncingFrom: 777, modificationSequence: 900)
         }
         #expect(try await harness.channel.readOutbound(as: ByteBuffer.self) == nil)
+        try await harness.channel.close()
+    }
+
+    @Test
+    func namedEnableRejectsInjectionWithoutSendingBytes() async throws {
+        let harness = try await makeQResyncHarness(capabilities: [.enable])
+        let named = IMAPNamedConnection(
+            name: "injection-check",
+            connection: harness.connection,
+            authenticateOnConnection: { _ in }
+        )
+
+        do {
+            _ = try await named.enable([Capability("QRESYNC\r\nA999 LOGOUT")])
+            Issue.record("Expected IMAPError.invalidArgument")
+        } catch let error as IMAPError {
+            guard case .invalidArgument = error else {
+                Issue.record("Expected invalidArgument, got \(error)")
+                return
+            }
+        }
+
+        #expect(
+            try await nextQResyncOutboundLine(from: harness.channel, timeoutNanoseconds: 100_000_000) == nil
+        )
         try await harness.channel.close()
     }
 }

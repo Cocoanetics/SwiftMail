@@ -7,7 +7,8 @@ extension IMAPServer {
     /// capabilities are only those confirmed by this ENABLE command. Enable them
     /// again after the connection is replaced.
     ///
-    /// - Throws: ``IMAPError/invalidArgument(_:)`` for an empty request,
+    /// - Throws: ``IMAPError/invalidArgument(_:)`` for an empty request or
+    ///   a malformed capability value,
     ///   ``IMAPError/commandNotSupported(_:)`` when ENABLE was not advertised, or
     ///   ``IMAPError/commandFailed(_:)`` when the server rejects the command.
     @discardableResult

@@ -21,10 +21,65 @@ struct EnableCommandTests {
     }
 
     @Test
-    func rejectsEmptyRequest() {
-        #expect(throws: IMAPError.self) {
-            try EnableCommand(capabilities: []).validate()
+    func customCapabilityWireEncoding() async throws {
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
+        let tagged = EnableCommand(capabilities: [Capability("UTF8=ACCEPT")]).toTaggedCommand(tag: "A001")
+        try await channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.tagged(tagged)))
+
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected outbound bytes")
+            return
         }
+        #expect(outbound.readString(length: outbound.readableBytes) == "A001 ENABLE UTF8=ACCEPT\r\n")
+    }
+
+    @Test
+    func rejectsEmptyRequest() {
+        expectInvalidArgument([])
+    }
+
+    @Test(arguments: [
+        "QRESYNC",
+        "CONDSTORE",
+        "UIDONLY",
+        "UTF8=ACCEPT",
+        "X-CUSTOM",
+        "x-custom=value+1.0",
+        "X[TEST",
+        "X}TEST"
+    ])
+    func acceptsValidCapabilityAtoms(_ value: String) throws {
+        try EnableCommand(capabilities: [Capability(value)]).validate()
+    }
+
+    @Test(arguments: [
+        "",
+        "QRESYNC CONDSTORE",
+        "\r",
+        "\n",
+        "\t",
+        "\0",
+        "\u{1F}",
+        "\u{7F}",
+        "QRESYNC\r\nA999 LOGOUT",
+        "X=ok\r\nA999 LOGOUT",
+        "CAFÉ",
+        "X(TEST",
+        "X)TEST",
+        "X{TEST",
+        "X%TEST",
+        "X*TEST",
+        "X\"TEST",
+        "X\\TEST",
+        "X]TEST"
+    ])
+    func rejectsInvalidCapabilityAtoms(_ value: String) {
+        expectInvalidArgument([Capability(value)])
+    }
+
+    @Test
+    func rejectsMixedValidAndInvalidCapabilities() {
+        expectInvalidArgument([.qresync, Capability("X=ok\r\nA999 LOGOUT"), .condStore])
     }
 
     @Test
@@ -79,5 +134,19 @@ struct EnableCommandTests {
         input.writeString(rawResponse)
         try await channel.writeInbound(input)
         return try await promise.futureResult.get()
+    }
+
+    private func expectInvalidArgument(_ capabilities: [Capability]) {
+        do {
+            try EnableCommand(capabilities: capabilities).validate()
+            Issue.record("Expected IMAPError.invalidArgument")
+        } catch let error as IMAPError {
+            guard case .invalidArgument = error else {
+                Issue.record("Expected invalidArgument, got \(error)")
+                return
+            }
+        } catch {
+            Issue.record("Expected IMAPError.invalidArgument, got \(error)")
+        }
     }
 }
