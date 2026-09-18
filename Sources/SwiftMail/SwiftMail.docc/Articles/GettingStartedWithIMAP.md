@@ -80,22 +80,46 @@ let changes = try await imapServer.selectMailbox(
 )
 
 guard changes.selection.uidValidity == storedValidity else {
-    // UIDVALIDITY changed, so discard the stored UIDs and rebuild local state.
+    discardStoredCheckpoint()
+    discardStoredMessages()
+    try await synchronizeNormally()
+    return
+}
+
+guard let checkpoint = changes.selection.highestModSequence else {
+    // NOMODSEQ or an omitted checkpoint requires ordinary synchronization.
+    discardStoredCheckpoint()
+    try await synchronizeNormally()
     return
 }
 
 for vanishedRange in changes.vanishedEarlier.ranges {
     removeStoredMessages(in: vanishedRange)
 }
+for vanishedRange in changes.vanished.ranges {
+    removeStoredMessages(in: vanishedRange)
+}
 for (uid, flags) in changes.changedFlags {
     replaceStoredFlags(for: uid, with: flags)
 }
 
-// Persist a new checkpoint only when the server supplied one.
-if let checkpoint = changes.selection.highestModSequence {
-    saveCheckpoint(checkpoint)
-}
+saveCheckpoint(checkpoint)
 ```
+
+The storage functions and `synchronizeNormally()` above belong to your app.
+SwiftMail does not persist checkpoints or fall back automatically. Validate
+UIDVALIDITY first, then require a `highestModSequence` before applying the
+incremental result. A nil value means the server sent NOMODSEQ or omitted the
+checkpoint. In either case, discard the stored modification-sequence checkpoint
+and use ordinary synchronization. NOMODSEQ requires removing the cached
+HIGHESTMODSEQ as described in [RFC 7162 section 6](https://www.rfc-editor.org/rfc/rfc7162.html#section-6).
+
+Apply both deletion sets before replacing each message's complete flag set.
+`vanishedEarlier` contains historical deletions and does not reduce the returned
+message count. `vanished` contains live deletions during selection. The returned
+`selection.messageCount` already accounts for live deletions and EXISTS responses
+in arrival order, so do not subtract either set from it. A later EXISTS replaces
+the count. `changedFlags` excludes UIDs in either deletion set.
 
 ## Fetching Messages
 

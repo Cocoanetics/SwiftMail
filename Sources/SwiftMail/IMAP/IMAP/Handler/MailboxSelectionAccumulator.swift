@@ -22,6 +22,8 @@ struct MailboxSelectionAccumulator: Sendable {
                 selection.highestModSequence = value
             case .noModificationSequence:
                 selection.highestModSequence = nil
+            case .closed:
+                selection = Mailbox.Selection()
             default:
                 break
         }
@@ -38,6 +40,13 @@ struct MailboxSelectionAccumulator: Sendable {
             default:
                 break
         }
+    }
+
+    mutating func applyLiveDeletions(_ uids: NIOIMAPCore.UIDSet) {
+        let deletedCount = uids.ranges.reduce(into: 0) { count, range in
+            count += range.count
+        }
+        selection.messageCount -= min(selection.messageCount, deletedCount)
     }
 
     private static func convertFlag(_ flag: PermanentFlag) -> Flag {

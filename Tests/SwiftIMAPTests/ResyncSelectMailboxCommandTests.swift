@@ -100,9 +100,9 @@ struct ResyncSelectMailboxCommandTests {
                 + "* VANISHED 30:31\r\n"
                 + "* 3 FETCH (UID 43 FLAGS () MODSEQ (902))\r\n"
                 + "* 2 FETCH (UID 42 FLAGS (\\Answered) MODSEQ (903))\r\n"
-                + "* 4 FETCH (FLAGS (\\Flagged) MODSEQ (904))\r\n"
+                + "* 3 FETCH (FLAGS (\\Flagged) MODSEQ (904))\r\n"
                 + "* 2 FETCH (UID 42 MODSEQ (905))\r\n"
-                + "* 5 FETCH (FLAGS (\\Seen $NoModseq) UID 44)\r\n"
+                + "* 3 FETCH (FLAGS (\\Seen $NoModseq) UID 44)\r\n"
         )
         #expect(!handler.isCompleted)
         #expect(handler.untaggedResponses.isEmpty)
@@ -113,7 +113,7 @@ struct ResyncSelectMailboxCommandTests {
     }
 
     private func assertWorkedInterleavedResult(_ result: Mailbox.ResyncSelection) {
-        #expect(result.selection.messageCount == 5)
+        #expect(result.selection.messageCount == 3)
         #expect(result.selection.recentCount == 1)
         #expect(result.selection.firstUnseen == 2)
         #expect(result.selection.uidValidity == UIDValidity(777))
@@ -123,6 +123,7 @@ struct ResyncSelectMailboxCommandTests {
         #expect(result.selection.availableFlags.map(\.description) == ["seen", "answered", "flagged", "$Work"])
         #expect(result.selection.permanentFlags.map(\.description) == ["seen", "wildcard"])
         #expect(result.vanishedEarlier.ranges == [10...14, 20...20])
+        #expect(result.vanished.ranges == [30...31])
         #expect(result.changedFlags[UID(42)] == [.answered])
         #expect(result.changedFlags[UID(43)] == [])
         #expect(result.changedFlags[UID(44)] == [.seen, .custom("$NoModseq")])
@@ -134,17 +135,20 @@ struct ResyncSelectMailboxCommandTests {
         let result = try await execute(
             "* 8 EXISTS\r\n"
                 + "* VANISHED (EARLIER) 1:2\r\n"
+                + "* VANISHED 11\r\n"
                 + "* 1 FETCH (UID 10 FLAGS (\\Seen))\r\n"
                 + "* OK [CLOSED] Previous mailbox closed\r\n"
                 + "* 3 EXISTS\r\n"
                 + "* VANISHED (EARLIER) 20:21\r\n"
+                + "* VANISHED 22\r\n"
                 + "* 1 FETCH (UID 10 FLAGS (\\Answered))\r\n"
                 + "A002 OK [READ-ONLY] Selected\r\n"
         )
 
-        #expect(result.selection.messageCount == 3)
+        #expect(result.selection.messageCount == 2)
         #expect(result.selection.isReadOnly)
         #expect(result.vanishedEarlier.ranges == [20...21])
+        #expect(result.vanished.ranges == [22...22])
         #expect(result.changedFlags[UID(10)] == [.answered])
     }
 
@@ -189,12 +193,13 @@ struct ResyncSelectMailboxCommandTests {
     func plainVanishedIsNotHistoricalDeletion() async throws {
         let result = try await execute(
             "* 5 EXISTS\r\n"
-                + "* VANISHED 1:100\r\n"
+                + "* VANISHED 42\r\n"
                 + "* VANISHED (EARLIER) 200:201\r\n"
                 + "A002 OK Selected\r\n"
         )
 
-        #expect(result.selection.messageCount == 5)
+        #expect(result.selection.messageCount == 4)
+        #expect(result.vanished.ranges == [42...42])
         #expect(result.vanishedEarlier.ranges == [200...201])
     }
 
@@ -274,5 +279,72 @@ struct ResyncSelectMailboxCommandTests {
         var buffer = channel.allocator.buffer(capacity: text.utf8.count)
         buffer.writeString(text)
         try await channel.writeInbound(buffer)
+    }
+}
+
+extension ResyncSelectMailboxCommandTests {
+    @Test
+    func uidOnlyFetchUsesLeadingUIDAndRequiresFlags() async throws {
+        let result = try await execute(
+            "* 42 UIDFETCH (FLAGS (\\Seen) MODSEQ (901))\r\n"
+                + "* 43 UIDFETCH (FLAGS ())\r\n"
+                + "* 44 UIDFETCH (MODSEQ (902))\r\n"
+                + "* 45 UIDFETCH (FLAGS (\\Flagged))\r\n"
+                + "* 45 UIDFETCH (MODSEQ (903))\r\n"
+                + "* 42 UIDFETCH (FLAGS (\\Answered))\r\n"
+                + "A002 OK Selected\r\n"
+        )
+
+        #expect(result.changedFlags[UID(42)] == [.answered])
+        #expect(result.changedFlags[UID(43)] == [])
+        #expect(result.changedFlags[UID(44)] == nil)
+        #expect(result.changedFlags[UID(45)] == [.flagged])
+    }
+
+    @Test
+    func deletionsExcludeFlagsInEitherWireOrder() async throws {
+        let result = try await execute(
+            "* 5 EXISTS\r\n"
+                + "* 1 FETCH (UID 42 FLAGS (\\Seen))\r\n"
+                + "* VANISHED 42\r\n"
+                + "* VANISHED 43\r\n"
+                + "* 1 FETCH (UID 43 FLAGS (\\Answered))\r\n"
+                + "* 1 FETCH (UID 44 FLAGS (\\Seen))\r\n"
+                + "* VANISHED (EARLIER) 44\r\n"
+                + "* VANISHED (EARLIER) 45\r\n"
+                + "* 1 FETCH (UID 45 FLAGS (\\Answered))\r\n"
+                + "A002 OK Selected\r\n"
+        )
+
+        #expect(result.selection.messageCount == 3)
+        #expect(result.vanished.ranges == [42...43])
+        #expect(result.vanishedEarlier.ranges == [44...45])
+        #expect(result.changedFlags.isEmpty)
+    }
+
+    @Test
+    func existsAndLiveDeletionsApplyInWireOrder() async throws {
+        let result = try await execute(
+            "* 5 EXISTS\r\n"
+                + "* VANISHED 10:11\r\n"
+                + "* 6 EXISTS\r\n"
+                + "* VANISHED 12\r\n"
+                + "A002 OK Selected\r\n"
+        )
+
+        #expect(result.selection.messageCount == 5)
+        #expect(result.vanished.ranges == [10...12])
+    }
+
+    @Test
+    func largeDeletionRangesStayCompactAndCountsClampAtZero() async throws {
+        let result = try await execute(
+            "* 5 EXISTS\r\n"
+                + "* VANISHED 1000000:4000000000\r\n"
+                + "A002 OK Selected\r\n"
+        )
+
+        #expect(result.selection.messageCount == 0)
+        #expect(result.vanished.ranges == [1_000_000...4_000_000_000])
     }
 }

@@ -46,9 +46,11 @@ extension IMAPServer {
     /// Selects a mailbox and asks the server to return QRESYNC changes from a checkpoint.
     ///
     /// QRESYNC must have been successfully enabled on this live connection first.
-    /// Compare the returned UIDVALIDITY with `uidValidity` before applying vanished
-    /// UIDs or flag replacements. A nil highest modification sequence is not a
-    /// reusable checkpoint. Each changed-flags value replaces the message's full flag set.
+    /// Compare the returned UIDVALIDITY with `uidValidity` before applying changes.
+    /// If `highestModSequence` is nil, discard the stored modification-sequence
+    /// checkpoint and fall back to ordinary synchronization. Otherwise, apply both
+    /// deletion sets before replacing each message's full flag set. The returned
+    /// message count already accounts for live deletions; do not subtract them again.
     ///
     /// - Throws: ``IMAPError/commandNotSupported(_:)`` when QRESYNC was not advertised,
     ///   ``IMAPError/invalidArgument(_:)`` for an invalid mailbox or checkpoint, or

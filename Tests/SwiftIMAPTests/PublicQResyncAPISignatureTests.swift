@@ -6,7 +6,7 @@ private func usePublicSelectionAPIs(
     namedConnection: IMAPNamedConnection
 ) async throws {
     _ = try await server.enable([.qresync])
-    let _: Mailbox.Selection = try await server.selectMailbox("INBOX")
+    let ordinarySelection: Mailbox.Selection = try await server.selectMailbox("INBOX")
     let _: Mailbox.ResyncSelection = try await server.selectMailbox(
         "INBOX",
         resyncingFrom: 777,
@@ -24,5 +24,11 @@ private func usePublicSelectionAPIs(
         "INBOX",
         resyncingFrom: 777,
         modificationSequence: 900
+    )
+
+    _ = Mailbox.ResyncSelection(
+        selection: ordinarySelection,
+        vanishedEarlier: UIDSet(),
+        changedFlags: [:]
     )
 }

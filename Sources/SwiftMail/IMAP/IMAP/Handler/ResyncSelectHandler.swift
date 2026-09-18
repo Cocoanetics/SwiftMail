@@ -11,6 +11,7 @@ final class ResyncSelectHandler: BaseIMAPCommandHandler<Mailbox.ResyncSelection>
 
     private var accumulator = MailboxSelectionAccumulator()
     private var vanishedEarlier = NIOIMAPCore.UIDSet()
+    private var vanished = NIOIMAPCore.UIDSet()
     private var changedFlags: [SwiftMail.UID: [SwiftMail.Flag]] = [:]
     private var pendingFetch: ResyncFetchRecord?
 
@@ -24,7 +25,8 @@ final class ResyncSelectHandler: BaseIMAPCommandHandler<Mailbox.ResyncSelection>
             Mailbox.ResyncSelection(
                 selection: accumulator.selection,
                 vanishedEarlier: SwiftMail.UIDSet(nio: vanishedEarlier),
-                changedFlags: changedFlags
+                changedFlags: changedFlags,
+                vanished: SwiftMail.UIDSet(nio: vanished)
             )
         }
         succeedWithResult(result)
@@ -54,10 +56,9 @@ final class ResyncSelectHandler: BaseIMAPCommandHandler<Mailbox.ResyncSelection>
             case .conditionalState(.ok(let responseText)):
                 if let code = responseText.code {
                     lock.withLock {
+                        accumulator.apply(code)
                         if case .closed = code {
                             resetForClosedBoundary()
-                        } else {
-                            accumulator.apply(code)
                         }
                     }
                 }
@@ -66,7 +67,18 @@ final class ResyncSelectHandler: BaseIMAPCommandHandler<Mailbox.ResyncSelection>
                 lock.withLock { accumulator.apply(mailboxData) }
                 return false
             case .messageData(.vanishedEarlier(let uids)):
-                lock.withLock { vanishedEarlier.formUnion(uids) }
+                lock.withLock {
+                    vanishedEarlier.formUnion(uids)
+                    removeChangedFlags(in: uids)
+                }
+                return false
+            case .messageData(.vanished(let uids)):
+                lock.withLock {
+                    let newlyVanished = uids.subtracting(vanished)
+                    vanished.formUnion(uids)
+                    accumulator.applyLiveDeletions(newlyVanished)
+                    removeChangedFlags(in: uids)
+                }
                 return false
             case .conditionalState(.bye):
                 return super.handleUntaggedResponse(response)
@@ -80,14 +92,20 @@ final class ResyncSelectHandler: BaseIMAPCommandHandler<Mailbox.ResyncSelection>
     private func processFetchResponse(_ response: FetchResponse) {
         lock.withLock {
             switch response {
-                case .start, .startUID:
+                case .start:
                     pendingFetch = ResyncFetchRecord()
+                case .startUID(let uid):
+                    pendingFetch = ResyncFetchRecord(uid: SwiftMail.UID(nio: uid))
                 case .simpleAttribute(.uid(let uid)):
                     pendingFetch?.uid = SwiftMail.UID(nio: uid)
                 case .simpleAttribute(.flags(let flags)):
                     pendingFetch?.flags = flags.map(SwiftMail.Flag.init(nio:))
                 case .finish:
-                    if let record = pendingFetch, let uid = record.uid, let flags = record.flags {
+                    if let record = pendingFetch,
+                       let uid = record.uid,
+                       let flags = record.flags,
+                       !vanishedEarlier.contains(uid.toNIO()),
+                       !vanished.contains(uid.toNIO()) {
                         changedFlags[uid] = flags
                     }
                     pendingFetch = nil
@@ -97,10 +115,16 @@ final class ResyncSelectHandler: BaseIMAPCommandHandler<Mailbox.ResyncSelection>
         }
     }
 
+    private func removeChangedFlags(in deletedUIDs: NIOIMAPCore.UIDSet) {
+        changedFlags = changedFlags.filter { uid, _ in
+            !deletedUIDs.contains(uid.toNIO())
+        }
+    }
+
     /// A CLOSED response separates data for the old selected mailbox from this SELECT.
     private func resetForClosedBoundary() {
-        accumulator = MailboxSelectionAccumulator()
         vanishedEarlier = NIOIMAPCore.UIDSet()
+        vanished = NIOIMAPCore.UIDSet()
         changedFlags.removeAll(keepingCapacity: true)
         pendingFetch = nil
     }

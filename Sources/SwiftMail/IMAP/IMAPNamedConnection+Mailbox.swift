@@ -48,8 +48,11 @@ extension IMAPNamedConnection {
     /// Selects a mailbox with QRESYNC on this named connection.
     ///
     /// QRESYNC must already be enabled on this live connection. Compare the returned
-    /// UIDVALIDITY before applying vanished UIDs and complete flag replacements. A nil
-    /// highest modification sequence cannot be reused as a checkpoint.
+    /// UIDVALIDITY with `uidValidity` before applying changes. If `highestModSequence`
+    /// is nil, discard the stored modification-sequence checkpoint and fall back to
+    /// ordinary synchronization. Otherwise, apply both deletion sets before replacing
+    /// each message's full flag set. The returned message count already accounts for
+    /// live deletions; do not subtract them again.
     ///
     /// - Throws: ``IMAPError/commandNotSupported(_:)`` when QRESYNC was not advertised,
     ///   ``IMAPError/invalidArgument(_:)`` for an invalid mailbox or checkpoint, or

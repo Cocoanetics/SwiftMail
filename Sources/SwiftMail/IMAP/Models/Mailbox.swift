@@ -172,6 +172,8 @@ public enum Mailbox {
         public var permanentFlags: [Flag] = []
 
         /// The server-reported highest modification sequence, when available.
+        /// Nil when the server sends NOMODSEQ or omits a checkpoint. Discard any stored
+        /// modification-sequence checkpoint and use ordinary synchronization in either case.
         public var highestModSequence: ModificationSequenceValue?
 
         /// Get a sequence number set for the latest n messages in the mailbox

@@ -52,6 +52,30 @@ struct PrimaryQResyncPublicAPITests {
     }
 
     @Test
+    func primaryQResyncReturnsLiveDeletionWhileResponseBufferIsActive() async throws {
+        let harness = try await makeQResyncHarness(capabilities: [.qresync])
+        let operation = Task {
+            try await harness.server.selectMailbox(
+                "INBOX",
+                resyncingFrom: 777,
+                modificationSequence: 900
+            )
+        }
+
+        _ = try await nextQResyncOutboundLine(from: harness.channel)
+        try await writeQResyncInbound(
+            harness.channel,
+            "* 2 EXISTS\r\n* VANISHED 42\r\nA001 OK [READ-WRITE] Selected\r\n"
+        )
+
+        let result = try await operation.value
+        #expect(result.selection.messageCount == 1)
+        #expect(result.vanished.ranges == [42...42])
+        #expect(harness.connection.responseBuffer.bufferedCount == 0)
+        try await harness.channel.close()
+    }
+
+    @Test
     func primaryCapabilityGuardsSendNothing() async throws {
         let enableHarness = try await makeQResyncHarness(capabilities: [.qresync])
         await #expect(throws: IMAPError.self) {
