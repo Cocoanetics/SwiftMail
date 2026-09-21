@@ -68,7 +68,7 @@ public struct Message: Codable, Sendable {
 
     /// All attachments in the email
     public var attachments: [MessagePart] {
-        return parts.filter { part in
+        return ownParts.filter { part in
             let contentType = part.contentType.lowercased()
             let disposition = part.disposition?.lowercased()
             let hasFilename = !(part.filename?.isEmpty ?? true)
@@ -92,18 +92,45 @@ public struct Message: Codable, Sendable {
     }
 
     /// All inline content referenced by Content-ID (CID)
+    ///
+    /// Scoped to this message's own parts: a forwarded message's inline images
+    /// are referenced by that message's body, not this one's.
     public var cids: [MessagePart] {
-        return parts.filter { $0.contentId != nil }
+        return ownParts.filter { $0.contentId != nil }
     }
 
     /// All body parts in the email (text and HTML)
     public var bodies: [MessagePart] {
-        return parts.filter { part in
+        ownParts.filter { part in
             // Only text/plain and text/html are displayable body content.
             // Other text/* types (text/calendar, text/csv, etc.) are attachments.
             let contentType = part.contentType.lowercased()
             return (contentType.hasPrefix("text/plain") || contentType.hasPrefix("text/html"))
                 && part.disposition?.lowercased() != "attachment"
+        }
+    }
+
+    /// The parts belonging to this message, excluding those that belong to a
+    /// message it carries as an attachment.
+    ///
+    /// An attached `message/rfc822` is itself one part of this message; what is
+    /// nested underneath it — bodies, inline images, its own attachments — is
+    /// that message's content and is reached through ``embeddedMessages``.
+    /// Without the distinction a mail that forwards an HTML message but writes
+    /// only plain text itself reports the forwarded HTML as its own body, and
+    /// the forwarded attachments are counted twice. That shape is the norm in
+    /// a saved Outlook message, where every forwarded mail is embedded.
+    var ownParts: [MessagePart] {
+        let embeddedSections = parts
+            .filter { $0.contentType.lowercased().hasPrefix("message/rfc822") }
+            .map { $0.section.components }
+        guard !embeddedSections.isEmpty else { return parts }
+
+        return parts.filter { part in
+            let components = part.section.components
+            return !embeddedSections.contains { prefix in
+                components.count > prefix.count && Array(components.prefix(prefix.count)) == prefix
+            }
         }
     }
 
