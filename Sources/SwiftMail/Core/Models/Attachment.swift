@@ -2,6 +2,7 @@
 // Common attachment model for email messages
 
 import Foundation
+import SwiftCross
 
 /**
  A struct representing an email attachment
@@ -57,27 +58,32 @@ public struct Attachment: Codable, Sendable {
         self.isInline = isInline
     }
 
-    /// Small built-in lookup table for the file extensions most commonly used as
-    /// email attachments. Falls back to `application/octet-stream` for anything
-    /// not listed — callers can always pass `mimeType:` explicitly.
-    private static let mimeTypesByExtension: [String: String] = [
-        "jpg": "image/jpeg",
-        "jpeg": "image/jpeg",
-        "png": "image/png",
-        "gif": "image/gif",
-        "svg": "image/svg+xml",
-        "pdf": "application/pdf",
-        "txt": "text/plain",
-        "html": "text/html",
-        "htm": "text/html",
-        "doc": "application/msword",
-        "docx": "application/msword",
-        "xls": "application/vnd.ms-excel",
-        "xlsx": "application/vnd.ms-excel",
-        "zip": "application/zip"
+    /// Extensions the type database does not resolve.
+    ///
+    /// Kept deliberately tiny. A hand-maintained table is the thing that
+    /// produced the wrong types this replaced, so an entry belongs here only
+    /// while `UTType` genuinely does not know the extension.
+    private static let additionalMIMETypes: [String: String] = [
+        "md": "text/markdown",
+        "markdown": "text/markdown"
     ]
 
-    private static func mimeType(for pathExtension: String) -> String {
-        mimeTypesByExtension[pathExtension] ?? "application/octet-stream"
+    /// The MIME type for a file extension, falling back to
+    /// `application/octet-stream` — callers can always pass `mimeType:`
+    /// explicitly.
+    ///
+    /// The answer comes from `UTType`, which SwiftCross ships as a generated
+    /// table so every platform agrees. The lookup this replaced was a short
+    /// hand-maintained list that had gone stale in the silent direction: a
+    /// missing or wrong entry still produces a *plausible* Content-Type, never
+    /// an error, so it surfaced only when a recipient's client trusted the
+    /// header over the filename. `.docx` and `.xlsx` were declared as their
+    /// pre-2007 equivalents, and anything not in the list — `.csv`, `.pptx`,
+    /// `.rtf`, `.json` — came out as `application/octet-stream`.
+    static func mimeType(for pathExtension: String) -> String {
+        let normalized = pathExtension.lowercased()
+        return UTType(filenameExtension: normalized)?.preferredMIMEType
+            ?? additionalMIMETypes[normalized]
+            ?? "application/octet-stream"
     }
 }
