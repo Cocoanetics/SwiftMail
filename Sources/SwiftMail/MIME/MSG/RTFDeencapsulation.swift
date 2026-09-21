@@ -110,6 +110,10 @@ private extension RTFDeencapsulation {
         /// Characters still to drop as the ASCII fallback that accompanies a
         /// `\uN` escape.
         var unicodeFallbackRemaining = 0
+        /// A high surrogate awaiting its partner. `\uN` carries a signed
+        /// 16-bit value, so anything above the BMP arrives as a UTF-16
+        /// surrogate pair written as two escapes.
+        var pendingHighSurrogate: UInt32?
 
         var isVisible: Bool { !state.skipping && !state.suppressed }
 
@@ -274,10 +278,28 @@ private extension RTFDeencapsulation {
             defer { unicodeFallbackRemaining = state.unicodeSkip }
             guard let parameter else { return }
 
-            // The parameter is a signed 16-bit value; negatives are scalars
+            // The parameter is a signed 16-bit value; negatives are code units
             // above U+7FFF written as two's complement.
             let value = parameter < 0 ? parameter + 0x1_0000 : parameter
-            guard let scalar = Unicode.Scalar(UInt32(truncatingIfNeeded: value)) else { return }
+            let unit = UInt32(truncatingIfNeeded: value)
+
+            // Neither half of a surrogate pair is a scalar on its own, so an
+            // emoji arrives as two escapes that must be recombined — taken
+            // separately they are both dropped and the character disappears.
+            if (0xD800...0xDBFF).contains(unit) {
+                pendingHighSurrogate = unit
+                return
+            }
+            if let high = pendingHighSurrogate {
+                pendingHighSurrogate = nil
+                if (0xDC00...0xDFFF).contains(unit) {
+                    let combined = 0x1_0000 + ((high - 0xD800) << 10) + (unit - 0xDC00)
+                    if let scalar = Unicode.Scalar(combined) { append(scalar) }
+                    return
+                }
+            }
+
+            guard let scalar = Unicode.Scalar(unit) else { return }
             append(scalar)
         }
 

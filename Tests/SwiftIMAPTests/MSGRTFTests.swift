@@ -230,6 +230,26 @@ struct MSGRTFTests {
         #expect(RTFDeencapsulation.html(from: rtf).unicodeScalars.contains("\u{F1FF}"))
     }
 
+    @Test("A surrogate pair across two \\u escapes rebuilds one scalar")
+    func testDeencapsulateSurrogatePair() {
+        // U+1F600 as RTF writes it: two signed 16-bit code units, each with an
+        // ASCII fallback. Taken separately neither half is a valid scalar.
+        let rtf = Data(#"{\rtf1\fromhtml1 \u-10179 ?\u-8704 ? done}"#.utf8)
+
+        let html = RTFDeencapsulation.html(from: rtf)
+        #expect(html.unicodeScalars.contains("\u{1F600}"))
+        #expect(html.contains("done"))
+    }
+
+    @Test("An unpaired high surrogate is dropped, not emitted as garbage")
+    func testDeencapsulateUnpairedSurrogate() {
+        let rtf = Data(#"{\rtf1\fromhtml1 \u-10179 ?tail}"#.utf8)
+
+        let html = RTFDeencapsulation.html(from: rtf)
+        #expect(html.contains("tail"))
+        #expect(!html.unicodeScalars.contains { (0xD800...0xDFFF).contains($0.value) })
+    }
+
     @Test("Ignorable destinations are dropped whole, nested groups included")
     func testDeencapsulateSkipsIgnorableDestinations() {
         let rtf = Data(#"{\rtf1\fromhtml1 {\*\generator Microsoft Word{\nested junk}}kept}"#.utf8)

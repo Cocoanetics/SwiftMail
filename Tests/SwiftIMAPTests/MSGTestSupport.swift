@@ -115,10 +115,25 @@ struct CompoundFileBuilder {
         var fat: [UInt32] = []
     }
 
-    static func build(root children: [CFBNode]) -> Data {
+    /// - Parameter leadingFreeSlots: free directory slots to insert between
+    ///   the root and the first real entry, with every pointer shifted past
+    ///   them. Real files accumulate these when an entry is deleted. A reader
+    ///   that compacts them away renumbers the entries after them and resolves
+    ///   child/sibling pointers to the wrong storage, so a fixture with them
+    ///   is the only way to tell the two behaviours apart.
+    static func build(root children: [CFBNode], leadingFreeSlots: Int = 0) -> Data {
         var (entries, payloads) = flatten(children)
+        if leadingFreeSlots > 0 { insertFreeSlots(leadingFreeSlots, into: &entries) }
         let mini = layOutMiniStream(entries: &entries, payloads: payloads)
         return serialize(entries: entries, mini: mini)
+    }
+
+    private static func insertFreeSlots(_ count: Int, into entries: inout [Entry]) {
+        for index in entries.indices {
+            if entries[index].child != freeSector { entries[index].child += UInt32(count) }
+            if entries[index].rightSibling != freeSector { entries[index].rightSibling += UInt32(count) }
+        }
+        entries.insert(contentsOf: repeatElement(Entry(name: "", kind: 0), count: count), at: 1)
     }
 
     /// Walk the node tree into the flat directory the format stores, linking
@@ -159,11 +174,16 @@ struct CompoundFileBuilder {
     }
 
     /// Pack every stream into 64-byte mini sectors and record its chain.
+    ///
+    /// Streams are taken in directory order, and `payloads` is keyed by the
+    /// index `flatten` assigned, so inserted free slots are skipped by the
+    /// `kind == 2` filter and the remaining stream order is unchanged.
     private static func layOutMiniStream(entries: inout [Entry], payloads: [Int: Data]) -> MiniLayout {
         var mini = MiniLayout()
+        var streamOrder = payloads.keys.sorted().makeIterator()
 
         for index in entries.indices where entries[index].kind == 2 {
-            guard let payload = payloads[index], !payload.isEmpty else { continue }
+            guard let key = streamOrder.next(), let payload = payloads[key], !payload.isEmpty else { continue }
             let first = mini.stream.count / miniSectorSize
             mini.stream.append(contentsOf: [UInt8](payload))
             // Pad to a whole mini sector so the next stream starts aligned.

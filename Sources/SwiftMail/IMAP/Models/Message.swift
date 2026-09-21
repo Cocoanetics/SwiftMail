@@ -120,7 +120,7 @@ public struct Message: Codable, Sendable {
     /// only plain text itself reports the forwarded HTML as its own body, and
     /// the forwarded attachments are counted twice. That shape is the norm in
     /// a saved Outlook message, where every forwarded mail is embedded.
-    private var ownParts: [MessagePart] {
+    var ownParts: [MessagePart] {
         let embeddedSections = parts
             .filter { $0.contentType.lowercased().hasPrefix("message/rfc822") }
             .map { $0.section.components }

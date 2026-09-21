@@ -121,16 +121,30 @@ struct MAPIStorage {
     /// A string property, preferring the Unicode stream over the code-page one.
     func string(_ id: MAPIPropertyID) -> String? {
         if let entry = streams[Self.tag(id, .unicode)] {
-            let text = String(decodingUTF16LE: [UInt8](file.data(for: entry)))
-            return text.isEmpty ? nil : text
+            return Self.trimmed(String(decodingUTF16LE: [UInt8](file.data(for: entry))))
         }
         if let entry = streams[Self.tag(id, .string8)] {
             let data = file.data(for: entry)
             guard !data.isEmpty else { return nil }
-            return String(data: data, encoding: codePageEncoding)
+            let text = String(data: data, encoding: codePageEncoding)
                 ?? String(data: data, encoding: .windowsCP1252)
+            return text.flatMap(Self.trimmed)
         }
         return nil
+    }
+
+    /// Drop any terminating NULs before handing a property value out.
+    ///
+    /// MS-OXMSG says the stream holds the value without its terminator, and
+    /// Outlook writes it that way, so this changes nothing for a conforming
+    /// file. Other producers do append one, and a subject or MIME type ending
+    /// in U+0000 compares unequal to the same text and corrupts a filename or
+    /// a Content-Type, in a way that is invisible when the value is printed.
+    private static func trimmed(_ text: String) -> String? {
+        let value = text.hasSuffix("\0")
+            ? String(text.reversed().drop(while: { $0 == "\0" }).reversed())
+            : text
+        return value.isEmpty ? nil : value
     }
 
     /// A binary property.

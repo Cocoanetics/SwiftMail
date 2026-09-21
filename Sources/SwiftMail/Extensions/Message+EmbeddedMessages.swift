@@ -17,7 +17,11 @@ public extension Message {
     ///
     /// Empty for a message with nothing embedded, which is the common case.
     var embeddedMessages: [Message] {
-        parts.compactMap { part -> Message? in
+        // `ownParts`, not `parts`: a message forwarded inside a forwarded
+        // message is that message's child, not this one's. Scanning the flat
+        // array would return it here *and* again from its real parent, so a
+        // caller that recurses would visit it twice.
+        ownParts.compactMap { part -> Message? in
             guard let info = part.embeddedMessageInfo else { return nil }
             let prefix = part.section.components
 

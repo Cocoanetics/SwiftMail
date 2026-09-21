@@ -105,11 +105,23 @@ struct CompoundFile {
     }
 
     /// Split the directory stream into its fixed 128-byte entries.
+    ///
+    /// Every slot yields an entry, free and malformed ones included. Child and
+    /// sibling pointers are stream IDs — indices into this physical array — so
+    /// dropping a reclaimed slot would shift every later entry and make those
+    /// pointers resolve to the wrong storage. Placeholders keep the index and
+    /// are skipped when the tree is walked.
     private static func readDirectory(_ stream: [UInt8]) -> [Entry] {
-        stride(from: 0, to: max(0, stream.count - 127), by: 128).compactMap { offset in
-            directoryEntry(stream, offset: offset)
+        stride(from: 0, to: max(0, stream.count - 127), by: 128).map { offset in
+            directoryEntry(stream, offset: offset) ?? freeSlot
         }
     }
+
+    /// Stands in for a free or unreadable directory slot.
+    private static let freeSlot = Entry(
+        name: "", kind: .unallocated, startSector: 0, size: 0,
+        leftSibling: noStream, rightSibling: noStream, child: noStream
+    )
 
     private static func directoryEntry(_ stream: [UInt8], offset: Int) -> Entry? {
         guard offset + 128 <= stream.count,
