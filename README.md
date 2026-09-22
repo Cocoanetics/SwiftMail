@@ -37,7 +37,7 @@ implements support for each capability.
 | **X-GM-EXT-1** | Gmail labels, threads, msg IDs | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | **UIDPLUS** | Enhanced UID operations (RFC 4315) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
 | **COMPRESS=DEFLATE** | zlib compression (RFC 4978) | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| **ENABLE** | Enable optional extensions (RFC 5161) | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| **ENABLE** | Enable optional extensions (RFC 5161) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
 | **MOVE** | Native IMAP MOVE command (RFC 6851) | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | **CONDSTORE** | Efficient state sync (RFC 7162) | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
 | **ESEARCH** | Extended search (RFC 4731) | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
@@ -47,7 +47,7 @@ implements support for each capability.
 | **LITERAL-** | Literal string optimization (RFC 7888) | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
 | **SPECIAL-USE** | Modern folder role marking (RFC 6154) | ✅ | ❌ | ✅ | ❌ | ✅ | ✅ |
 | **APPENDLIMIT=…** | Message size limit for uploads | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
-| **QRESYNC** | Quick resync (RFC 5162) | ❌ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| **QRESYNC** | Quick resync via SELECT (RFC 7162) | ❌ | ✅ | ✅ | ❌ | ✅ | ✅ |
 | **SORT** | Server-side message sorting (RFC 5256) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **ESORT** | Extended SORT results (RFC 5267) | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ |
 | **CONTEXT=SORT** | Persistent sort context | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
@@ -56,6 +56,14 @@ implements support for each capability.
 | **XAPPLEPUSHSERVICE** | Apple push integration for Mail app | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **XAPPLELITERAL** | Apple literal transmission optimization | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **X-APPLE-REMOTE-LINKS** | Apple-specific remote links extension | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+
+SwiftMail supports explicit `enable(_:)` calls and QRESYNC SELECT with a stored
+UIDVALIDITY and modification-sequence checkpoint. The result includes mailbox
+metadata, historical and live vanished UIDs, and complete flag replacements.
+QRESYNC EXAMINE, optional known-UID and sequence-match parameters, and the
+VANISHED UID FETCH modifier are not exposed. See
+[Resynchronizing with QRESYNC](Sources/SwiftMail/SwiftMail.docc/Articles/GettingStartedWithIMAP.md#resynchronizing-with-qresync)
+for enablement, checkpoint validation, and fallback guidance.
 
 Exchange source (captured 2026-03-05 from `outlook.office365.com:993` via IMAPS CAPABILITY):
 

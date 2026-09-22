@@ -54,6 +54,74 @@ different pattern if needed:
 let mailboxes = try await imapServer.listMailboxes(wildcard: "%")
 ```
 
+### Resynchronizing with QRESYNC
+
+QRESYNC can return mailbox metadata, vanished UIDs, and complete flag updates
+in one selection. Enable it after authentication and before any SELECT on that
+connection. ENABLE state is connection-local, so enable it again after a
+replacement connection is established.
+
+```swift
+let advertised = try await imapServer.fetchCapabilities()
+guard advertised.contains(where: { String($0).uppercased() == "ENABLE" }),
+      advertised.contains(where: { String($0).uppercased() == "QRESYNC" }) else {
+    throw IMAPError.commandNotSupported("QRESYNC is unavailable")
+}
+
+let enabled = try await imapServer.enable([.qresync, .condStore])
+guard enabled.contains(.qresync) else {
+    throw IMAPError.commandNotSupported("The server did not enable QRESYNC")
+}
+
+let storedValidity: UIDValidity = 777
+let changes = try await imapServer.selectMailbox(
+    "INBOX",
+    resyncingFrom: storedValidity,
+    modificationSequence: 900
+)
+
+guard changes.selection.uidValidity == storedValidity else {
+    discardStoredCheckpoint()
+    discardStoredMessages()
+    try await synchronizeNormally()
+    return
+}
+
+guard let checkpoint = changes.selection.highestModSequence else {
+    // NOMODSEQ or an omitted checkpoint requires ordinary synchronization.
+    discardStoredCheckpoint()
+    try await synchronizeNormally()
+    return
+}
+
+for vanishedRange in changes.vanishedEarlier.ranges {
+    removeStoredMessages(in: vanishedRange)
+}
+for vanishedRange in changes.vanished.ranges {
+    removeStoredMessages(in: vanishedRange)
+}
+for (uid, flags) in changes.changedFlags {
+    replaceStoredFlags(for: uid, with: flags)
+}
+
+saveCheckpoint(checkpoint)
+```
+
+The storage functions and `synchronizeNormally()` above belong to your app.
+SwiftMail does not persist checkpoints or fall back automatically. Validate
+UIDVALIDITY first, then require a `highestModSequence` before applying the
+incremental result. A nil value means the server sent NOMODSEQ or omitted the
+checkpoint. In either case, discard the stored modification-sequence checkpoint
+and use ordinary synchronization. NOMODSEQ requires removing the cached
+HIGHESTMODSEQ as described in [RFC 7162 section 6](https://www.rfc-editor.org/rfc/rfc7162.html#section-6).
+
+Apply both deletion sets before replacing each message's complete flag set.
+`vanishedEarlier` contains historical deletions and does not reduce the returned
+message count. `vanished` contains live deletions during selection. The returned
+`selection.messageCount` already accounts for live deletions and EXISTS responses
+in arrival order, so do not subtract either set from it. A later EXISTS replaces
+the count. `changedFlags` excludes UIDs in either deletion set.
+
 ## Fetching Messages
 
 Fetch messages from the selected mailbox. By default these methods fetch only the first message to keep payloads small. For large mailboxes you can

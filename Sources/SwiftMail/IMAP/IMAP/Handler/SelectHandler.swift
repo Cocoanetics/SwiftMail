@@ -12,16 +12,14 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPComman
     /// The type of result this handler produces
     typealias ResultType = Mailbox.Selection
 
-    /// The mailbox selection being built
-    private var mailboxInfo = Mailbox.Selection()
+    private var accumulator = MailboxSelectionAccumulator()
+    private var vanished = NIOIMAPCore.UIDSet()
 
     /// Initialize a new select handler
     /// - Parameters:
     ///   - commandTag: The tag associated with this command
     ///   - promise: The promise to fulfill when the select completes
     override init(commandTag: String, promise: EventLoopPromise<Mailbox.Selection>) {
-        // Initialize with default values
-        mailboxInfo = Mailbox.Selection()
         super.init(commandTag: commandTag, promise: promise)
     }
 
@@ -31,14 +29,14 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPComman
         // SELECT/EXAMINE communicate READ-WRITE or READ-ONLY in the tagged
         // completion response. Capture it before fulfilling the result.
         if case .ok(let responseText) = response.state, let code = responseText.code {
-            applyResponseCode(code)
+            lock.withLock { accumulator.apply(code) }
         }
 
         // Call super to handle CLIENTBUG warnings
         super.handleTaggedOKResponse(response)
 
         // Succeed with the mailbox info
-        succeedWithResult(mailboxInfo)
+        succeedWithResult(lock.withLock { accumulator.selection })
     }
 
     /// Handle a tagged error response
@@ -55,81 +53,25 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPComman
         switch untaggedResponse {
             case .conditionalState(.ok(let responseText)):
                 if let code = responseText.code {
-                    applyResponseCode(code)
+                    lock.withLock {
+                        accumulator.apply(code)
+                        if case .closed = code {
+                            vanished = NIOIMAPCore.UIDSet()
+                        }
+                    }
                 }
             case .mailboxData(let mailboxData):
-                applyMailboxData(mailboxData)
+                lock.withLock { accumulator.apply(mailboxData) }
+            case .messageData(.vanished(let uids)):
+                lock.withLock {
+                    let newlyVanished = uids.subtracting(vanished)
+                    vanished.formUnion(uids)
+                    accumulator.applyLiveDeletions(newlyVanished)
+                }
             default:
                 break
         }
         return false
     }
 
-    private func applyResponseCode(_ code: ResponseTextCode) {
-        switch code {
-            case .unseen(let firstUnseen):
-                lock.withLock { mailboxInfo.firstUnseen = Int(firstUnseen) }
-            case .uidValidity(let validity):
-                lock.withLock { mailboxInfo.uidValidity = UIDValidity(nio: validity) }
-            case .uidNext(let next):
-                // Convert NIOIMAPCore.UID to SwiftIMAP.UID
-                lock.withLock { mailboxInfo.uidNext = UID(UInt32(next)) }
-            case .permanentFlags(let flags):
-                lock.withLock { mailboxInfo.permanentFlags = flags.map(self.convertFlag) }
-            case .readOnly:
-                lock.withLock { mailboxInfo.isReadOnly = true }
-            case .readWrite:
-                lock.withLock { mailboxInfo.isReadOnly = false }
-            default:
-                break
-        }
-    }
-
-    private func applyMailboxData(_ mailboxData: MailboxData) {
-        switch mailboxData {
-            case .exists(let count):
-                lock.withLock { mailboxInfo.messageCount = Int(count) }
-            case .recent(let count):
-                lock.withLock { mailboxInfo.recentCount = Int(count) }
-            case .flags(let flags):
-                lock.withLock { mailboxInfo.availableFlags = flags.map(self.convertFlag) }
-            default:
-                break
-        }
-    }
-
-    /// Convert a NIOIMAPCore.Flag to our MessageFlag type
-    private func convertFlag(_ flag: NIOIMAPCore.Flag) -> Flag {
-        let flagString = String(flag)
-        return convertFlagString(flagString)
-    }
-
-    /// Convert a NIOIMAPCore.PermanentFlag to our MessageFlag type
-    private func convertFlag(_ flag: PermanentFlag) -> Flag {
-        switch flag {
-            case .flag(let coreFlag):
-                return convertFlag(coreFlag)
-            case .wildcard:
-                return .custom("wildcard")
-        }
-    }
-
-    /// Convert a flag string to our MessageFlag type
-    private func convertFlagString(_ flagString: String) -> Flag {
-        switch flagString.uppercased() {
-            case "\\SEEN":
-                return .seen
-            case "\\ANSWERED":
-                return .answered
-            case "\\FLAGGED":
-                return .flagged
-            case "\\DELETED":
-                return .deleted
-            case "\\DRAFT":
-                return .draft
-            default:
-                // For any other flag, treat it as a custom flag
-                return .custom(flagString)
-        }
-    }
 }

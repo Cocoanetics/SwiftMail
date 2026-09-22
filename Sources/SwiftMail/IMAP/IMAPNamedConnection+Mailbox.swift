@@ -10,6 +10,27 @@ extension IMAPNamedConnection {
         return result
     }
 
+    /// Enables extensions only on this named connection.
+    ///
+    /// Issue ENABLE after authentication and again if this connection is replaced.
+    /// The return value contains exactly the capabilities confirmed by the server,
+    /// with their spelling normalized to uppercase.
+    ///
+    /// - Throws: ``IMAPError/invalidArgument(_:)`` for an empty request or
+    ///   a malformed capability value,
+    ///   ``IMAPError/commandNotSupported(_:)`` when ENABLE was not advertised, or
+    ///   ``IMAPError/commandFailed(_:)`` when the server rejects the command.
+    @discardableResult
+    public func enable(_ capabilities: [Capability]) async throws -> [Capability] {
+        try await ensureAuthenticated()
+        let command = EnableCommand(capabilities: capabilities)
+        try command.validate()
+        guard self.capabilities.containsCapabilityIgnoringCase(.enable) else {
+            throw IMAPError.commandNotSupported("ENABLE command not supported by server")
+        }
+        return try await executeCommand(command)
+    }
+
     /// Select a mailbox for subsequent commands.
     @discardableResult
     public func select(mailbox mailboxName: String) async throws -> Mailbox.Selection {
@@ -24,6 +45,50 @@ extension IMAPNamedConnection {
     @discardableResult
     public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
         try await select(mailbox: mailboxName)
+    }
+
+    /// Selects a mailbox with QRESYNC on this named connection.
+    ///
+    /// QRESYNC must already be enabled on this live connection. Compare the returned
+    /// UIDVALIDITY with `uidValidity` before applying changes. If `highestModSequence`
+    /// is nil, discard the stored modification-sequence checkpoint and fall back to
+    /// ordinary synchronization. Otherwise, apply both deletion sets before replacing
+    /// each message's full flag set. The returned message count already accounts for
+    /// live deletions; do not subtract them again.
+    ///
+    /// - Throws: ``IMAPError/commandNotSupported(_:)`` when QRESYNC was not advertised,
+    ///   ``IMAPError/invalidArgument(_:)`` for an invalid mailbox or checkpoint, or
+    ///   ``IMAPError/selectFailed(_:)`` when the server rejects the selection.
+    @discardableResult
+    public func select(
+        mailbox mailboxName: String,
+        resyncingFrom uidValidity: UIDValidity,
+        modificationSequence: ModificationSequenceValue
+    ) async throws -> Mailbox.ResyncSelection {
+        try await ensureAuthenticated()
+        guard capabilities.containsCapabilityIgnoringCase(.qresync) else {
+            throw IMAPError.commandNotSupported("QRESYNC not supported by server")
+        }
+        let command = ResyncSelectMailboxCommand(
+            mailboxName: resolveMailboxPath(mailboxName),
+            uidValidity: uidValidity,
+            modificationSequence: modificationSequence
+        )
+        return try await executeCommand(command)
+    }
+
+    /// Compatibility alias for selecting a mailbox with QRESYNC.
+    @discardableResult
+    public func selectMailbox(
+        _ mailboxName: String,
+        resyncingFrom uidValidity: UIDValidity,
+        modificationSequence: ModificationSequenceValue
+    ) async throws -> Mailbox.ResyncSelection {
+        try await select(
+            mailbox: mailboxName,
+            resyncingFrom: uidValidity,
+            modificationSequence: modificationSequence
+        )
     }
 
     /// Select a mailbox read-only using IMAP EXAMINE.

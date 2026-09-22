@@ -60,10 +60,10 @@
 
 #### Other Commands
 
-- [ ] ENABLE - Allows the client to enable server-side extensions.
+- [x] ENABLE - Explicitly enables extensions on the current connection and returns the capabilities confirmed by the server.
  - [x] ID - Allows the client to identify itself to the server.
 - [ ] CONDSTORE - Provides support for conditional STORE operations.
-- [ ] QRESYNC - Provides support for quick resynchronization of the mailbox.
+- [x] QRESYNC - SELECT with a UIDVALIDITY and modification-sequence checkpoint (RFC 7162), returning mailbox metadata, historical and live vanished UIDs, and complete flag replacements. QRESYNC EXAMINE, optional known-UID and sequence-match parameters, and the VANISHED UID FETCH modifier are not exposed.
 - [ ] METADATA - Allows the client to retrieve and store metadata associated with mailboxes.
 - [ ] LIST-EXTENDED - Extended LIST command that provides additional listing capabilities.
 
