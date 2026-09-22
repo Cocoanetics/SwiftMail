@@ -13,6 +13,7 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPComman
     typealias ResultType = Mailbox.Selection
 
     private var accumulator = MailboxSelectionAccumulator()
+    private var vanished = NIOIMAPCore.UIDSet()
 
     /// Initialize a new select handler
     /// - Parameters:
@@ -52,10 +53,21 @@ final class SelectHandler: BaseIMAPCommandHandler<Mailbox.Selection>, IMAPComman
         switch untaggedResponse {
             case .conditionalState(.ok(let responseText)):
                 if let code = responseText.code {
-                    lock.withLock { accumulator.apply(code) }
+                    lock.withLock {
+                        accumulator.apply(code)
+                        if case .closed = code {
+                            vanished = NIOIMAPCore.UIDSet()
+                        }
+                    }
                 }
             case .mailboxData(let mailboxData):
                 lock.withLock { accumulator.apply(mailboxData) }
+            case .messageData(.vanished(let uids)):
+                lock.withLock {
+                    let newlyVanished = uids.subtracting(vanished)
+                    vanished.formUnion(uids)
+                    accumulator.applyLiveDeletions(newlyVanished)
+                }
             default:
                 break
         }

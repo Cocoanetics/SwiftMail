@@ -5,6 +5,32 @@ import NIOIMAPCore
 import Testing
 @testable import SwiftMail
 
+enum OrdinarySelectionCommand: CaseIterable, Equatable, Sendable {
+    case select
+    case examine
+
+    var tag: String {
+        switch self {
+            case .select: "S001"
+            case .examine: "E001"
+        }
+    }
+
+    var commandLine: String {
+        switch self {
+            case .select: "S001 SELECT \"INBOX\"\r\n"
+            case .examine: "E001 EXAMINE \"Archive\"\r\n"
+        }
+    }
+
+    var completionCode: String {
+        switch self {
+            case .select: "READ-WRITE"
+            case .examine: "READ-ONLY"
+        }
+    }
+}
+
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SelectionCheckpointTests {
     @Test
@@ -88,6 +114,72 @@ struct SelectionCheckpointTests {
         try await channel.close()
     }
 
+    @Test(arguments: OrdinarySelectionCommand.allCases)
+    func ordinarySelectionAppliesLiveVanished(_ command: OrdinarySelectionCommand) async throws {
+        let selection = try await executeSelection(
+            command,
+            responses: "* 5 EXISTS\r\n* VANISHED 42\r\n"
+        )
+
+        #expect(selection.messageCount == 4)
+        #expect(selection.isReadOnly == (command == .examine))
+    }
+
+    @Test
+    func historicalVanishedDoesNotAffectCountOrLiveDeduplication() async throws {
+        let historicalOnly = try await executeSelection(
+            .select,
+            responses: "* 5 EXISTS\r\n* VANISHED (EARLIER) 10:11\r\n"
+        )
+        #expect(historicalOnly.messageCount == 5)
+
+        let followedByLive = try await executeSelection(
+            .select,
+            responses: "* 5 EXISTS\r\n* VANISHED (EARLIER) 42\r\n* VANISHED 42\r\n"
+        )
+        #expect(followedByLive.messageCount == 4)
+    }
+
+    @Test
+    func existsAndLiveDeletionsApplyInWireOrder() async throws {
+        let laterExists = try await executeSelection(
+            .select,
+            responses: "* 5 EXISTS\r\n* VANISHED 42\r\n* 6 EXISTS\r\n"
+        )
+        #expect(laterExists.messageCount == 6)
+
+        let laterDeletion = try await executeSelection(
+            .select,
+            responses: "* 5 EXISTS\r\n* VANISHED 42\r\n* 6 EXISTS\r\n* VANISHED 43\r\n"
+        )
+        #expect(laterDeletion.messageCount == 5)
+    }
+
+    @Test
+    func overlappingAndDuplicateLiveDeletionsAreCountedOnce() async throws {
+        let overlapping = try await executeSelection(
+            .select,
+            responses: "* 5 EXISTS\r\n* VANISHED 42:43\r\n* VANISHED 43:44\r\n"
+        )
+        #expect(overlapping.messageCount == 2)
+
+        let duplicate = try await executeSelection(
+            .select,
+            responses: "* 5 EXISTS\r\n* VANISHED 42\r\n* VANISHED 42\r\n"
+        )
+        #expect(duplicate.messageCount == 4)
+    }
+
+    @Test
+    func largeLiveDeletionRangeClampsCountAtZero() async throws {
+        let selection = try await executeSelection(
+            .select,
+            responses: "* 2 EXISTS\r\n* VANISHED 1:1000000000\r\n"
+        )
+
+        #expect(selection.messageCount == 0)
+    }
+
     @Test
     func ordinarySelectClosedBoundaryResetsOldMailboxMetadata() async throws {
         let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
@@ -103,17 +195,19 @@ struct SelectionCheckpointTests {
         try await writeSelectionInbound(
             channel,
             "* 8 EXISTS\r\n"
+                + "* VANISHED 42\r\n"
                 + "* OK [UNSEEN 7] Old unseen\r\n"
                 + "* OK [UIDNEXT 999] Old next UID\r\n"
                 + "* OK [HIGHESTMODSEQ 950] Old checkpoint\r\n"
                 + "* OK [CLOSED] Previous mailbox closed\r\n"
                 + "* 3 EXISTS\r\n"
+                + "* VANISHED 42\r\n"
                 + "* OK [UIDVALIDITY 777] Current\r\n"
                 + "S001 OK [READ-WRITE] Selected\r\n"
         )
 
         let selection = try await promise.futureResult.get()
-        #expect(selection.messageCount == 3)
+        #expect(selection.messageCount == 2)
         #expect(selection.firstUnseen == 0)
         #expect(selection.uidNext == UID(0))
         #expect(selection.highestModSequence == nil)
@@ -135,19 +229,71 @@ struct SelectionCheckpointTests {
 
         try await writeSelectionInbound(
             channel,
-            "* OK [UNSEEN 7] Old unseen\r\n"
+            "* 5 EXISTS\r\n"
+                + "* VANISHED 42\r\n"
+                + "* OK [UNSEEN 7] Old unseen\r\n"
                 + "* OK [UIDNEXT 999] Old next UID\r\n"
                 + "* OK [HIGHESTMODSEQ 950] Old checkpoint\r\n"
                 + "* OK [CLOSED] Previous mailbox closed\r\n"
+                + "* 3 EXISTS\r\n"
+                + "* VANISHED 42\r\n"
                 + "E001 OK [READ-ONLY] Examined\r\n"
         )
 
         let selection = try await promise.futureResult.get()
+        #expect(selection.messageCount == 2)
         #expect(selection.firstUnseen == 0)
         #expect(selection.uidNext == UID(0))
         #expect(selection.highestModSequence == nil)
         #expect(selection.isReadOnly)
         try await channel.close()
+    }
+
+    @Test(arguments: ["NO", "BAD"])
+    func rejectedOrdinarySelectionDoesNotReturnPartialState(_ status: String) async throws {
+        await #expect(throws: IMAPError.self) {
+            _ = try await executeSelection(
+                .select,
+                responses: "* 5 EXISTS\r\n* VANISHED 42\r\n",
+                completionStatus: status
+            )
+        }
+    }
+
+    private func executeSelection(
+        _ command: OrdinarySelectionCommand,
+        responses: String,
+        completionStatus: String = "OK"
+    ) async throws -> Mailbox.Selection {
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
+        let promise = channel.eventLoop.makePromise(of: Mailbox.Selection.self)
+        let handler = SelectHandler(commandTag: command.tag, promise: promise)
+        try await channel.pipeline.addHandler(handler)
+
+        switch command {
+            case .select:
+                let select = SelectMailboxCommand(mailboxName: "INBOX")
+                try await channel.writeAndFlush(
+                    IMAPClientHandler.OutboundIn.part(.tagged(select.toTaggedCommand(tag: command.tag)))
+                )
+            case .examine:
+                let examine = ExamineMailboxCommand(mailboxName: "Archive")
+                try await channel.writeAndFlush(
+                    IMAPClientHandler.OutboundIn.part(.tagged(examine.toTaggedCommand(tag: command.tag)))
+                )
+        }
+
+        guard var outbound = try await channel.readOutbound(as: ByteBuffer.self) else {
+            Issue.record("Expected ordinary selection command")
+            throw IMAPError.commandFailed("Expected ordinary selection command")
+        }
+        #expect(outbound.readString(length: outbound.readableBytes) == command.commandLine)
+
+        let completion = "\(command.tag) \(completionStatus) [\(command.completionCode)] Selected\r\n"
+        try await writeSelectionInbound(channel, responses + completion)
+        let selection = try await promise.futureResult.get()
+        try await channel.close()
+        return selection
     }
 }
 

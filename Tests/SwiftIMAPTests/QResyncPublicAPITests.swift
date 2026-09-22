@@ -5,7 +5,7 @@ import NIOIMAPCore
 import Testing
 @testable import SwiftMail
 
-private struct QResyncServerHarness {
+struct QResyncServerHarness {
     let server: SwiftMail.IMAPServer
     let connection: IMAPConnection
     let channel: NIOAsyncTestingChannel
@@ -323,7 +323,7 @@ struct QResyncReconnectTests {
     }
 }
 
-private func makeQResyncHarness(
+func makeQResyncHarness(
     capabilities: Set<Capability>,
     authenticated: Bool = true
 ) async throws -> QResyncServerHarness {
@@ -342,13 +342,13 @@ private func makeQResyncHarness(
     return QResyncServerHarness(server: server, connection: connection, channel: channel)
 }
 
-private func writeQResyncInbound(_ channel: NIOAsyncTestingChannel, _ text: String) async throws {
+func writeQResyncInbound(_ channel: NIOAsyncTestingChannel, _ text: String) async throws {
     var buffer = channel.allocator.buffer(capacity: text.utf8.count)
     buffer.writeString(text)
     try await channel.writeInbound(buffer)
 }
 
-private func nextQResyncOutboundLine(
+func nextQResyncOutboundLine(
     from channel: NIOAsyncTestingChannel,
     timeoutNanoseconds: UInt64 = 1_000_000_000
 ) async throws -> String? {
