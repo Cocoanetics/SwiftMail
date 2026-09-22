@@ -113,7 +113,7 @@ extension Email {
         let hasRegular = !self.regularAttachments.isEmpty
 
         // iMIP invite shortcut (RFC 6047 §2.2): when the message carries exactly one
-        // text/calendar part and nothing else, ship it as multipart/alternative —
+        // text/calendar part with a method parameter and nothing else, ship it as multipart/alternative —
         // text/plain body alternative + the ICS. Mail clients (Apple Mail, Outlook,
         // Gmail, iCloud) key their Accept/Decline UI off this shape;
         // multipart/mixed with the same parts does not trigger it. Note: clients
@@ -204,10 +204,11 @@ extension Email {
     }
 
     /// Returns the ICS text (normalized to CRLF line endings) together with the
-    /// transfer encoding to label it with, when the attachment is a text/calendar
-    /// part whose data is valid UTF-8 (a byte-level check — the declared charset
-    /// parameter is not consulted) and safe to ship verbatim. `nil` routes the
-    /// attachment through the regular base64 path.
+    /// transfer encoding to label it with, when the attachment is a deliberate
+    /// text/calendar invitation (identified by its `method` parameter) whose data
+    /// is valid UTF-8 (a byte-level check — the declared charset parameter is not
+    /// consulted) and safe to ship verbatim. `nil` routes the attachment through
+    /// the regular base64 path.
     ///
     /// Encoding selection keeps the wire bytes identical to the ICS while staying
     /// honest about what is on the wire (RFC 2045 §6.2: `7bit` means no octet > 127):
@@ -234,6 +235,9 @@ extension Email {
     ) -> (text: String, encoding: String)? {
         let mimeType = attachment.mimeType.lowercased()
         guard mimeType == "text/calendar" || mimeType.hasPrefix("text/calendar;") else { return nil }
+        guard let method = EMLParser.extractHeaderParam(from: mimeType, named: "method"), !method.isEmpty else {
+            return nil
+        }
         guard let decoded = String(data: attachment.data, encoding: .utf8) else { return nil }
         // SMTP DATA requires CRLF-only line endings (RFC 5321 §2.3.8) and the
         // send path's dot-stuffing assumes canonical CRLF framing, while ICS

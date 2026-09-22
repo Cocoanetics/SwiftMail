@@ -334,6 +334,36 @@ struct SMTPTests {
         #expect(!content.contains("Content-Disposition: attachment"))
     }
 
+    // MIME inference identifies an .ics file's media type, but must not opt it
+    // into iMIP invitation semantics unless the caller supplies a method parameter.
+    @Test
+    func testConstructContentKeepsInferredCalendarFileAsAttachment() throws {
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("swiftmail-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let fileURL = directory.appendingPathComponent("event.ics")
+        let ics = "BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n"
+        try Data(ics.utf8).write(to: fileURL)
+        let attachment = try Attachment(fileURL: fileURL)
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Calendar file",
+            textBody: "Attached is the calendar file.",
+            attachments: [attachment]
+        )
+
+        let content = email.constructContent()
+
+        #expect(attachment.mimeType == "text/calendar")
+        #expect(content.contains("Content-Type: multipart/mixed; boundary="))
+        #expect(content.contains("Content-Type: text/calendar\r\n"))
+        #expect(content.contains("Content-Disposition: attachment; filename=\"event.ics\""))
+        #expect(content.contains("Content-Transfer-Encoding: base64"))
+    }
+
     // RFC 6047 iMIP: in a multipart/mixed message, a text/calendar attachment is
     // shipped inline as 7bit text while other attachments stay base64.
     @Test
