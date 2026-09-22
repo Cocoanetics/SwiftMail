@@ -63,7 +63,8 @@ replacement connection is established.
 
 ```swift
 let advertised = try await imapServer.fetchCapabilities()
-guard advertised.contains(.enable), advertised.contains(.qresync) else {
+guard advertised.contains(where: { String($0).uppercased() == "ENABLE" }),
+      advertised.contains(where: { String($0).uppercased() == "QRESYNC" }) else {
     throw IMAPError.commandNotSupported("QRESYNC is unavailable")
 }
 

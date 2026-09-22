@@ -85,13 +85,19 @@ struct EnableCommandTests {
     @Test
     func returnsConfirmedCapabilitiesAfterTaggedOK() async throws {
         let result = try await execute(
-            "* ENABLED QRESYNC\r\n"
-                + "* CAPABILITY IMAP4rev1 ENABLE QRESYNC CONDSTORE\r\n"
-                + "* ENABLED CONDSTORE QRESYNC X-EXTRA\r\n"
+            "* ENABLED qresync QRESYNC\r\n"
+                + "* CAPABILITY IMAP4rev1 enable qresync condstore\r\n"
+                + "* ENABLED CondStore QrEsYnC x-extra X-EXTRA utf8=accept\r\n"
                 + "A001 OK Enabled\r\n"
         )
 
-        #expect(result == [.qresync, .condStore, Capability("X-EXTRA")])
+        #expect(result == [
+            .qresync,
+            .condStore,
+            Capability("X-EXTRA"),
+            Capability("UTF8=ACCEPT")
+        ])
+        #expect(result.contains(.qresync))
     }
 
     @Test(arguments: ["* ENABLED\r\nA001 OK Enabled\r\n", "A001 OK Enabled\r\n"])

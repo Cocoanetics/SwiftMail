@@ -15,21 +15,25 @@ private struct QResyncServerHarness {
 struct PrimaryQResyncPublicAPITests {
     @Test
     func primaryEnableReturnsConfirmationsWithoutChangingAdvertisement() async throws {
-        let harness = try await makeQResyncHarness(capabilities: [.enable, .qresync])
+        let harness = try await makeQResyncHarness(
+            capabilities: [Capability("enable"), Capability("QrEsYnC")]
+        )
         let advertised = harness.connection.capabilitiesSnapshot
         let operation = Task { try await harness.server.enable([.qresync, .condStore]) }
 
         #expect(try await nextQResyncOutboundLine(from: harness.channel) == "A001 ENABLE QRESYNC CONDSTORE\r\n")
-        try await writeQResyncInbound(harness.channel, "* ENABLED QRESYNC\r\nA001 OK Enabled\r\n")
+        try await writeQResyncInbound(harness.channel, "* ENABLED qresync\r\nA001 OK Enabled\r\n")
 
-        #expect(try await operation.value == [.qresync])
+        let enabled = try await operation.value
+        #expect(enabled == [.qresync])
+        #expect(enabled.contains(.qresync))
         #expect(harness.connection.capabilitiesSnapshot == advertised)
         try await harness.channel.close()
     }
 
     @Test
     func primaryQResyncNeedsOnlyAdvertisedQResyncAndSendsNoFallback() async throws {
-        let harness = try await makeQResyncHarness(capabilities: [.qresync])
+        let harness = try await makeQResyncHarness(capabilities: [Capability("QrEsYnC")])
         let operation = Task {
             try await harness.server.selectMailbox(
                 "INBOX",
@@ -96,6 +100,40 @@ struct PrimaryQResyncPublicAPITests {
         try await selectHarness.channel.close()
     }
 
+    @Test(arguments: [
+        "X-ENABLE",
+        "ENABLE-OTHER",
+        "ENABLE=OTHER"
+    ])
+    func primaryEnableRejectsLookalikeCapabilities(_ capability: String) async throws {
+        let harness = try await makeQResyncHarness(capabilities: [Capability(capability)])
+
+        await #expect(throws: IMAPError.self) {
+            _ = try await harness.server.enable([.qresync])
+        }
+        #expect(try await harness.channel.readOutbound(as: ByteBuffer.self) == nil)
+        try await harness.channel.close()
+    }
+
+    @Test(arguments: [
+        "X-QRESYNC",
+        "QRESYNC-OTHER",
+        "QRESYNC=OTHER"
+    ])
+    func primaryQResyncRejectsLookalikeCapabilities(_ capability: String) async throws {
+        let harness = try await makeQResyncHarness(capabilities: [Capability(capability)])
+
+        await #expect(throws: IMAPError.self) {
+            _ = try await harness.server.selectMailbox(
+                "INBOX",
+                resyncingFrom: 777,
+                modificationSequence: 900
+            )
+        }
+        #expect(try await harness.channel.readOutbound(as: ByteBuffer.self) == nil)
+        try await harness.channel.close()
+    }
+
     @Test
     func primaryEnableRejectsInjectionWithoutSendingBytes() async throws {
         let harness = try await makeQResyncHarness(capabilities: [.enable])
@@ -122,7 +160,9 @@ struct NamedQResyncPublicAPITests {
     @Test
     func enableUsesOnlyTheNamedChannelAndRecordsActivity() async throws {
         let primary = try await makeQResyncHarness(capabilities: [.enable])
-        let namedHarness = try await makeQResyncHarness(capabilities: [.enable, .qresync])
+        let namedHarness = try await makeQResyncHarness(
+            capabilities: [Capability("enable"), Capability("QrEsYnC")]
+        )
         let advertised = namedHarness.connection.capabilitiesSnapshot
         let named = IMAPNamedConnection(
             name: "sync",
@@ -133,9 +173,11 @@ struct NamedQResyncPublicAPITests {
 
         #expect(try await nextQResyncOutboundLine(from: namedHarness.channel) == "A001 ENABLE QRESYNC\r\n")
         #expect(try await primary.channel.readOutbound(as: ByteBuffer.self) == nil)
-        try await writeQResyncInbound(namedHarness.channel, "* ENABLED QRESYNC\r\nA001 OK Enabled\r\n")
+        try await writeQResyncInbound(namedHarness.channel, "* ENABLED qresync\r\nA001 OK Enabled\r\n")
 
-        #expect(try await operation.value == [.qresync])
+        let enabled = try await operation.value
+        #expect(enabled == [.qresync])
+        #expect(enabled.contains(.qresync))
         #expect(await named.lastActivity != nil)
         #expect(namedHarness.connection.capabilitiesSnapshot == advertised)
         try await namedHarness.channel.close()
@@ -144,7 +186,10 @@ struct NamedQResyncPublicAPITests {
 
     @Test
     func selectAndAliasResolveNamespaceAfterAuthentication() async throws {
-        let harness = try await makeQResyncHarness(capabilities: [.qresync], authenticated: false)
+        let harness = try await makeQResyncHarness(
+            capabilities: [Capability("QrEsYnC")],
+            authenticated: false
+        )
         let named = IMAPNamedConnection(
             name: "namespace-sync",
             connection: harness.connection,

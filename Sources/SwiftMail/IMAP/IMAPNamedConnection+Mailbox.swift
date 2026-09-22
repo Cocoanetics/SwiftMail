@@ -13,7 +13,8 @@ extension IMAPNamedConnection {
     /// Enables extensions only on this named connection.
     ///
     /// Issue ENABLE after authentication and again if this connection is replaced.
-    /// The return value contains exactly the capabilities confirmed by the server.
+    /// The return value contains exactly the capabilities confirmed by the server,
+    /// with their spelling normalized to uppercase.
     ///
     /// - Throws: ``IMAPError/invalidArgument(_:)`` for an empty request or
     ///   a malformed capability value,
@@ -24,7 +25,7 @@ extension IMAPNamedConnection {
         try await ensureAuthenticated()
         let command = EnableCommand(capabilities: capabilities)
         try command.validate()
-        guard self.capabilities.contains(.enable) else {
+        guard self.capabilities.containsCapabilityIgnoringCase(.enable) else {
             throw IMAPError.commandNotSupported("ENABLE command not supported by server")
         }
         return try await executeCommand(command)
@@ -65,7 +66,7 @@ extension IMAPNamedConnection {
         modificationSequence: ModificationSequenceValue
     ) async throws -> Mailbox.ResyncSelection {
         try await ensureAuthenticated()
-        guard capabilities.contains(.qresync) else {
+        guard capabilities.containsCapabilityIgnoringCase(.qresync) else {
             throw IMAPError.commandNotSupported("QRESYNC not supported by server")
         }
         let command = ResyncSelectMailboxCommand(

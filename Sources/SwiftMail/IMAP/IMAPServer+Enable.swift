@@ -4,8 +4,9 @@ extension IMAPServer {
     /// Enables extensions on the current primary connection.
     ///
     /// Call this after authentication and before selecting a mailbox. The returned
-    /// capabilities are only those confirmed by this ENABLE command. Enable them
-    /// again after the connection is replaced.
+    /// capabilities are only those confirmed by this ENABLE command, with their
+    /// spelling normalized to uppercase. Enable them again after the connection
+    /// is replaced.
     ///
     /// - Throws: ``IMAPError/invalidArgument(_:)`` for an empty request or
     ///   a malformed capability value,
@@ -16,7 +17,7 @@ extension IMAPServer {
         try await ensurePrimaryConnectionAuthenticated()
         let command = EnableCommand(capabilities: capabilities)
         try command.validate()
-        guard primaryConnection.capabilitiesSnapshot.contains(.enable) else {
+        guard primaryConnection.capabilitiesSnapshot.containsCapabilityIgnoringCase(.enable) else {
             throw IMAPError.commandNotSupported("ENABLE command not supported by server")
         }
         return try await primaryConnection.executeCommand(command)

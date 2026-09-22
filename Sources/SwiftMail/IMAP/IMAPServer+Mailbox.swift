@@ -62,7 +62,7 @@ extension IMAPServer {
         modificationSequence: ModificationSequenceValue
     ) async throws -> Mailbox.ResyncSelection {
         try await ensurePrimaryConnectionAuthenticated()
-        guard primaryConnection.capabilitiesSnapshot.contains(.qresync) else {
+        guard primaryConnection.capabilitiesSnapshot.containsCapabilityIgnoringCase(.qresync) else {
             throw IMAPError.commandNotSupported("QRESYNC not supported by server")
         }
         let command = ResyncSelectMailboxCommand(
