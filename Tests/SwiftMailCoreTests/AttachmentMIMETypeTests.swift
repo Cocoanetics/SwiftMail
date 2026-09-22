@@ -40,18 +40,25 @@ struct AttachmentMIMETypeTests {
     @Test("Types the old table never listed no longer fall through to octet-stream")
     func testPreviouslyUnlistedTypes() {
         #expect(SwiftMail.Attachment.mimeType(for: "csv") == "text/csv")
-        // `text/rtf` is what the type database returns. IANA registers
-        // `application/rtf` too and both are handled everywhere; taking the
-        // database's answer rather than overriding it is the point of the
-        // change, since overrides are what went stale before.
-        #expect(SwiftMail.Attachment.mimeType(for: "rtf") == "text/rtf")
+        #expect(SwiftMail.Attachment.mimeType(for: "rtf") == "application/rtf")
         #expect(SwiftMail.Attachment.mimeType(for: "json") == "application/json")
         #expect(SwiftMail.Attachment.mimeType(for: "eml") == "message/rfc822")
         #expect(SwiftMail.Attachment.mimeType(for: "ics") == "text/calendar")
-        #expect(SwiftMail.Attachment.mimeType(for: "xml").hasSuffix("/xml"))
+        #expect(SwiftMail.Attachment.mimeType(for: "xml") == "application/xml")
     }
 
-    @Test("Markdown comes from the gap table the type database does not cover")
+    @Test("Pinned types are identical on every platform")
+    func testPinnedTypesDoNotVaryByPlatform() {
+        // `UTType` is Apple's database on Apple platforms and SwiftCross's own
+        // table elsewhere, and they disagree on exactly these. Pinning is what
+        // keeps a .rtf attachment from being announced differently depending
+        // on the machine that composed the message.
+        #expect(SwiftMail.Attachment.mimeType(for: "rtf") == "application/rtf")
+        #expect(SwiftMail.Attachment.mimeType(for: "xml") == "application/xml")
+        #expect(SwiftMail.Attachment.mimeType(for: "md") == "text/markdown")
+    }
+
+    @Test("Markdown is pinned, since one platform's database does not know it")
     func testMarkdown() {
         #expect(SwiftMail.Attachment.mimeType(for: "md") == "text/markdown")
         #expect(SwiftMail.Attachment.mimeType(for: "markdown") == "text/markdown")
