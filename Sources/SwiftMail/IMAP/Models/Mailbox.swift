@@ -53,6 +53,14 @@ public enum Mailbox {
             /// The mailbox is the primary inbox
             public static let inbox = Attributes(rawValue: 1 << 11)
 
+            /// The mailbox is a virtual view of every message (RFC 6154 `\All`),
+            /// e.g. Gmail's All Mail, whose name is localised per account.
+            public static let all = Attributes(rawValue: 1 << 12)
+
+            /// The mailbox holds messages the server deems important
+            /// (RFC 8457 `\Important`), e.g. Gmail's Important.
+            public static let important = Attributes(rawValue: 1 << 13)
+
             init(from attributes: [NIOIMAPCore.MailboxInfo.Attribute]) {
                 var result: Attributes = []
                 for attribute in attributes {
@@ -83,7 +91,9 @@ public enum Mailbox {
                 ("\\Junk", .junk),
                 ("\\Sent", .sent),
                 ("\\Trash", .trash),
-                ("\\Inbox", .inbox)
+                ("\\Inbox", .inbox),
+                ("\\All", .all),
+                ("\\Important", .important)
             ]
 
             private static func specialUseAttribute(for raw: String) -> Attributes {
