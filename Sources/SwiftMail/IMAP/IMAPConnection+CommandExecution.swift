@@ -121,21 +121,23 @@ extension IMAPConnection {
         let tag = run.tag
         let handler = run.handler
         let resultPromise = run.resultPromise
-        // The timeout measures the SERVER: it starts once the command is written.
-        // Scheduling it before installing the handler and sending let local
-        // scheduling delays (a busy cooperative pool in an app with a heavy UI)
-        // eat the whole budget, so a server that answered instantly still "timed
-        // out" — seen live on Gmail's post-LOGIN NAMESPACE with a 5-second budget.
+        // The timeout measures the SERVER: it is armed after the handler is
+        // installed and immediately before the command is written, so neither
+        // the handler-install hop nor a late resumption after the write future
+        // completes goes uncounted. Scheduling it before installing the handler
+        // let local scheduling delays (a busy cooperative pool in an app with a
+        // heavy UI) eat the whole budget — a server that answered instantly
+        // still "timed out", seen live on Gmail's post-LOGIN NAMESPACE.
         var scheduledTask: Scheduled<Void>?
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
-            try await command.send(on: channel, tag: tag)
             scheduledTask = scheduleCommandTimeout(
                 channel: channel,
                 timeoutSeconds: command.timeoutSeconds,
                 promise: resultPromise
             )
+            try await command.send(on: channel, tag: tag)
             let result = try await resultPromise.futureResult.get()
 
             scheduledTask?.cancel()
