@@ -99,4 +99,22 @@ struct MailboxAttributesTests {
         #expect([userFolder, system].archive?.name == "[Google Mail]/Alle Nachrichten")
         #expect([userFolder].archive?.name == "All Mail")
     }
+
+    @Test
+    func testNameDetectionKeepsArchiveAheadOfAllMail() async throws {
+        // Without SPECIAL-USE, special folders are detected by name; All Mail
+        // listed before an unannotated Archive must not win the archive lookup.
+        let server = IMAPServer(host: "localhost", port: 993)
+        let listed = [
+            Mailbox.Info(name: "[Gmail]/All Mail", attributes: [], hierarchyDelimiter: "/"),
+            Mailbox.Info(name: "Archive", attributes: [], hierarchyDelimiter: "/")
+        ]
+        let detected = await server.detectSpecialFoldersByName(mailboxes: listed).folders
+        #expect(detected.first { $0.name == "[Gmail]/All Mail" }?.attributes.contains(.all) == true)
+        #expect(detected.first { $0.name == "[Gmail]/All Mail" }?.attributes.contains(.archive) == false)
+
+        await server.updateMailboxes(listed)
+        await server.updateSpecialMailboxes(detected)
+        #expect(try await server.archiveFolder.name == "Archive")
+    }
 }

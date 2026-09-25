@@ -79,7 +79,7 @@ extension IMAPServer {
 
     /// Fallback detection based on common folder names when the server
     /// does not advertise SPECIAL-USE.
-    private func detectSpecialFoldersByName(
+    func detectSpecialFoldersByName(
         mailboxes: [Mailbox.Info]
     ) -> (folders: [Mailbox.Info], foundInbox: Bool) {
         var specialFolders: [Mailbox.Info] = []
@@ -136,8 +136,14 @@ extension IMAPServer {
             attributes.insert(.junk)
             return true
         }
-        if nameLower.contains("archive") || (nameLower.contains("all") && nameLower.contains("mail")) {
+        if nameLower.contains("archive") {
             attributes.insert(.archive)
+            return true
+        }
+        // All Mail is the every-message view, not an archive: tagging it `.all`
+        // lets a real Archive folder win the archive lookup.
+        if nameLower.contains("all") && nameLower.contains("mail") {
+            attributes.insert(.all)
             return true
         }
         if nameLower.contains("starred") || nameLower.contains("flagged") {
@@ -176,7 +182,7 @@ extension IMAPServer {
             return true
         }
         if matchesGmail("[Gmail]/All Mail", "All Mail") {
-            attributes.insert(.archive)
+            attributes.insert(.all)
             return true
         }
         if matchesGmail("[Gmail]/Starred", "Starred") {
