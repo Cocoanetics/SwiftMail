@@ -114,12 +114,10 @@ extension IMAPConnection {
     ) -> Scheduled<Void> {
         let scheduled = channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
             logger.warning("Command timed out after \(timeoutSeconds) seconds")
+            // The caller never waits on the write (see `send`), so failing the
+            // result wakes it; its timeout handling then recycles the connection,
+            // which also fails a write still waiting for a `+`.
             promise.fail(IMAPError.timeout)
-            // A send can itself stay pending (a synchronizing literal waiting for
-            // a `+` that never comes); failing the promise alone would not wake
-            // it. Closing the channel fails the write. A timeout recycles the
-            // connection anyway.
-            channel.close(promise: nil)
         }
         promise.futureResult.whenComplete { _ in scheduled.cancel() }
         return scheduled
@@ -144,6 +142,11 @@ extension IMAPConnection {
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
+            // A channel that closes (or already has) fails the command at once
+            // rather than at the deadline; a no-op once the result is set.
+            channel.closeFuture.whenComplete { _ in
+                resultPromise.fail(IMAPError.connectionFailed("Connection closed before command completed"))
+            }
             scheduledTask = Self.armCommandTimeout(
                 channel: channel,
                 timeoutSeconds: command.timeoutSeconds,

@@ -30,8 +30,8 @@ struct CommandTimeoutTimerTests {
         #expect(try promise.futureResult.wait() == 1)
     }
 
-    @Test("no response by the deadline fails the command and closes the connection")
-    func missedDeadlineFailsAndCloses() throws {
+    @Test("no response by the deadline fails the command with a timeout")
+    func missedDeadlineFailsTheCommand() throws {
         let channel = try activeChannel()
         let promise = channel.eventLoop.makePromise(of: Int.self)
         IMAPConnection.armCommandTimeout(
@@ -39,7 +39,6 @@ struct CommandTimeoutTimerTests {
 
         channel.embeddedEventLoop.advanceTime(by: .seconds(6))
 
-        #expect(!channel.isActive)
         #expect(throws: IMAPError.self) { try promise.futureResult.wait() }
     }
 }
@@ -78,6 +77,45 @@ struct CommandTimeoutTimerTests {
                     // expected
                 }
                 #expect(Date().timeIntervalSince(start) < 15)
+                try? await server.disconnect()
+            }
+        }
+
+        @Test(
+            "a reply other than + to a pending literal fails the command promptly",
+            arguments: ["* ((((\r\n", "{tag} NO literal rejected\r\n"]
+        )
+        func nonContinuationReplyFailsPromptly(reply: String) async throws {
+            let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let maildir = tempRoot.appendingPathComponent("Maildir")
+            try FileManager.default.createDirectory(
+                at: maildir.appendingPathComponent("cur"), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: maildir.appendingPathComponent("new"), withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: tempRoot) }
+
+            let testServer = try IMAPTestServer(
+                advertisedCapabilities: ["IMAP4rev1", "AUTH=PLAIN"],
+                withholdsLiteralContinuation: true,
+                withheldLiteralReply: reply,
+                maildirURL: maildir
+            )
+            try testServer.start()
+
+            try await testServer.run {
+                let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+                try await server.connect()
+
+                let start = Date()
+                do {
+                    try await server.login(username: "testuser", password: "päss")
+                    Issue.record("LOGIN should have failed")
+                } catch IMAPError.timeout {
+                    Issue.record("LOGIN waited for the deadline instead of failing on the reply")
+                } catch {
+                    // expected: the reply itself fails the command
+                }
+                #expect(Date().timeIntervalSince(start) < 4)
                 try? await server.disconnect()
             }
         }

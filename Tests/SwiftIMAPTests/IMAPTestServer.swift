@@ -60,6 +60,7 @@ final class IMAPTestServer {
     private let namespaceDelimiter: Character
     private let partialFetchBehavior: PartialFetchBehavior
     private let withholdsLiteralContinuation: Bool
+    private let withheldLiteralReply: String?
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
     private var commandLogStorage: [String] = []
@@ -83,6 +84,7 @@ final class IMAPTestServer {
         namespaceDelimiter: Character = "/",
         partialFetchBehavior: PartialFetchBehavior = .honor,
         withholdsLiteralContinuation: Bool = false,
+        withheldLiteralReply: String? = nil,
         maildirURL: URL
     ) throws {
         self.host = host
@@ -97,6 +99,7 @@ final class IMAPTestServer {
         self.namespaceDelimiter = namespaceDelimiter
         self.partialFetchBehavior = partialFetchBehavior
         self.withholdsLiteralContinuation = withholdsLiteralContinuation
+        self.withheldLiteralReply = withheldLiteralReply
         self.messages = try Self.loadMaildir(maildirURL)
     }
 
@@ -354,6 +357,12 @@ final class IMAPTestServer {
                 if withholdsLiteralContinuation,
                    line.range(of: #"\{\d+\}$"#, options: .regularExpression) != nil {
                     recordCommand(line)
+                    // Optionally answer with something other than `+` (`{tag}` is
+                    // replaced by the command's tag), keeping the socket open.
+                    if let reply = withheldLiteralReply {
+                        let tag = line.split(separator: " ").first.map(String.init) ?? "*"
+                        sendLine(fd: fileDescriptor, reply.replacingOccurrences(of: "{tag}", with: tag))
+                    }
                     continue
                 }
 
