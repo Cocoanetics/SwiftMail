@@ -50,6 +50,16 @@ extension EMLParser {
         return addresses
     }
 
+    /// Parse an RFC 5322 address list into structured addresses. Groups
+    /// (`Friends: a, b;`) are flattened to their members, as the ENVELOPE path
+    /// does; quoted strings and angle brackets are respected and comments dropped.
+    static func parseStructuredAddressList(_ value: String?) -> [EmailAddress] {
+        guard let value, !value.isEmpty else { return [] }
+        var scanner = AddressListScanner()
+        value.forEach { scanner.consume($0) }
+        return scanner.finish()
+    }
+
     // MARK: - Date Parsing
 
     /// Parse an RFC 2822 date string.
@@ -78,5 +88,61 @@ extension EMLParser {
         // Try ISO 8601 as fallback
         let iso = ISO8601DateFormatter()
         return iso.date(from: trimmed)
+    }
+}
+
+/// Splits an RFC 5322 address list at top-level commas and group delimiters,
+/// tracking quoted strings, angle brackets and (dropped) comments.
+private struct AddressListScanner {
+    private var addresses: [EmailAddress] = []
+    private var current = ""
+    private var inQuotes = false
+    private var escaped = false
+    private var angleDepth = 0
+    private var commentDepth = 0
+
+    mutating func consume(_ char: Character) {
+        if escaped {
+            if commentDepth == 0 { current.append(char) }
+            escaped = false
+        } else if inQuotes {
+            if char == "\\" { escaped = true } else if char == "\"" { inQuotes = false }
+            current.append(char)
+        } else if commentDepth > 0 {
+            consumeComment(char)
+        } else {
+            consumePlain(char)
+        }
+    }
+
+    mutating func finish() -> [EmailAddress] {
+        flush()
+        return addresses
+    }
+
+    private mutating func consumeComment(_ char: Character) {
+        switch char {
+            case "\\": escaped = true
+            case "(": commentDepth += 1
+            case ")": commentDepth -= 1
+            default: break
+        }
+    }
+
+    private mutating func consumePlain(_ char: Character) {
+        switch char {
+            case "\"": inQuotes = true; current.append(char)
+            case "(": commentDepth = 1
+            case "<": angleDepth += 1; current.append(char)
+            case ">": angleDepth = max(0, angleDepth - 1); current.append(char)
+            case ":" where angleDepth == 0: current = "" // a group's display name
+            case "," where angleDepth == 0, ";" where angleDepth == 0: flush()
+            default: current.append(char)
+        }
+    }
+
+    private mutating func flush() {
+        if let address = EmailAddress(current) { addresses.append(address) }
+        current = ""
     }
 }

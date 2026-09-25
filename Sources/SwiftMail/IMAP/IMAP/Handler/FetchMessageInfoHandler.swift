@@ -166,12 +166,12 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     }
 
     /// Structured counterparts of the header address fields, for fetches
-    /// without ENVELOPE. Display names are decoded once each addr-spec is isolated.
+    /// without ENVELOPE (or with NIL address fields in it).
     private static func applyMissingStructuredAddresses(_ parsed: MessageInfo, to header: inout MessageInfo) {
-        if header.fromAddress == nil { header.fromAddress = parsed.from.flatMap(EmailAddress.init) }
-        if header.toAddresses.isEmpty { header.toAddresses = parsed.to.compactMap(EmailAddress.init) }
-        if header.ccAddresses.isEmpty { header.ccAddresses = parsed.cc.compactMap(EmailAddress.init) }
-        if header.bccAddresses.isEmpty { header.bccAddresses = parsed.bcc.compactMap(EmailAddress.init) }
+        if header.fromAddress == nil { header.fromAddress = parsed.fromAddress }
+        if header.toAddresses.isEmpty { header.toAddresses = parsed.toAddresses }
+        if header.ccAddresses.isEmpty { header.ccAddresses = parsed.ccAddresses }
+        if header.bccAddresses.isEmpty { header.bccAddresses = parsed.bccAddresses }
     }
 
     private func currentMessageIndex() -> Int? {
@@ -239,6 +239,25 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         }
     }
 
+    /// Recipient lists from ENVELOPE. A NIL (empty) list leaves what a header
+    /// literal already supplied, so the result doesn't depend on whether the
+    /// server sent the header section before or after ENVELOPE.
+    private func applyEnvelopeRecipients(_ envelope: Envelope, to header: inout MessageInfo) {
+        if !envelope.reply.isEmpty { header.replyTo = envelope.reply.map { formatAddress($0) } }
+        if !envelope.to.isEmpty {
+            header.to = envelope.to.map { formatAddress($0) }
+            header.toAddresses = envelope.to.flatMap(EmailAddress.structured)
+        }
+        if !envelope.cc.isEmpty {
+            header.cc = envelope.cc.map { formatAddress($0) }
+            header.ccAddresses = envelope.cc.flatMap(EmailAddress.structured)
+        }
+        if !envelope.bcc.isEmpty {
+            header.bcc = envelope.bcc.map { formatAddress($0) }
+            header.bccAddresses = envelope.bcc.flatMap(EmailAddress.structured)
+        }
+    }
+
     /// Pull envelope fields (subject, addresses, date, ids) onto a header in one
     /// shot so the top-level switch stays shallow.
     private func applyEnvelope(_ envelope: Envelope, to header: inout MessageInfo) {
@@ -249,13 +268,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
             header.from = formatAddress(envelope.from[0])
             header.fromAddress = EmailAddress.structured(envelope.from[0]).first
         }
-        header.replyTo = envelope.reply.map { formatAddress($0) }
-        header.to = envelope.to.map { formatAddress($0) }
-        header.cc = envelope.cc.map { formatAddress($0) }
-        header.bcc = envelope.bcc.map { formatAddress($0) }
-        header.toAddresses = envelope.to.flatMap(EmailAddress.structured)
-        header.ccAddresses = envelope.cc.flatMap(EmailAddress.structured)
-        header.bccAddresses = envelope.bcc.flatMap(EmailAddress.structured)
+        applyEnvelopeRecipients(envelope, to: &header)
         if let date = envelope.date, let parsed = Self.parseEnvelopeDate(String(date)) {
             header.date = parsed
             // If parsing fails we silently fall through. Callers can use `internalDate`
