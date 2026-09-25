@@ -359,6 +359,7 @@ final class IMAPTestServer {
                     recordCommand(line)
                     // Optionally answer with something other than `+` (`{tag}` is
                     // replaced by the command's tag), keeping the socket open.
+                    if withheldLiteralReply == "{close}" { return }
                     if let reply = withheldLiteralReply {
                         let tag = line.split(separator: " ").first.map(String.init) ?? "*"
                         sendLine(fd: fileDescriptor, reply.replacingOccurrences(of: "{tag}", with: tag))

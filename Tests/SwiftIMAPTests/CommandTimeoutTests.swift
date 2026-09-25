@@ -83,7 +83,7 @@ struct CommandTimeoutTimerTests {
 
         @Test(
             "a reply other than + to a pending literal fails the command promptly",
-            arguments: ["* ((((\r\n", "{tag} NO literal rejected\r\n"]
+            arguments: ["* ((((\r\n", "{tag} NO literal rejected\r\n", "{close}"]
         )
         func nonContinuationReplyFailsPromptly(reply: String) async throws {
             let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

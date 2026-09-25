@@ -142,11 +142,6 @@ extension IMAPConnection {
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
-            // A channel that closes (or already has) fails the command at once
-            // rather than at the deadline; a no-op once the result is set.
-            channel.closeFuture.whenComplete { _ in
-                resultPromise.fail(IMAPError.connectionFailed("Connection closed before command completed"))
-            }
             scheduledTask = Self.armCommandTimeout(
                 channel: channel,
                 timeoutSeconds: command.timeoutSeconds,
