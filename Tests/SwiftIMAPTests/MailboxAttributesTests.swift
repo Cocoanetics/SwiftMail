@@ -66,4 +66,12 @@ struct MailboxAttributesTests {
         let all = Mailbox.Info(name: "All", attributes: [.all], hierarchyDelimiter: "/")
         #expect([all, archive].archive?.name == "Archive")
     }
+
+    @Test
+    func testArchiveNameWinsOverAll() {
+        let archive = Mailbox.Info(name: "Archive", attributes: [], hierarchyDelimiter: "/")
+        let all = Mailbox.Info(name: "Alle Nachrichten", attributes: [.all], hierarchyDelimiter: "/")
+        #expect([all, archive].archive?.name == "Archive")
+        #expect([all].archive?.name == "Alle Nachrichten")
+    }
 }
