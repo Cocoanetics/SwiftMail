@@ -81,11 +81,6 @@ extension IMAPConnection {
         let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
         let tag = generateCommandTag()
         let handler = command.makeHandler(commandTag: tag, promise: resultPromise)
-        let scheduledTask = scheduleCommandTimeout(
-            channel: channel,
-            timeoutSeconds: command.timeoutSeconds,
-            promise: resultPromise
-        )
 
         return try await runCommandHandler(
             CommandHandlerRun(
@@ -93,8 +88,7 @@ extension IMAPConnection {
                 channel: channel,
                 tag: tag,
                 handler: handler,
-                resultPromise: resultPromise,
-                scheduledTask: scheduledTask
+                resultPromise: resultPromise
             )
         )
     }
@@ -105,7 +99,6 @@ extension IMAPConnection {
         let tag: String
         let handler: CommandType.HandlerType
         let resultPromise: EventLoopPromise<CommandType.ResultType>
-        let scheduledTask: Scheduled<Void>
     }
 
     private func scheduleCommandTimeout<ResultType: Sendable>(
@@ -128,14 +121,24 @@ extension IMAPConnection {
         let tag = run.tag
         let handler = run.handler
         let resultPromise = run.resultPromise
-        let scheduledTask = run.scheduledTask
+        // The timeout measures the SERVER: it starts once the command is written.
+        // Scheduling it before installing the handler and sending let local
+        // scheduling delays (a busy cooperative pool in an app with a heavy UI)
+        // eat the whole budget, so a server that answered instantly still "timed
+        // out" — seen live on Gmail's post-LOGIN NAMESPACE with a 5-second budget.
+        var scheduledTask: Scheduled<Void>?
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
             try await command.send(on: channel, tag: tag)
+            scheduledTask = scheduleCommandTimeout(
+                channel: channel,
+                timeoutSeconds: command.timeoutSeconds,
+                promise: resultPromise
+            )
             let result = try await resultPromise.futureResult.get()
 
-            scheduledTask.cancel()
+            scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
 
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
@@ -143,7 +146,7 @@ extension IMAPConnection {
 
             return result
         } catch {
-            scheduledTask.cancel()
+            scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
 
             // Ensure the promise is always resolved — prevents NIO "leaking promise" fatal error
