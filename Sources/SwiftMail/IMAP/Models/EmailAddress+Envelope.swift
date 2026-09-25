@@ -19,6 +19,29 @@ extension EmailAddress {
     /// - Parameter address: The address to convert
     /// - Returns: The structured addresses contributed by this element
     static func structured(_ address: EmailAddressListElement) -> [EmailAddress] {
+        structuredOrNil(address) ?? []
+    }
+
+    /// A whole ENVELOPE address list, or `[]` if any address in it is unsafe:
+    /// a structured list is either complete or empty, so callers that prefer
+    /// it never silently lose a recipient the legacy strings still carry.
+    static func structuredList(_ addresses: [EmailAddressListElement]) -> [EmailAddress] {
+        var result: [EmailAddress] = []
+        for address in addresses {
+            guard let converted = structuredOrNil(address) else { return [] }
+            result += converted
+        }
+        return result
+    }
+
+    /// Whether an address can go into a header field as-is: no control
+    /// characters, since a CR or LF would end the field and start a new one.
+    static func isHeaderSafe(_ address: String) -> Bool {
+        !address.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
+    }
+
+    /// `nil` when an address is unsafe (see ``isHeaderSafe(_:)``).
+    private static func structuredOrNil(_ address: EmailAddressListElement) -> [EmailAddress]? {
         switch address {
             case .singleAddress(let emailAddress):
                 let name = emailAddress.personName?.stringValue.decodeMIMEHeader() ?? ""
@@ -36,11 +59,17 @@ extension EmailAddress {
                     case (true, true):
                         return []
                 }
+                guard isHeaderSafe(value) else { return nil }
 
                 return [EmailAddress(name: name.isEmpty ? nil : name, address: value)]
 
             case .group(let group):
-                return group.children.flatMap(structured)
+                var members: [EmailAddress] = []
+                for child in group.children {
+                    guard let converted = structuredOrNil(child) else { return nil }
+                    members += converted
+                }
+                return members
         }
     }
 }

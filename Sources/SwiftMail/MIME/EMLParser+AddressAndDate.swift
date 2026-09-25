@@ -102,6 +102,7 @@ private struct AddressListScanner {
     private var escaped = false
     private var angleDepth = 0
     private var commentDepth = 0
+    private var incomplete = false
 
     mutating func consume(_ char: Character) {
         if escaped {
@@ -117,9 +118,12 @@ private struct AddressListScanner {
         }
     }
 
+    /// The addresses, or `[]` if any mailbox in the list could not be parsed:
+    /// a structured list is either complete or empty, so callers that prefer
+    /// it fall back to the legacy strings rather than silently lose a recipient.
     mutating func finish() -> [EmailAddress] {
         flush()
-        return addresses
+        return incomplete ? [] : addresses
     }
 
     private mutating func consumeComment(_ char: Character) {
@@ -154,7 +158,53 @@ private struct AddressListScanner {
     }
 
     private mutating func flush() {
-        if let address = EmailAddress(current) { addresses.append(address) }
-        current = ""
+        defer { current = "" }
+        guard !current.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        if let address = EmailAddress(current) ?? mixedPhraseAddress(current),
+           EmailAddress.isHeaderSafe(address.address) {
+            addresses.append(address)
+        } else {
+            incomplete = true
+        }
     }
+}
+
+/// `name-addr` whose phrase mixes quoted-strings and atoms (`"John" Doe <…>`),
+/// which ``EmailAddress/init(_:)`` does not accept. Quoted words are taken
+/// literally; bare words may be RFC 2047 encoded-words.
+private func mixedPhraseAddress(_ value: String) -> EmailAddress? {
+    guard let open = value.lastIndex(of: "<"), let close = value.lastIndex(of: ">"), open < close else {
+        return nil
+    }
+    let address = value[value.index(after: open)..<close].trimmingCharacters(in: .whitespaces)
+    guard !address.isEmpty else { return nil }
+
+    var words: [String] = []
+    var word = ""
+    var inQuotes = false
+    var escaped = false
+    func endWord(quoted: Bool) {
+        if !word.isEmpty { words.append(quoted ? word : word.decodeMIMEHeader()) }
+        word = ""
+    }
+    for char in value[..<open] {
+        if escaped {
+            word.append(char)
+            escaped = false
+        } else if inQuotes {
+            if char == "\\" { escaped = true } else if char == "\"" { endWord(quoted: true); inQuotes = false } else {
+                word.append(char)
+            }
+        } else if char == "\"" {
+            endWord(quoted: false)
+            inQuotes = true
+        } else if char.isWhitespace {
+            endWord(quoted: false)
+        } else {
+            word.append(char)
+        }
+    }
+    endWord(quoted: inQuotes)
+    let name = words.joined(separator: " ")
+    return EmailAddress(name: name.isEmpty ? nil : name, address: address)
 }

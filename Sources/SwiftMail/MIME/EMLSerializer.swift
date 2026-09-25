@@ -45,7 +45,7 @@ public struct EMLSerializer {
     private static func writeHeaders(_ header: MessageInfo, into output: inout String) {
         // Structured addresses when present, else the legacy strings.
         appendHeaderIfPresent(
-            "From", header.fromAddress?.headerString() ?? header.from.map(headerSafeAddress), into: &output)
+            "From", (header.fromAddress?.headerString() ?? header.from).map(headerSafeAddress), into: &output)
         appendListHeader("To", addressValues(header.toAddresses, orLegacy: header.to), into: &output)
         appendListHeader("Cc", addressValues(header.ccAddresses, orLegacy: header.cc), into: &output)
         appendListHeader("Bcc", addressValues(header.bccAddresses, orLegacy: header.bcc), into: &output)
@@ -66,7 +66,8 @@ public struct EMLSerializer {
     }
 
     private static func addressValues(_ structured: [EmailAddress], orLegacy legacy: [String]) -> [String] {
-        structured.isEmpty ? legacy.map(headerSafeAddress) : structured.map { $0.headerString() }
+        // Structured values take the same control-safe path as legacy strings.
+        (structured.isEmpty ? legacy : structured.map { $0.headerString() }).map(headerSafeAddress)
     }
 
     private static func appendHeaderIfPresent(_ name: String, _ value: String?, into output: inout String) {

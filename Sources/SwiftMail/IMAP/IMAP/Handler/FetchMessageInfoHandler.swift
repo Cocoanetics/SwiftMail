@@ -246,15 +246,15 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         if !envelope.reply.isEmpty { header.replyTo = envelope.reply.map { formatAddress($0) } }
         if !envelope.to.isEmpty {
             header.to = envelope.to.map { formatAddress($0) }
-            header.toAddresses = envelope.to.flatMap(EmailAddress.structured)
+            header.toAddresses = EmailAddress.structuredList(envelope.to)
         }
         if !envelope.cc.isEmpty {
             header.cc = envelope.cc.map { formatAddress($0) }
-            header.ccAddresses = envelope.cc.flatMap(EmailAddress.structured)
+            header.ccAddresses = EmailAddress.structuredList(envelope.cc)
         }
         if !envelope.bcc.isEmpty {
             header.bcc = envelope.bcc.map { formatAddress($0) }
-            header.bccAddresses = envelope.bcc.flatMap(EmailAddress.structured)
+            header.bccAddresses = EmailAddress.structuredList(envelope.bcc)
         }
     }
 

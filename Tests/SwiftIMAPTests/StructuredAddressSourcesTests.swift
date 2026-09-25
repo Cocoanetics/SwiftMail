@@ -187,3 +187,56 @@ extension FetchMessageInfoHandlerTests {
         #expect(reparsed.header.bccAddresses == header.bccAddresses)
     }
 }
+
+extension FetchMessageInfoHandlerTests {
+    // MARK: - Phrases, Completeness and Header Safety
+
+    @Test
+    func testMixedQuotedAndAtomPhraseIsKept() throws {
+        let eml = "To: \"John\" Doe <john@example.com>, bob@example.com\r\nSubject: x\r\n\r\nBody\r\n"
+
+        let message = try Message(emlData: Data(eml.utf8))
+
+        #expect(message.header.toAddresses == [
+            EmailAddress(name: "John Doe", address: "john@example.com"),
+            EmailAddress(address: "bob@example.com")
+        ])
+    }
+
+    @Test
+    func testUnparseableMemberLeavesStructuredListEmpty() throws {
+        // A partial structured list would silently drop a recipient for callers
+        // that prefer it; an empty one sends them to the legacy strings instead.
+        let eml = "To: bob@example.com, not an address\r\nSubject: x\r\n\r\nBody\r\n"
+
+        let message = try Message(emlData: Data(eml.utf8))
+
+        #expect(message.header.to.count == 2)
+        #expect(message.header.toAddresses.isEmpty)
+    }
+
+    @Test
+    func testStructuredAddressesCannotInjectHeaders() throws {
+        var header = MessageInfo(sequenceNumber: SequenceNumber(1), subject: "Injection")
+        header.fromAddress = EmailAddress(address: "victim@example.com\r\nBcc: attacker@example.com")
+        header.toAddresses = [EmailAddress(name: "Bob", address: "bob@example.com\r\nX-Evil: 1")]
+
+        let eml = String(bytes: try Message(header: header, parts: []).emlData(), encoding: .utf8) ?? ""
+
+        #expect(!eml.contains("\r\nBcc:"))
+        #expect(!eml.contains("\r\nX-Evil:"))
+    }
+
+    @Test
+    func testControlCharactersNeverReachStructuredAddresses() throws {
+        let msg = CompoundFileBuilder.build(root: mapiNodes([
+            .unicode(.subject, "Hallo"),
+            .unicode(.senderName, "Anna"),
+            .unicode(.senderSMTPAddress, "anna@example.com\r\nBcc: attacker@example.com")
+        ], isTopLevel: true))
+
+        let header = try MSGParser.parse(msg).header
+
+        #expect(header.fromAddress == nil)
+    }
+}

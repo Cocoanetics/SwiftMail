@@ -126,12 +126,9 @@ public struct MSGParser {
     }
 
     /// Structured addresses from the exact MAPI name and SMTP-address values,
-    /// where the transport headers didn't supply them. Display-name-only
-    /// fallbacks (`PR_DISPLAY_TO`) carry no address, so they add none.
+    /// where the transport headers didn't supply them (`PR_DISPLAY_TO` has none).
     private static func applyStructuredAddresses(
-        sender: EmailAddress?,
-        recipients: Recipients,
-        to info: inout MessageInfo
+        sender: EmailAddress?, recipients: Recipients, to info: inout MessageInfo
     ) {
         if info.fromAddress == nil { info.fromAddress = sender }
         if info.toAddresses.isEmpty { info.toAddresses = recipients.toAddresses }
@@ -173,6 +170,13 @@ public struct MSGParser {
         var toAddresses: [EmailAddress] = []
         var ccAddresses: [EmailAddress] = []
         var bccAddresses: [EmailAddress] = []
+
+        /// Complete or empty: never silently miss a recipient without a usable address.
+        mutating func dropIncompleteStructuredLists() {
+            if toAddresses.count != to.count { toAddresses = [] }
+            if ccAddresses.count != cc.count { ccAddresses = [] }
+            if bccAddresses.count != bcc.count { bccAddresses = [] }
+        }
     }
 
     private static func recipients(from storage: MAPIStorage) -> Recipients {
@@ -197,6 +201,7 @@ public struct MSGParser {
                     if let structured { recipients.toAddresses.append(structured) }
             }
         }
+        recipients.dropIncompleteStructuredLists()
         return recipients
     }
 
@@ -226,7 +231,8 @@ public struct MSGParser {
     /// that merely repeats the address is dropped, as ``format(name:address:)`` does.
     private static func emailAddress(name: String?, address: String?) -> EmailAddress? {
         let name = name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let address = address?.trimmingCharacters(in: .whitespacesAndNewlines), !address.isEmpty else {
+        guard let address = address?.trimmingCharacters(in: .whitespacesAndNewlines), !address.isEmpty,
+              EmailAddress.isHeaderSafe(address) else {
             return nil
         }
         guard let name, !name.isEmpty, name != address else { return EmailAddress(address: address) }

@@ -190,9 +190,9 @@ extension Array where Element == MessagePart {
             to: Self.formatEnvelopeAddressesArray(envelope.to),
             cc: Self.formatEnvelopeAddressesArray(envelope.cc),
             fromAddress: envelope.from.first.flatMap { EmailAddress.structured($0).first },
-            toAddresses: envelope.to.flatMap(EmailAddress.structured),
-            ccAddresses: envelope.cc.flatMap(EmailAddress.structured),
-            bccAddresses: envelope.bcc.flatMap(EmailAddress.structured),
+            toAddresses: EmailAddress.structuredList(envelope.to),
+            ccAddresses: EmailAddress.structuredList(envelope.cc),
+            bccAddresses: EmailAddress.structuredList(envelope.bcc),
             date: Self.parseEnvelopeDate(envelope.date)
         )
     }
