@@ -59,6 +59,7 @@ final class IMAPTestServer {
     private let personalNamespacePrefix: String
     private let namespaceDelimiter: Character
     private let partialFetchBehavior: PartialFetchBehavior
+    private let withholdsLiteralContinuation: Bool
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
     private var commandLogStorage: [String] = []
@@ -81,6 +82,7 @@ final class IMAPTestServer {
         personalNamespacePrefix: String = "",
         namespaceDelimiter: Character = "/",
         partialFetchBehavior: PartialFetchBehavior = .honor,
+        withholdsLiteralContinuation: Bool = false,
         maildirURL: URL
     ) throws {
         self.host = host
@@ -94,6 +96,7 @@ final class IMAPTestServer {
         self.personalNamespacePrefix = personalNamespacePrefix
         self.namespaceDelimiter = namespaceDelimiter
         self.partialFetchBehavior = partialFetchBehavior
+        self.withholdsLiteralContinuation = withholdsLiteralContinuation
         self.messages = try Self.loadMaildir(maildirURL)
     }
 
@@ -343,6 +346,14 @@ final class IMAPTestServer {
                 if let tag = idleTag, line.uppercased() == "DONE" {
                     sendLine(fd: fileDescriptor, "\(tag) OK IDLE terminated\r\n")
                     idleTag = nil
+                    continue
+                }
+
+                // A synchronizing literal (`{N}`) waits for our `+`; a server that
+                // never sends it leaves the client's write pending.
+                if withholdsLiteralContinuation,
+                   line.range(of: #"\{\d+\}$"#, options: .regularExpression) != nil {
+                    recordCommand(line)
                     continue
                 }
 

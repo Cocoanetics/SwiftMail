@@ -110,6 +110,11 @@ extension IMAPConnection {
         return channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
             logger.warning("Command timed out after \(timeoutSeconds) seconds")
             promise.fail(IMAPError.timeout)
+            // A send can itself stay pending (a synchronizing literal waiting for
+            // a `+` that never comes); failing the promise alone would not wake
+            // it. Closing the channel fails the write. A timeout recycles the
+            // connection anyway.
+            channel.close(promise: nil)
         }
     }
 
@@ -147,13 +152,16 @@ extension IMAPConnection {
             duplexLogger.flushInboundBuffer()
 
             return result
-        } catch {
+        } catch let caught {
             scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
 
             // Ensure the promise is always resolved — prevents NIO "leaking promise" fatal error
             // when the channel becomes inactive between the guard and pipeline operations.
-            resultPromise.fail(error)
+            resultPromise.fail(caught)
+            // If the timeout fired first, report it rather than the write it aborted.
+            var error = caught
+            do { _ = try await resultPromise.futureResult.get() } catch let settled { error = settled }
 
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
