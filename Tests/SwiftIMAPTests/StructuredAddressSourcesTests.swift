@@ -118,3 +118,37 @@ extension FetchMessageInfoHandlerTests {
         #expect(header.bccAddresses == [EmailAddress(address: "dan@example.com")])
     }
 }
+
+extension FetchMessageInfoHandlerTests {
+    // MARK: - Consumers Prefer Structured Addresses
+
+    @Test
+    func testEmailFromMessagePrefersStructuredAddresses() throws {
+        // Legacy strings a string parser cannot recover; structured values exact.
+        var header = MessageInfo(sequenceNumber: SequenceNumber(1))
+        header.from = "Friends: Alice <alice@example.com>;"
+        header.to = ["Team: Bob <bob@example.com>;"]
+        header.fromAddress = EmailAddress(name: "Alice", address: "alice@example.com")
+        header.toAddresses = [EmailAddress(name: "Bob", address: "bob@example.com")]
+
+        let email = try Email(message: Message(header: header, parts: []))
+
+        #expect(email.sender == EmailAddress(name: "Alice", address: "alice@example.com"))
+        #expect(email.recipients == [EmailAddress(name: "Bob", address: "bob@example.com")])
+    }
+
+    @Test
+    func testSendDraftAddressesPreferStructuredAddresses() throws {
+        var header = MessageInfo(sequenceNumber: SequenceNumber(1))
+        header.from = "Alice <alice@example.com>"
+        header.to = ["\"Doe, Jane\" <jane@example.com>"]
+        header.fromAddress = EmailAddress(name: "Alice", address: "alice@example.com")
+        header.toAddresses = [EmailAddress(name: "Doe, Jane", address: "jane@example.com")]
+        header.bccAddresses = [EmailAddress(address: "archive@example.com")]
+
+        let (sender, recipients) = try IMAPServer.sendDraftAddresses(from: header)
+
+        #expect(sender.address == "alice@example.com")
+        #expect(recipients.map(\.address) == ["jane@example.com", "archive@example.com"])
+    }
+}
