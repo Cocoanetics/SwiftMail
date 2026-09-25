@@ -135,13 +135,22 @@ private struct AddressListScanner {
         switch char {
             case "\"": enclosure = "\""; current.append(char)
             case "[": enclosure = "]"; current.append(char)
-            case "(": commentDepth = 1
+            case "(":
+                // CFWS: outside an addr-spec a comment is whitespace.
+                commentDepth = 1
+                if angleDepth == 0 { appendSpace() }
             case "<": angleDepth += 1; current.append(char)
             case ">": angleDepth = max(0, angleDepth - 1); current.append(char)
             case ":" where angleDepth == 0: current = "" // a group's display name
             case "," where angleDepth == 0, ";" where angleDepth == 0: flush()
+            case _ where char.isWhitespace && angleDepth == 0: appendSpace()
             default: current.append(char)
         }
+    }
+
+    /// One space for any run of whitespace and comments between words.
+    private mutating func appendSpace() {
+        if let last = current.last, !last.isWhitespace { current.append(" ") }
     }
 
     private mutating func flush() {

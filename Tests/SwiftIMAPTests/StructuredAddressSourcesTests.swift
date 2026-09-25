@@ -152,3 +152,38 @@ extension FetchMessageInfoHandlerTests {
         #expect(recipients.map(\.address) == ["jane@example.com", "archive@example.com"])
     }
 }
+
+extension FetchMessageInfoHandlerTests {
+    // MARK: - Comments and Serialization
+
+    @Test
+    func testCommentsBetweenNameWordsActAsSpace() throws {
+        let eml = "From: John(comment)Doe <john@example.com>\r\n"
+            + "To: Jane (the boss) Roe <jane@example.com>, <bob(x)@example.com>\r\n"
+            + "Subject: CFWS\r\n\r\nBody\r\n"
+
+        let message = try Message(emlData: Data(eml.utf8))
+
+        #expect(message.header.fromAddress == EmailAddress(name: "John Doe", address: "john@example.com"))
+        #expect(message.header.toAddresses == [
+            EmailAddress(name: "Jane Roe", address: "jane@example.com"),
+            EmailAddress(address: "bob@example.com")
+        ])
+    }
+
+    @Test
+    func testEMLSerializationWritesStructuredOnlyAddresses() throws {
+        var header = MessageInfo(sequenceNumber: SequenceNumber(1), subject: "Structured")
+        header.fromAddress = EmailAddress(name: "Doe, Jane", address: "jane@example.com")
+        header.toAddresses = [EmailAddress(name: "Bob", address: "bob@example.com")]
+        header.bccAddresses = [EmailAddress(address: "archive@example.com")]
+        let message = Message(header: header, parts: [])
+
+        let reparsed = try Message(emlData: try message.emlData())
+
+        #expect(header.description.contains("From: \"Doe, Jane\" <jane@example.com>"))
+        #expect(reparsed.header.fromAddress == header.fromAddress)
+        #expect(reparsed.header.toAddresses == header.toAddresses)
+        #expect(reparsed.header.bccAddresses == header.bccAddresses)
+    }
+}

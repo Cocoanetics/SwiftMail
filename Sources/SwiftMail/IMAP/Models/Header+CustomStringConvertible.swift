@@ -4,7 +4,7 @@ extension MessageInfo: CustomStringConvertible {
     public var description: String {
         var result = ""
 
-        if let from = from {
+        if let from = fromAddress?.description ?? from {
             result += "From: \(from)\n"
         }
 
