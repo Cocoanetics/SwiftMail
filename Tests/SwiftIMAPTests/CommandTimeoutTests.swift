@@ -1,6 +1,48 @@
 import Foundation
+import Logging
+import NIO
+import NIOEmbedded
 import Testing
 @testable import SwiftMail
+
+@Suite("Command Timeout Timer")
+struct CommandTimeoutTimerTests {
+    private func activeChannel() throws -> EmbeddedChannel {
+        let channel = EmbeddedChannel()
+        _ = channel.connect(to: try SocketAddress(ipAddress: "127.0.0.1", port: 1))
+        try #require(channel.isActive)
+        return channel
+    }
+
+    @Test("a response that arrives in time keeps the connection open")
+    func responseInTimeDisarmsTheTimer() throws {
+        let channel = try activeChannel()
+        let promise = channel.eventLoop.makePromise(of: Int.self)
+        IMAPConnection.armCommandTimeout(
+            channel: channel, timeoutSeconds: 5, promise: promise, logger: Logger(label: "test"))
+
+        // The handler completes the promise on the event loop; the task that
+        // would cancel the timer has not resumed yet.
+        promise.succeed(1)
+        channel.embeddedEventLoop.advanceTime(by: .seconds(6))
+
+        #expect(channel.isActive)
+        #expect(try promise.futureResult.wait() == 1)
+    }
+
+    @Test("no response by the deadline fails the command and closes the connection")
+    func missedDeadlineFailsAndCloses() throws {
+        let channel = try activeChannel()
+        let promise = channel.eventLoop.makePromise(of: Int.self)
+        IMAPConnection.armCommandTimeout(
+            channel: channel, timeoutSeconds: 5, promise: promise, logger: Logger(label: "test"))
+
+        channel.embeddedEventLoop.advanceTime(by: .seconds(6))
+
+        #expect(!channel.isActive)
+        #expect(throws: IMAPError.self) { try promise.futureResult.wait() }
+    }
+}
 
 #if os(macOS)
     @Suite("Command Timeout", .serialized, .timeLimit(.minutes(1)))

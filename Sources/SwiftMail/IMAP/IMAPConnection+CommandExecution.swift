@@ -2,6 +2,7 @@ import Foundation
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
 import NIO
+import Logging
 
 extension IMAPConnection {
     @discardableResult func fetchCapabilities() async throws -> [Capability] {
@@ -101,13 +102,17 @@ extension IMAPConnection {
         let resultPromise: EventLoopPromise<CommandType.ResultType>
     }
 
-    private func scheduleCommandTimeout<ResultType: Sendable>(
+    /// Arm a command's deadline. The timer is cancelled on the event loop the
+    /// moment the result promise completes, so a response that arrived in time
+    /// can never be followed by a timeout, even if the awaiting task resumes late.
+    @discardableResult
+    static func armCommandTimeout<ResultType: Sendable>(
         channel: Channel,
         timeoutSeconds: Int,
-        promise: EventLoopPromise<ResultType>
+        promise: EventLoopPromise<ResultType>,
+        logger: Logging.Logger
     ) -> Scheduled<Void> {
-        let logger = self.logger
-        return channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+        let scheduled = channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
             logger.warning("Command timed out after \(timeoutSeconds) seconds")
             promise.fail(IMAPError.timeout)
             // A send can itself stay pending (a synchronizing literal waiting for
@@ -116,6 +121,8 @@ extension IMAPConnection {
             // connection anyway.
             channel.close(promise: nil)
         }
+        promise.futureResult.whenComplete { _ in scheduled.cancel() }
+        return scheduled
     }
 
     private func runCommandHandler<CommandType: IMAPCommand>(
@@ -137,10 +144,11 @@ extension IMAPConnection {
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
-            scheduledTask = scheduleCommandTimeout(
+            scheduledTask = Self.armCommandTimeout(
                 channel: channel,
                 timeoutSeconds: command.timeoutSeconds,
-                promise: resultPromise
+                promise: resultPromise,
+                logger: logger
             )
             try await command.send(on: channel, tag: tag)
             let result = try await resultPromise.futureResult.get()
