@@ -73,6 +73,8 @@ extension IMAPServer {
             || attributes.contains(.drafts)
             || attributes.contains(.junk)
             || attributes.contains(.flagged)
+            || attributes.contains(.all)
+            || attributes.contains(.important)
     }
 
     /// Fallback detection based on common folder names when the server

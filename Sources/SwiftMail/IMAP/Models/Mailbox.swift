@@ -78,30 +78,24 @@ public enum Mailbox {
                     case .marked:       return .marked
                     case .unmarked:     return .unmarked
                     default:
-                        // Special-use attributes (RFC 6154) reach us as raw strings;
-                        // match the trailing token.
-                        return specialUseAttribute(for: String(describing: nioAttribute))
+                        // Special-use attributes (RFC 6154, RFC 8457). NIO's attribute
+                        // type compares case-insensitively, so this is an exact,
+                        // case-insensitive match: `\all` maps, `\Alligator` does not.
+                        return specialUseAttributes[nioAttribute] ?? []
                 }
             }
 
-            private static let specialUseTokens: [(String, Attributes)] = [
-                ("\\Archive", .archive),
-                ("\\Drafts", .drafts),
-                ("\\Flagged", .flagged),
-                ("\\Junk", .junk),
-                ("\\Sent", .sent),
-                ("\\Trash", .trash),
-                ("\\Inbox", .inbox),
-                ("\\All", .all),
-                ("\\Important", .important)
+            private static let specialUseAttributes: [NIOIMAPCore.MailboxInfo.Attribute: Attributes] = [
+                NIOIMAPCore.MailboxInfo.Attribute(#"\Archive"#): .archive,
+                NIOIMAPCore.MailboxInfo.Attribute(#"\Drafts"#): .drafts,
+                NIOIMAPCore.MailboxInfo.Attribute(#"\Flagged"#): .flagged,
+                NIOIMAPCore.MailboxInfo.Attribute(#"\Junk"#): .junk,
+                NIOIMAPCore.MailboxInfo.Attribute(#"\Sent"#): .sent,
+                NIOIMAPCore.MailboxInfo.Attribute(#"\Trash"#): .trash,
+                NIOIMAPCore.MailboxInfo.Attribute(#"\Inbox"#): .inbox,
+                NIOIMAPCore.MailboxInfo.Attribute(#"\All"#): .all,
+                NIOIMAPCore.MailboxInfo.Attribute(#"\Important"#): .important
             ]
-
-            private static func specialUseAttribute(for raw: String) -> Attributes {
-                for (token, value) in specialUseTokens where raw.contains(token) {
-                    return value
-                }
-                return []
-            }
         }
 
         /// The name of the mailbox
@@ -236,6 +230,8 @@ extension Mailbox.Info.Attributes: CustomStringConvertible {
         if contains(.sent) { components.append("\\Sent") }
         if contains(.trash) { components.append("\\Trash") }
         if contains(.inbox) { components.append("\\Inbox") }
+        if contains(.all) { components.append("\\All") }
+        if contains(.important) { components.append("\\Important") }
 
         return components.isEmpty ? "[]" : "[\(components.joined(separator: ", "))]"
     }
@@ -315,12 +311,29 @@ extension Array where Element == Mailbox.Info {
         })
     }
 
-    /// Find the first mailbox with the archive attribute, falling back to common names
+    /// Find the first mailbox with the archive attribute, then one with `\All`
+    /// (Gmail archives by moving to All Mail, whose name is localised), falling
+    /// back to common names.
     public var archive: Element? {
         if let match = first(where: { $0.attributes.contains(.archive) }) {
             return match
         }
+        if let match = first(where: { $0.attributes.contains(.all) }) {
+            return match
+        }
         let names = ["archive", "archives", "all mail", "[gmail]/all mail"]
+        return first(where: { mailbox in
+            matchesMailboxName(mailbox.name, in: names)
+        })
+    }
+
+    /// Find the mailbox holding every message (`\All`, e.g. Gmail's All Mail),
+    /// falling back to common names.
+    public var allMail: Element? {
+        if let match = first(where: { $0.attributes.contains(.all) }) {
+            return match
+        }
+        let names = ["all mail", "[gmail]/all mail", "[google mail]/all mail"]
         return first(where: { mailbox in
             matchesMailboxName(mailbox.name, in: names)
         })
@@ -373,7 +386,9 @@ extension Array where Element == Mailbox.Info {
                 mailbox.attributes.contains(.trash) ||
                 mailbox.attributes.contains(.junk) ||
                 mailbox.attributes.contains(.archive) ||
-                mailbox.attributes.contains(.flagged)
+                mailbox.attributes.contains(.flagged) ||
+                mailbox.attributes.contains(.all) ||
+                mailbox.attributes.contains(.important)
         }
     }
 }
