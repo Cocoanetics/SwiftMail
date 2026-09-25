@@ -74,4 +74,47 @@ extension FetchMessageInfoHandlerTests {
         #expect(header.ccAddresses == [cc])
         #expect(header.bccAddresses == [bcc])
     }
+
+    @Test
+    func testDomainLiteralsAreNotSplitAtColonsOrCommas() throws {
+        let eml = "From: ops@[IPv6:2001:db8::1]\r\n"
+            + "To: user@[IPv6:2001:db8::1], Bob <bob@example.com>\r\n"
+            + "Subject: Literal\r\n\r\nBody\r\n"
+
+        let message = try Message(emlData: Data(eml.utf8))
+
+        #expect(message.header.fromAddress == EmailAddress(address: "ops@[IPv6:2001:db8::1]"))
+        #expect(message.header.toAddresses == [
+            EmailAddress(address: "user@[IPv6:2001:db8::1]"),
+            EmailAddress(name: "Bob", address: "bob@example.com")
+        ])
+    }
+
+    @Test
+    func testMSGWithoutTransportHeadersFillsStructuredAddresses() throws {
+        let recipient: (String, String, Int32) -> CFBNode = { index, address, type in
+            .storage(name: "__recip_version1.0_#0000000\(index)", children: mapiNodes([
+                .unicode(.displayName, address == "bob@example.com" ? "Bob" : address),
+                .unicode(.smtpAddress, address),
+                .int32(.recipientType, type)
+            ], isTopLevel: false))
+        }
+        let msg = CompoundFileBuilder.build(root: mapiNodes([
+            .unicode(.subject, "Hallo"),
+            .unicode(.body, "Text"),
+            .unicode(.senderName, "Anna Beispiel"),
+            .unicode(.senderSMTPAddress, "anna@example.com")
+        ], isTopLevel: true, extra: [
+            recipient("0", "bob@example.com", 1),
+            recipient("1", "carol@example.com", 2),
+            recipient("2", "dan@example.com", 3)
+        ]))
+
+        let header = try MSGParser.parse(msg).header
+
+        #expect(header.fromAddress == EmailAddress(name: "Anna Beispiel", address: "anna@example.com"))
+        #expect(header.toAddresses == [EmailAddress(name: "Bob", address: "bob@example.com")])
+        #expect(header.ccAddresses == [EmailAddress(address: "carol@example.com")])
+        #expect(header.bccAddresses == [EmailAddress(address: "dan@example.com")])
+    }
 }

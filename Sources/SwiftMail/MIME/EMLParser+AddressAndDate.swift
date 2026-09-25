@@ -92,11 +92,13 @@ extension EMLParser {
 }
 
 /// Splits an RFC 5322 address list at top-level commas and group delimiters,
-/// tracking quoted strings, angle brackets and (dropped) comments.
+/// tracking quoted strings, domain literals (`[IPv6:…]`), angle brackets and
+/// (dropped) comments.
 private struct AddressListScanner {
     private var addresses: [EmailAddress] = []
     private var current = ""
-    private var inQuotes = false
+    /// The character closing the quoted string or domain literal we are in.
+    private var enclosure: Character?
     private var escaped = false
     private var angleDepth = 0
     private var commentDepth = 0
@@ -105,8 +107,8 @@ private struct AddressListScanner {
         if escaped {
             if commentDepth == 0 { current.append(char) }
             escaped = false
-        } else if inQuotes {
-            if char == "\\" { escaped = true } else if char == "\"" { inQuotes = false }
+        } else if let closing = enclosure {
+            if char == "\\" { escaped = true } else if char == closing { enclosure = nil }
             current.append(char)
         } else if commentDepth > 0 {
             consumeComment(char)
@@ -131,7 +133,8 @@ private struct AddressListScanner {
 
     private mutating func consumePlain(_ char: Character) {
         switch char {
-            case "\"": inQuotes = true; current.append(char)
+            case "\"": enclosure = "\""; current.append(char)
+            case "[": enclosure = "]"; current.append(char)
             case "(": commentDepth = 1
             case "<": angleDepth += 1; current.append(char)
             case ">": angleDepth = max(0, angleDepth - 1); current.append(char)

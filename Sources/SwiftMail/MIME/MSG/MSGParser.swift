@@ -120,8 +120,23 @@ public struct MSGParser {
         if info.bcc.isEmpty {
             info.bcc = recipients.bcc.isEmpty ? splitDisplayList(storage.string(.displayBcc)) : recipients.bcc
         }
+        applyStructuredAddresses(sender: sender(from: storage), recipients: recipients, to: &info)
 
         return info
+    }
+
+    /// Structured addresses from the exact MAPI name and SMTP-address values,
+    /// where the transport headers didn't supply them. Display-name-only
+    /// fallbacks (`PR_DISPLAY_TO`) carry no address, so they add none.
+    private static func applyStructuredAddresses(
+        sender: EmailAddress?,
+        recipients: Recipients,
+        to info: inout MessageInfo
+    ) {
+        if info.fromAddress == nil { info.fromAddress = sender }
+        if info.toAddresses.isEmpty { info.toAddresses = recipients.toAddresses }
+        if info.ccAddresses.isEmpty { info.ccAddresses = recipients.ccAddresses }
+        if info.bccAddresses.isEmpty { info.bccAddresses = recipients.bccAddresses }
     }
 
     /// The sender, preferring the SMTP address over the MAPI-internal one.
@@ -131,13 +146,23 @@ public struct MSGParser {
     /// downstream consumer can use, so it is taken only when nothing else
     /// names an SMTP address.
     private static func senderAddress(from storage: MAPIStorage) -> String? {
+        let (name, address) = senderParts(from: storage)
+        return format(name: name, address: address)
+    }
+
+    /// The sender as a structured address, when it has a usable address.
+    private static func sender(from storage: MAPIStorage) -> EmailAddress? {
+        let (name, address) = senderParts(from: storage)
+        return emailAddress(name: name, address: address)
+    }
+
+    private static func senderParts(from storage: MAPIStorage) -> (name: String?, address: String?) {
         let name = storage.string(.senderName) ?? storage.string(.sentRepresentingName)
         let address = storage.string(.senderSMTPAddress)
             ?? storage.string(.sentRepresentingSMTPAddress)
             ?? nonX500(storage.string(.senderEmailAddress))
             ?? nonX500(storage.string(.sentRepresentingEmailAddress))
-
-        return format(name: name, address: address)
+        return (name, address)
     }
 
     /// The recipients of a message, split by the field they were addressed in.
@@ -145,6 +170,9 @@ public struct MSGParser {
         var to: [String] = []
         var cc: [String] = []
         var bcc: [String] = []
+        var toAddresses: [EmailAddress] = []
+        var ccAddresses: [EmailAddress] = []
+        var bccAddresses: [EmailAddress] = []
     }
 
     private static func recipients(from storage: MAPIStorage) -> Recipients {
@@ -154,12 +182,19 @@ public struct MSGParser {
             let name = recipient.string(.displayName)
             let address = recipient.string(.smtpAddress) ?? nonX500(recipient.string(.emailAddress))
             guard let formatted = format(name: name, address: address) else { continue }
+            let structured = emailAddress(name: name, address: address)
 
             // PR_RECIPIENT_TYPE: 1 = To, 2 = Cc, 3 = Bcc.
             switch recipient.int32(.recipientType) {
-                case 2: recipients.cc.append(formatted)
-                case 3: recipients.bcc.append(formatted)
-                default: recipients.to.append(formatted)
+                case 2:
+                    recipients.cc.append(formatted)
+                    if let structured { recipients.ccAddresses.append(structured) }
+                case 3:
+                    recipients.bcc.append(formatted)
+                    if let structured { recipients.bccAddresses.append(structured) }
+                default:
+                    recipients.to.append(formatted)
+                    if let structured { recipients.toAddresses.append(structured) }
             }
         }
         return recipients
@@ -185,6 +220,17 @@ public struct MSGParser {
             default:
                 return nil
         }
+    }
+
+    /// A structured address from MAPI values; `nil` without an address. A name
+    /// that merely repeats the address is dropped, as ``format(name:address:)`` does.
+    private static func emailAddress(name: String?, address: String?) -> EmailAddress? {
+        let name = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let address = address?.trimmingCharacters(in: .whitespacesAndNewlines), !address.isEmpty else {
+            return nil
+        }
+        guard let name, !name.isEmpty, name != address else { return EmailAddress(address: address) }
+        return EmailAddress(name: name, address: address)
     }
 
     /// `PR_DISPLAY_TO` and friends are a semicolon-separated list of display
