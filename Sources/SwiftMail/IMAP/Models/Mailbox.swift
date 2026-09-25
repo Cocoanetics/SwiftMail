@@ -319,9 +319,11 @@ extension Array where Element == Mailbox.Info {
         if let match = first(where: { $0.attributes.contains(.archive) }) {
             return match
         }
-        let names = ["archive", "archives", "all mail", "[gmail]/all mail"]
-        if let match = first(where: { matchesMailboxName($0.name, in: names) }) {
-            return match
+        // Names in order of preference, so a real Archive folder wins over All Mail.
+        for name in ["archive", "archives", "all mail", "[gmail]/all mail"] {
+            if let match = first(where: { matchesMailboxName($0.name, in: [name]) }) {
+                return match
+            }
         }
         return first(where: { $0.attributes.contains(.all) })
     }

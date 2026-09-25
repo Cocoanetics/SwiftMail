@@ -74,4 +74,19 @@ struct MailboxAttributesTests {
         #expect([all, archive].archive?.name == "Archive")
         #expect([all].archive?.name == "Alle Nachrichten")
     }
+
+    @Test
+    func testArchiveFolderPrefersArchiveNameAcrossBothCaches() async throws {
+        // With SPECIAL-USE, \All lands in the special-use cache while an
+        // unannotated "Archive" is only in the general list.
+        let server = IMAPServer(host: "localhost", port: 993)
+        let all = Mailbox.Info(name: "[Gmail]/All Mail", attributes: [.all], hierarchyDelimiter: "/")
+        let archive = Mailbox.Info(name: "Archive", attributes: [], hierarchyDelimiter: "/")
+        await server.updateSpecialMailboxes([all])
+        await server.updateMailboxes([all, archive])
+        #expect(try await server.archiveFolder.name == "Archive")
+
+        await server.updateMailboxes([all])
+        #expect(try await server.archiveFolder.name == "[Gmail]/All Mail")
+    }
 }
