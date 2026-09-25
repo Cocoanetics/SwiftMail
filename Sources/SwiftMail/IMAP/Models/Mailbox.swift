@@ -311,21 +311,19 @@ extension Array where Element == Mailbox.Info {
         })
     }
 
-    /// Find the first mailbox with the archive attribute, falling back to common
-    /// names, and only then to one with `\All` (Gmail archives by moving to All
-    /// Mail, whose name is localised). `\All` comes last because elsewhere it can
-    /// be a virtual, read-only view rather than an archive.
+    /// Find the first mailbox with the archive attribute, then one named like an
+    /// archive, and only then ``allMail`` (Gmail archives by moving to All Mail,
+    /// whose name is localised). All Mail comes last because elsewhere `\All` can
+    /// be a virtual, read-only view; within it, the `\All` attribute beats the
+    /// English "All Mail" names.
     public var archive: Element? {
         if let match = first(where: { $0.attributes.contains(.archive) }) {
             return match
         }
-        // Names in order of preference, so a real Archive folder wins over All Mail.
-        for name in ["archive", "archives", "all mail", "[gmail]/all mail"] {
-            if let match = first(where: { matchesMailboxName($0.name, in: [name]) }) {
-                return match
-            }
+        if let match = first(where: { matchesMailboxName($0.name, in: ["archive", "archives"]) }) {
+            return match
         }
-        return first(where: { $0.attributes.contains(.all) })
+        return allMail
     }
 
     /// Find the mailbox holding every message (`\All`, e.g. Gmail's All Mail),

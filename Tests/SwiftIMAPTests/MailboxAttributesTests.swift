@@ -89,4 +89,14 @@ struct MailboxAttributesTests {
         await server.updateMailboxes([all])
         #expect(try await server.archiveFolder.name == "[Gmail]/All Mail")
     }
+
+    @Test
+    func testAllAttributeWinsOverAnEnglishAllMailName() {
+        // A localized system mailbox must not lose to a user folder that
+        // happens to be called "All Mail".
+        let system = Mailbox.Info(name: "[Google Mail]/Alle Nachrichten", attributes: [.all], hierarchyDelimiter: "/")
+        let userFolder = Mailbox.Info(name: "All Mail", attributes: [], hierarchyDelimiter: "/")
+        #expect([userFolder, system].archive?.name == "[Google Mail]/Alle Nachrichten")
+        #expect([userFolder].archive?.name == "All Mail")
+    }
 }
