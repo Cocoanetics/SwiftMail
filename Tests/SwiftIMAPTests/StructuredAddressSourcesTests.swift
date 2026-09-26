@@ -274,3 +274,35 @@ extension FetchMessageInfoHandlerTests {
         #expect(!header.fromAddress!.headerString().contains { $0.isNewline })
     }
 }
+
+extension FetchMessageInfoHandlerTests {
+    // MARK: - RFC 5322 Lexical Edge Cases
+
+    @Test(arguments: [
+        // A comment in a bare addr-spec is not part of the address.
+        ("bob(comment)@example.com", EmailAddress(address: "bob@example.com")),
+        ("bob@example.com (Bob)", EmailAddress(address: "bob@example.com")),
+        // Adjacent words with no whitespace between them stay joined.
+        (#""John"Doe <john@example.com>"#, EmailAddress(name: "JohnDoe", address: "john@example.com")),
+        // Only a whole word that is an encoded-word is decoded.
+        (#"abc=?UTF-8?Q?def?= "John" <john@example.com>"#,
+         EmailAddress(name: "abc=?UTF-8?Q?def?= John", address: "john@example.com")),
+        // Whitespace between adjacent encoded-words is not part of the text.
+        ("=?UTF-8?Q?Ja?= =?UTF-8?Q?ne?= <jane@example.com>", EmailAddress(name: "Jane", address: "jane@example.com")),
+        // An obsolete source route is not part of the address.
+        ("<@relay.example:john@example.com>", EmailAddress(address: "john@example.com"))
+    ])
+    func testLexicalEdgeCases(value: String, expected: EmailAddress) {
+        #expect(EMLParser.parseStructuredAddressList(value) == [expected])
+    }
+
+    @Test
+    func testSerializationKeepsLegalTabInQuotedLocalPart() throws {
+        var header = MessageInfo(sequenceNumber: SequenceNumber(1), subject: "Tab")
+        header.toAddresses = [EmailAddress(address: "\"first\tlast\"@example.com")]
+
+        let eml = String(bytes: try Message(header: header, parts: []).emlData(), encoding: .utf8) ?? ""
+
+        #expect(eml.contains("To: \"first\tlast\"@example.com\r\n"))
+    }
+}

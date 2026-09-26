@@ -140,33 +140,22 @@ private struct AddressListScanner {
             case "\"": enclosure = "\""; current.append(char)
             case "[": enclosure = "]"; current.append(char)
             case "(":
-                // CFWS: outside an addr-spec a comment is whitespace.
+                // Inside <…> a comment is dropped; elsewhere its meaning depends
+                // on where it sits, so mark it for `parseMailbox`.
                 commentDepth = 1
-                if angleDepth == 0 { appendSpace() }
+                if angleDepth == 0 { current.append(commentMarker) }
             case "<": angleDepth += 1; current.append(char)
             case ">": angleDepth = max(0, angleDepth - 1); current.append(char)
             case ":" where angleDepth == 0: current = "" // a group's display name
             case "," where angleDepth == 0, ";" where angleDepth == 0: flush()
-            case _ where char.isWhitespace && angleDepth == 0: appendSpace()
             default: current.append(char)
         }
     }
 
-    /// One space for any run of whitespace and comments between words.
-    private mutating func appendSpace() {
-        if let last = current.last, !last.isWhitespace { current.append(" ") }
-    }
-
     private mutating func flush() {
         defer { current = "" }
-        guard !current.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        // A phrase with a quoted-string goes through the phrase parser, which
-        // unescapes quoted-pairs wherever the quoted word sits in the phrase.
-        let address = current.contains("\"")
-            ? mixedPhraseAddress(current) ?? EmailAddress(current)
-            : EmailAddress(current)
-        if let address,
-           EmailAddress.isHeaderSafe(address.address) {
+        guard current.contains(where: { !$0.isWhitespace && $0 != commentMarker }) else { return }
+        if let address = parseMailbox(current), EmailAddress.isHeaderSafe(address.address) {
             addresses.append(address)
         } else {
             incomplete = true
@@ -174,42 +163,125 @@ private struct AddressListScanner {
     }
 }
 
-/// `name-addr` whose phrase mixes quoted-strings and atoms (`"John" Doe <…>`),
-/// which ``EmailAddress/init(_:)`` does not accept. Quoted words are taken
-/// literally; bare words may be RFC 2047 encoded-words.
-private func mixedPhraseAddress(_ value: String) -> EmailAddress? {
-    guard let open = value.lastIndex(of: "<"), let close = value.lastIndex(of: ">"), open < close else {
-        return nil
-    }
-    let address = value[value.index(after: open)..<close].trimmingCharacters(in: .whitespaces)
-    guard !address.isEmpty else { return nil }
+/// Stands in for a comment (CFWS) outside `<…>` until the mailbox is parsed.
+private let commentMarker: Character = "\u{1}"
 
-    var words: [String] = []
-    var word = ""
+/// One mailbox: `name-addr` (`phrase <addr-spec>`) or a bare `addr-spec`.
+private func parseMailbox(_ value: String) -> EmailAddress? {
+    guard let open = topLevelIndex(of: "<", in: value) else {
+        let address = addrSpec(value[...])
+        return address.contains("@") ? EmailAddress(address: address) : nil
+    }
+    guard let close = value[open...].lastIndex(of: ">") else { return nil }
+    var address = addrSpec(value[value.index(after: open)..<close])
+    // An obsolete source route (`@relay:`) is not part of the address.
+    if address.hasPrefix("@"), let colon = address.lastIndex(of: ":") {
+        address = String(address[address.index(after: colon)...])
+    }
+    guard address.contains("@") else { return nil }
+    let name = phraseText(value[..<open])
+    return EmailAddress(name: name.isEmpty ? nil : name, address: address)
+}
+
+/// The first `character` outside a quoted-string.
+private func topLevelIndex(of character: Character, in value: String) -> String.Index? {
     var inQuotes = false
     var escaped = false
-    func endWord(quoted: Bool) {
-        if !word.isEmpty { words.append(quoted ? word : word.decodeMIMEHeader()) }
-        word = ""
+    for index in value.indices {
+        let char = value[index]
+        if escaped { escaped = false } else if inQuotes {
+            if char == "\\" { escaped = true } else if char == "\"" { inQuotes = false }
+        } else if char == "\"" { inQuotes = true } else if char == character { return index }
     }
-    for char in value[..<open] {
+    return nil
+}
+
+/// An addr-spec without its CFWS: whitespace and comments outside a quoted
+/// local-part are not part of the address; inside one, they are.
+private func addrSpec(_ value: Substring) -> String {
+    var result = ""
+    var inQuotes = false
+    var escaped = false
+    for char in value {
         if escaped {
-            word.append(char)
+            result.append(char)
             escaped = false
         } else if inQuotes {
-            if char == "\\" { escaped = true } else if char == "\"" { endWord(quoted: true); inQuotes = false } else {
-                word.append(char)
-            }
+            if char == "\\" { escaped = true } else if char == "\"" { inQuotes = false }
+            result.append(char)
         } else if char == "\"" {
-            endWord(quoted: false)
             inQuotes = true
-        } else if char.isWhitespace {
-            endWord(quoted: false)
-        } else {
-            word.append(char)
+            result.append(char)
+        } else if !char.isWhitespace && char != commentMarker {
+            result.append(char)
         }
     }
-    endWord(quoted: inQuotes)
-    let name = words.joined(separator: " ")
-    return EmailAddress(name: name.isEmpty ? nil : name, address: address)
+    return result
+}
+
+/// A display-name phrase as the text it stands for (RFC 5322 §3.2, RFC 2047):
+/// quoted-strings unescaped, words separated by CFWS joined by one space and
+/// adjacent words kept together, and a word decoded only if the whole word is
+/// an encoded-word, with the space between two encoded-words dropped.
+private func phraseText(_ phrase: Substring) -> String {
+    var text = ""
+    var separated = false
+    var lastWasEncoded = false
+    var index = phrase.startIndex
+
+    func append(_ word: String, encoded: Bool) {
+        if separated && !text.isEmpty && !(encoded && lastWasEncoded) { text += " " }
+        text += encoded ? word.decodeMIMEHeader() : word
+        separated = false
+        lastWasEncoded = encoded
+    }
+
+    while index < phrase.endIndex {
+        let char = phrase[index]
+        if char.isWhitespace || char == commentMarker {
+            separated = true
+            index = phrase.index(after: index)
+        } else if char == "\"" {
+            let (word, next) = quotedString(phrase, from: index)
+            append(word, encoded: false)
+            index = next
+        } else {
+            var end = index
+            while end < phrase.endIndex, !phrase[end].isWhitespace, phrase[end] != commentMarker,
+                  phrase[end] != "\"" {
+                end = phrase.index(after: end)
+            }
+            let atom = String(phrase[index..<end])
+            append(atom, encoded: isEncodedWord(atom))
+            index = end
+        }
+    }
+    return text
+}
+
+/// The unescaped text of the quoted-string starting at `start`, and the index after it.
+private func quotedString(_ value: Substring, from start: Substring.Index) -> (String, Substring.Index) {
+    var text = ""
+    var escaped = false
+    var index = value.index(after: start)
+    while index < value.endIndex {
+        let char = value[index]
+        index = value.index(after: index)
+        if escaped {
+            text.append(char)
+            escaped = false
+        } else if char == "\\" {
+            escaped = true
+        } else if char == "\"" {
+            break
+        } else {
+            text.append(char)
+        }
+    }
+    return (text, index)
+}
+
+/// Whether a whole word is one RFC 2047 encoded-word.
+private func isEncodedWord(_ word: String) -> Bool {
+    word.range(of: #"^=\?[^?\s]+\?[BbQq]\?[^?\s]*\?=$"#, options: .regularExpression) != nil
 }
