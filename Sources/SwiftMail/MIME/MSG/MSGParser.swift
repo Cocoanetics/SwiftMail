@@ -80,20 +80,9 @@ public struct MSGParser {
         if let headerBlock = storage.string(.transportMessageHeaders), !headerBlock.isEmpty {
             info = EMLParser.buildMessageInfo(from: EMLParser.parseHeaders(headerBlock))
         } else {
-            info = MessageInfo(
-                sequenceNumber: SequenceNumber(0),
-                uid: nil,
-                subject: nil,
-                from: nil,
-                to: [],
-                cc: [],
-                bcc: [],
-                date: nil,
-                messageId: nil,
-                flags: [],
-                parts: []
-            )
+            info = MessageInfo(sequenceNumber: SequenceNumber(0))
         }
+        let fromHeaders = info
 
         if info.subject?.isEmpty ?? true {
             info.subject = storage.string(.subject) ?? storage.string(.normalizedSubject)
@@ -120,20 +109,21 @@ public struct MSGParser {
         if info.bcc.isEmpty {
             info.bcc = recipients.bcc.isEmpty ? splitDisplayList(storage.string(.displayBcc)) : recipients.bcc
         }
-        applyStructuredAddresses(sender: sender(from: storage), recipients: recipients, to: &info)
+        applyStructuredAddresses(sender: sender(from: storage), recipients: recipients, headers: fromHeaders, to: &info)
 
         return info
     }
 
-    /// Structured addresses from the exact MAPI name and SMTP-address values,
-    /// where the transport headers didn't supply them (`PR_DISPLAY_TO` has none).
+    /// Structured addresses from the exact MAPI values, for fields the transport
+    /// headers lacked; a present header field wins even if its structured list
+    /// is empty (an empty group, or deliberately left for the legacy strings).
     private static func applyStructuredAddresses(
-        sender: EmailAddress?, recipients: Recipients, to info: inout MessageInfo
+        sender: EmailAddress?, recipients: Recipients, headers: MessageInfo, to info: inout MessageInfo
     ) {
-        if info.fromAddress == nil { info.fromAddress = sender }
-        if info.toAddresses.isEmpty { info.toAddresses = recipients.toAddresses }
-        if info.ccAddresses.isEmpty { info.ccAddresses = recipients.ccAddresses }
-        if info.bccAddresses.isEmpty { info.bccAddresses = recipients.bccAddresses }
+        if headers.from?.isEmpty ?? true { info.fromAddress = sender }
+        if headers.to.isEmpty { info.toAddresses = recipients.toAddresses }
+        if headers.cc.isEmpty { info.ccAddresses = recipients.ccAddresses }
+        if headers.bcc.isEmpty { info.bccAddresses = recipients.bccAddresses }
     }
 
     /// The sender, preferring the SMTP address over the MAPI-internal one.

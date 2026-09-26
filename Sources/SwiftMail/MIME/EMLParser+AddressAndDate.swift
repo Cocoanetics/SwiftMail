@@ -167,13 +167,19 @@ private struct AddressListScanner {
 
     private mutating func flush() {
         defer { current = [] }
-        guard current.contains(where: { !$0.properties.isWhitespace && $0 != commentMarker }) else { return }
+        guard current.contains(where: { !isRFCWhitespace($0) && $0 != commentMarker }) else { return }
         if let address = parseMailbox(current), EmailAddress.isHeaderSafe(address.address) {
             addresses.append(address)
         } else {
             incomplete = true
         }
     }
+}
+
+/// RFC 5322 whitespace (WSP) is SP and HTAB only. Other Unicode spaces are
+/// mailbox or phrase data (RFC 6532), and other controls are rejected, not skipped.
+private func isRFCWhitespace(_ scalar: Unicode.Scalar) -> Bool {
+    scalar == " " || scalar == "\t"
 }
 
 /// Stands in for a comment (CFWS) outside `<…>` until the mailbox is parsed.
@@ -191,7 +197,7 @@ private func parseMailbox(_ value: Scalars) -> EmailAddress? {
     }
     var inner = lexed(Array(value[(open + 1)..<close]))
     // An obsolete source route (`@relay,@relay:`) ends at the first top-level colon.
-    if inner.first(where: { !$0.scalar.properties.isWhitespace && $0.scalar != commentMarker })?.scalar == "@",
+    if inner.first(where: { !isRFCWhitespace($0.scalar) && $0.scalar != commentMarker })?.scalar == "@",
        let colon = inner.firstIndex(where: { $0.topLevel && $0.scalar == ":" }) {
         inner.removeSubrange(...colon)
     }
@@ -232,7 +238,7 @@ private func lexed(_ value: Scalars) -> [Lexeme] {
 /// part of the address; inside a quoted local-part or domain literal they are.
 private func addrSpec(_ lexemes: [Lexeme]) -> String {
     string(lexemes.lazy.filter {
-        !$0.topLevel || (!$0.scalar.properties.isWhitespace && $0.scalar != commentMarker)
+        !$0.topLevel || (!isRFCWhitespace($0.scalar) && $0.scalar != commentMarker)
     }.map(\.scalar))
 }
 
@@ -259,7 +265,7 @@ private func phraseText(_ phrase: Scalars) -> String {
 
     while index < phrase.count {
         let scalar = phrase[index]
-        if scalar.properties.isWhitespace || scalar == commentMarker {
+        if isRFCWhitespace(scalar) || scalar == commentMarker {
             separated = true
             if scalar == commentMarker { separatorHasComment = true }
             index += 1
@@ -269,7 +275,7 @@ private func phraseText(_ phrase: Scalars) -> String {
             index = next
         } else {
             var end = index
-            while end < phrase.count, !phrase[end].properties.isWhitespace, phrase[end] != commentMarker,
+            while end < phrase.count, !isRFCWhitespace(phrase[end]), phrase[end] != commentMarker,
                   phrase[end] != "\"" {
                 end += 1
             }

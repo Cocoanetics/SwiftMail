@@ -45,7 +45,7 @@ public struct EMLSerializer {
     private static func writeHeaders(_ header: MessageInfo, into output: inout String) {
         // Structured addresses when present, else the legacy strings.
         appendHeaderIfPresent(
-            "From", (header.fromAddress?.headerString() ?? header.from).map(headerSafeAddress), into: &output)
+            "From", header.fromAddress?.headerString() ?? header.from.map(headerSafeAddress), into: &output)
         appendListHeader("To", addressValues(header.toAddresses, orLegacy: header.to), into: &output)
         appendListHeader("Cc", addressValues(header.ccAddresses, orLegacy: header.cc), into: &output)
         appendListHeader("Bcc", addressValues(header.bccAddresses, orLegacy: header.bcc), into: &output)
@@ -66,8 +66,10 @@ public struct EMLSerializer {
     }
 
     private static func addressValues(_ structured: [EmailAddress], orLegacy legacy: [String]) -> [String] {
-        // Structured values take the same control-safe path as legacy strings.
-        (structured.isEmpty ? legacy : structured.map { $0.headerString() }).map(headerSafeAddress)
+        // `headerString()` is already field-safe (encoded display name, no
+        // forbidden controls) and keeps an RFC 6532 addr-spec as address syntax,
+        // which re-encoding the whole value as an encoded-word would destroy.
+        structured.isEmpty ? legacy.map(headerSafeAddress) : structured.map { $0.headerString() }
     }
 
     private static func appendHeaderIfPresent(_ name: String, _ value: String?, into output: inout String) {

@@ -300,6 +300,9 @@ extension FetchMessageInfoHandlerTests {
         ("user@[tag value]", EmailAddress(address: "user@[tag value]")),
         ("Ops <ops@[tag:v <x>]>", EmailAddress(name: "Ops", address: "ops@[tag:v <x>]")),
         (#"Ann <user@[a"b]>"#, EmailAddress(name: "Ann", address: #"user@[a"b]"#)),
+        // RFC whitespace is SP and HTAB only; other Unicode spaces are mailbox data.
+        ("first\u{00A0}last@example.com", EmailAddress(address: "first\u{00A0}last@example.com")),
+        ("Ann\u{2003}Lee <ann@example.com>", EmailAddress(name: "Ann\u{2003}Lee", address: "ann@example.com")),
         // A comment between encoded-words is a space; only whitespace is dropped.
         ("=?UTF-8?Q?John?= (team) =?UTF-8?Q?Doe?= <john@example.com>",
          EmailAddress(name: "John Doe", address: "john@example.com"))
@@ -350,5 +353,45 @@ extension FetchMessageInfoHandlerTests {
         #expect(!EmailAddress.isHeaderSafe("a@example.com\u{000B}"))
         #expect(!EmailAddress.isHeaderSafe("a@example.com\u{007F}"))
         #expect(EmailAddress.isHeaderSafe("\"a\tb\"@example.com"))
+    }
+}
+
+extension FetchMessageInfoHandlerTests {
+    // MARK: - Internationalized Addresses and MSG Precedence
+
+    @Test
+    func testVerticalTabIsNotWhitespaceButForbidden() {
+        #expect(EMLParser.parseStructuredAddressList("a\u{000B}b@example.com").isEmpty)
+    }
+
+    @Test
+    func testSerializationKeepsUTF8AddrSpecAsAddress() throws {
+        var header = MessageInfo(sequenceNumber: SequenceNumber(1), subject: "EAI")
+        header.fromAddress = EmailAddress(name: "Alice", address: "用户@example.com")
+        header.toAddresses = [EmailAddress(address: "δοκιμή@example.com")]
+        let message = Message(header: header, parts: [])
+
+        let reparsed = try Message(emlData: try message.emlData())
+
+        #expect(reparsed.header.fromAddress == header.fromAddress)
+        #expect(reparsed.header.toAddresses == header.toAddresses)
+    }
+
+    @Test
+    func testMSGTransportHeaderFieldWinsEvenWhenItsStructuredListIsEmpty() throws {
+        let recipient = CFBNode.storage(name: "__recip_version1.0_#00000000", children: mapiNodes([
+            .unicode(.displayName, "Bob"),
+            .unicode(.smtpAddress, "bob@example.com"),
+            .int32(.recipientType, 1)
+        ], isTopLevel: false))
+        let msg = CompoundFileBuilder.build(root: mapiNodes([
+            .unicode(.subject, "Hallo"),
+            .unicode(.transportMessageHeaders, "From: Anna <anna@example.com>\r\nTo: Undisclosed recipients:;\r\n\r\n")
+        ], isTopLevel: true, extra: [recipient]))
+
+        let header = try MSGParser.parse(msg).header
+
+        #expect(header.to == ["Undisclosed recipients:;"])
+        #expect(header.toAddresses.isEmpty)
     }
 }
