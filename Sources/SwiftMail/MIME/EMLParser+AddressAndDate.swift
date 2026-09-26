@@ -168,53 +168,60 @@ private let commentMarker: Character = "\u{1}"
 
 /// One mailbox: `name-addr` (`phrase <addr-spec>`) or a bare `addr-spec`.
 private func parseMailbox(_ value: String) -> EmailAddress? {
-    guard let open = topLevelIndex(of: "<", in: value) else {
-        let address = addrSpec(value[...])
+    let tokens = lexed(value[...])
+    guard let open = tokens.first(where: { $0.topLevel && $0.char == "<" })?.index else {
+        let address = addrSpec(tokens)
         return address.contains("@") ? EmailAddress(address: address) : nil
     }
-    guard let close = value[open...].lastIndex(of: ">") else { return nil }
-    var address = addrSpec(value[value.index(after: open)..<close])
-    // An obsolete source route (`@relay:`) is not part of the address.
-    if address.hasPrefix("@"), let colon = address.lastIndex(of: ":") {
-        address = String(address[address.index(after: colon)...])
+    guard let close = tokens.last(where: { $0.topLevel && $0.char == ">" && $0.index > open })?.index else {
+        return nil
     }
+    var inner = lexed(value[value.index(after: open)..<close])
+    // An obsolete source route (`@relay,@relay:`) ends at the first top-level colon.
+    if inner.first(where: { !$0.char.isWhitespace && $0.char != commentMarker })?.char == "@",
+       let colon = inner.firstIndex(where: { $0.topLevel && $0.char == ":" }) {
+        inner.removeSubrange(...colon)
+    }
+    let address = addrSpec(inner)
     guard address.contains("@") else { return nil }
     let name = phraseText(value[..<open])
     return EmailAddress(name: name.isEmpty ? nil : name, address: address)
 }
 
-/// The first `character` outside a quoted-string.
-private func topLevelIndex(of character: Character, in value: String) -> String.Index? {
-    var inQuotes = false
+/// One character of a mailbox and whether it is top-level syntax: outside a
+/// quoted-string or domain literal (`[…]`), and not quoted-pair escaped.
+private struct Lexeme {
+    let index: String.Index
+    let char: Character
+    let topLevel: Bool
+}
+
+private func lexed(_ value: Substring) -> [Lexeme] {
+    var lexemes: [Lexeme] = []
+    var closing: Character?
     var escaped = false
     for index in value.indices {
         let char = value[index]
-        if escaped { escaped = false } else if inQuotes {
-            if char == "\\" { escaped = true } else if char == "\"" { inQuotes = false }
-        } else if char == "\"" { inQuotes = true } else if char == character { return index }
+        var topLevel = false
+        if escaped {
+            escaped = false
+        } else if let end = closing {
+            if char == "\\" { escaped = true } else if char == end { closing = nil }
+        } else {
+            topLevel = true
+            if char == "\"" { closing = "\"" } else if char == "[" { closing = "]" }
+        }
+        lexemes.append(Lexeme(index: index, char: char, topLevel: topLevel))
     }
-    return nil
+    return lexemes
 }
 
-/// An addr-spec without its CFWS: whitespace and comments outside a quoted
-/// local-part are not part of the address; inside one, they are.
-private func addrSpec(_ value: Substring) -> String {
+/// An addr-spec without its CFWS: top-level whitespace and comments are not
+/// part of the address; inside a quoted local-part or domain literal they are.
+private func addrSpec(_ lexemes: [Lexeme]) -> String {
     var result = ""
-    var inQuotes = false
-    var escaped = false
-    for char in value {
-        if escaped {
-            result.append(char)
-            escaped = false
-        } else if inQuotes {
-            if char == "\\" { escaped = true } else if char == "\"" { inQuotes = false }
-            result.append(char)
-        } else if char == "\"" {
-            inQuotes = true
-            result.append(char)
-        } else if !char.isWhitespace && char != commentMarker {
-            result.append(char)
-        }
+    for lexeme in lexemes where !lexeme.topLevel || (!lexeme.char.isWhitespace && lexeme.char != commentMarker) {
+        result.append(lexeme.char)
     }
     return result
 }

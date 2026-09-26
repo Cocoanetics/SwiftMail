@@ -290,10 +290,27 @@ extension FetchMessageInfoHandlerTests {
         // Whitespace between adjacent encoded-words is not part of the text.
         ("=?UTF-8?Q?Ja?= =?UTF-8?Q?ne?= <jane@example.com>", EmailAddress(name: "Jane", address: "jane@example.com")),
         // An obsolete source route is not part of the address.
-        ("<@relay.example:john@example.com>", EmailAddress(address: "john@example.com"))
+        ("<@relay.example:john@example.com>", EmailAddress(address: "john@example.com")),
+        // ...and it ends at the first colon, not one inside the local-part.
+        (#"<@relay.example:"john:doe"@example.com>"#, EmailAddress(address: #""john:doe"@example.com"#)),
+        // Legal whitespace inside a quoted local-part is kept.
+        ("\"first\tlast\"@example.com", EmailAddress(address: "\"first\tlast\"@example.com")),
+        // Domain-literal text is not address syntax, and its whitespace is kept.
+        ("user@[tag<value]", EmailAddress(address: "user@[tag<value]")),
+        ("user@[tag value]", EmailAddress(address: "user@[tag value]")),
+        ("Ops <ops@[tag:v <x>]>", EmailAddress(name: "Ops", address: "ops@[tag:v <x>]")),
+        (#"Ann <user@[a"b]>"#, EmailAddress(name: "Ann", address: #"user@[a"b]"#))
     ])
     func testLexicalEdgeCases(value: String, expected: EmailAddress) {
         #expect(EMLParser.parseStructuredAddressList(value) == [expected])
+    }
+
+    @Test
+    func testQuoteInDomainLiteralDoesNotSwallowTheList() {
+        #expect(EMLParser.parseStructuredAddressList(#"user@[a"b], bob@example.com"#) == [
+            EmailAddress(address: #"user@[a"b]"#),
+            EmailAddress(address: "bob@example.com")
+        ])
     }
 
     @Test
