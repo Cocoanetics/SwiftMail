@@ -41,15 +41,17 @@ extension IMAPServer {
     /**
      Get the archive folder or throw if not found
 
-     Checks special-use mailboxes first, then falls back to the general mailbox list
-     (which includes name-based matching for common folder names like "Archive").
+     Looks across special-use and general mailboxes together, so the precedence of
+     the `archive` lookup holds globally: the `\Archive` attribute, then common
+     names like "Archive", and only then a `\All` mailbox (which lives in the
+     special-use list and would otherwise hide an unannotated Archive folder).
 
      - Returns: The archive folder information
      - Throws: `UndefinedFolderError.archive` if the archive folder is not found
      */
     public var archiveFolder: Mailbox.Info {
         get throws {
-            if let archive = specialMailboxes.archive ?? mailboxes.archive {
+            if let archive = (specialMailboxes + mailboxes).archive {
                 return archive
             }
             throw UndefinedFolderError.archive
