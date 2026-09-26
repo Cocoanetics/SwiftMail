@@ -49,6 +49,7 @@ extension IMAPServer {
             encoding: encoding,
             filename: filename,
             contentId: contentId,
+            size: part.fields.octetCount,
             data: partData
         )
     }

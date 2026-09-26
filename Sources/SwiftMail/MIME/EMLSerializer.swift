@@ -43,10 +43,12 @@ public struct EMLSerializer {
 
     /// Emit the RFC 822 header block (`From:`, `To:`, …) and then `MIME-Version`.
     private static func writeHeaders(_ header: MessageInfo, into output: inout String) {
-        appendHeaderIfPresent("From", header.from.map(headerSafeAddress), into: &output)
-        appendListHeader("To", header.to.map(headerSafeAddress), into: &output)
-        appendListHeader("Cc", header.cc.map(headerSafeAddress), into: &output)
-        appendListHeader("Bcc", header.bcc.map(headerSafeAddress), into: &output)
+        // Structured addresses when present, else the legacy strings.
+        appendHeaderIfPresent(
+            "From", header.fromAddress?.headerString() ?? header.from.map(headerSafeAddress), into: &output)
+        appendListHeader("To", addressValues(header.toAddresses, orLegacy: header.to), into: &output)
+        appendListHeader("Cc", addressValues(header.ccAddresses, orLegacy: header.cc), into: &output)
+        appendListHeader("Bcc", addressValues(header.bccAddresses, orLegacy: header.bcc), into: &output)
         // Subject is free text; address display names were re-encoded above
         // without treating their surrounding address syntax as unstructured text.
         appendHeaderIfPresent("Subject", header.subject?.rfc2047EncodedHeader(), into: &output)
@@ -61,6 +63,13 @@ public struct EMLSerializer {
         for (key, value) in (header.additionalFields ?? [:]).sorted(by: { $0.key < $1.key }) {
             output += "\(capitalizeHeaderName(key)): \(value)\r\n"
         }
+    }
+
+    private static func addressValues(_ structured: [EmailAddress], orLegacy legacy: [String]) -> [String] {
+        // `headerString()` is already field-safe (encoded display name, no
+        // forbidden controls) and keeps an RFC 6532 addr-spec as address syntax,
+        // which re-encoding the whole value as an encoded-word would destroy.
+        structured.isEmpty ? legacy.map(headerSafeAddress) : structured.map { $0.headerString() }
     }
 
     private static func appendHeaderIfPresent(_ name: String, _ value: String?, into output: inout String) {

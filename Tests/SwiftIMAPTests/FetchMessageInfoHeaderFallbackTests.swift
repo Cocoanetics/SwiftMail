@@ -66,6 +66,31 @@ struct FetchMessageInfoHeaderFallbackTests {
     }
 
     @Test
+    func testHeaderFieldsPopulateStructuredAddressesWithoutEnvelope() async throws {
+        let headerBlock = """
+        From: =?UTF-8?B?VMOkZ2xpY2hlciBCZXJpY2h0?= <daily@example.com>\r
+        To: "Doe, Jane" <jane@example.com>, bob@example.com\r
+        Cc: Team <team@example.com>\r
+        Bcc: Archive <archive@example.com>\r
+        \r
+        """
+
+        let infos = try await executeFetch([
+            fetchResponse(sequenceNumber: 1, headerFields: ["From", "To", "Cc", "Bcc"], headerBlock: headerBlock),
+            "A001 OK FETCH completed\r\n"
+        ])
+
+        try #require(infos.count == 1)
+        #expect(infos[0].fromAddress == EmailAddress(name: "Täglicher Bericht", address: "daily@example.com"))
+        #expect(infos[0].toAddresses == [
+            EmailAddress(name: "Doe, Jane", address: "jane@example.com"),
+            EmailAddress(address: "bob@example.com")
+        ])
+        #expect(infos[0].ccAddresses == [EmailAddress(name: "Team", address: "team@example.com")])
+        #expect(infos[0].bccAddresses == [EmailAddress(name: "Archive", address: "archive@example.com")])
+    }
+
+    @Test
     func testSelectiveReplyToHeaderPopulatesMessageInfoWithoutEnvelope() async throws {
         let headerBlock = "Reply-To: Reply Desk <replies@example.com>\r\n\r\n"
 

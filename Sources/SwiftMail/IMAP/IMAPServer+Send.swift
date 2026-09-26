@@ -43,7 +43,7 @@ extension IMAPServer {
         }
 
         // 4. Extract sender and recipients from the envelope
-        let (sender, recipients) = try parseSendDraftAddresses(from: messageInfo)
+        let (sender, recipients) = try Self.sendDraftAddresses(from: messageInfo)
 
         // 5. Send via SMTP
         try await smtp.sendRawMessage(rawMessageData, from: sender, to: recipients)
@@ -59,33 +59,37 @@ extension IMAPServer {
 
     // MARK: - Send Draft Helpers
 
-    /// Parse the sender and recipient addresses out of a draft's envelope info.
-    private func parseSendDraftAddresses(
+    /// The sender and recipients of a draft: its structured addresses when
+    /// present, else its legacy address strings parsed.
+    static func sendDraftAddresses(
         from messageInfo: MessageInfo
     ) throws -> (sender: EmailAddress, recipients: [EmailAddress]) {
-        guard let senderString = messageInfo.from else {
+        guard messageInfo.fromAddress != nil || messageInfo.from != nil else {
             throw IMAPError.invalidArgument("Draft has no sender address")
         }
-        guard let sender = Self.parseEmailAddresses(from: senderString).first else {
+        guard let sender = messageInfo.fromAddress
+            ?? messageInfo.from.flatMap({ parseEmailAddresses(from: $0).first }) else {
             throw IMAPError.invalidArgument("Draft has invalid sender address")
         }
 
-        var recipientStrings: [String] = []
-        recipientStrings.append(contentsOf: messageInfo.to)
-        recipientStrings.append(contentsOf: messageInfo.cc)
-        recipientStrings.append(contentsOf: messageInfo.bcc)
-
-        guard !recipientStrings.isEmpty else {
+        let hasRecipients = !(messageInfo.to + messageInfo.cc + messageInfo.bcc).isEmpty
+            || !(messageInfo.toAddresses + messageInfo.ccAddresses + messageInfo.bccAddresses).isEmpty
+        guard hasRecipients else {
             throw IMAPError.invalidArgument("Draft has no recipients")
         }
 
-        let recipients = recipientStrings.flatMap { Self.parseEmailAddresses(from: $0) }
-
+        let recipients = addresses(messageInfo.toAddresses, orParsing: messageInfo.to)
+            + addresses(messageInfo.ccAddresses, orParsing: messageInfo.cc)
+            + addresses(messageInfo.bccAddresses, orParsing: messageInfo.bcc)
         guard !recipients.isEmpty else {
             throw IMAPError.invalidArgument("Draft has no valid recipient addresses")
         }
 
         return (sender, recipients)
+    }
+
+    private static func addresses(_ structured: [EmailAddress], orParsing legacy: [String]) -> [EmailAddress] {
+        structured.isEmpty ? legacy.flatMap { parseEmailAddresses(from: $0) } : structured
     }
 
     /// Append the raw draft message to the Sent mailbox with the `\Seen` flag.

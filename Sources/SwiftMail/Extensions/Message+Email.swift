@@ -59,6 +59,10 @@ extension Message {
             to: email.recipients.map { $0.description },
             cc: email.ccRecipients.map { $0.description },
             bcc: email.bccRecipients.map { $0.description },
+            fromAddress: email.sender,
+            toAddresses: email.recipients,
+            ccAddresses: email.ccRecipients,
+            bccAddresses: email.bccRecipients,
             messageId: email.messageID,
             additionalFields: email.additionalHeaders
         )

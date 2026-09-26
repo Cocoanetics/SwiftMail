@@ -103,6 +103,12 @@ extension EmailAddress: LosslessStringConvertible {
      round trip still yields the original text.
      */
     func headerString() -> String {
+        // The addr-spec is written raw, so it must not carry a control a field
+        // body may not hold (a CR or LF would end the field and start a new,
+        // injected one). HTAB, legal in a quoted local-part, is kept.
+        var scalars = String.UnicodeScalarView()
+        scalars.append(contentsOf: self.address.unicodeScalars.filter { !Self.isForbiddenInFieldBody($0) })
+        let address = String(scalars)
         guard let name = name, !name.isEmpty else { return address }
         if name.rfc2047RequiresEncodingAsDisplayName {
             return "\(name.rfc2047EncodedWords()) <\(address)>"

@@ -144,6 +144,7 @@ struct MessagePartBodyStructureTests {
         #expect(info != nil)
         #expect(info?.subject == "Test Subject")
         #expect(info?.from == "\"John Doe\" <john@example.com>")
+        #expect(info?.fromAddress == SwiftMail.EmailAddress(name: "John Doe", address: "john@example.com"))
         #expect(info?.date != nil)
     }
 

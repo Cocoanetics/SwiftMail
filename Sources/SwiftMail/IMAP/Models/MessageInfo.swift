@@ -29,6 +29,19 @@ public struct MessageInfo: Codable, Sendable {
     /// The BCC recipients of the message
     public var bcc: [String] = []
 
+    /// The sender as a structured address, preserving the display name and the
+    /// address separately instead of the rendered ``from`` string.
+    public var fromAddress: EmailAddress?
+
+    /// The recipients as structured addresses. Groups are flattened to their members.
+    public var toAddresses: [EmailAddress] = []
+
+    /// The CC recipients as structured addresses. Groups are flattened to their members.
+    public var ccAddresses: [EmailAddress] = []
+
+    /// The BCC recipients as structured addresses. Groups are flattened to their members.
+    public var bccAddresses: [EmailAddress] = []
+
     /// The date of the message (from the ENVELOPE Date: header — set by the sender)
     public var date: Date?
 
@@ -69,6 +82,10 @@ public struct MessageInfo: Codable, Sendable {
         case to
         case cc
         case bcc
+        case fromAddress
+        case toAddresses
+        case ccAddresses
+        case bccAddresses
         case date
         case internalDate
         case messageId
@@ -107,6 +124,10 @@ public struct MessageInfo: Codable, Sendable {
         to: [String] = [],
         cc: [String] = [],
         bcc: [String] = [],
+        fromAddress: EmailAddress? = nil,
+        toAddresses: [EmailAddress] = [],
+        ccAddresses: [EmailAddress] = [],
+        bccAddresses: [EmailAddress] = [],
         date: Date? = nil,
         internalDate: Date? = nil,
         messageId: MessageID? = nil,
@@ -126,6 +147,10 @@ public struct MessageInfo: Codable, Sendable {
         self.to = to
         self.cc = cc
         self.bcc = bcc
+        self.fromAddress = fromAddress
+        self.toAddresses = toAddresses
+        self.ccAddresses = ccAddresses
+        self.bccAddresses = bccAddresses
         self.date = date
         self.internalDate = internalDate
         self.messageId = messageId
@@ -152,6 +177,10 @@ public extension MessageInfo {
             to: try container.decodeIfPresent([String].self, forKey: .to) ?? [],
             cc: try container.decodeIfPresent([String].self, forKey: .cc) ?? [],
             bcc: try container.decodeIfPresent([String].self, forKey: .bcc) ?? [],
+            fromAddress: try container.decodeIfPresent(EmailAddress.self, forKey: .fromAddress),
+            toAddresses: try container.decodeIfPresent([EmailAddress].self, forKey: .toAddresses) ?? [],
+            ccAddresses: try container.decodeIfPresent([EmailAddress].self, forKey: .ccAddresses) ?? [],
+            bccAddresses: try container.decodeIfPresent([EmailAddress].self, forKey: .bccAddresses) ?? [],
             date: try container.decodeIfPresent(Date.self, forKey: .date),
             internalDate: try container.decodeIfPresent(Date.self, forKey: .internalDate),
             messageId: try Self.decodeMessageID(from: container, forKey: .messageId),

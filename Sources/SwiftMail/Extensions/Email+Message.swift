@@ -24,14 +24,28 @@ extension Email {
     /// Initialize an `Email` from an IMAP `Message`.
     ///
     /// - Parameter message: The IMAP message to convert.
-    /// - Throws: `ConversionError.missingSender` if the message has no `from` field,
+    /// Structured addresses (``MessageInfo/fromAddress`` and friends) are used
+    /// as-is; the legacy strings are parsed only when those are empty.
+    ///
+    /// - Throws: `ConversionError.missingSender` if the message has no sender,
     ///           `ConversionError.unparsableSender` if the `from` string cannot be parsed.
+    /// Structured addresses when present, else the legacy strings parsed.
+    private static func addresses(_ structured: [EmailAddress], orParsing legacy: [String]) -> [EmailAddress] {
+        structured.isEmpty ? legacy.compactMap { EmailAddress($0) } : structured
+    }
+
     public init(message: Message) throws {
-        guard let fromStr = message.from else {
-            throw ConversionError.missingSender
-        }
-        guard let sender = EmailAddress(fromStr) else {
-            throw ConversionError.unparsableSender(fromStr)
+        let sender: EmailAddress
+        if let structured = message.header.fromAddress {
+            sender = structured
+        } else {
+            guard let fromStr = message.from else {
+                throw ConversionError.missingSender
+            }
+            guard let parsed = EmailAddress(fromStr) else {
+                throw ConversionError.unparsableSender(fromStr)
+            }
+            sender = parsed
         }
 
         let allAttachments = Self.collectAttachments(from: message)
@@ -39,9 +53,9 @@ extension Email {
 
         self.init(
             sender: sender,
-            recipients: message.to.compactMap { EmailAddress($0) },
-            ccRecipients: message.cc.compactMap { EmailAddress($0) },
-            bccRecipients: message.bcc.compactMap { EmailAddress($0) },
+            recipients: Self.addresses(message.header.toAddresses, orParsing: message.to),
+            ccRecipients: Self.addresses(message.header.ccAddresses, orParsing: message.cc),
+            bccRecipients: Self.addresses(message.header.bccAddresses, orParsing: message.bcc),
             subject: message.subject ?? "",
             textBody: message.textBody ?? "",
             htmlBody: message.htmlBody,

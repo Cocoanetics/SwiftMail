@@ -76,29 +76,17 @@ public struct MSGParser {
     /// what the headers did not supply, which is everything for a message that
     /// never crossed a transport (a draft, or a Sent item on some servers).
     static func messageInfo(from storage: MAPIStorage) -> MessageInfo {
-        var info: MessageInfo
-        if let headerBlock = storage.string(.transportMessageHeaders), !headerBlock.isEmpty {
-            info = EMLParser.buildMessageInfo(from: EMLParser.parseHeaders(headerBlock))
-        } else {
-            info = MessageInfo(
-                sequenceNumber: SequenceNumber(0),
-                uid: nil,
-                subject: nil,
-                from: nil,
-                to: [],
-                cc: [],
-                bcc: [],
-                date: nil,
-                messageId: nil,
-                flags: [],
-                parts: []
-            )
-        }
+        // Which fields the transport headers carry decides what MAPI may fill:
+        // a present field wins even if empty (`Bcc:`, an empty group).
+        let headers = storage.string(.transportMessageHeaders).map(EMLParser.parseHeaders) ?? [:]
+        var info = headers.isEmpty
+            ? MessageInfo(sequenceNumber: SequenceNumber(0))
+            : EMLParser.buildMessageInfo(from: headers)
 
         if info.subject?.isEmpty ?? true {
             info.subject = storage.string(.subject) ?? storage.string(.normalizedSubject)
         }
-        if info.from?.isEmpty ?? true {
+        if headers["from"] == nil {
             info.from = senderAddress(from: storage)
         }
         if info.date == nil {
@@ -111,17 +99,30 @@ public struct MSGParser {
         // Recipients carry real addresses; PR_DISPLAY_TO/CC hold display names
         // only, so they are the last resort.
         let recipients = self.recipients(from: storage)
-        if info.to.isEmpty {
+        if headers["to"] == nil {
             info.to = recipients.to.isEmpty ? splitDisplayList(storage.string(.displayTo)) : recipients.to
         }
-        if info.cc.isEmpty {
+        if headers["cc"] == nil {
             info.cc = recipients.cc.isEmpty ? splitDisplayList(storage.string(.displayCc)) : recipients.cc
         }
-        if info.bcc.isEmpty {
+        if headers["bcc"] == nil {
             info.bcc = recipients.bcc.isEmpty ? splitDisplayList(storage.string(.displayBcc)) : recipients.bcc
         }
+        applyStructuredAddresses(sender: sender(from: storage), recipients: recipients, headers: headers, to: &info)
 
         return info
+    }
+
+    /// Structured addresses from the exact MAPI values, for fields the transport
+    /// headers lack; a present header field wins even if it is empty or its
+    /// structured list is (an empty group, or deliberately left for the legacy strings).
+    private static func applyStructuredAddresses(
+        sender: EmailAddress?, recipients: Recipients, headers: [String: String], to info: inout MessageInfo
+    ) {
+        if headers["from"] == nil { info.fromAddress = sender }
+        if headers["to"] == nil { info.toAddresses = recipients.toAddresses }
+        if headers["cc"] == nil { info.ccAddresses = recipients.ccAddresses }
+        if headers["bcc"] == nil { info.bccAddresses = recipients.bccAddresses }
     }
 
     /// The sender, preferring the SMTP address over the MAPI-internal one.
@@ -131,13 +132,23 @@ public struct MSGParser {
     /// downstream consumer can use, so it is taken only when nothing else
     /// names an SMTP address.
     private static func senderAddress(from storage: MAPIStorage) -> String? {
+        let (name, address) = senderParts(from: storage)
+        return format(name: name, address: address)
+    }
+
+    /// The sender as a structured address, when it has a usable address.
+    private static func sender(from storage: MAPIStorage) -> EmailAddress? {
+        let (name, address) = senderParts(from: storage)
+        return emailAddress(name: name, address: address)
+    }
+
+    private static func senderParts(from storage: MAPIStorage) -> (name: String?, address: String?) {
         let name = storage.string(.senderName) ?? storage.string(.sentRepresentingName)
         let address = storage.string(.senderSMTPAddress)
             ?? storage.string(.sentRepresentingSMTPAddress)
             ?? nonX500(storage.string(.senderEmailAddress))
             ?? nonX500(storage.string(.sentRepresentingEmailAddress))
-
-        return format(name: name, address: address)
+        return (name, address)
     }
 
     /// The recipients of a message, split by the field they were addressed in.
@@ -145,6 +156,16 @@ public struct MSGParser {
         var to: [String] = []
         var cc: [String] = []
         var bcc: [String] = []
+        var toAddresses: [EmailAddress] = []
+        var ccAddresses: [EmailAddress] = []
+        var bccAddresses: [EmailAddress] = []
+
+        /// Complete or empty: never silently miss a recipient without a usable address.
+        mutating func dropIncompleteStructuredLists() {
+            if toAddresses.count != to.count { toAddresses = [] }
+            if ccAddresses.count != cc.count { ccAddresses = [] }
+            if bccAddresses.count != bcc.count { bccAddresses = [] }
+        }
     }
 
     private static func recipients(from storage: MAPIStorage) -> Recipients {
@@ -154,14 +175,22 @@ public struct MSGParser {
             let name = recipient.string(.displayName)
             let address = recipient.string(.smtpAddress) ?? nonX500(recipient.string(.emailAddress))
             guard let formatted = format(name: name, address: address) else { continue }
+            let structured = emailAddress(name: name, address: address)
 
             // PR_RECIPIENT_TYPE: 1 = To, 2 = Cc, 3 = Bcc.
             switch recipient.int32(.recipientType) {
-                case 2: recipients.cc.append(formatted)
-                case 3: recipients.bcc.append(formatted)
-                default: recipients.to.append(formatted)
+                case 2:
+                    recipients.cc.append(formatted)
+                    if let structured { recipients.ccAddresses.append(structured) }
+                case 3:
+                    recipients.bcc.append(formatted)
+                    if let structured { recipients.bccAddresses.append(structured) }
+                default:
+                    recipients.to.append(formatted)
+                    if let structured { recipients.toAddresses.append(structured) }
             }
         }
+        recipients.dropIncompleteStructuredLists()
         return recipients
     }
 
@@ -185,6 +214,18 @@ public struct MSGParser {
             default:
                 return nil
         }
+    }
+
+    /// A structured address from MAPI values; `nil` without an address. A name
+    /// that merely repeats the address is dropped, as ``format(name:address:)`` does.
+    private static func emailAddress(name: String?, address: String?) -> EmailAddress? {
+        let name = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let address = address?.trimmingCharacters(in: .whitespacesAndNewlines), !address.isEmpty,
+              EmailAddress.isHeaderSafe(address) else {
+            return nil
+        }
+        guard let name, !name.isEmpty, name != address else { return EmailAddress(address: address) }
+        return EmailAddress(name: name, address: address)
     }
 
     /// `PR_DISPLAY_TO` and friends are a semicolon-separated list of display

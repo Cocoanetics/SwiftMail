@@ -227,17 +227,13 @@ struct FetchMessageInfoHandlerTests {
         #expect(infos[0].references == [MessageID("<root@example.com>")!, MessageID("<child@example.com>")!])
     }
 
-    /// Build a `Date` from explicit Y/M/D + H/M/S components, anchored to UTC.
-    /// Folded into a single `DateComponents` parameter so the helper signature
-    /// stays under the 6-parameter swiftlint limit while keeping call sites
-    /// readable via the labelled `DateComponents` initializer.
     private static func makeDate(_ components: DateComponents) -> Date? {
         var resolved = components
         resolved.timeZone = TimeZone(secondsFromGMT: 0)
         return Calendar(identifier: .gregorian).date(from: resolved)
     }
 
-    private func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
+    func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
         let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let promise = channel.eventLoop.makePromise(of: [MessageInfo].self)
@@ -257,7 +253,7 @@ struct FetchMessageInfoHandlerTests {
         return try await promise.futureResult.get()
     }
 
-    private func fetchResponse(
+    func fetchResponse(
         sequenceNumber: Int,
         envelope: String,
         headerBlock: String
@@ -267,7 +263,7 @@ struct FetchMessageInfoHandlerTests {
             + "\(headerBlock))\r\n"
     }
 
-    private func fetchResponse(
+    func fetchResponse(
         sequenceNumber: Int,
         envelope: String,
         headerFields: [String],
@@ -284,4 +280,7 @@ struct FetchMessageInfoHandlerTests {
         let inReplyToValue = inReplyTo.map { "\"\($0)\"" } ?? "NIL"
         return "(NIL NIL NIL NIL NIL NIL NIL NIL \(inReplyToValue) \"\(messageId)\")"
     }
+
+    /// Build an ENVELOPE literal with explicit from/to/cc/bcc address lists, for
+    /// tests exercising `structuredAddress`. Sender/reply-to are left NIL.
 }
