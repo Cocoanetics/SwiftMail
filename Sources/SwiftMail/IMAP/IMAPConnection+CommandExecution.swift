@@ -131,24 +131,29 @@ extension IMAPConnection {
         let tag = run.tag
         let handler = run.handler
         let resultPromise = run.resultPromise
-        // The timeout measures the SERVER: it is armed after the handler is
-        // installed and immediately before the command is written, so neither
-        // the handler-install hop nor a late resumption after the write future
-        // completes goes uncounted. Scheduling it before installing the handler
-        // let local scheduling delays (a busy cooperative pool in an app with a
-        // heavy UI) eat the whole budget — a server that answered instantly
-        // still "timed out", seen live on Gmail's post-LOGIN NAMESPACE.
+        // The timeout measures the SERVER: it is armed once the command's
+        // writes are queued (`send` never waits on them), so local work —
+        // installing the handler, building an APPEND payload, a busy
+        // cooperative pool resuming us late — never eats the budget. Arming it
+        // earlier let a server that answered instantly still "time out", seen
+        // live on Gmail's post-LOGIN NAMESPACE. A response that beats the
+        // arming is fine: the timer is cancelled as soon as the result is set.
         var scheduledTask: Scheduled<Void>?
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
+            try await command.send(on: channel, tag: tag)
+            // A close that raced the handler's installation may have been
+            // delivered before the handler was added; don't wait out the deadline.
+            if !channel.isActive {
+                resultPromise.fail(IMAPError.connectionFailed("Connection closed before command completed"))
+            }
             scheduledTask = Self.armCommandTimeout(
                 channel: channel,
                 timeoutSeconds: command.timeoutSeconds,
                 promise: resultPromise,
                 logger: logger
             )
-            try await command.send(on: channel, tag: tag)
             let result = try await resultPromise.futureResult.get()
 
             scheduledTask?.cancel()
