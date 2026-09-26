@@ -160,7 +160,12 @@ private struct AddressListScanner {
     private mutating func flush() {
         defer { current = "" }
         guard !current.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        if let address = EmailAddress(current) ?? mixedPhraseAddress(current),
+        // A phrase with a quoted-string goes through the phrase parser, which
+        // unescapes quoted-pairs wherever the quoted word sits in the phrase.
+        let address = current.contains("\"")
+            ? mixedPhraseAddress(current) ?? EmailAddress(current)
+            : EmailAddress(current)
+        if let address,
            EmailAddress.isHeaderSafe(address.address) {
             addresses.append(address)
         } else {

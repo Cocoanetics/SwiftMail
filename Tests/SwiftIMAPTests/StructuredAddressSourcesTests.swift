@@ -240,3 +240,37 @@ extension FetchMessageInfoHandlerTests {
         #expect(header.fromAddress == nil)
     }
 }
+
+extension FetchMessageInfoHandlerTests {
+    // MARK: - Quoted-Pairs and Encoded Names
+
+    @Test
+    func testQuotedPairsInPhraseSurvive() throws {
+        let eml = "To: \"John \\\"Ace\\\"\" Doe <john@example.com>, bob@example.com\r\nSubject: x\r\n\r\nBody\r\n"
+
+        let message = try Message(emlData: Data(eml.utf8))
+
+        #expect(message.header.toAddresses == [
+            EmailAddress(name: "John \"Ace\" Doe", address: "john@example.com"),
+            EmailAddress(address: "bob@example.com")
+        ])
+        // The quoted word after an atom is unescaped too.
+        #expect(EMLParser.parseStructuredAddressList(#"Doe "J\"r" <e@example.com>"#)
+            == [EmailAddress(name: #"Doe J"r"#, address: "e@example.com")])
+    }
+
+    @Test
+    func testEncodedNameCannotSmuggleUnsafeAddress() throws {
+        var header = MessageInfo(sequenceNumber: SequenceNumber(1), subject: "Injection")
+        header.fromAddress = EmailAddress(
+            name: "Täglicher Bericht", address: "victim@example.com\r\nBcc: attacker@example.com")
+        header.toAddresses = [EmailAddress(name: "Zoë", address: "bob@example.com\r\nX-Evil: 1")]
+
+        let eml = String(bytes: try Message(header: header, parts: []).emlData(), encoding: .utf8) ?? ""
+
+        #expect(!eml.contains("\r\nBcc:"))
+        #expect(!eml.contains("\r\nX-Evil:"))
+        // The shared formatter itself never emits a control character.
+        #expect(!header.fromAddress!.headerString().contains { $0.isNewline })
+    }
+}

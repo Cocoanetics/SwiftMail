@@ -103,6 +103,10 @@ extension EmailAddress: LosslessStringConvertible {
      round trip still yields the original text.
      */
     func headerString() -> String {
+        // The addr-spec is written raw, so it must not carry control characters:
+        // a CR or LF would end the field and start a new, injected one.
+        let address = address.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }
+            .reduce(into: "") { $0.unicodeScalars.append($1) }
         guard let name = name, !name.isEmpty else { return address }
         if name.rfc2047RequiresEncodingAsDisplayName {
             return "\(name.rfc2047EncodedWords()) <\(address)>"
