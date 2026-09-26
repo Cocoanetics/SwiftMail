@@ -76,18 +76,17 @@ public struct MSGParser {
     /// what the headers did not supply, which is everything for a message that
     /// never crossed a transport (a draft, or a Sent item on some servers).
     static func messageInfo(from storage: MAPIStorage) -> MessageInfo {
-        var info: MessageInfo
-        if let headerBlock = storage.string(.transportMessageHeaders), !headerBlock.isEmpty {
-            info = EMLParser.buildMessageInfo(from: EMLParser.parseHeaders(headerBlock))
-        } else {
-            info = MessageInfo(sequenceNumber: SequenceNumber(0))
-        }
-        let fromHeaders = info
+        // Which fields the transport headers carry decides what MAPI may fill:
+        // a present field wins even if empty (`Bcc:`, an empty group).
+        let headers = storage.string(.transportMessageHeaders).map(EMLParser.parseHeaders) ?? [:]
+        var info = headers.isEmpty
+            ? MessageInfo(sequenceNumber: SequenceNumber(0))
+            : EMLParser.buildMessageInfo(from: headers)
 
         if info.subject?.isEmpty ?? true {
             info.subject = storage.string(.subject) ?? storage.string(.normalizedSubject)
         }
-        if info.from?.isEmpty ?? true {
+        if headers["from"] == nil {
             info.from = senderAddress(from: storage)
         }
         if info.date == nil {
@@ -100,30 +99,30 @@ public struct MSGParser {
         // Recipients carry real addresses; PR_DISPLAY_TO/CC hold display names
         // only, so they are the last resort.
         let recipients = self.recipients(from: storage)
-        if info.to.isEmpty {
+        if headers["to"] == nil {
             info.to = recipients.to.isEmpty ? splitDisplayList(storage.string(.displayTo)) : recipients.to
         }
-        if info.cc.isEmpty {
+        if headers["cc"] == nil {
             info.cc = recipients.cc.isEmpty ? splitDisplayList(storage.string(.displayCc)) : recipients.cc
         }
-        if info.bcc.isEmpty {
+        if headers["bcc"] == nil {
             info.bcc = recipients.bcc.isEmpty ? splitDisplayList(storage.string(.displayBcc)) : recipients.bcc
         }
-        applyStructuredAddresses(sender: sender(from: storage), recipients: recipients, headers: fromHeaders, to: &info)
+        applyStructuredAddresses(sender: sender(from: storage), recipients: recipients, headers: headers, to: &info)
 
         return info
     }
 
     /// Structured addresses from the exact MAPI values, for fields the transport
-    /// headers lacked; a present header field wins even if its structured list
-    /// is empty (an empty group, or deliberately left for the legacy strings).
+    /// headers lack; a present header field wins even if it is empty or its
+    /// structured list is (an empty group, or deliberately left for the legacy strings).
     private static func applyStructuredAddresses(
-        sender: EmailAddress?, recipients: Recipients, headers: MessageInfo, to info: inout MessageInfo
+        sender: EmailAddress?, recipients: Recipients, headers: [String: String], to info: inout MessageInfo
     ) {
-        if headers.from?.isEmpty ?? true { info.fromAddress = sender }
-        if headers.to.isEmpty { info.toAddresses = recipients.toAddresses }
-        if headers.cc.isEmpty { info.ccAddresses = recipients.ccAddresses }
-        if headers.bcc.isEmpty { info.bccAddresses = recipients.bccAddresses }
+        if headers["from"] == nil { info.fromAddress = sender }
+        if headers["to"] == nil { info.toAddresses = recipients.toAddresses }
+        if headers["cc"] == nil { info.ccAddresses = recipients.ccAddresses }
+        if headers["bcc"] == nil { info.bccAddresses = recipients.bccAddresses }
     }
 
     /// The sender, preferring the SMTP address over the MAPI-internal one.

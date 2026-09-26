@@ -118,6 +118,13 @@ private struct AddressListScanner {
     private var incomplete = false
 
     mutating func consume(_ scalar: Unicode.Scalar) {
+        // A forbidden control anywhere (quoted or not) makes the list malformed:
+        // it is never parsed structurally, so it cannot be silently dropped or
+        // mistaken for the parser's own comment marker.
+        if EmailAddress.isForbiddenInFieldBody(scalar) {
+            incomplete = true
+            return
+        }
         if escaped {
             if commentDepth == 0 { current.append(scalar) }
             escaped = false
@@ -183,6 +190,7 @@ private func isRFCWhitespace(_ scalar: Unicode.Scalar) -> Bool {
 }
 
 /// Stands in for a comment (CFWS) outside `<…>` until the mailbox is parsed.
+/// Input can never contain it: the scanner rejects forbidden controls first.
 private let commentMarker: Unicode.Scalar = "\u{1}"
 
 /// One mailbox: `name-addr` (`phrase <addr-spec>`) or a bare `addr-spec`.
@@ -280,7 +288,10 @@ private func phraseText(_ phrase: Scalars) -> String {
                 end += 1
             }
             let atom = string(phrase[index..<end])
-            append(atom, encoded: isEncodedWord(atom))
+            // An encoded-word is one only when delimited from adjacent words by
+            // whitespace or a comment (RFC 2047 §5); next to a word it is literal.
+            let delimited = (text.isEmpty || separated) && (end == phrase.count || phrase[end] != "\"")
+            append(atom, encoded: delimited && isEncodedWord(atom))
             index = end
         }
     }
