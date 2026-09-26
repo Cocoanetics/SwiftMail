@@ -299,7 +299,10 @@ extension FetchMessageInfoHandlerTests {
         ("user@[tag<value]", EmailAddress(address: "user@[tag<value]")),
         ("user@[tag value]", EmailAddress(address: "user@[tag value]")),
         ("Ops <ops@[tag:v <x>]>", EmailAddress(name: "Ops", address: "ops@[tag:v <x>]")),
-        (#"Ann <user@[a"b]>"#, EmailAddress(name: "Ann", address: #"user@[a"b]"#))
+        (#"Ann <user@[a"b]>"#, EmailAddress(name: "Ann", address: #"user@[a"b]"#)),
+        // A comment between encoded-words is a space; only whitespace is dropped.
+        ("=?UTF-8?Q?John?= (team) =?UTF-8?Q?Doe?= <john@example.com>",
+         EmailAddress(name: "John Doe", address: "john@example.com"))
     ])
     func testLexicalEdgeCases(value: String, expected: EmailAddress) {
         #expect(EMLParser.parseStructuredAddressList(value) == [expected])
@@ -321,5 +324,31 @@ extension FetchMessageInfoHandlerTests {
         let eml = String(bytes: try Message(header: header, parts: []).emlData(), encoding: .utf8) ?? ""
 
         #expect(eml.contains("To: \"first\tlast\"@example.com\r\n"))
+    }
+}
+
+extension FetchMessageInfoHandlerTests {
+    // MARK: - Unicode Scalars and Controls
+
+    @Test
+    func testDelimiterFollowedByCombiningMarkIsStillADelimiter() {
+        // The quote and the combining accent form one Swift Character.
+        let value = "\"\u{0301}Doe, Jane\" <jane@example.com>, bob@example.com"
+
+        #expect(EMLParser.parseStructuredAddressList(value) == [
+            EmailAddress(name: "\u{0301}Doe, Jane", address: "jane@example.com"),
+            EmailAddress(address: "bob@example.com")
+        ])
+    }
+
+    @Test
+    func testNoForbiddenControlReachesAnAddressHeader() {
+        let formatted = EmailAddress(name: "Zoë", address: "victim@example.com\u{000B}Bcc: attacker@example.com")
+            .headerString()
+
+        #expect(!formatted.unicodeScalars.contains { $0.value < 0x20 || $0.value == 0x7F })
+        #expect(!EmailAddress.isHeaderSafe("a@example.com\u{000B}"))
+        #expect(!EmailAddress.isHeaderSafe("a@example.com\u{007F}"))
+        #expect(EmailAddress.isHeaderSafe("\"a\tb\"@example.com"))
     }
 }

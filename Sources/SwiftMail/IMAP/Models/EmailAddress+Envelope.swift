@@ -34,12 +34,19 @@ extension EmailAddress {
         return result
     }
 
-    /// Whether an address can go into a header field as-is: no field-breaking
-    /// character (a CR or LF would end the field and start a new one; NUL is
-    /// never allowed). Other whitespace, such as an HTAB in a quoted
-    /// local-part, is legal.
+    /// Whether an address can go into a header field as-is: no control
+    /// character a field body may not hold literally (see
+    /// ``isForbiddenInFieldBody(_:)``).
     static func isHeaderSafe(_ address: String) -> Bool {
-        !address.contains { $0 == "\r" || $0 == "\n" || $0 == "\r\n" || $0 == "\0" }
+        !address.unicodeScalars.contains(where: isForbiddenInFieldBody)
+    }
+
+    /// A C0 control other than HTAB, or DEL: never legal literally in a header
+    /// field body. CR and LF would end the field and start an injected one, and
+    /// some readers treat other controls (VT, FF) as line breaks too. HTAB is
+    /// legal whitespace, e.g. inside a quoted local-part.
+    static func isForbiddenInFieldBody(_ scalar: Unicode.Scalar) -> Bool {
+        (scalar.value < 0x20 && scalar != "\t") || scalar.value == 0x7F
     }
 
     /// `nil` when an address is unsafe (see ``isHeaderSafe(_:)``).

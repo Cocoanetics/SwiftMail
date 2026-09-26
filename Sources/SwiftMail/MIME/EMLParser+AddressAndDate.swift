@@ -56,7 +56,7 @@ extension EMLParser {
     static func parseStructuredAddressList(_ value: String?) -> [EmailAddress] {
         guard let value, !value.isEmpty else { return [] }
         var scanner = AddressListScanner()
-        value.forEach { scanner.consume($0) }
+        value.unicodeScalars.forEach { scanner.consume($0) }
         return scanner.finish()
     }
 
@@ -91,30 +91,43 @@ extension EMLParser {
     }
 }
 
+// Header syntax is delimited by ASCII code points, so everything below scans
+// Unicode scalars, never `Character`s: a grapheme cluster can join an ASCII
+// delimiter (`"`) to a following combining mark (RFC 6532), and would then
+// no longer compare equal to it.
+
+private typealias Scalars = [Unicode.Scalar]
+
+private func string(_ scalars: some Sequence<Unicode.Scalar>) -> String {
+    var view = String.UnicodeScalarView()
+    view.append(contentsOf: scalars)
+    return String(view)
+}
+
 /// Splits an RFC 5322 address list at top-level commas and group delimiters,
 /// tracking quoted strings, domain literals (`[IPv6:…]`), angle brackets and
-/// (dropped) comments.
+/// comments.
 private struct AddressListScanner {
     private var addresses: [EmailAddress] = []
-    private var current = ""
-    /// The character closing the quoted string or domain literal we are in.
-    private var enclosure: Character?
+    private var current: Scalars = []
+    /// The scalar closing the quoted string or domain literal we are in.
+    private var enclosure: Unicode.Scalar?
     private var escaped = false
     private var angleDepth = 0
     private var commentDepth = 0
     private var incomplete = false
 
-    mutating func consume(_ char: Character) {
+    mutating func consume(_ scalar: Unicode.Scalar) {
         if escaped {
-            if commentDepth == 0 { current.append(char) }
+            if commentDepth == 0 { current.append(scalar) }
             escaped = false
         } else if let closing = enclosure {
-            if char == "\\" { escaped = true } else if char == closing { enclosure = nil }
-            current.append(char)
+            if scalar == "\\" { escaped = true } else if scalar == closing { enclosure = nil }
+            current.append(scalar)
         } else if commentDepth > 0 {
-            consumeComment(char)
+            consumeComment(scalar)
         } else {
-            consumePlain(char)
+            consumePlain(scalar)
         }
     }
 
@@ -126,8 +139,8 @@ private struct AddressListScanner {
         return incomplete ? [] : addresses
     }
 
-    private mutating func consumeComment(_ char: Character) {
-        switch char {
+    private mutating func consumeComment(_ scalar: Unicode.Scalar) {
+        switch scalar {
             case "\\": escaped = true
             case "(": commentDepth += 1
             case ")": commentDepth -= 1
@@ -135,26 +148,26 @@ private struct AddressListScanner {
         }
     }
 
-    private mutating func consumePlain(_ char: Character) {
-        switch char {
-            case "\"": enclosure = "\""; current.append(char)
-            case "[": enclosure = "]"; current.append(char)
+    private mutating func consumePlain(_ scalar: Unicode.Scalar) {
+        switch scalar {
+            case "\"": enclosure = "\""; current.append(scalar)
+            case "[": enclosure = "]"; current.append(scalar)
             case "(":
                 // Inside <…> a comment is dropped; elsewhere its meaning depends
                 // on where it sits, so mark it for `parseMailbox`.
                 commentDepth = 1
                 if angleDepth == 0 { current.append(commentMarker) }
-            case "<": angleDepth += 1; current.append(char)
-            case ">": angleDepth = max(0, angleDepth - 1); current.append(char)
-            case ":" where angleDepth == 0: current = "" // a group's display name
+            case "<": angleDepth += 1; current.append(scalar)
+            case ">": angleDepth = max(0, angleDepth - 1); current.append(scalar)
+            case ":" where angleDepth == 0: current = [] // a group's display name
             case "," where angleDepth == 0, ";" where angleDepth == 0: flush()
-            default: current.append(char)
+            default: current.append(scalar)
         }
     }
 
     private mutating func flush() {
-        defer { current = "" }
-        guard current.contains(where: { !$0.isWhitespace && $0 != commentMarker }) else { return }
+        defer { current = [] }
+        guard current.contains(where: { !$0.properties.isWhitespace && $0 != commentMarker }) else { return }
         if let address = parseMailbox(current), EmailAddress.isHeaderSafe(address.address) {
             addresses.append(address)
         } else {
@@ -164,54 +177,53 @@ private struct AddressListScanner {
 }
 
 /// Stands in for a comment (CFWS) outside `<…>` until the mailbox is parsed.
-private let commentMarker: Character = "\u{1}"
+private let commentMarker: Unicode.Scalar = "\u{1}"
 
 /// One mailbox: `name-addr` (`phrase <addr-spec>`) or a bare `addr-spec`.
-private func parseMailbox(_ value: String) -> EmailAddress? {
-    let tokens = lexed(value[...])
-    guard let open = tokens.first(where: { $0.topLevel && $0.char == "<" })?.index else {
-        let address = addrSpec(tokens)
-        return address.contains("@") ? EmailAddress(address: address) : nil
+private func parseMailbox(_ value: Scalars) -> EmailAddress? {
+    let lexemes = lexed(value)
+    guard let open = lexemes.first(where: { $0.topLevel && $0.scalar == "<" })?.index else {
+        let address = addrSpec(lexemes)
+        return address.unicodeScalars.contains("@") ? EmailAddress(address: address) : nil
     }
-    guard let close = tokens.last(where: { $0.topLevel && $0.char == ">" && $0.index > open })?.index else {
+    guard let close = lexemes.last(where: { $0.topLevel && $0.scalar == ">" && $0.index > open })?.index else {
         return nil
     }
-    var inner = lexed(value[value.index(after: open)..<close])
+    var inner = lexed(Array(value[(open + 1)..<close]))
     // An obsolete source route (`@relay,@relay:`) ends at the first top-level colon.
-    if inner.first(where: { !$0.char.isWhitespace && $0.char != commentMarker })?.char == "@",
-       let colon = inner.firstIndex(where: { $0.topLevel && $0.char == ":" }) {
+    if inner.first(where: { !$0.scalar.properties.isWhitespace && $0.scalar != commentMarker })?.scalar == "@",
+       let colon = inner.firstIndex(where: { $0.topLevel && $0.scalar == ":" }) {
         inner.removeSubrange(...colon)
     }
     let address = addrSpec(inner)
-    guard address.contains("@") else { return nil }
-    let name = phraseText(value[..<open])
+    guard address.unicodeScalars.contains("@") else { return nil }
+    let name = phraseText(Array(value[..<open]))
     return EmailAddress(name: name.isEmpty ? nil : name, address: address)
 }
 
-/// One character of a mailbox and whether it is top-level syntax: outside a
+/// One scalar of a mailbox and whether it is top-level syntax: outside a
 /// quoted-string or domain literal (`[…]`), and not quoted-pair escaped.
 private struct Lexeme {
-    let index: String.Index
-    let char: Character
+    let index: Int
+    let scalar: Unicode.Scalar
     let topLevel: Bool
 }
 
-private func lexed(_ value: Substring) -> [Lexeme] {
+private func lexed(_ value: Scalars) -> [Lexeme] {
     var lexemes: [Lexeme] = []
-    var closing: Character?
+    var closing: Unicode.Scalar?
     var escaped = false
-    for index in value.indices {
-        let char = value[index]
+    for (index, scalar) in value.enumerated() {
         var topLevel = false
         if escaped {
             escaped = false
         } else if let end = closing {
-            if char == "\\" { escaped = true } else if char == end { closing = nil }
+            if scalar == "\\" { escaped = true } else if scalar == end { closing = nil }
         } else {
             topLevel = true
-            if char == "\"" { closing = "\"" } else if char == "[" { closing = "]" }
+            if scalar == "\"" { closing = "\"" } else if scalar == "[" { closing = "]" }
         }
-        lexemes.append(Lexeme(index: index, char: char, topLevel: topLevel))
+        lexemes.append(Lexeme(index: index, scalar: scalar, topLevel: topLevel))
     }
     return lexemes
 }
@@ -219,46 +231,49 @@ private func lexed(_ value: Substring) -> [Lexeme] {
 /// An addr-spec without its CFWS: top-level whitespace and comments are not
 /// part of the address; inside a quoted local-part or domain literal they are.
 private func addrSpec(_ lexemes: [Lexeme]) -> String {
-    var result = ""
-    for lexeme in lexemes where !lexeme.topLevel || (!lexeme.char.isWhitespace && lexeme.char != commentMarker) {
-        result.append(lexeme.char)
-    }
-    return result
+    string(lexemes.lazy.filter {
+        !$0.topLevel || (!$0.scalar.properties.isWhitespace && $0.scalar != commentMarker)
+    }.map(\.scalar))
 }
 
 /// A display-name phrase as the text it stands for (RFC 5322 §3.2, RFC 2047):
 /// quoted-strings unescaped, words separated by CFWS joined by one space and
 /// adjacent words kept together, and a word decoded only if the whole word is
-/// an encoded-word, with the space between two encoded-words dropped.
-private func phraseText(_ phrase: Substring) -> String {
+/// an encoded-word. Only *whitespace* between two encoded-words is dropped;
+/// a comment there still reads as a space.
+private func phraseText(_ phrase: Scalars) -> String {
     var text = ""
     var separated = false
+    var separatorHasComment = false
     var lastWasEncoded = false
-    var index = phrase.startIndex
+    var index = 0
 
     func append(_ word: String, encoded: Bool) {
-        if separated && !text.isEmpty && !(encoded && lastWasEncoded) { text += " " }
+        let joinsEncodedWords = encoded && lastWasEncoded && !separatorHasComment
+        if separated && !text.isEmpty && !joinsEncodedWords { text += " " }
         text += encoded ? word.decodeMIMEHeader() : word
         separated = false
+        separatorHasComment = false
         lastWasEncoded = encoded
     }
 
-    while index < phrase.endIndex {
-        let char = phrase[index]
-        if char.isWhitespace || char == commentMarker {
+    while index < phrase.count {
+        let scalar = phrase[index]
+        if scalar.properties.isWhitespace || scalar == commentMarker {
             separated = true
-            index = phrase.index(after: index)
-        } else if char == "\"" {
+            if scalar == commentMarker { separatorHasComment = true }
+            index += 1
+        } else if scalar == "\"" {
             let (word, next) = quotedString(phrase, from: index)
             append(word, encoded: false)
             index = next
         } else {
             var end = index
-            while end < phrase.endIndex, !phrase[end].isWhitespace, phrase[end] != commentMarker,
+            while end < phrase.count, !phrase[end].properties.isWhitespace, phrase[end] != commentMarker,
                   phrase[end] != "\"" {
-                end = phrase.index(after: end)
+                end += 1
             }
-            let atom = String(phrase[index..<end])
+            let atom = string(phrase[index..<end])
             append(atom, encoded: isEncodedWord(atom))
             index = end
         }
@@ -267,25 +282,25 @@ private func phraseText(_ phrase: Substring) -> String {
 }
 
 /// The unescaped text of the quoted-string starting at `start`, and the index after it.
-private func quotedString(_ value: Substring, from start: Substring.Index) -> (String, Substring.Index) {
-    var text = ""
+private func quotedString(_ value: Scalars, from start: Int) -> (String, Int) {
+    var text: Scalars = []
     var escaped = false
-    var index = value.index(after: start)
-    while index < value.endIndex {
-        let char = value[index]
-        index = value.index(after: index)
+    var index = start + 1
+    while index < value.count {
+        let scalar = value[index]
+        index += 1
         if escaped {
-            text.append(char)
+            text.append(scalar)
             escaped = false
-        } else if char == "\\" {
+        } else if scalar == "\\" {
             escaped = true
-        } else if char == "\"" {
+        } else if scalar == "\"" {
             break
         } else {
-            text.append(char)
+            text.append(scalar)
         }
     }
-    return (text, index)
+    return (string(text), index)
 }
 
 /// Whether a whole word is one RFC 2047 encoded-word.
