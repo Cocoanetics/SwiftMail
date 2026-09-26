@@ -34,20 +34,22 @@ struct AppendCommand: IMAPCommand {
         let metadata = AppendMessage(options: appendOptions, data: AppendData(byteCount: messageBuffer.readableBytes))
 
         // The payload is built above, off the event loop; the writes and the
-        // `whenWritten` callback then run as one event-loop task.
+        // `whenWritten` callback then run in one event-loop task.
         channel.eventLoop.execute {
             let start = IMAPClientHandler.OutboundIn.part(.append(.start(tag: tag, appendingTo: mailbox)))
             channel.write(start, promise: nil)
             channel.write(IMAPClientHandler.OutboundIn.part(.append(.beginMessage(message: metadata))), promise: nil)
             // Flush APPEND metadata first so servers can respond with literal continuation.
             channel.flush()
+            // The server's clock starts with that flush: arm the deadline now,
+            // before any payload-sized work (writing, logging) on the loop.
+            whenWritten()
 
             // Do not await write promises here. These writes may be continuation-gated by the IMAP state
             // machine, and awaiting them can deadlock this command send path until timeout.
             channel.write(IMAPClientHandler.OutboundIn.part(.append(.messageBytes(messageBuffer))), promise: nil)
             channel.write(IMAPClientHandler.OutboundIn.part(.append(.endMessage)), promise: nil)
             channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.append(.finish)), promise: nil)
-            whenWritten()
         }
     }
 }

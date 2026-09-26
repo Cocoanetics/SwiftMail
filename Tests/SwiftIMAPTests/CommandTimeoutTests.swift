@@ -248,3 +248,38 @@ struct CommandTimeoutTimerTests {
         }
     }
 #endif
+
+/// EmbeddedEventLoop runs on the test's thread, so a plain box is enough.
+private final class CountBox: @unchecked Sendable {
+    var value: Int?
+}
+
+/// Counts the command parts written so far, as the event loop sees them.
+private final class WriteCounter: ChannelOutboundHandler, @unchecked Sendable {
+    typealias OutboundIn = IMAPClientHandler.OutboundIn
+    var count = 0
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        count += 1
+        context.write(data, promise: promise)
+    }
+}
+
+@Suite("APPEND deadline placement")
+struct AppendDeadlineTests {
+    @Test("the deadline is armed right after the metadata flush, before the payload is written")
+    func deadlineArmsBeforePayloadWork() async throws {
+        let channel = EmbeddedChannel()
+        let counter = WriteCounter()
+        try channel.pipeline.syncOperations.addHandler(counter)
+        let armedAfter = CountBox()
+
+        let command = AppendCommand(
+            mailboxName: "INBOX", message: "Subject: x\r\n\r\nbody", flags: [], internalDate: nil)
+        try await command.send(on: channel, tag: "A1") { armedAfter.value = counter.count }
+        channel.embeddedEventLoop.run()
+
+        // start + beginMessage were flushed; messageBytes, endMessage and finish were not yet written.
+        #expect(armedAfter.value == 2)
+        #expect(counter.count == 5)
+    }
+}
