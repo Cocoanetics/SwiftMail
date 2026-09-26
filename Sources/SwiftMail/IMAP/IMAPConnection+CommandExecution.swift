@@ -131,27 +131,27 @@ extension IMAPConnection {
         let tag = run.tag
         let handler = run.handler
         let resultPromise = run.resultPromise
-        // The timeout measures the SERVER. It is armed on the event loop in a
-        // task queued after the command's writes (`send` never waits on them),
-        // so local delays — installing the handler, building an APPEND payload,
-        // a busy cooperative pool or event loop — never eat the budget. Arming it
-        // earlier let a server that answered instantly still "time out", seen
-        // live on Gmail's post-LOGIN NAMESPACE. The timer cancels itself when
-        // the result is set, including a result set before it was armed.
+        // The timeout measures the SERVER. It is armed by `send`'s `whenWritten`
+        // callback, in the same event-loop task that emits the command, so no
+        // local delay — installing the handler, building an APPEND payload, a
+        // busy cooperative pool or event loop, other work queued between the
+        // write and the arming — is counted, and none can stretch the deadline.
+        // Arming it earlier let a server that answered instantly still "time
+        // out", seen live on Gmail's post-LOGIN NAMESPACE. The timer cancels
+        // itself when the result is set, including a result set before it.
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
-            try await command.send(on: channel, tag: tag)
+            let timeoutSeconds = command.timeoutSeconds
+            let logger = self.logger
+            try await command.send(on: channel, tag: tag) {
+                Self.armCommandTimeout(
+                    channel: channel, timeoutSeconds: timeoutSeconds, promise: resultPromise, logger: logger)
+            }
             // A close that raced the handler's installation may have been
             // delivered before the handler was added; don't wait out the deadline.
             if !channel.isActive {
                 resultPromise.fail(IMAPError.connectionFailed("Connection closed before command completed"))
-            }
-            let timeoutSeconds = command.timeoutSeconds
-            let logger = self.logger
-            channel.eventLoop.execute {
-                Self.armCommandTimeout(
-                    channel: channel, timeoutSeconds: timeoutSeconds, promise: resultPromise, logger: logger)
             }
             let result = try await resultPromise.futureResult.get()
 

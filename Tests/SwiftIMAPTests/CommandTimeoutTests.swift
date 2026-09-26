@@ -139,6 +139,25 @@ struct CommandTimeoutTimerTests {
             }
         }
 
+        @Test("a deadline starts with the write, not after work queued behind it")
+        func deadlineStartsWithTheWrite() async throws {
+            try await withLoggedInServer(withholdsLiteral: true) { server in
+                // The server answers NOOP at once. A 1.5 s callback queued right after
+                // the write must not stretch a 1 s deadline armed only after it:
+                // with the server silent, the command must time out within ~1 s of
+                // the write, i.e. before the blocking callback ends.
+                let start = Date()
+                do {
+                    try await server.executeCommand(ProbeCommand(
+                        prepareSeconds: 0, closesChannelFirst: false, blocksAfterWriteSeconds: 1.5, silent: true))
+                    Issue.record("a silent server should time out")
+                } catch IMAPError.timeout {
+                    // expected
+                }
+                #expect(Date().timeIntervalSince(start) < 2.2)
+            }
+        }
+
         @Test("a close the handler never saw fails the command at once")
         func closeMissedByHandlerFailsPromptly() async throws {
             try await withLoggedInServer { server in
@@ -153,7 +172,10 @@ struct CommandTimeoutTimerTests {
             }
         }
 
-        private func withLoggedInServer(_ body: (SwiftMail.IMAPServer) async throws -> Void) async throws {
+        private func withLoggedInServer(
+            withholdsLiteral: Bool = false,
+            _ body: (SwiftMail.IMAPServer) async throws -> Void
+        ) async throws {
             let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             let maildir = tempRoot.appendingPathComponent("Maildir")
             try FileManager.default.createDirectory(
@@ -162,7 +184,14 @@ struct CommandTimeoutTimerTests {
                 at: maildir.appendingPathComponent("new"), withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: tempRoot) }
 
-            let testServer = try IMAPTestServer(maildirURL: maildir)
+            // Without LITERAL+, a non-ASCII LOGIN argument is a synchronizing
+            // literal, which a withholding server never continues.
+            let testServer = withholdsLiteral
+                ? try IMAPTestServer(
+                    advertisedCapabilities: ["IMAP4rev1", "AUTH=PLAIN"],
+                    withholdsLiteralContinuation: true,
+                    maildirURL: maildir)
+                : try IMAPTestServer(maildirURL: maildir)
             try testServer.start()
             try await testServer.run {
                 let server = SwiftMail.IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
@@ -183,13 +212,18 @@ struct CommandTimeoutTimerTests {
         let prepareSeconds: Double
         let closesChannelFirst: Bool
         var blocksEventLoopSeconds: Double = 0
+        var blocksAfterWriteSeconds: Double = 0
+        /// A LOGIN whose literal the server never continues, so it never answers.
+        var silent = false
         var timeoutSeconds: Int { 1 }
 
         func toTaggedCommand(tag: String) -> TaggedCommand {
-            TaggedCommand(tag: tag, command: .noop)
+            silent
+                ? TaggedCommand(tag: tag, command: .login(username: "u", password: "päss"))
+                : TaggedCommand(tag: tag, command: .noop)
         }
 
-        func send(on channel: Channel, tag: String) async throws {
+        func send(on channel: Channel, tag: String, whenWritten: @escaping @Sendable () -> Void) async throws {
             if prepareSeconds > 0 { try await Task.sleep(for: .seconds(prepareSeconds)) }
             if closesChannelFirst { try await channel.close() }
             if blocksEventLoopSeconds > 0 {
@@ -197,7 +231,13 @@ struct CommandTimeoutTimerTests {
                 channel.eventLoop.execute { Thread.sleep(forTimeInterval: seconds) }
             }
             let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(toTaggedCommand(tag: tag)))
-            channel.writeAndFlush(wrapped, promise: nil)
+            let blockAfter = blocksAfterWriteSeconds
+            channel.eventLoop.execute {
+                channel.writeAndFlush(wrapped, promise: nil)
+                whenWritten()
+            }
+            // Another connection's work queued right after the write.
+            if blockAfter > 0 { channel.eventLoop.execute { Thread.sleep(forTimeInterval: blockAfter) } }
         }
     }
 
