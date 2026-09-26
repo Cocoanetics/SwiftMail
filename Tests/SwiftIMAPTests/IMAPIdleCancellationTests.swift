@@ -179,7 +179,7 @@ struct IMAPIdleCancellationTests {
             position: .before(harness.connection.responseBuffer)
         ).get()
         harness.connection.responseBuffer.hasActiveHandler = true
-        try await NoopCommand().send(on: harness.channel, tag: tag)
+        try await NoopCommand().send(on: harness.channel, tag: tag, whenWritten: {})
         return PendingNoop(tag: tag, promise: promise)
     }
 

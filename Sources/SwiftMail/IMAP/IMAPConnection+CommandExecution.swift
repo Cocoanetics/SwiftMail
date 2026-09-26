@@ -2,6 +2,7 @@ import Foundation
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
 import NIO
+import Logging
 
 extension IMAPConnection {
     @discardableResult func fetchCapabilities() async throws -> [Capability] {
@@ -81,11 +82,6 @@ extension IMAPConnection {
         let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
         let tag = generateCommandTag()
         let handler = command.makeHandler(commandTag: tag, promise: resultPromise)
-        let scheduledTask = scheduleCommandTimeout(
-            channel: channel,
-            timeoutSeconds: command.timeoutSeconds,
-            promise: resultPromise
-        )
 
         return try await runCommandHandler(
             CommandHandlerRun(
@@ -93,8 +89,7 @@ extension IMAPConnection {
                 channel: channel,
                 tag: tag,
                 handler: handler,
-                resultPromise: resultPromise,
-                scheduledTask: scheduledTask
+                resultPromise: resultPromise
             )
         )
     }
@@ -105,19 +100,27 @@ extension IMAPConnection {
         let tag: String
         let handler: CommandType.HandlerType
         let resultPromise: EventLoopPromise<CommandType.ResultType>
-        let scheduledTask: Scheduled<Void>
     }
 
-    private func scheduleCommandTimeout<ResultType: Sendable>(
+    /// Arm a command's deadline. The timer is cancelled on the event loop the
+    /// moment the result promise completes, so a response that arrived in time
+    /// can never be followed by a timeout, even if the awaiting task resumes late.
+    @discardableResult
+    static func armCommandTimeout<ResultType: Sendable>(
         channel: Channel,
         timeoutSeconds: Int,
-        promise: EventLoopPromise<ResultType>
+        promise: EventLoopPromise<ResultType>,
+        logger: Logging.Logger
     ) -> Scheduled<Void> {
-        let logger = self.logger
-        return channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+        let scheduled = channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
             logger.warning("Command timed out after \(timeoutSeconds) seconds")
+            // The caller never waits on the write (see `send`), so failing the
+            // result wakes it; its timeout handling then recycles the connection,
+            // which also fails a write still waiting for a `+`.
             promise.fail(IMAPError.timeout)
         }
+        promise.futureResult.whenComplete { _ in scheduled.cancel() }
+        return scheduled
     }
 
     private func runCommandHandler<CommandType: IMAPCommand>(
@@ -128,27 +131,45 @@ extension IMAPConnection {
         let tag = run.tag
         let handler = run.handler
         let resultPromise = run.resultPromise
-        let scheduledTask = run.scheduledTask
+        // The timeout measures the SERVER. It is armed by `send`'s `whenWritten`
+        // callback, in the same event-loop task that emits the command, so no
+        // local delay — installing the handler, building an APPEND payload, a
+        // busy cooperative pool or event loop, other work queued between the
+        // write and the arming — is counted, and none can stretch the deadline.
+        // Arming it earlier let a server that answered instantly still "time
+        // out", seen live on Gmail's post-LOGIN NAMESPACE. The timer cancels
+        // itself when the result is set, including a result set before it.
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
-            try await command.send(on: channel, tag: tag)
+            let timeoutSeconds = command.timeoutSeconds
+            let logger = self.logger
+            try await command.send(on: channel, tag: tag) {
+                Self.armCommandTimeout(
+                    channel: channel, timeoutSeconds: timeoutSeconds, promise: resultPromise, logger: logger)
+            }
+            // A close that raced the handler's installation may have been
+            // delivered before the handler was added; don't wait out the deadline.
+            if !channel.isActive {
+                resultPromise.fail(IMAPError.connectionFailed("Connection closed before command completed"))
+            }
             let result = try await resultPromise.futureResult.get()
 
-            scheduledTask.cancel()
             responseBuffer.hasActiveHandler = false
 
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()
 
             return result
-        } catch {
-            scheduledTask.cancel()
+        } catch let caught {
             responseBuffer.hasActiveHandler = false
 
             // Ensure the promise is always resolved — prevents NIO "leaking promise" fatal error
             // when the channel becomes inactive between the guard and pipeline operations.
-            resultPromise.fail(error)
+            resultPromise.fail(caught)
+            // If the timeout fired first, report it rather than the write it aborted.
+            var error = caught
+            do { _ = try await resultPromise.futureResult.get() } catch let settled { error = settled }
 
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
             duplexLogger.flushInboundBuffer()

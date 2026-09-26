@@ -241,7 +241,7 @@ extension IMAPConnection {
         do {
             for request in tagToRequest {
                 let command = FetchMessagePartCommand(identifier: request.uid, section: request.section)
-                try await command.send(on: channel, tag: request.tag)
+                try await command.send(on: channel, tag: request.tag, whenWritten: {})
             }
         } catch {
             scheduledTimeout.cancel()
