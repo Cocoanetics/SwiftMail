@@ -131,14 +131,13 @@ extension IMAPConnection {
         let tag = run.tag
         let handler = run.handler
         let resultPromise = run.resultPromise
-        // The timeout measures the SERVER: it is armed once the command's
-        // writes are queued (`send` never waits on them), so local work —
-        // installing the handler, building an APPEND payload, a busy
-        // cooperative pool resuming us late — never eats the budget. Arming it
+        // The timeout measures the SERVER. It is armed on the event loop in a
+        // task queued after the command's writes (`send` never waits on them),
+        // so local delays — installing the handler, building an APPEND payload,
+        // a busy cooperative pool or event loop — never eat the budget. Arming it
         // earlier let a server that answered instantly still "time out", seen
-        // live on Gmail's post-LOGIN NAMESPACE. A response that beats the
-        // arming is fine: the timer is cancelled as soon as the result is set.
-        var scheduledTask: Scheduled<Void>?
+        // live on Gmail's post-LOGIN NAMESPACE. The timer cancels itself when
+        // the result is set, including a result set before it was armed.
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
@@ -148,15 +147,14 @@ extension IMAPConnection {
             if !channel.isActive {
                 resultPromise.fail(IMAPError.connectionFailed("Connection closed before command completed"))
             }
-            scheduledTask = Self.armCommandTimeout(
-                channel: channel,
-                timeoutSeconds: command.timeoutSeconds,
-                promise: resultPromise,
-                logger: logger
-            )
+            let timeoutSeconds = command.timeoutSeconds
+            let logger = self.logger
+            channel.eventLoop.execute {
+                Self.armCommandTimeout(
+                    channel: channel, timeoutSeconds: timeoutSeconds, promise: resultPromise, logger: logger)
+            }
             let result = try await resultPromise.futureResult.get()
 
-            scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
 
             await handleConnectionTerminationInResponses(handler.untaggedResponses)
@@ -164,7 +162,6 @@ extension IMAPConnection {
 
             return result
         } catch let caught {
-            scheduledTask?.cancel()
             responseBuffer.hasActiveHandler = false
 
             // Ensure the promise is always resolved — prevents NIO "leaking promise" fatal error

@@ -130,6 +130,15 @@ struct CommandTimeoutTimerTests {
             }
         }
 
+        @Test("a busy event loop does not count against the server's deadline")
+        func busyEventLoopDoesNotTimeOut() async throws {
+            try await withLoggedInServer { server in
+                // The loop is blocked for 1.5 s before it can write, against a 1 s deadline.
+                try await server.executeCommand(
+                    ProbeCommand(prepareSeconds: 0, closesChannelFirst: false, blocksEventLoopSeconds: 1.5))
+            }
+        }
+
         @Test("a close the handler never saw fails the command at once")
         func closeMissedByHandlerFailsPromptly() async throws {
             try await withLoggedInServer { server in
@@ -173,6 +182,7 @@ struct CommandTimeoutTimerTests {
 
         let prepareSeconds: Double
         let closesChannelFirst: Bool
+        var blocksEventLoopSeconds: Double = 0
         var timeoutSeconds: Int { 1 }
 
         func toTaggedCommand(tag: String) -> TaggedCommand {
@@ -182,6 +192,10 @@ struct CommandTimeoutTimerTests {
         func send(on channel: Channel, tag: String) async throws {
             if prepareSeconds > 0 { try await Task.sleep(for: .seconds(prepareSeconds)) }
             if closesChannelFirst { try await channel.close() }
+            if blocksEventLoopSeconds > 0 {
+                let seconds = blocksEventLoopSeconds
+                channel.eventLoop.execute { Thread.sleep(forTimeInterval: seconds) }
+            }
             let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(toTaggedCommand(tag: tag)))
             channel.writeAndFlush(wrapped, promise: nil)
         }
