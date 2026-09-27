@@ -317,6 +317,13 @@ extension IMAPConnection {
             }
         }
 
+        // The IMAP client state machine rejected the exchange (e.g. a tagged reply
+        // where a literal's `+` was due): the protocol state is unknown, and a
+        // command may be half written.
+        if error is UnexpectedResponse || error is UnexpectedContinuationRequest {
+            return true
+        }
+
         if let partialError = error as? PartialFetchError,
            case .invalidResponse = partialError {
             return true
