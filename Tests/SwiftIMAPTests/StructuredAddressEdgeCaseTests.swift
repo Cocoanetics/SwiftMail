@@ -242,3 +242,59 @@ extension FetchMessageInfoHandlerTests {
         #expect(EMLParser.parseStructuredAddressList(value).map(\.address) == [address])
     }
 }
+
+extension FetchMessageInfoHandlerTests {
+    // MARK: - Angle-Addr Comments, Group State and Legacy Consistency
+
+    @Test(arguments: [
+        "Alice <first(comment)last@example.com>",
+        "alice@example.com: bob@example.com",
+        "Team: a@example.com, Other: b@example.com;",
+        "a@example.com; b@example.com",
+        "Team: a@example.com; b@example.com",
+        "Team: a@example.com"
+    ])
+    func testMalformedAngleAddrOrGroupLeavesStructuredListEmpty(value: String) {
+        #expect(EMLParser.parseStructuredAddressList(value).isEmpty)
+    }
+
+    @Test
+    func testWellFormedGroupsStillParse() {
+        #expect(EMLParser.parseStructuredAddressList("Team: a@example.com;, b@example.com (x)").map(\.address)
+            == ["a@example.com", "b@example.com"])
+        #expect(EMLParser.parseStructuredAddressList("Alice <(c)alice@example.com(c)>").map(\.address)
+            == ["alice@example.com"])
+    }
+
+    @Test
+    func testSerializationKeepsEveryFromMailbox() throws {
+        let eml = "From: Alice <alice@example.com>, Bob <bob@example.com>\r\nSender: alice@example.com\r\n"
+            + "To: c@example.com\r\nSubject: x\r\n\r\nBody\r\n"
+        let message = try Message(emlData: Data(eml.utf8))
+
+        let reparsed = try Message(emlData: try message.emlData())
+
+        #expect(reparsed.from?.contains("bob@example.com") == true)
+        #expect(try Email(message: message).sender.address == "alice@example.com")
+    }
+
+    @Test
+    func testEditedLegacyFieldsWinOverStaleStructuredOnes() throws {
+        let eml = "From: Alice <alice@example.com>\r\nTo: Old <old@example.com>\r\nSubject: x\r\n\r\nBody\r\n"
+        var header = try Message(emlData: Data(eml.utf8)).header
+        header.to = ["New <new@example.com>"]
+        header.from = "Carol <carol@example.com>"
+        let message = Message(header: header, parts: [])
+
+        let eml2 = String(bytes: try message.emlData(), encoding: .utf8) ?? ""
+        let email = try Email(message: message)
+        let (sender, recipients) = try IMAPServer.sendDraftAddresses(from: header)
+
+        #expect(eml2.contains("new@example.com") && !eml2.contains("old@example.com"))
+        #expect(eml2.contains("carol@example.com") && !eml2.contains("alice@example.com"))
+        #expect(email.recipients.map(\.address) == ["new@example.com"])
+        #expect(email.sender.address == "carol@example.com")
+        #expect(sender.address == "carol@example.com")
+        #expect(recipients.map(\.address) == ["new@example.com"])
+    }
+}

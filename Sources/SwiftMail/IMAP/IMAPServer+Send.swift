@@ -67,7 +67,7 @@ extension IMAPServer {
         guard messageInfo.fromAddress != nil || messageInfo.from != nil else {
             throw IMAPError.invalidArgument("Draft has no sender address")
         }
-        guard let sender = messageInfo.fromAddress
+        guard let sender = messageInfo.consistentFromAddress
             ?? messageInfo.from.flatMap({ parseEmailAddresses(from: $0).first }) else {
             throw IMAPError.invalidArgument("Draft has invalid sender address")
         }
@@ -89,7 +89,7 @@ extension IMAPServer {
     }
 
     private static func addresses(_ structured: [EmailAddress], orParsing legacy: [String]) -> [EmailAddress] {
-        structured.isEmpty ? legacy.flatMap { parseEmailAddresses(from: $0) } : structured
+        MessageInfo.consistentStructured(structured, legacy: legacy) ?? legacy.flatMap { parseEmailAddresses(from: $0) }
     }
 
     /// Append the raw draft message to the Sent mailbox with the `\Seen` flag.

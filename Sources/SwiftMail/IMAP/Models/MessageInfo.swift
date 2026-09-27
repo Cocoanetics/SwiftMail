@@ -228,3 +228,26 @@ public extension MessageInfo {
         return nil
     }
 }
+
+// MARK: - Structured addresses that still match the legacy strings
+
+extension MessageInfo {
+    /// The structured list when it still describes `legacy` (same addresses, in
+    /// order), or when there is no legacy value; `nil` when the two diverge —
+    /// e.g. a caller edited the legacy field — so the legacy value wins.
+    static func consistentStructured(_ structured: [EmailAddress], legacy: [String]) -> [EmailAddress]? {
+        guard !structured.isEmpty else { return nil }
+        guard !legacy.isEmpty else { return structured }
+        let parsed = legacy.flatMap { EMLParser.parseStructuredAddressList($0) }
+        return parsed.map { $0.address.lowercased() } == structured.map { $0.address.lowercased() } ? structured : nil
+    }
+
+    /// ``fromAddress`` when it is still the first mailbox of the legacy
+    /// ``from`` (or there is no legacy value); `nil` when they diverge.
+    var consistentFromAddress: EmailAddress? {
+        guard let fromAddress else { return nil }
+        guard let from else { return fromAddress }
+        let first = EMLParser.parseStructuredAddressList(from).first
+        return first?.address.lowercased() == fromAddress.address.lowercased() ? fromAddress : nil
+    }
+}

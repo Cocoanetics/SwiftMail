@@ -25,18 +25,19 @@ extension Email {
     ///
     /// - Parameter message: The IMAP message to convert.
     /// Structured addresses (``MessageInfo/fromAddress`` and friends) are used
-    /// as-is; the legacy strings are parsed only when those are empty.
+    /// as-is while they still match the legacy strings; otherwise (empty, or the
+    /// legacy field was edited) the legacy strings are parsed.
     ///
     /// - Throws: `ConversionError.missingSender` if the message has no sender,
     ///           `ConversionError.unparsableSender` if the `from` string cannot be parsed.
-    /// Structured addresses when present, else the legacy strings parsed.
+    /// Structured addresses while they match the legacy strings, else the legacy strings parsed.
     private static func addresses(_ structured: [EmailAddress], orParsing legacy: [String]) -> [EmailAddress] {
-        structured.isEmpty ? legacy.compactMap { EmailAddress($0) } : structured
+        MessageInfo.consistentStructured(structured, legacy: legacy) ?? legacy.compactMap { EmailAddress($0) }
     }
 
     public init(message: Message) throws {
         let sender: EmailAddress
-        if let structured = message.header.fromAddress {
+        if let structured = message.header.consistentFromAddress {
             sender = structured
         } else {
             guard let fromStr = message.from else {

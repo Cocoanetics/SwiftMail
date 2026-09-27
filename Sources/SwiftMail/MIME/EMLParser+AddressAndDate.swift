@@ -116,6 +116,10 @@ private struct AddressListScanner {
     private var angleDepth = 0
     private var commentDepth = 0
     private var incomplete = false
+    /// Inside `display-name: … ;`.
+    private var inGroup = false
+    /// A group just closed with `;`: only CFWS or `,` may follow.
+    private var afterGroup = false
 
     mutating func consume(_ scalar: Unicode.Scalar) {
         // A forbidden control anywhere (quoted or not) makes the list malformed:
@@ -144,7 +148,7 @@ private struct AddressListScanner {
     mutating func finish() -> [EmailAddress] {
         // Unfinished syntax (an open comment, quoted-string, domain literal or
         // angle-addr, or a dangling escape) may have swallowed later mailboxes.
-        if escaped || enclosure != nil || commentDepth > 0 || angleDepth > 0 { incomplete = true }
+        if escaped || enclosure != nil || commentDepth > 0 || angleDepth > 0 || inGroup { incomplete = true }
         flush()
         return incomplete ? [] : addresses
     }
@@ -159,19 +163,40 @@ private struct AddressListScanner {
     }
 
     private mutating func consumePlain(_ scalar: Unicode.Scalar) {
+        if afterGroup && scalar != "(" && !isRFCWhitespace(scalar) {
+            afterGroup = false
+            if scalar == "," { return }
+            incomplete = true
+        }
         switch scalar {
             case "\"": enclosure = "\""; current.append(scalar)
             case "[": enclosure = "]"; current.append(scalar)
             case "(":
-                // Inside <…> a comment is dropped; elsewhere its meaning depends
-                // on where it sits, so mark it for `parseMailbox`.
+                // A comment's meaning depends on where it sits (a space between
+                // phrase words, nothing around `.`/`@`, illegal inside an
+                // atom), so mark it — inside `<…>` too — for `parseMailbox`.
                 commentDepth = 1
-                if angleDepth == 0 { current.append(commentMarker) }
+                current.append(commentMarker)
             case "<": angleDepth += 1; current.append(scalar)
             case ">": angleDepth = max(0, angleDepth - 1); current.append(scalar)
-            case ":" where angleDepth == 0: current = [] // a group's display name
-            case "," where angleDepth == 0, ";" where angleDepth == 0: flush()
+            case ":" where angleDepth == 0, ";" where angleDepth == 0: consumeGroupDelimiter(scalar)
+            case "," where angleDepth == 0: flush()
             default: current.append(scalar)
+        }
+    }
+
+    /// `:` opens a group only after a display name — not inside another group,
+    /// and not after an address (`a@b: c@d`); `;` closes the open group.
+    private mutating func consumeGroupDelimiter(_ scalar: Unicode.Scalar) {
+        if scalar == ":" {
+            if inGroup || current.contains("@") || current.contains("<") { incomplete = true }
+            inGroup = true
+            current = []
+        } else {
+            if !inGroup { incomplete = true }
+            flush()
+            inGroup = false
+            afterGroup = true
         }
     }
 
