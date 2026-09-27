@@ -124,7 +124,7 @@ struct CommandTimeoutTimerTests {
 
         @Test("local preparation in send does not count against the server's deadline")
         func slowPreparationDoesNotTimeOut() async throws {
-            try await withLoggedInServer { server in
+            try await withLoggedInServer { server, _ in
                 // 1.5 s of local work before the first write, against a 1 s deadline.
                 try await server.executeCommand(ProbeCommand(prepareSeconds: 1.5, closesChannelFirst: false))
             }
@@ -132,7 +132,7 @@ struct CommandTimeoutTimerTests {
 
         @Test("a busy event loop does not count against the server's deadline")
         func busyEventLoopDoesNotTimeOut() async throws {
-            try await withLoggedInServer { server in
+            try await withLoggedInServer { server, _ in
                 // The loop is blocked for 1.5 s before it can write, against a 1 s deadline.
                 try await server.executeCommand(
                     ProbeCommand(prepareSeconds: 0, closesChannelFirst: false, blocksEventLoopSeconds: 1.5))
@@ -141,7 +141,7 @@ struct CommandTimeoutTimerTests {
 
         @Test("a deadline starts with the write, not after work queued behind it")
         func deadlineStartsWithTheWrite() async throws {
-            try await withLoggedInServer(withholdsLiteral: true) { server in
+            try await withLoggedInServer(withholdsLiteral: true) { server, _ in
                 // The server answers NOOP at once. A 1.5 s callback queued right after
                 // the write must not stretch a 1 s deadline armed only after it:
                 // with the server silent, the command must time out within ~1 s of
@@ -160,7 +160,8 @@ struct CommandTimeoutTimerTests {
 
         @Test("a command that fails with its literal still pending does not stall the next one")
         func failedCommandWithPendingWriteRecyclesConnection() async throws {
-            try await withLoggedInServer(withholdsLiteral: true, withheldReply: "* NO search rejected\r\n") { server in
+            let reply = "* NO search rejected\r\n"
+            try await withLoggedInServer(withholdsLiteral: true, withheldReply: reply) { server, _ in
                 _ = try await server.selectMailbox("INBOX")
                 do {
                     let _: SwiftMail.MessageIdentifierSet<SwiftMail.UID> = try await server.search(
@@ -176,9 +177,28 @@ struct CommandTimeoutTimerTests {
             }
         }
 
+        @Test("a failure that beats the literal's + still recycles, even if + arrives in the same read")
+        func failureBeforeContinuationInSameReadRecycles() async throws {
+            let reply = "* NO warning\r\n+ continue\r\n"
+            try await withLoggedInServer(withholdsLiteral: true, withheldReply: reply) { server, testServer in
+                _ = try await server.selectMailbox("INBOX")
+                do {
+                    let _: SwiftMail.MessageIdentifierSet<SwiftMail.UID> = try await server.search(
+                        criteria: [.text("päss")])
+                    Issue.record("the search should have been rejected")
+                } catch {
+                    // expected: the untagged NO fails the search
+                }
+                _ = try await server.noop()
+                // The half-written SEARCH must not be reused: the next command
+                // runs on a fresh, re-authenticated connection.
+                #expect(testServer.commandLog.filter { $0.uppercased().contains(" LOGIN ") }.count == 2)
+            }
+        }
+
         @Test("a close the handler never saw fails the command at once")
         func closeMissedByHandlerFailsPromptly() async throws {
-            try await withLoggedInServer { server in
+            try await withLoggedInServer { server, _ in
                 let start = Date()
                 do {
                     try await server.executeCommand(ProbeCommand(prepareSeconds: 0, closesChannelFirst: true))
@@ -193,7 +213,7 @@ struct CommandTimeoutTimerTests {
         private func withLoggedInServer(
             withholdsLiteral: Bool = false,
             withheldReply: String? = nil,
-            _ body: (SwiftMail.IMAPServer) async throws -> Void
+            _ body: (SwiftMail.IMAPServer, IMAPTestServer) async throws -> Void
         ) async throws {
             let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             let maildir = tempRoot.appendingPathComponent("Maildir")
@@ -217,7 +237,7 @@ struct CommandTimeoutTimerTests {
                 let server = SwiftMail.IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
                 try await server.connect()
                 try await server.login(username: "testuser", password: "testpass")
-                try await body(server)
+                try await body(server, testServer)
                 try? await server.disconnect()
             }
         }

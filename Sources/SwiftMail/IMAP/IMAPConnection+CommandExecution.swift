@@ -139,8 +139,11 @@ extension IMAPConnection {
         // Arming it earlier let a server that answered instantly still "time
         // out", seen live on Gmail's post-LOGIN NAMESPACE. The timer cancels
         // itself when the result is set, including a result set before it.
-        // Touched only on the event loop: whether the command's last write settled.
+        // Touched only on the event loop: whether the command's last write had
+        // settled when the result failed. Recorded as the failure happens, since
+        // a `+` in the same read can complete the write before we resume.
         let writeState = WriteState()
+        resultPromise.futureResult.whenFailure { _ in writeState.failedWithWritePending = !writeState.settled }
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
@@ -183,7 +186,8 @@ extension IMAPConnection {
             // A result that failed while its write is still pending (a literal
             // awaiting `+`) leaves NIOIMAP mid-command: the next command would
             // queue behind it. Recycle, whatever the error.
-            let writePending = (try? await channel.eventLoop.submit { !writeState.settled }.get()) ?? false
+            let writePending = (try? await channel.eventLoop.submit { writeState.failedWithWritePending }.get())
+                ?? false
             if writePending || shouldRecycleConnection(for: error) {
                 try? await disconnectBody()
             }
@@ -281,8 +285,9 @@ extension IMAPConnection {
     }
 }
 
-/// Whether a command's last write has settled; read and written only on the
-/// channel's event loop.
+/// Whether a command's last write has settled, and whether its result failed
+/// before that; read and written only on the channel's event loop.
 private final class WriteState: @unchecked Sendable {
     var settled = false
+    var failedWithWritePending = false
 }
