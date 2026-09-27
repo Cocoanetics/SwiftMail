@@ -21,7 +21,9 @@ struct AppendCommand: IMAPCommand {
         }
     }
 
-    func send(on channel: Channel, tag: String, whenWritten: @escaping @Sendable () -> Void) async throws {
+    func send(
+        on channel: Channel, tag: String, whenWritten: @escaping @Sendable (EventLoopFuture<Void>) -> Void
+    ) async throws {
         var messageBuffer = channel.allocator.buffer(capacity: message.utf8.count)
         messageBuffer.writeString(message)
 
@@ -43,13 +45,14 @@ struct AppendCommand: IMAPCommand {
             channel.flush()
             // The server's clock starts with that flush: arm the deadline now,
             // before any payload-sized work (writing, logging) on the loop.
-            whenWritten()
+            let finished = channel.eventLoop.makePromise(of: Void.self)
+            whenWritten(finished.futureResult)
 
             // Do not await write promises here. These writes may be continuation-gated by the IMAP state
             // machine, and awaiting them can deadlock this command send path until timeout.
             channel.write(IMAPClientHandler.OutboundIn.part(.append(.messageBytes(messageBuffer))), promise: nil)
             channel.write(IMAPClientHandler.OutboundIn.part(.append(.endMessage)), promise: nil)
-            channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.append(.finish)), promise: nil)
+            channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.append(.finish)), promise: finished)
         }
     }
 }

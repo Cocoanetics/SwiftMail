@@ -22,8 +22,12 @@ protocol IMAPCommand where ResultType: Sendable {
 
     /// Send the command to the server without waiting on its writes.
     /// `whenWritten` runs on the event loop in the same task that emits the
-    /// command, right after it, so nothing can run between the two.
-    func send(on channel: Channel, tag: String, whenWritten: @escaping @Sendable () -> Void) async throws
+    /// command, right after it, so nothing can run between the two. It gets the
+    /// future of the command's last write, which a synchronizing literal keeps
+    /// pending until the server's `+`.
+    func send(
+        on channel: Channel, tag: String, whenWritten: @escaping @Sendable (EventLoopFuture<Void>) -> Void
+    ) async throws
 
     /// Build the response handler. Commands with request-specific validation
     /// may override the default implementation.
@@ -56,7 +60,9 @@ extension IMAPCommand {
 }
 
 extension IMAPTaggedCommand {
-    func send(on channel: Channel, tag: String, whenWritten: @escaping @Sendable () -> Void) async throws {
+    func send(
+        on channel: Channel, tag: String, whenWritten: @escaping @Sendable (EventLoopFuture<Void>) -> Void
+    ) async throws {
         let taggedCommand = toTaggedCommand(tag: tag)
         let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(taggedCommand))
         // Like AppendCommand, don't await the write. A command carrying a
@@ -68,7 +74,7 @@ extension IMAPTaggedCommand {
         written.futureResult.whenFailure { _ in channel.close(promise: nil) }
         channel.eventLoop.execute {
             channel.writeAndFlush(wrapped, promise: written)
-            whenWritten()
+            whenWritten(written.futureResult)
         }
     }
 }

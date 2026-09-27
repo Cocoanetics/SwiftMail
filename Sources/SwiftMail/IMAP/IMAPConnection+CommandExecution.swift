@@ -139,14 +139,17 @@ extension IMAPConnection {
         // Arming it earlier let a server that answered instantly still "time
         // out", seen live on Gmail's post-LOGIN NAMESPACE. The timer cancels
         // itself when the result is set, including a result set before it.
+        // Touched only on the event loop: whether the command's last write settled.
+        let writeState = WriteState()
         do {
             try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
             responseBuffer.hasActiveHandler = true
             let timeoutSeconds = command.timeoutSeconds
             let logger = self.logger
-            try await command.send(on: channel, tag: tag) {
+            try await command.send(on: channel, tag: tag) { lastWrite in
                 Self.armCommandTimeout(
                     channel: channel, timeoutSeconds: timeoutSeconds, promise: resultPromise, logger: logger)
+                lastWrite.whenComplete { _ in writeState.settled = true }
             }
             // A close that raced the handler's installation may have been
             // delivered before the handler was added; don't wait out the deadline.
@@ -177,7 +180,11 @@ extension IMAPConnection {
                 try? await channel.pipeline.removeHandler(handler)
             }
             logErrorDiagnostics(error: error, operation: "command \(String(describing: CommandType.self)) [\(tag)]")
-            if shouldRecycleConnection(for: error) {
+            // A result that failed while its write is still pending (a literal
+            // awaiting `+`) leaves NIOIMAP mid-command: the next command would
+            // queue behind it. Recycle, whatever the error.
+            let writePending = (try? await channel.eventLoop.submit { !writeState.settled }.get()) ?? false
+            if writePending || shouldRecycleConnection(for: error) {
                 try? await disconnectBody()
             }
             throw error
@@ -272,4 +279,10 @@ extension IMAPConnection {
         commandTagCounter += 1
         return "\(tagPrefix)\(String(format: "%03d", commandTagCounter))"
     }
+}
+
+/// Whether a command's last write has settled; read and written only on the
+/// channel's event loop.
+private final class WriteState: @unchecked Sendable {
+    var settled = false
 }

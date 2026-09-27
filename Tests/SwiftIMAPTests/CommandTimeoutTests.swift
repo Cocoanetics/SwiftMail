@@ -158,6 +158,24 @@ struct CommandTimeoutTimerTests {
             }
         }
 
+        @Test("a command that fails with its literal still pending does not stall the next one")
+        func failedCommandWithPendingWriteRecyclesConnection() async throws {
+            try await withLoggedInServer(withholdsLiteral: true, withheldReply: "* NO search rejected\r\n") { server in
+                _ = try await server.selectMailbox("INBOX")
+                do {
+                    let _: SwiftMail.MessageIdentifierSet<SwiftMail.UID> = try await server.search(
+                        criteria: [.text("päss")])
+                    Issue.record("the search should have been rejected")
+                } catch {
+                    // expected: the untagged NO fails the search
+                }
+                // The next command must not queue behind the half-written search.
+                let start = Date()
+                _ = try await server.noop()
+                #expect(Date().timeIntervalSince(start) < 3)
+            }
+        }
+
         @Test("a close the handler never saw fails the command at once")
         func closeMissedByHandlerFailsPromptly() async throws {
             try await withLoggedInServer { server in
@@ -174,6 +192,7 @@ struct CommandTimeoutTimerTests {
 
         private func withLoggedInServer(
             withholdsLiteral: Bool = false,
+            withheldReply: String? = nil,
             _ body: (SwiftMail.IMAPServer) async throws -> Void
         ) async throws {
             let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -190,6 +209,7 @@ struct CommandTimeoutTimerTests {
                 ? try IMAPTestServer(
                     advertisedCapabilities: ["IMAP4rev1", "AUTH=PLAIN"],
                     withholdsLiteralContinuation: true,
+                    withheldLiteralReply: withheldReply,
                     maildirURL: maildir)
                 : try IMAPTestServer(maildirURL: maildir)
             try testServer.start()
@@ -223,7 +243,9 @@ struct CommandTimeoutTimerTests {
                 : TaggedCommand(tag: tag, command: .noop)
         }
 
-        func send(on channel: Channel, tag: String, whenWritten: @escaping @Sendable () -> Void) async throws {
+        func send(
+            on channel: Channel, tag: String, whenWritten: @escaping @Sendable (EventLoopFuture<Void>) -> Void
+        ) async throws {
             if prepareSeconds > 0 { try await Task.sleep(for: .seconds(prepareSeconds)) }
             if closesChannelFirst { try await channel.close() }
             if blocksEventLoopSeconds > 0 {
@@ -233,8 +255,7 @@ struct CommandTimeoutTimerTests {
             let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(toTaggedCommand(tag: tag)))
             let blockAfter = blocksAfterWriteSeconds
             channel.eventLoop.execute {
-                channel.writeAndFlush(wrapped, promise: nil)
-                whenWritten()
+                whenWritten(channel.writeAndFlush(wrapped))
             }
             // Another connection's work queued right after the write.
             if blockAfter > 0 { channel.eventLoop.execute { Thread.sleep(forTimeInterval: blockAfter) } }
@@ -275,7 +296,7 @@ struct AppendDeadlineTests {
 
         let command = AppendCommand(
             mailboxName: "INBOX", message: "Subject: x\r\n\r\nbody", flags: [], internalDate: nil)
-        try await command.send(on: channel, tag: "A1") { armedAfter.value = counter.count }
+        try await command.send(on: channel, tag: "A1") { _ in armedAfter.value = counter.count }
         channel.embeddedEventLoop.run()
 
         // start + beginMessage were flushed; messageBytes, endMessage and finish were not yet written.
