@@ -158,3 +158,47 @@ extension FetchMessageInfoHandlerTests {
         #expect(header.bccAddresses.isEmpty)
     }
 }
+
+extension FetchMessageInfoHandlerTests {
+    // MARK: - Header Trimming, Unfinished Syntax and Envelope Precedence
+
+    @Test
+    func testHeaderValuesKeepLeadingNonBreakingSpace() throws {
+        let eml = "To: \u{00A0}first@example.com\r\nCc: a@example.com,\r\n \u{00A0}second@example.com\r\n"
+            + "Subject: x\r\n\r\nBody\r\n"
+
+        let message = try Message(emlData: Data(eml.utf8))
+
+        #expect(message.header.toAddresses == [EmailAddress(address: "\u{00A0}first@example.com")])
+        #expect(message.header.ccAddresses == [
+            EmailAddress(address: "a@example.com"), EmailAddress(address: "\u{00A0}second@example.com")
+        ])
+    }
+
+    @Test(arguments: [
+        "alice@example.com (unterminated, bob@example.com",
+        "\"unterminated, bob@example.com",
+        "a@[unterminated, b@example.com",
+        "Ann <ann@example.com, bob@example.com",
+        "\"dangling\\"
+    ])
+    func testUnfinishedSyntaxLeavesStructuredListEmpty(value: String) {
+        #expect(EMLParser.parseStructuredAddressList(value).isEmpty)
+    }
+
+    @Test
+    func testEnvelopeEmptyGroupIsNotOverriddenByHeader() async throws {
+        let headerBlock = "To: Bob <bob@example.com>\r\n\r\n"
+        let emptyGroup = "((NIL NIL \"Undisclosed recipients\" NIL)(NIL NIL NIL NIL))"
+        let envelope = "(NIL NIL NIL NIL NIL \(emptyGroup) NIL NIL NIL NIL)"
+        let response = "* 1 FETCH (ENVELOPE \(envelope) BODY[HEADER.FIELDS (TO)] {\(headerBlock.utf8.count)}\r\n"
+            + headerBlock + ")\r\n"
+
+        let infos = try await executeFetch([response, "A001 OK FETCH completed\r\n"])
+
+        try #require(infos.count == 1)
+        #expect(infos[0].to.count == 1)
+        #expect(infos[0].to.first?.contains("Bob") == false)
+        #expect(infos[0].toAddresses.isEmpty)
+    }
+}

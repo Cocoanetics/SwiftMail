@@ -103,11 +103,11 @@ extension EMLParser {
             // Continuation line?
             if let first = line.first, first == " " || first == "\t" {
                 // Append to current header value (unfolding)
-                currentValue += " " + line.trimmingCharacters(in: .whitespaces)
+                currentValue += " " + line.trimmingWSP()
             } else if let colonIndex = line.firstIndex(of: ":") {
                 // Save previous header
                 if let key = currentKey {
-                    headers[key] = currentValue.trimmingCharacters(in: .whitespaces)
+                    headers[key] = currentValue.trimmingWSP()
                 }
 
                 let key = String(line[line.startIndex..<colonIndex]).lowercased().trimmingCharacters(in: .whitespaces)
@@ -119,7 +119,7 @@ extension EMLParser {
 
         // Save last header
         if let key = currentKey {
-            headers[key] = currentValue.trimmingCharacters(in: .whitespaces)
+            headers[key] = currentValue.trimmingWSP()
         }
 
         return headers
@@ -136,10 +136,10 @@ extension EMLParser {
             if line.isEmpty { continue }
 
             if let first = line.first, first == " " || first == "\t" {
-                currentValue += " " + line.trimmingCharacters(in: .whitespaces)
+                currentValue += " " + line.trimmingWSP()
             } else if let colonIndex = line.firstIndex(of: ":") {
                 if let key = currentKey {
-                    headers.append((key: key, value: currentValue.trimmingCharacters(in: .whitespaces)))
+                    headers.append((key: key, value: currentValue.trimmingWSP()))
                 }
 
                 let key = String(line[line.startIndex..<colonIndex]).lowercased().trimmingCharacters(in: .whitespaces)
@@ -150,7 +150,7 @@ extension EMLParser {
         }
 
         if let key = currentKey {
-            headers.append((key: key, value: currentValue.trimmingCharacters(in: .whitespaces)))
+            headers.append((key: key, value: currentValue.trimmingWSP()))
         }
 
         return headers
@@ -202,5 +202,18 @@ extension EMLParser {
             parts: [],
             additionalFields: additional.isEmpty ? nil : additional
         )
+    }
+}
+
+extension String {
+    /// Trims RFC 5322 WSP (SP and HTAB) only. Foundation's `.whitespaces` also
+    /// removes Unicode spaces such as U+00A0, which RFC 6532 treats as content
+    /// (it can begin or end a local-part or display name).
+    func trimmingWSP() -> String {
+        let isWSP: (Character) -> Bool = { $0 == " " || $0 == "\t" }
+        guard let first = firstIndex(where: { !isWSP($0) }), let last = lastIndex(where: { !isWSP($0) }) else {
+            return ""
+        }
+        return String(self[first...last])
     }
 }

@@ -142,6 +142,9 @@ private struct AddressListScanner {
     /// a structured list is either complete or empty, so callers that prefer
     /// it fall back to the legacy strings rather than silently lose a recipient.
     mutating func finish() -> [EmailAddress] {
+        // Unfinished syntax (an open comment, quoted-string, domain literal or
+        // angle-addr, or a dangling escape) may have swallowed later mailboxes.
+        if escaped || enclosure != nil || commentDepth > 0 || angleDepth > 0 { incomplete = true }
         flush()
         return incomplete ? [] : addresses
     }

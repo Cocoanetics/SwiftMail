@@ -150,12 +150,13 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     ) {
         let parsed = EMLParser.buildMessageInfo(from: fields)
         if header.subject == nil { header.subject = parsed.subject }
-        if header.from == nil { header.from = parsed.from }
+        // A field ENVELOPE supplied (even as an empty group) keeps its legacy and
+        // structured values together; the header fills both only when missing.
+        if header.from == nil { (header.from, header.fromAddress) = (parsed.from, parsed.fromAddress) }
         if header.replyTo.isEmpty { header.replyTo = parsed.replyTo }
-        if header.to.isEmpty { header.to = parsed.to }
-        if header.cc.isEmpty { header.cc = parsed.cc }
-        if header.bcc.isEmpty { header.bcc = parsed.bcc }
-        applyMissingStructuredAddresses(parsed, to: &header)
+        if header.to.isEmpty { (header.to, header.toAddresses) = (parsed.to, parsed.toAddresses) }
+        if header.cc.isEmpty { (header.cc, header.ccAddresses) = (parsed.cc, parsed.ccAddresses) }
+        if header.bcc.isEmpty { (header.bcc, header.bccAddresses) = (parsed.bcc, parsed.bccAddresses) }
         if header.date == nil, let rawDate = fields["date"] {
             header.date = parseEnvelopeDate(rawDate)
         }
@@ -163,15 +164,6 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         if header.inReplyTo == nil, let rawInReplyTo = fields["in-reply-to"] {
             header.inReplyTo = MessageID(rawInReplyTo)
         }
-    }
-
-    /// Structured counterparts of the header address fields, for fetches
-    /// without ENVELOPE (or with NIL address fields in it).
-    private static func applyMissingStructuredAddresses(_ parsed: MessageInfo, to header: inout MessageInfo) {
-        if header.fromAddress == nil { header.fromAddress = parsed.fromAddress }
-        if header.toAddresses.isEmpty { header.toAddresses = parsed.toAddresses }
-        if header.ccAddresses.isEmpty { header.ccAddresses = parsed.ccAddresses }
-        if header.bccAddresses.isEmpty { header.bccAddresses = parsed.bccAddresses }
     }
 
     private func currentMessageIndex() -> Int? {
