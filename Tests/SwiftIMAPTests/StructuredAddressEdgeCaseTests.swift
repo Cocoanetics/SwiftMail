@@ -202,3 +202,43 @@ extension FetchMessageInfoHandlerTests {
         #expect(infos[0].toAddresses.isEmpty)
     }
 }
+
+extension FetchMessageInfoHandlerTests {
+    // MARK: - Scalar-Based Header Syntax and Addr-Spec Validity
+
+    @Test
+    func testHeaderSyntaxIsScannedByScalar() throws {
+        let eml = "Subject: \u{0301}Hello\r\n"
+            + "X-Mark:\u{0301}x\r\n"
+            + "To: a@example.com,\r\n \u{0301}Bob <bob@example.com>\r\n\r\nBody\r\n"
+
+        let message = try Message(emlData: Data(eml.utf8))
+
+        #expect(message.header.subject == "\u{0301}Hello")
+        #expect(message.header.additionalFields?["x-mark"] == "\u{0301}x")
+        #expect(message.header.toAddresses == [
+            EmailAddress(address: "a@example.com"),
+            EmailAddress(name: "\u{0301}Bob", address: "bob@example.com")
+        ])
+    }
+
+    @Test(arguments: [
+        "first last@example.com",
+        "\"a\" \"b\"@example.com",
+        "bob@example.com junk",
+        "Alice <alice@example.com> bob@example.com",
+        "Alice <alice@example.com> x"
+    ])
+    func testIllegalCFWSOrTrailingTextLeavesStructuredListEmpty(value: String) {
+        #expect(EMLParser.parseStructuredAddressList(value).isEmpty)
+    }
+
+    @Test(arguments: [
+        ("first . last @ example.com", "first.last@example.com"),
+        ("bob@example.com (Bob)", "bob@example.com"),
+        ("Alice <alice@example.com> (work)", "alice@example.com")
+    ])
+    func testLegalCFWSIsRemoved(value: String, address: String) {
+        #expect(EMLParser.parseStructuredAddressList(value).map(\.address) == [address])
+    }
+}

@@ -101,17 +101,17 @@ extension EMLParser {
             if line.isEmpty { continue }
 
             // Continuation line?
-            if let first = line.first, first == " " || first == "\t" {
+            if let first = line.unicodeScalars.first, first == " " || first == "\t" {
                 // Append to current header value (unfolding)
                 currentValue += " " + line.trimmingWSP()
-            } else if let colonIndex = line.firstIndex(of: ":") {
+            } else if let colonIndex = line.unicodeScalars.firstIndex(of: ":") {
                 // Save previous header
                 if let key = currentKey {
                     headers[key] = currentValue.trimmingWSP()
                 }
 
                 let key = String(line[line.startIndex..<colonIndex]).lowercased().trimmingCharacters(in: .whitespaces)
-                let value = String(line[line.index(after: colonIndex)...])
+                let value = String(line.unicodeScalars[line.unicodeScalars.index(after: colonIndex)...])
                 currentKey = key
                 currentValue = value
             }
@@ -135,15 +135,15 @@ extension EMLParser {
         for line in lines {
             if line.isEmpty { continue }
 
-            if let first = line.first, first == " " || first == "\t" {
+            if let first = line.unicodeScalars.first, first == " " || first == "\t" {
                 currentValue += " " + line.trimmingWSP()
-            } else if let colonIndex = line.firstIndex(of: ":") {
+            } else if let colonIndex = line.unicodeScalars.firstIndex(of: ":") {
                 if let key = currentKey {
                     headers.append((key: key, value: currentValue.trimmingWSP()))
                 }
 
                 let key = String(line[line.startIndex..<colonIndex]).lowercased().trimmingCharacters(in: .whitespaces)
-                let value = String(line[line.index(after: colonIndex)...])
+                let value = String(line.unicodeScalars[line.unicodeScalars.index(after: colonIndex)...])
                 currentKey = key
                 currentValue = value
             }
@@ -209,11 +209,15 @@ extension String {
     /// Trims RFC 5322 WSP (SP and HTAB) only. Foundation's `.whitespaces` also
     /// removes Unicode spaces such as U+00A0, which RFC 6532 treats as content
     /// (it can begin or end a local-part or display name).
+    /// Scans Unicode scalars: SP followed by a combining mark is one Swift
+    /// `Character` but still a WSP scalar and then content.
     func trimmingWSP() -> String {
-        let isWSP: (Character) -> Bool = { $0 == " " || $0 == "\t" }
-        guard let first = firstIndex(where: { !isWSP($0) }), let last = lastIndex(where: { !isWSP($0) }) else {
+        let isWSP: (Unicode.Scalar) -> Bool = { $0 == " " || $0 == "\t" }
+        let scalars = unicodeScalars
+        guard let first = scalars.firstIndex(where: { !isWSP($0) }),
+              let last = scalars.lastIndex(where: { !isWSP($0) }) else {
             return ""
         }
-        return String(self[first...last])
+        return String(scalars[first...last])
     }
 }

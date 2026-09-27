@@ -200,10 +200,12 @@ private let commentMarker: Unicode.Scalar = "\u{1}"
 private func parseMailbox(_ value: Scalars) -> EmailAddress? {
     let lexemes = lexed(value)
     guard let open = lexemes.first(where: { $0.topLevel && $0.scalar == "<" })?.index else {
-        let address = addrSpec(lexemes)
-        return address.unicodeScalars.contains("@") ? EmailAddress(address: address) : nil
+        guard let address = addrSpec(lexemes), address.unicodeScalars.contains("@") else { return nil }
+        return EmailAddress(address: address)
     }
-    guard let close = lexemes.last(where: { $0.topLevel && $0.scalar == ">" && $0.index > open })?.index else {
+    guard let close = lexemes.first(where: { $0.topLevel && $0.scalar == ">" && $0.index > open })?.index,
+          // After a name-addr closes, only CFWS may follow.
+          lexemes[(close + 1)...].allSatisfy({ isRFCWhitespace($0.scalar) || $0.scalar == commentMarker }) else {
         return nil
     }
     var inner = lexed(Array(value[(open + 1)..<close]))
@@ -212,8 +214,7 @@ private func parseMailbox(_ value: Scalars) -> EmailAddress? {
        let colon = inner.firstIndex(where: { $0.topLevel && $0.scalar == ":" }) {
         inner.removeSubrange(...colon)
     }
-    let address = addrSpec(inner)
-    guard address.unicodeScalars.contains("@") else { return nil }
+    guard let address = addrSpec(inner), address.unicodeScalars.contains("@") else { return nil }
     let name = phraseText(Array(value[..<open]))
     return EmailAddress(name: name.isEmpty ? nil : name, address: address)
 }
@@ -247,10 +248,26 @@ private func lexed(_ value: Scalars) -> [Lexeme] {
 
 /// An addr-spec without its CFWS: top-level whitespace and comments are not
 /// part of the address; inside a quoted local-part or domain literal they are.
-private func addrSpec(_ lexemes: [Lexeme]) -> String {
-    string(lexemes.lazy.filter {
-        !$0.topLevel || (!isRFCWhitespace($0.scalar) && $0.scalar != commentMarker)
-    }.map(\.scalar))
+/// `nil` when CFWS sits where the grammar has none: between two words that no
+/// `.` or `@` separates (`first last@…`, `"a" "b"@…`, `bob@example.com junk`),
+/// which removing it would turn into a different address.
+private func addrSpec(_ lexemes: [Lexeme]) -> String? {
+    let isCFWS: (Lexeme) -> Bool = { $0.topLevel && (isRFCWhitespace($0.scalar) || $0.scalar == commentMarker) }
+    var result: [Unicode.Scalar] = []
+    var pendingCFWS = false
+    for lexeme in lexemes {
+        if isCFWS(lexeme) {
+            pendingCFWS = !result.isEmpty
+            continue
+        }
+        let isDelimiter = lexeme.topLevel && (lexeme.scalar == "." || lexeme.scalar == "@")
+        if pendingCFWS, let previous = result.last, previous != ".", previous != "@", !isDelimiter {
+            return nil
+        }
+        pendingCFWS = false
+        result.append(lexeme.scalar)
+    }
+    return string(result)
 }
 
 /// A display-name phrase as the text it stands for (RFC 5322 §3.2, RFC 2047):
