@@ -15,10 +15,11 @@ public struct EmailAddress: Hashable, Codable, Sendable {
 
     /// Initialize a new email address
     /// - Parameters:
-    ///   - name: Optional display name
+    ///   - name: Optional display name. An empty name is the same as no name
+    ///     and is stored as `nil`, as the two read and write identically.
     ///   - address: The email address
     public init(name: String? = nil, address: String) {
-        self.name = name
+        self.name = name?.isEmpty == false ? name : nil
         self.address = address
     }
 }
