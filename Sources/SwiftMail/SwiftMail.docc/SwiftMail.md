@@ -47,6 +47,8 @@ Tutorial: <doc:SendingEmailsWithSMTP>
 - ``SMTPServer``
 - ``Email``
 - ``EmailAddress``
+- ``AddressListEntry``
+- ``AddressParser``
 
 ### Email Operations
 

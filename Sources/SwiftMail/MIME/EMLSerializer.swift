@@ -73,17 +73,16 @@ public struct EMLSerializer {
         output += "\(name): \(values.joined(separator: ", "))\r\n"
     }
 
-    /// Re-encode display names whenever a MessageInfo value is serialized.
-    /// Parsed EML keeps addresses in wire form, while callers may also provide a
-    /// decoded display name directly; both paths must produce safe field bytes.
+    /// Re-write an address field value for the header whenever a MessageInfo
+    /// value is serialized. Parsed EML keeps addresses in wire form, while
+    /// callers may also provide a decoded display name directly; both come out
+    /// as safe field bytes: display names encoded where they must be, the
+    /// addr-spec never encoded (RFC 6532 keeps a UTF-8 one as it is), groups
+    /// whole, and no control character that could start a header field. Text
+    /// that is not an address is written as it is, so a lenient reader can
+    /// still find an address in it; see ``AddressListEntry/description``.
     private static func headerSafeAddress(_ value: String) -> String {
-        guard let parsed = EmailAddress(value) else {
-            return value.rfc2047EncodedHeader()
-        }
-        if parsed.name?.rfc2047RequiresEncodingAsDisplayName == true {
-            return parsed.headerString()
-        }
-        return value.rfc2047EncodedHeader()
+        AddressParser.parseAddressList(value).map(\.description).joined(separator: ", ")
     }
 
     /// Emit the body: empty placeholder, single-part inline, or multipart.

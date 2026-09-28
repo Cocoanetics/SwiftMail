@@ -17,6 +17,10 @@ public extension Email {
         - textBody: The plain text body of the email
         - htmlBody: The HTML body of the email (optional)
         - attachments: Optional attachments for the email
+
+     Each string is one mailbox (see ``EmailAddress/init(_:)``). Returns `nil`
+     if the sender or any recipient is not a valid address, rather than sending
+     to fewer people than named, or if there are no recipients.
      */
     init?(
         senderString: String,
@@ -28,17 +32,12 @@ public extension Email {
         htmlBody: String? = nil,
         attachments: [Attachment]? = nil
     ) {
-        guard let sender = EmailAddress(senderString) else {
+        guard let sender = EmailAddress(senderString),
+              let recipients = Self.addresses(recipientStrings), !recipients.isEmpty,
+              let ccRecipients = Self.addresses(ccRecipientStrings),
+              let bccRecipients = Self.addresses(bccRecipientStrings) else {
             return nil
         }
-
-        let recipients = recipientStrings.compactMap { EmailAddress($0) }
-        guard !recipients.isEmpty else {
-            return nil
-        }
-
-        let ccRecipients = ccRecipientStrings.compactMap { EmailAddress($0) }
-        let bccRecipients = bccRecipientStrings.compactMap { EmailAddress($0) }
 
         self.init(
             sender: sender,
@@ -54,6 +53,8 @@ public extension Email {
 
     /**
      Initialize a new email with string-based sender and a single recipient
+
+     Returns `nil` if the sender or any recipient is not a valid address.
      
      - Parameters:
         - senderString: The sender as a formatted string (e.g., "John Doe <john@example.com>")
@@ -85,5 +86,11 @@ public extension Email {
             htmlBody: htmlBody,
             attachments: attachments
         )
+    }
+
+    /// The addresses of `strings`, one mailbox each, or `nil` if any of them isn't one.
+    private static func addresses(_ strings: [String]) -> [EmailAddress]? {
+        let addresses = strings.compactMap { EmailAddress($0) }
+        return addresses.count == strings.count ? addresses : nil
     }
 }

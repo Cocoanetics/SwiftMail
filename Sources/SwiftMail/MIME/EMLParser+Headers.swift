@@ -91,6 +91,12 @@ extension EMLParser {
     /// Parse an RFC 5322 header block into key-value pairs.
     /// Handles continuation lines (lines starting with whitespace).
     /// Keys are lowercased for uniform lookup.
+    ///
+    /// Lines are examined by Unicode scalar, and values are trimmed of WSP
+    /// (space and tab) only: a value may begin with a combining mark, which
+    /// Swift joins to a preceding space in one `Character`, or with a Unicode
+    /// space such as U+00A0, which RFC 6532 makes text (the first character of
+    /// a local-part, say).
     static func parseHeaders(_ block: String) -> [String: String] {
         var headers: [String: String] = [:]
         var currentKey: String?
@@ -101,17 +107,17 @@ extension EMLParser {
             if line.isEmpty { continue }
 
             // Continuation line?
-            if let first = line.first, first == " " || first == "\t" {
+            if let first = line.unicodeScalars.first, first == " " || first == "\t" {
                 // Append to current header value (unfolding)
-                currentValue += " " + line.trimmingCharacters(in: .whitespaces)
-            } else if let colonIndex = line.firstIndex(of: ":") {
+                currentValue += " " + line.trimmingWSP()
+            } else if let colonIndex = line.unicodeScalars.firstIndex(of: ":") {
                 // Save previous header
                 if let key = currentKey {
-                    headers[key] = currentValue.trimmingCharacters(in: .whitespaces)
+                    headers[key] = currentValue.trimmingWSP()
                 }
 
                 let key = String(line[line.startIndex..<colonIndex]).lowercased().trimmingCharacters(in: .whitespaces)
-                let value = String(line[line.index(after: colonIndex)...])
+                let value = String(line.unicodeScalars[line.unicodeScalars.index(after: colonIndex)...])
                 currentKey = key
                 currentValue = value
             }
@@ -119,7 +125,7 @@ extension EMLParser {
 
         // Save last header
         if let key = currentKey {
-            headers[key] = currentValue.trimmingCharacters(in: .whitespaces)
+            headers[key] = currentValue.trimmingWSP()
         }
 
         return headers
@@ -135,22 +141,22 @@ extension EMLParser {
         for line in lines {
             if line.isEmpty { continue }
 
-            if let first = line.first, first == " " || first == "\t" {
-                currentValue += " " + line.trimmingCharacters(in: .whitespaces)
-            } else if let colonIndex = line.firstIndex(of: ":") {
+            if let first = line.unicodeScalars.first, first == " " || first == "\t" {
+                currentValue += " " + line.trimmingWSP()
+            } else if let colonIndex = line.unicodeScalars.firstIndex(of: ":") {
                 if let key = currentKey {
-                    headers.append((key: key, value: currentValue.trimmingCharacters(in: .whitespaces)))
+                    headers.append((key: key, value: currentValue.trimmingWSP()))
                 }
 
                 let key = String(line[line.startIndex..<colonIndex]).lowercased().trimmingCharacters(in: .whitespaces)
-                let value = String(line[line.index(after: colonIndex)...])
+                let value = String(line.unicodeScalars[line.unicodeScalars.index(after: colonIndex)...])
                 currentKey = key
                 currentValue = value
             }
         }
 
         if let key = currentKey {
-            headers.append((key: key, value: currentValue.trimmingCharacters(in: .whitespaces)))
+            headers.append((key: key, value: currentValue.trimmingWSP()))
         }
 
         return headers
@@ -198,5 +204,20 @@ extension EMLParser {
             parts: [],
             additionalFields: additional.isEmpty ? nil : additional
         )
+    }
+}
+
+extension String {
+    /// The string without leading and trailing WSP, i.e. space and horizontal
+    /// tab. Foundation's `.whitespaces` would also remove Unicode spaces such
+    /// as U+00A0, which RFC 6532 treats as text, and a `Character`-based trim
+    /// misses a space that a following combining mark joins.
+    func trimmingWSP() -> String {
+        let scalars = unicodeScalars
+        guard let first = scalars.firstIndex(where: { !AddressSyntax.isWSP($0) }),
+              let last = scalars.lastIndex(where: { !AddressSyntax.isWSP($0) }) else {
+            return ""
+        }
+        return String(scalars[first...last])
     }
 }

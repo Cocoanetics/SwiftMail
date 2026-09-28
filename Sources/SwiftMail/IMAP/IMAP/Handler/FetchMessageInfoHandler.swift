@@ -301,16 +301,17 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 let mailbox = emailAddress.mailbox?.stringValue ?? ""
                 let host = emailAddress.host?.stringValue ?? ""
 
+                let address = AddressSyntax.envelopeAddrSpec(mailbox: mailbox, host: host)
                 if !name.isEmpty {
-                    return "\"\(name)\" <\(mailbox)@\(host)>"
+                    return "\(AddressFormatter.quotedPhrase(name)) <\(address)>"
                 } else {
-                    return "\(mailbox)@\(host)"
+                    return address
                 }
 
             case .group(let group):
                 let groupName = group.groupName.stringValue.decodeMIMEHeader()
-                let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
-                return "\(groupName): \(members)"
+                let members = group.children.map { formatAddress($0) }
+                return AddressFormatter.groupString(name: groupName, members: members)
         }
     }
 

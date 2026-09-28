@@ -1,5 +1,5 @@
 // EMLParser+AddressAndDate.swift
-// Helpers for parsing comma-separated address lists and RFC 2822 dates.
+// Helpers for splitting address fields and parsing RFC 2822 dates.
 
 import Foundation
 
@@ -7,47 +7,13 @@ extension EMLParser {
 
     // MARK: - Address Parsing
 
-    /// Parse a comma-separated list of email addresses.
+    /// Split an address field into its addresses, each in the text it was
+    /// written with: display names stay in wire form, and a group, members
+    /// included, stays one element. Malformed text is kept as its own element
+    /// rather than dropped; ``AddressParser`` decides where it ends.
     static func parseAddressList(_ value: String?) -> [String] {
-        guard let value = value, !value.isEmpty else { return [] }
-
-        // Split by comma, but respect quoted strings and angle brackets
-        var addresses: [String] = []
-        var current = ""
-        var inQuotes = false
-        var inAngle = false
-
-        for char in value {
-            switch char {
-                case "\"":
-                    inQuotes.toggle()
-                    current.append(char)
-                case "<":
-                    inAngle = true
-                    current.append(char)
-                case ">":
-                    inAngle = false
-                    current.append(char)
-                case "," where !inQuotes && !inAngle:
-                    let trimmed = current.trimmingCharacters(in: .whitespaces)
-                    if !trimmed.isEmpty {
-                        // Keep the structured address in wire form. Decoding the
-                        // whole value can turn display-name text into address
-                        // syntax before the real addr-spec has been identified.
-                        addresses.append(trimmed)
-                    }
-                    current = ""
-                default:
-                    current.append(char)
-            }
-        }
-
-        let trimmed = current.trimmingCharacters(in: .whitespaces)
-        if !trimmed.isEmpty {
-            addresses.append(trimmed)
-        }
-
-        return addresses
+        guard let value, !value.isEmpty else { return [] }
+        return AddressParser.parseEntries(value).map(\.source)
     }
 
     // MARK: - Date Parsing

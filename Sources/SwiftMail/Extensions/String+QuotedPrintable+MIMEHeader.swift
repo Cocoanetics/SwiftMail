@@ -124,7 +124,9 @@ extension String {
             return nil
         }
 
-        let charset = String(source[charsetRange])
+        // RFC 2231 §5 lets the charset carry a `*language` suffix, which names
+        // the language of the text and is no part of the charset.
+        let charset = String(source[charsetRange].prefix { $0 != "*" })
         return MIMEEncodedWordParts(
             normalizedCharset: charset.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
             encoding: String(source[encodingRange]).uppercased(),
@@ -272,11 +274,13 @@ extension String {
         preferredEncoding: String.Encoding,
         transferEncoding: String
     ) -> String? {
-        if let decoded = String(data: bytes, encoding: preferredEncoding) {
+        if preferredEncoding == .utf8 {
+            if let decoded = decodeUTF8(bytes) {
+                return decoded
+            }
+        } else if let decoded = String(data: bytes, encoding: preferredEncoding) {
             return decoded
-        }
-
-        if preferredEncoding != .utf8, let decoded = String(data: bytes, encoding: .utf8) {
+        } else if let decoded = decodeUTF8(bytes) {
             return decoded
         }
 
@@ -286,6 +290,25 @@ extension String {
         }
 
         return nil
+    }
+
+    /// The UTF-8 text of `bytes`, or `nil` if they aren't valid UTF-8. Unlike
+    /// `String(data:encoding: .utf8)`, it keeps a leading U+FEFF: inside an
+    /// encoded-word that is text, not a byte-order mark.
+    fileprivate static func decodeUTF8(_ bytes: Data) -> String? {
+        var text = String.UnicodeScalarView()
+        var iterator = bytes.makeIterator()
+        var decoder = UTF8()
+        while true {
+            switch decoder.decode(&iterator) {
+                case .scalarValue(let scalar):
+                    text.append(scalar)
+                case .emptyInput:
+                    return String(text)
+                case .error:
+                    return nil
+            }
+        }
     }
 
     fileprivate static func decodeMIMEHeaderQuotedPrintableBytes(_ text: String) -> Data? {
