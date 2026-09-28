@@ -148,7 +148,7 @@ enum AddressPhrase {
     /// Decodes adjacent encoded-words as one run: `decodeMIMEHeader()` drops the
     /// white space between them and joins the bytes of words in the same
     /// charset. A word that doesn't decode stays as written.
-    private static func decoded(_ words: [String]) -> String {
+    static func decoded(_ words: [String]) -> String {
         guard !words.isEmpty else { return "" }
         return words.joined(separator: " ").decodeMIMEHeader()
     }

@@ -36,13 +36,13 @@ extension AddressScanner {
             return entry
         }
         let end = elementEnd(from: start)
-        let entry = recoverElement(in: start..<end) ?? .invalid(sourceText(start..<end))
+        let entry = recoverElement(in: start..<end) ?? .invalid(invalidText(start..<end))
         return element(entry, endingAt: end)
     }
 
     private mutating func invalidElement(from start: Int) -> AddressListEntry {
         let end = elementEnd(from: start)
-        return element(.invalid(sourceText(start..<end)), endingAt: end)
+        return element(.invalid(invalidText(start..<end)), endingAt: end)
     }
 
     /// `entry`, read up to `end`; moves past it and its comma.
@@ -63,6 +63,24 @@ extension AddressScanner {
             index += 1
         }
         return index
+    }
+
+    /// The text of the invalid element in `range`: its source text, except in
+    /// the two forms ``AddressFormatter/invalidString(_:form:)`` writes invalid
+    /// text in when it can't be written as it is. A lone quoted-string stands
+    /// for its content, and a run of encoded-words for the text they encode.
+    /// Neither names an address, so the element is invalid text either way.
+    func invalidText(_ range: Range<Int>) -> String {
+        let text = sourceText(range)
+        let words = text.unicodeScalars.split(whereSeparator: AddressSyntax.isWSP).map { String(unicodeScalars: $0) }
+        if !words.isEmpty, words.allSatisfy(EncodedWord.isEncodedWord) {
+            return AddressPhrase.decoded(words)
+        }
+        var scanner = AddressScanner(text)
+        if let content = try? scanner.readQuotedString(), scanner.isAtEnd {
+            return content
+        }
+        return text
     }
 
     /// The text in `range`, with the line breaks of folds removed and without

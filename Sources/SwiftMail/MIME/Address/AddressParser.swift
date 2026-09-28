@@ -33,6 +33,10 @@ import Foundation
 ///   bracket, becomes an ``AddressListEntry/invalid(_:)`` entry that keeps its
 ///   text. That text reaches up to the next comma the malformed syntax doesn't
 ///   swallow, and the elements around it are read normally.
+/// - An element that is nothing but a quoted-string, or nothing but
+///   encoded-words, is invalid text of the text it stands for. That is how
+///   SwiftMail writes invalid text that would otherwise read back as something
+///   else: encoded-words in a header, and `"Doe, John"` for display.
 ///
 /// ``AddressListEntry/description`` and ``EmailAddress/description`` write the
 /// text this parser reads back to the identical value.

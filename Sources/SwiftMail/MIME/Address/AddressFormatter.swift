@@ -39,11 +39,8 @@ enum AddressFormatter {
         return phrase(name, form: form) + " <" + address.address + ">"
     }
 
-    /// The text of an address-list element. A group is `name: members;`.
-    /// Invalid text is written as it is, keeping any address a lenient reader
-    /// can still find in it, unless it holds a control character: then it is
-    /// written as encoded-words, which a header can carry and which never read
-    /// as an address (replacing the control could turn the text into one).
+    /// The text of an address-list element. A group is `name: members;`, and
+    /// invalid text is written as ``invalidString(_:form:)`` describes.
     static func string(for entry: AddressListEntry, form: Form) -> String {
         switch entry {
             case .mailbox(let address):
@@ -52,16 +49,40 @@ enum AddressFormatter {
                 let list = members.map { string(for: $0, form: form) }.joined(separator: ", ")
                 return phrase(name, form: form) + ":" + (list.isEmpty ? "" : " " + list) + ";"
             case .invalid(let text):
-                let hasControl = text.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl)
-                return hasControl ? text.rfc2047EncodedWords() : text
+                return invalidString(text, form: form)
         }
+    }
+
+    /// Invalid text as it is, when that reads back as exactly this invalid
+    /// text, keeping any address a lenient reader can still find in it.
+    ///
+    /// Other text would read back as something else: an address, a group,
+    /// several elements, or trimmed. It could also hold a control character,
+    /// which no form writes. Such text is written in a form that reads back as
+    /// the same invalid text (see ``AddressScanner/invalidText(_:)``):
+    ///
+    /// - In a header it becomes encoded-words. Other readers see those as a
+    ///   phrase, never as an address, whereas a lenient reader such as Python's
+    ///   `email.utils.getaddresses` takes a quoted-string's content for one.
+    /// - The display form quotes it, to stay readable, unless it holds a
+    ///   control character, which leaves only encoded-words.
+    ///
+    /// Empty text is `""` in both forms, as an encoded-word can't be empty.
+    static func invalidString(_ text: String, form: Form) -> String {
+        let hasControl = text.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl)
+        if !hasControl, AddressParser.parseAddressList(text) == [.invalid(text)] {
+            return text
+        }
+        let isQuoted = !hasControl && (form == .display || text.isEmpty)
+        return isQuoted ? AddressSyntax.quotedString(text) : text.rfc2047EncodedWords()
     }
 
     /// Text for a name and address that don't make a mailbox, to keep as
     /// ``AddressListEntry/invalid(_:)``: the name as a phrase, and the address
     /// exactly as given. A control character in it is kept too, so the text is
-    /// written as encoded-words; stripping it could leave a valid address that
-    /// reads back as a mailbox the source never named.
+    /// written as encoded-words (see ``invalidString(_:form:)``); stripping it
+    /// could leave a valid address that reads back as a mailbox the source
+    /// never named.
     static func invalidText(name: String?, address: String) -> String {
         guard let name, !name.isEmpty else { return address }
         return phrase(name, form: .display) + " <" + address + ">"

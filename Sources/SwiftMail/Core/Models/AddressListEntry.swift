@@ -23,8 +23,9 @@ public enum AddressListEntry: Hashable, Codable, Sendable {
     /// A group may have no members, as in `undisclosed-recipients:;`.
     case group(name: String, members: [EmailAddress])
 
-    /// Text that is not a valid address, kept verbatim so that a malformed field
-    /// is never silently shortened or read as a different address.
+    /// Text that is not a valid address. It is kept, never dropped or repaired,
+    /// so that a malformed field is never silently shortened or read as a
+    /// different address.
     case invalid(String)
 }
 
@@ -66,8 +67,10 @@ extension AddressListEntry: LosslessStringConvertible {
     /// The entry as RFC 5322 text for a header field, which ``init(_:)`` reads
     /// back to this entry. Display names are written the way
     /// ``EmailAddress/description`` writes them. Invalid text is written as it
-    /// is, unless it holds a control character: then it is written as
-    /// encoded-words, which read back as invalid text, never as an address.
+    /// is when that reads back as the same text. Otherwise, as when it holds a
+    /// control character or would read back as an address, it is written as
+    /// encoded-words, which read back as the same invalid text and never as an
+    /// address.
     public var description: String {
         AddressFormatter.string(for: self, form: .header)
     }
