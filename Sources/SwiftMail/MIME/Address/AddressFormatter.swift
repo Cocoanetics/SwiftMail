@@ -51,6 +51,16 @@ enum AddressFormatter {
         }
     }
 
+    /// Text for a name and address that don't make a mailbox, to keep as
+    /// ``AddressListEntry/invalid(_:)``: the name as a phrase, and the address
+    /// exactly as given. A control character in it is kept too, so the text is
+    /// written as encoded-words; stripping it could leave a valid address that
+    /// reads back as a mailbox the source never named.
+    static func invalidText(name: String?, address: String) -> String {
+        guard let name, !name.isEmpty else { return address }
+        return phrase(name, form: .display) + " <" + address + ">"
+    }
+
     /// A display name or group name as a phrase.
     static func phrase(_ name: String, form: Form) -> String {
         let needsEncoding: Bool

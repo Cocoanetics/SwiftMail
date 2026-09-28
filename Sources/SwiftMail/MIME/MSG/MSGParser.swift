@@ -160,9 +160,10 @@ public struct MSGParser {
     }
 
     /// A MAPI display name and address as an address-list entry. MAPI keeps
-    /// the two apart, so neither is parsed out of the other; the address is
-    /// only checked to be one. A name that merely repeats the address is
-    /// dropped, and a name without a usable address is kept as invalid text.
+    /// the two apart, so the name is never parsed; the address is read as one
+    /// mailbox, of which only the address is kept. A name that merely repeats
+    /// the address is dropped, and a name without a usable address is kept as
+    /// invalid text, the address exactly as given.
     private static func entry(name: String?, address: String?) -> AddressListEntry? {
         let name = name?.trimmingCharacters(in: .whitespacesAndNewlines)
         let address = address?.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -171,8 +172,8 @@ public struct MSGParser {
             return .invalid(name)
         }
         let displayName = name == address ? nil : name
-        guard let mailbox = AddressParser.parseMailbox(address), mailbox.name == nil else {
-            return .invalid(EmailAddress(name: displayName, address: address).displayString)
+        guard let mailbox = AddressParser.parseMailbox(address) else {
+            return .invalid(AddressFormatter.invalidText(name: displayName, address: address))
         }
         return .mailbox(EmailAddress(name: displayName, address: mailbox.address))
     }

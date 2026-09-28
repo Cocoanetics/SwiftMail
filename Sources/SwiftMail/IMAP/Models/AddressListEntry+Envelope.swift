@@ -38,13 +38,26 @@ extension AddressListEntry {
         }
     }
 
-    /// The members of a group, with any nested group's members in its place.
+    /// The members of a group, with any nested group's members in its place, in
+    /// order. The nesting is walked with a stack of its own rather than by
+    /// recursion: a server can nest groups thousands of levels deep within one
+    /// response, which would exhaust the call stack.
     private static func flattenedMembers(of group: EmailAddressGroup) -> [AddressListEntry] {
-        group.children.flatMap { child -> [AddressListEntry] in
-            if case .group(let nested) = child {
-                return flattenedMembers(of: nested)
+        var members: [AddressListEntry] = []
+        var enclosing: [ArraySlice<EmailAddressListElement>] = []
+        var children = group.children[...]
+        while true {
+            guard let child = children.popFirst() else {
+                guard let rest = enclosing.popLast() else { return members }
+                children = rest
+                continue
             }
-            return [entry(fromEnvelope: child)]
+            if case .group(let nested) = child {
+                enclosing.append(children)
+                children = nested.children[...]
+            } else {
+                members.append(entry(fromEnvelope: child))
+            }
         }
     }
 
@@ -55,8 +68,7 @@ extension AddressListEntry {
         let isComplete = !mailbox.isEmpty && isDomain(host)
             && !(mailbox + host).unicodeScalars.contains(where: AddressSyntax.isForbiddenControl)
         guard isComplete else {
-            let text = SwiftMail.EmailAddress(name: name, address: mailbox + "@" + host)
-            return .invalid(AddressFormatter.string(for: text, form: .display))
+            return .invalid(AddressFormatter.invalidText(name: name, address: mailbox + "@" + host))
         }
         let addrSpec = AddressSyntax.envelopeAddrSpec(mailbox: mailbox, host: host)
         return .mailbox(SwiftMail.EmailAddress(name: name, address: addrSpec))

@@ -310,3 +310,82 @@ extension MessageInfoAddressTests {
         #expect(!withoutReplyTo.contains("Reply-To:"))
     }
 }
+
+// MARK: - Hostile sources
+
+/// An ENVELOPE group nested 100,000 levels deep. It is kept alive for the whole
+/// run: swift-nio-imap releases its nested groups recursively, which overflows
+/// the stack on its own at a few thousand levels, so only a structure that is
+/// never released can show that SwiftMail itself doesn't recurse.
+private let deeplyNestedGroup: EmailAddressListElement = {
+    var element = EmailAddressListElement.singleAddress(envelopeAddress(nil, "a"))
+    for level in 0..<100_000 {
+        let group = EmailAddressGroup(groupName: ByteBuffer(string: "G\(level)"), sourceRoot: nil, children: [element])
+        element = .group(group)
+    }
+    return element
+}()
+
+private func envelopeAddress(
+    _ name: String?, _ mailbox: String, host: String = "example.com"
+) -> NIOIMAPCore.EmailAddress {
+    NIOIMAPCore.EmailAddress(
+        personName: name.map { ByteBuffer(string: $0) }, sourceRoot: nil,
+        mailbox: ByteBuffer(string: mailbox), host: ByteBuffer(string: host)
+    )
+}
+
+extension MessageInfoAddressTests {
+    @Test("ENVELOPE groups nested thousands deep flatten without recursion, in order")
+    func deeplyNestedEnvelopeGroups() {
+        let deep = [AddressListEntry].entries(fromEnvelope: [deeplyNestedGroup])
+        #expect(deep == [.group(name: "G99999", members: [SwiftMail.EmailAddress(address: "a@example.com")])])
+
+        let sub = EmailAddressGroup(groupName: ByteBuffer(string: "Sub"), sourceRoot: nil, children: [
+            .singleAddress(envelopeAddress(nil, "y")), .singleAddress(envelopeAddress(nil, "z"))
+        ])
+        let team = EmailAddressGroup(groupName: ByteBuffer(string: "Team"), sourceRoot: nil, children: [
+            .singleAddress(envelopeAddress(nil, "x")), .group(sub), .singleAddress(envelopeAddress(nil, "w"))
+        ])
+        #expect([AddressListEntry].entries(fromEnvelope: [.group(team)]).mailboxes.map(\.address)
+            == ["x@example.com", "y@example.com", "z@example.com", "w@example.com"])
+    }
+
+    @Test("An ENVELOPE mailbox with a control character stays invalid everywhere it is written")
+    func envelopeControlStaysInvalid() throws {
+        let entries = [AddressListEntry].entries(fromEnvelope: [
+            .singleAddress(envelopeAddress("Victim", "victim\u{0007}")), .singleAddress(envelopeAddress(nil, "bob"))
+        ])
+        #expect(entries.first == .invalid("Victim <victim\u{0007}@example.com>"))
+
+        var header = MessageInfo(sequenceNumber: SequenceNumber(1))
+        header.fromAddresses = [.mailbox(Self.alice)]
+        header.toAddresses = entries
+        // The text older decoders read, and an EML round trip, never promote it to a mailbox.
+        #expect(header.to.flatMap(AddressParser.parseAddressList).mailboxes.map(\.address) == ["bob@example.com"])
+        let reparsed = try Message(emlData: Message(header: header, parts: []).emlData()).header
+        #expect(reparsed.toAddresses.mailboxes.map(\.address) == ["bob@example.com"])
+        #expect(reparsed.toAddresses.first?.isInvalid == true)
+    }
+
+    @Test("An MSG address with a control character stays invalid; a name-addr in the address property is read")
+    func msgAddressText() throws {
+        func recipient(_ index: Int, _ name: String, _ address: String) -> CFBNode {
+            let children = mapiNodes([
+                .int32(.recipientType, 1), .unicode(.displayName, name), .unicode(.smtpAddress, address)
+            ], isTopLevel: false)
+            return .storage(name: "__recip_version1.0_#0000000\(index)", children: children)
+        }
+        let recipients = [
+            recipient(0, "Victim", "victim\u{0007}@example.com"),
+            recipient(1, "Bob", "Robert <bob@example.com>")
+        ]
+        let msg = CompoundFileBuilder.build(
+            root: mapiNodes([.unicode(.subject, "Hallo")], isTopLevel: true, extra: recipients)
+        )
+
+        let header = try MSGParser.parse(msg).header
+        #expect(header.toAddresses == [.invalid("Victim <victim\u{0007}@example.com>"), .mailbox(Self.bob)])
+        #expect(header.to.flatMap(AddressParser.parseAddressList).mailboxes == [Self.bob])
+    }
+}
