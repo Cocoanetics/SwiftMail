@@ -355,8 +355,8 @@ extension MessageInfoAddressTests {
         let entries = [AddressListEntry].entries(fromEnvelope: [.group(team)])
         #expect(entries == [.invalid("Team: x@example.com, Sub: y@example.com, z@example.com;, w@example.com;")])
         #expect(entries.mailboxes.isEmpty)
-        // Written out and read back, the text is still not an address.
-        #expect(entries.first.flatMap { AddressListEntry($0.description) }?.isInvalid == true)
+        // Written out and read back, the text still names no address.
+        #expect(AddressParser.parseAddressList(entries.map(\.description).joined(separator: ", ")).mailboxes.isEmpty)
     }
 
     @Test("An ENVELOPE mailbox with a control character stays invalid everywhere it is written")
