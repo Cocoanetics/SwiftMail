@@ -108,6 +108,7 @@ struct AdditionalHeaderFieldsTests {
 
         var legacyObject = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         legacyObject.removeValue(forKey: "replyTo")
+        legacyObject.removeValue(forKey: "replyToAddresses")
         let legacyData = try JSONSerialization.data(withJSONObject: legacyObject)
         let legacyDecoded = try JSONDecoder().decode(MessageInfo.self, from: legacyData)
         #expect(legacyDecoded.replyTo.isEmpty)

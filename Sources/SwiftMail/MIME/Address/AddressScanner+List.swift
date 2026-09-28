@@ -3,14 +3,6 @@
 
 import Foundation
 
-/// An address-list element and the text it was written as.
-struct ParsedAddressEntry {
-    let entry: AddressListEntry
-
-    /// The element's text, unfolded and without surrounding white space.
-    let source: String
-}
-
 extension AddressScanner {
     /// Reads the next element of an address-list (RFC 5322 §3.4), skipping the
     /// empty elements that obs-addr-list allows. Returns `nil` at the end of
@@ -21,7 +13,7 @@ extension AddressScanner {
     /// doesn't swallow (see ``elementEnd(from:)``). It is read by the recovery
     /// rules of ``recoverElement(in:)`` where one applies, and is invalid text
     /// otherwise. The elements around it are read normally.
-    mutating func readListElement() -> ParsedAddressEntry? {
+    mutating func readListElement() -> AddressListEntry? {
         while true {
             let start = position
             guard (try? skipCFWS()) != nil else {
@@ -37,30 +29,27 @@ extension AddressScanner {
         }
     }
 
-    private mutating func readAddressElement() -> ParsedAddressEntry {
+    private mutating func readAddressElement() -> AddressListEntry {
         let start = position
         if let entry = try? readAddress(), isAtEnd || current == "," {
-            let source = sourceText(start..<position)
             _ = consume(",")
-            return ParsedAddressEntry(entry: entry, source: source)
+            return entry
         }
         let end = elementEnd(from: start)
-        if let entry = recoverElement(in: start..<end) {
-            return element(entry, endingAt: end, from: start)
-        }
-        return invalidElement(from: start)
+        let entry = recoverElement(in: start..<end) ?? .invalid(sourceText(start..<end))
+        return element(entry, endingAt: end)
     }
 
-    private mutating func invalidElement(from start: Int) -> ParsedAddressEntry {
+    private mutating func invalidElement(from start: Int) -> AddressListEntry {
         let end = elementEnd(from: start)
-        return element(.invalid(sourceText(start..<end)), endingAt: end, from: start)
+        return element(.invalid(sourceText(start..<end)), endingAt: end)
     }
 
-    /// An element read from `start` to `end`, which moves past it and its comma.
-    private mutating func element(_ entry: AddressListEntry, endingAt end: Int, from start: Int) -> ParsedAddressEntry {
+    /// `entry`, read up to `end`; moves past it and its comma.
+    private mutating func element(_ entry: AddressListEntry, endingAt end: Int) -> AddressListEntry {
         position = end
         _ = consume(",")
-        return ParsedAddressEntry(entry: entry, source: sourceText(start..<end))
+        return entry
     }
 
     /// Where the element starting at `start` ends: at the next comma outside a

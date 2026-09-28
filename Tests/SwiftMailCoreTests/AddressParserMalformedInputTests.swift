@@ -83,7 +83,8 @@ struct AddressParserMalformedInputTests {
     @Test("Well-formed elements around a malformed one are read as usual", arguments: [
         ("a@example.com, b\u{0007}@example.com", [mailbox("a@example.com"), .invalid("b\u{0007}@example.com")]),
         ("a@example.com, <>, b@example.com", [mailbox("a@example.com"), .invalid("<>"), mailbox("b@example.com")]),
-        ("Doe, John <john@example.com>", [.invalid("Doe"), mailbox("john@example.com", "John")]),
+        ("Doe, Jane <jane@example.com>, John <john@example.com>",
+         [.invalid("Doe"), mailbox("jane@example.com", "Jane"), mailbox("john@example.com", "John")]),
         ("x@example.com, first last@example.com , y@example.com",
          [mailbox("x@example.com"), .invalid("first last@example.com"), mailbox("y@example.com")]),
         ("Team: a@example.com, junk;, b@example.com",

@@ -198,7 +198,7 @@ struct AddressFieldIntegrationTests {
 
         #expect(info.to == [
             #""john doe"@example.com"#,
-            #""John" <"a@b"@example.com>"#,
+            #"John <"a@b"@example.com>"#,
             #""quoted already"@example.com"#
         ])
         #expect(info.to.flatMap(AddressParser.parseAddressList).mailboxes.map(\.address) == [
@@ -242,7 +242,7 @@ struct AddressFieldIntegrationTests {
 
     // MARK: - Helpers
 
-    private static func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
+    static func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
         let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let promise = channel.eventLoop.makePromise(of: [MessageInfo].self)

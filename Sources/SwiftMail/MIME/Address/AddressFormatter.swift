@@ -51,24 +51,6 @@ enum AddressFormatter {
         }
     }
 
-    /// A display name the way address strings built from an IMAP ENVELOPE
-    /// have always carried it: quoted, with `"` and `\` escaped so the string
-    /// reads back as the same name. A name holding a control character is
-    /// encoded instead, as no quoted-string can carry one.
-    static func quotedPhrase(_ name: String) -> String {
-        if name.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl) {
-            return name.rfc2047EncodedWords()
-        }
-        return AddressSyntax.quotedString(name)
-    }
-
-    /// A group written from its name and the text of its members:
-    /// `name: member, member;`, or `name:;` without members.
-    static func groupString(name: String, members: [String]) -> String {
-        let list = members.joined(separator: ", ")
-        return phrase(name, form: .display) + ":" + (list.isEmpty ? "" : " " + list) + ";"
-    }
-
     /// A display name or group name as a phrase.
     static func phrase(_ name: String, form: Form) -> String {
         let needsEncoding: Bool

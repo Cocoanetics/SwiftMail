@@ -88,9 +88,15 @@ struct AddressParserRecoveryTests {
         // A list is still not one mailbox.
         #expect(EmailAddress("a@example.com, Bob <b@example.com>") == nil)
         #expect(EmailAddress("Alice <a@example.com>, Bob <b@example.com>") == nil)
-        // In an address list the comma still separates elements.
+        // A field whose only address is that mailbox reads the same way; with
+        // another address in it, the comma separates elements.
         #expect(AddressParser.parseAddressList("Doe, John <john@example.com>")
-            == [.invalid("Doe"), mailbox("john@example.com", "John")])
+            == [mailbox("john@example.com", "Doe, John")])
+        #expect(AddressParser.parseAddressList("Doe, John <john@example.com>, bob@example.com")
+            == [.invalid("Doe"), mailbox("john@example.com", "John"), mailbox("bob@example.com")])
+        // A well-formed list is never read as one mailbox.
+        #expect(AddressParser.parseAddressList("Team:;, Bob <bob@example.com>")
+            == [.group(name: "Team", members: []), mailbox("bob@example.com", "Bob")])
     }
 
     @Test("A recovered mailbox reads back from its own string form")

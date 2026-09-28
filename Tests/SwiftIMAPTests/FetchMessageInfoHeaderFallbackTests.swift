@@ -110,7 +110,7 @@ struct FetchMessageInfoHeaderFallbackTests {
 
         try #require(infos.count == 1)
         #expect(infos[0].subject == "Envelope subject")
-        #expect(infos[0].from == "\"Envelope Sender\" <envelope@example.com>")
+        #expect(infos[0].from == "Envelope Sender <envelope@example.com>")
         #expect(infos[0].replyTo == ["envelope-reply@example.com"])
         #expect(infos[0].to == ["recipient@example.com"])
         let expectedDate = Self.makeDate(DateComponents(year: 2026, month: 8, day: 5, hour: 16))

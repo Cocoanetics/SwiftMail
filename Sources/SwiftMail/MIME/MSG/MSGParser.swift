@@ -80,26 +80,14 @@ public struct MSGParser {
         if let headerBlock = storage.string(.transportMessageHeaders), !headerBlock.isEmpty {
             info = EMLParser.buildMessageInfo(from: EMLParser.parseHeaders(headerBlock))
         } else {
-            info = MessageInfo(
-                sequenceNumber: SequenceNumber(0),
-                uid: nil,
-                subject: nil,
-                from: nil,
-                to: [],
-                cc: [],
-                bcc: [],
-                date: nil,
-                messageId: nil,
-                flags: [],
-                parts: []
-            )
+            info = MessageInfo(sequenceNumber: SequenceNumber(0))
         }
 
         if info.subject?.isEmpty ?? true {
             info.subject = storage.string(.subject) ?? storage.string(.normalizedSubject)
         }
-        if info.from?.isEmpty ?? true {
-            info.from = senderAddress(from: storage)
+        if info.fromAddresses.isEmpty, let sender = sender(from: storage) {
+            info.fromAddresses = [sender]
         }
         if info.date == nil {
             info.date = storage.date(.clientSubmitTime) ?? storage.date(.messageDeliveryTime)
@@ -111,14 +99,14 @@ public struct MSGParser {
         // Recipients carry real addresses; PR_DISPLAY_TO/CC hold display names
         // only, so they are the last resort.
         let recipients = self.recipients(from: storage)
-        if info.to.isEmpty {
-            info.to = recipients.to.isEmpty ? splitDisplayList(storage.string(.displayTo)) : recipients.to
+        if info.toAddresses.isEmpty {
+            info.toAddresses = recipients.to.isEmpty ? displayNames(storage.string(.displayTo)) : recipients.to
         }
-        if info.cc.isEmpty {
-            info.cc = recipients.cc.isEmpty ? splitDisplayList(storage.string(.displayCc)) : recipients.cc
+        if info.ccAddresses.isEmpty {
+            info.ccAddresses = recipients.cc.isEmpty ? displayNames(storage.string(.displayCc)) : recipients.cc
         }
-        if info.bcc.isEmpty {
-            info.bcc = recipients.bcc.isEmpty ? splitDisplayList(storage.string(.displayBcc)) : recipients.bcc
+        if info.bccAddresses.isEmpty {
+            info.bccAddresses = recipients.bcc.isEmpty ? displayNames(storage.string(.displayBcc)) : recipients.bcc
         }
 
         return info
@@ -130,21 +118,21 @@ public struct MSGParser {
     /// distinguished name (`/O=…/OU=…/CN=…`), which is not an address any
     /// downstream consumer can use, so it is taken only when nothing else
     /// names an SMTP address.
-    private static func senderAddress(from storage: MAPIStorage) -> String? {
+    private static func sender(from storage: MAPIStorage) -> AddressListEntry? {
         let name = storage.string(.senderName) ?? storage.string(.sentRepresentingName)
         let address = storage.string(.senderSMTPAddress)
             ?? storage.string(.sentRepresentingSMTPAddress)
             ?? nonX500(storage.string(.senderEmailAddress))
             ?? nonX500(storage.string(.sentRepresentingEmailAddress))
 
-        return format(name: name, address: address)
+        return entry(name: name, address: address)
     }
 
     /// The recipients of a message, split by the field they were addressed in.
     struct Recipients {
-        var to: [String] = []
-        var cc: [String] = []
-        var bcc: [String] = []
+        var to: [AddressListEntry] = []
+        var cc: [AddressListEntry] = []
+        var bcc: [AddressListEntry] = []
     }
 
     private static func recipients(from storage: MAPIStorage) -> Recipients {
@@ -153,13 +141,13 @@ public struct MSGParser {
         for recipient in storage.subStorages(prefix: "__recip_version1.0_") {
             let name = recipient.string(.displayName)
             let address = recipient.string(.smtpAddress) ?? nonX500(recipient.string(.emailAddress))
-            guard let formatted = format(name: name, address: address) else { continue }
+            guard let entry = entry(name: name, address: address) else { continue }
 
             // PR_RECIPIENT_TYPE: 1 = To, 2 = Cc, 3 = Bcc.
             switch recipient.int32(.recipientType) {
-                case 2: recipients.cc.append(formatted)
-                case 3: recipients.bcc.append(formatted)
-                default: recipients.to.append(formatted)
+                case 2: recipients.cc.append(entry)
+                case 3: recipients.bcc.append(entry)
+                default: recipients.to.append(entry)
             }
         }
         return recipients
@@ -171,33 +159,34 @@ public struct MSGParser {
         return value.hasPrefix("/") || value.uppercased().hasPrefix("EX:") ? nil : value
     }
 
-    /// A recipient as `Name <address>`, the name quoted where address syntax
-    /// needs it (`"Doe, Jane" <jane@example.com>`), so the text reads back as
-    /// one mailbox. A name without an address is returned as it is.
-    private static func format(name: String?, address: String?) -> String? {
+    /// A MAPI display name and address as an address-list entry. MAPI keeps
+    /// the two apart, so neither is parsed out of the other; the address is
+    /// only checked to be one. A name that merely repeats the address is
+    /// dropped, and a name without a usable address is kept as invalid text.
+    private static func entry(name: String?, address: String?) -> AddressListEntry? {
         let name = name?.trimmingCharacters(in: .whitespacesAndNewlines)
         let address = address?.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        switch (name, address) {
-            case let (name?, address?) where !name.isEmpty && !address.isEmpty:
-                return name == address ? address : EmailAddress(name: name, address: address).displayString
-            case let (_, address?) where !address.isEmpty:
-                return address
-            case let (name?, _) where !name.isEmpty:
-                return name
-            default:
-                return nil
+        guard let address, !address.isEmpty else {
+            guard let name, !name.isEmpty else { return nil }
+            return .invalid(name)
         }
+        let displayName = name == address ? nil : name
+        guard let mailbox = AddressParser.parseMailbox(address), mailbox.name == nil else {
+            return .invalid(EmailAddress(name: displayName, address: address).displayString)
+        }
+        return .mailbox(EmailAddress(name: displayName, address: mailbox.address))
     }
 
     /// `PR_DISPLAY_TO` and friends are a semicolon-separated list of display
-    /// names, not addresses; they are split but never parsed as addr-specs.
-    private static func splitDisplayList(_ value: String?) -> [String] {
+    /// names, not addresses: they are split but never parsed as addr-specs, and
+    /// each name is kept as invalid text, as it names no address.
+    private static func displayNames(_ value: String?) -> [AddressListEntry] {
         guard let value, !value.isEmpty else { return [] }
         return value
             .split(whereSeparator: { $0 == ";" || $0 == "," })
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+            .map(AddressListEntry.invalid)
     }
 
     // MARK: - Parts

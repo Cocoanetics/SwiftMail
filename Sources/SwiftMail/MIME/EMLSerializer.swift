@@ -43,10 +43,10 @@ public struct EMLSerializer {
 
     /// Emit the RFC 822 header block (`From:`, `To:`, …) and then `MIME-Version`.
     private static func writeHeaders(_ header: MessageInfo, into output: inout String) {
-        appendHeaderIfPresent("From", header.from.map(headerSafeAddress), into: &output)
-        appendListHeader("To", header.to.map(headerSafeAddress), into: &output)
-        appendListHeader("Cc", header.cc.map(headerSafeAddress), into: &output)
-        appendListHeader("Bcc", header.bcc.map(headerSafeAddress), into: &output)
+        appendAddressHeader("From", header.fromAddresses, into: &output)
+        appendAddressHeader("To", header.toAddresses, into: &output)
+        appendAddressHeader("Cc", header.ccAddresses, into: &output)
+        appendAddressHeader("Bcc", header.bccAddresses, into: &output)
         // Subject is free text; address display names were re-encoded above
         // without treating their surrounding address syntax as unstructured text.
         appendHeaderIfPresent("Subject", header.subject?.rfc2047EncodedHeader(), into: &output)
@@ -68,21 +68,14 @@ public struct EMLSerializer {
         output += "\(name): \(value)\r\n"
     }
 
-    private static func appendListHeader(_ name: String, _ values: [String], into output: inout String) {
-        guard !values.isEmpty else { return }
-        output += "\(name): \(values.joined(separator: ", "))\r\n"
-    }
-
-    /// Re-write an address field value for the header whenever a MessageInfo
-    /// value is serialized. Parsed EML keeps addresses in wire form, while
-    /// callers may also provide a decoded display name directly; both come out
-    /// as safe field bytes: display names encoded where they must be, the
-    /// addr-spec never encoded (RFC 6532 keeps a UTF-8 one as it is), groups
-    /// whole, and no control character that could start a header field. Text
-    /// that is not an address is written as it is, so a lenient reader can
-    /// still find an address in it; see ``AddressListEntry/description``.
-    private static func headerSafeAddress(_ value: String) -> String {
-        AddressParser.parseAddressList(value).map(\.description).joined(separator: ", ")
+    /// An address header field: each entry in RFC 5322 form for a header
+    /// field (see ``AddressListEntry/description``), groups whole. Display
+    /// names are encoded where they must be, an addr-spec never is (RFC 6532
+    /// keeps a UTF-8 one as it is), and no control character can start a
+    /// header field of its own.
+    private static func appendAddressHeader(_ name: String, _ entries: [AddressListEntry], into output: inout String) {
+        guard !entries.isEmpty else { return }
+        output += "\(name): \(entries.map(\.description).joined(separator: ", "))\r\n"
     }
 
     /// Emit the body: empty placeholder, single-part inline, or multipart.

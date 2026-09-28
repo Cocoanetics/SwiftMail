@@ -43,19 +43,23 @@ public enum AddressParser {
     /// ``AddressListEntry/invalid(_:)`` entries, and empty elements (`a, , b`)
     /// are skipped.
     ///
+    /// When the elements include invalid text but the whole field reads as one
+    /// mailbox, as `Doe, John <john@example.com>` does, that one mailbox is the
+    /// result: the text before its address names no other address, so the
+    /// unquoted comma belongs to its display name. A field that reads as
+    /// well-formed elements is never read this way.
+    ///
     /// - Parameter text: A field body, such as the value of a `To:` header field.
     ///   Folded lines are unfolded.
     /// - Returns: The mailboxes, groups and invalid text of the field, in order.
     public static func parseAddressList(_ text: String) -> [AddressListEntry] {
-        parseEntries(text).map(\.entry)
-    }
-
-    /// The elements of an address field together with the text each was written as.
-    static func parseEntries(_ text: String) -> [ParsedAddressEntry] {
         var scanner = AddressScanner(text)
-        var entries: [ParsedAddressEntry] = []
+        var entries: [AddressListEntry] = []
         while let entry = scanner.readListElement() {
             entries.append(entry)
+        }
+        if entries.contains(where: \.isInvalid), let mailbox = parseMailbox(text) {
+            return [.mailbox(mailbox)]
         }
         return entries
     }

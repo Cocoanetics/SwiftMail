@@ -52,16 +52,16 @@ extension Message {
             nextSection += 1
         }
 
-        let header = MessageInfo(
+        var header = MessageInfo(
             sequenceNumber: SequenceNumber(0),
             subject: email.subject,
-            from: email.sender.description,
-            to: email.recipients.map { $0.description },
-            cc: email.ccRecipients.map { $0.description },
-            bcc: email.bccRecipients.map { $0.description },
             messageId: email.messageID,
             additionalFields: email.additionalHeaders
         )
+        header.fromAddresses = [.mailbox(email.sender)]
+        header.toAddresses = email.recipients.map(AddressListEntry.mailbox)
+        header.ccAddresses = email.ccRecipients.map(AddressListEntry.mailbox)
+        header.bccAddresses = email.bccRecipients.map(AddressListEntry.mailbox)
 
         self.init(header: header, parts: parts)
     }

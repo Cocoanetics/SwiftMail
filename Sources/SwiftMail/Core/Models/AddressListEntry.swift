@@ -73,6 +73,58 @@ extension AddressListEntry: LosslessStringConvertible {
     }
 }
 
+// MARK: - Codable
+
+extension AddressListEntry {
+    private enum CodingKeys: String, CodingKey {
+        case mailbox
+        case group
+        case invalid
+    }
+
+    private enum GroupCodingKeys: String, CodingKey {
+        case name
+        case members
+    }
+
+    /// Decodes an entry from an object with one key naming its kind:
+    /// `{"mailbox": {"name": …, "address": …}}`,
+    /// `{"group": {"name": …, "members": […]}}` or `{"invalid": "…"}`.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let address = try container.decodeIfPresent(EmailAddress.self, forKey: .mailbox) {
+            self = .mailbox(address)
+        } else if container.contains(.group) {
+            let group = try container.nestedContainer(keyedBy: GroupCodingKeys.self, forKey: .group)
+            self = .group(
+                name: try group.decode(String.self, forKey: .name),
+                members: try group.decode([EmailAddress].self, forKey: .members)
+            )
+        } else if let text = try container.decodeIfPresent(String.self, forKey: .invalid) {
+            self = .invalid(text)
+        } else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: container.codingPath,
+                debugDescription: "An address-list entry needs a \"mailbox\", \"group\" or \"invalid\" key."
+            ))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+            case .mailbox(let address):
+                try container.encode(address, forKey: .mailbox)
+            case let .group(name, members):
+                var group = container.nestedContainer(keyedBy: GroupCodingKeys.self, forKey: .group)
+                try group.encode(name, forKey: .name)
+                try group.encode(members, forKey: .members)
+            case .invalid(let text):
+                try container.encode(text, forKey: .invalid)
+        }
+    }
+}
+
 extension AddressListEntry {
     /// Whether this is ``invalid(_:)`` text rather than a mailbox or group.
     var isInvalid: Bool {

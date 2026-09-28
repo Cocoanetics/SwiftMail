@@ -68,19 +68,18 @@ extension IMAPServer {
     static func sendDraftAddresses(
         from messageInfo: MessageInfo
     ) throws -> (sender: EmailAddress, recipients: [EmailAddress]) {
-        guard let senderString = messageInfo.from else {
+        guard !messageInfo.fromAddresses.isEmpty else {
             throw IMAPError.invalidArgument("Draft has no sender address")
         }
-        guard let sender = AddressParser.parseAddressList(senderString).mailboxes.first else {
+        guard let sender = messageInfo.fromAddresses.mailboxes.first else {
             throw IMAPError.invalidArgument("Draft has invalid sender address")
         }
 
-        let recipientStrings = messageInfo.to + messageInfo.cc + messageInfo.bcc
-        guard !recipientStrings.isEmpty else {
+        let entries = messageInfo.toAddresses + messageInfo.ccAddresses + messageInfo.bccAddresses
+        guard !entries.isEmpty else {
             throw IMAPError.invalidArgument("Draft has no recipients")
         }
 
-        let entries = recipientStrings.flatMap(AddressParser.parseAddressList)
         if case .invalid(let text) = entries.first(where: \.isInvalid) {
             throw IMAPError.invalidArgument("Draft has an invalid recipient address: \(text)")
         }

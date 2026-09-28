@@ -191,7 +191,7 @@ struct EMLParserTests {
         let data = Data(eml.utf8)
         let message = try Message(emlData: data)
 
-        #expect(message.from == "\"Oliver Drobnik\" <oliver@example.com>")
+        #expect(message.from == "Oliver Drobnik <oliver@example.com>")
         #expect(message.to.count == 2)
     }
 
