@@ -13,9 +13,13 @@ extension Array where Element == AddressListEntry {
     /// quoted where a dot-atom can't carry it (see
     /// ``AddressSyntax/envelopeAddrSpec(mailbox:host:)``). An address the server
     /// couldn't complete, with no mailbox, a host that isn't a domain, or a
-    /// control character, is kept as ``AddressListEntry/invalid(_:)`` text. Groups keep their
-    /// name and members; a group nested in another (which RFC 5322 doesn't
-    /// allow) is flattened into it.
+    /// control character, is kept as ``AddressListEntry/invalid(_:)`` text.
+    ///
+    /// Groups keep their name and members. RFC 5322 groups hold mailboxes only,
+    /// so a group nested in another, which a server only sends when it passes
+    /// on an invalid header, is kept whole as invalid text rather than reshaped
+    /// into something the header didn't say. So is a group holding an address
+    /// the server couldn't complete.
     static func entries(fromEnvelope list: [EmailAddressListElement]) -> [AddressListEntry] {
         list.map(AddressListEntry.entry(fromEnvelope:))
     }
@@ -28,37 +32,49 @@ extension AddressListEntry {
             case .singleAddress(let address):
                 return mailboxEntry(address)
             case .group(let group):
-                let members = flattenedMembers(of: group)
-                let name = group.groupName.stringValue.decodeMIMEHeader()
-                guard let mailboxes = members.map(\.mailboxes).allSingle else {
-                    let text = members.map { AddressFormatter.string(for: $0, form: .display) }.joined(separator: ", ")
-                    return .invalid(AddressFormatter.phrase(name, form: .display) + ": " + text + ";")
+                guard !group.children.contains(where: \.isGroup) else {
+                    return .invalid(groupText(group))
                 }
-                return .group(name: name, members: mailboxes)
+                let members = group.children.map(entry(fromEnvelope:))
+                guard let mailboxes = members.map(\.mailboxes).allSingle else {
+                    return .invalid(groupText(group))
+                }
+                return .group(name: group.groupName.stringValue.decodeMIMEHeader(), members: mailboxes)
         }
     }
 
-    /// The members of a group, with any nested group's members in its place, in
-    /// order. The nesting is walked with a stack of its own rather than by
-    /// recursion: a server can nest groups thousands of levels deep within one
-    /// response, which would exhaust the call stack.
-    private static func flattenedMembers(of group: EmailAddressGroup) -> [AddressListEntry] {
-        var members: [AddressListEntry] = []
+    /// A group as RFC 5322 group text, `name: member, member;`, to keep as
+    /// invalid text, with any nested group written inside its parent. The
+    /// nesting is walked with a stack of its own rather than by recursion, so
+    /// no depth a server sends can exhaust the call stack.
+    private static func groupText(_ group: EmailAddressGroup) -> String {
+        var text = groupOpening(group)
         var enclosing: [ArraySlice<EmailAddressListElement>] = []
         var children = group.children[...]
+        var isFirst = true
         while true {
             guard let child = children.popFirst() else {
-                guard let rest = enclosing.popLast() else { return members }
+                text += ";"
+                guard let rest = enclosing.popLast() else { return text }
                 children = rest
+                isFirst = false
                 continue
             }
+            text += isFirst ? " " : ", "
+            isFirst = false
             if case .group(let nested) = child {
                 enclosing.append(children)
                 children = nested.children[...]
+                text += groupOpening(nested)
+                isFirst = true
             } else {
-                members.append(entry(fromEnvelope: child))
+                text += AddressFormatter.string(for: entry(fromEnvelope: child), form: .display)
             }
         }
+    }
+
+    private static func groupOpening(_ group: EmailAddressGroup) -> String {
+        AddressFormatter.phrase(group.groupName.stringValue.decodeMIMEHeader(), form: .display) + ":"
     }
 
     private static func mailboxEntry(_ address: NIOIMAPCore.EmailAddress) -> AddressListEntry {
@@ -79,6 +95,15 @@ extension AddressListEntry {
         var scanner = AddressScanner(host)
         guard let domain = try? scanner.readDomain() else { return false }
         return scanner.isAtEnd && domain.text == host
+    }
+}
+
+private extension EmailAddressListElement {
+    var isGroup: Bool {
+        if case .group = self {
+            return true
+        }
+        return false
     }
 }
 

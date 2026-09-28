@@ -142,7 +142,7 @@ struct MessageInfoAddressTests {
         #expect(info.replyToAddresses == [.mailbox(replyDesk)])
         #expect(info.toAddresses == [
             .mailbox(Self.jane),
-            .group(name: "Team", members: [Self.first, Self.second]),
+            .invalid("Team: a@example.com, Sub: b@example.com;;"),
             .group(name: "undisclosed-recipients", members: [])
         ])
         #expect(info.ccAddresses == [.invalid("x@exa mple.com"), .mailbox(.init(address: #""john doe"@example.com"#))])
@@ -336,10 +336,15 @@ private func envelopeAddress(
 }
 
 extension MessageInfoAddressTests {
-    @Test("ENVELOPE groups nested thousands deep flatten without recursion, in order")
-    func deeplyNestedEnvelopeGroups() {
+    @Test("A group nested in another is kept as invalid text, at any depth and without recursion")
+    func nestedEnvelopeGroups() {
         let deep = [AddressListEntry].entries(fromEnvelope: [deeplyNestedGroup])
-        #expect(deep == [.group(name: "G99999", members: [SwiftMail.EmailAddress(address: "a@example.com")])])
+        guard case .invalid(let text) = deep.first else {
+            Issue.record("a nested group was not kept as invalid text")
+            return
+        }
+        #expect(text.hasPrefix("G99999: G99998: G99997:"))
+        #expect(text.hasSuffix(" a@example.com" + String(repeating: ";", count: 100_000)))
 
         let sub = EmailAddressGroup(groupName: ByteBuffer(string: "Sub"), sourceRoot: nil, children: [
             .singleAddress(envelopeAddress(nil, "y")), .singleAddress(envelopeAddress(nil, "z"))
@@ -347,8 +352,11 @@ extension MessageInfoAddressTests {
         let team = EmailAddressGroup(groupName: ByteBuffer(string: "Team"), sourceRoot: nil, children: [
             .singleAddress(envelopeAddress(nil, "x")), .group(sub), .singleAddress(envelopeAddress(nil, "w"))
         ])
-        #expect([AddressListEntry].entries(fromEnvelope: [.group(team)]).mailboxes.map(\.address)
-            == ["x@example.com", "y@example.com", "z@example.com", "w@example.com"])
+        let entries = [AddressListEntry].entries(fromEnvelope: [.group(team)])
+        #expect(entries == [.invalid("Team: x@example.com, Sub: y@example.com, z@example.com;, w@example.com;")])
+        #expect(entries.mailboxes.isEmpty)
+        // Written out and read back, the text is still not an address.
+        #expect(entries.first.flatMap { AddressListEntry($0.description) }?.isInvalid == true)
     }
 
     @Test("An ENVELOPE mailbox with a control character stays invalid everywhere it is written")
