@@ -94,9 +94,16 @@ struct AddressParserRecoveryTests {
             == [mailbox("john@example.com", "Doe, John")])
         #expect(AddressParser.parseAddressList("Doe, John <john@example.com>, bob@example.com")
             == [.invalid("Doe"), mailbox("john@example.com", "John"), mailbox("bob@example.com")])
-        // A well-formed list is never read as one mailbox.
+        #expect(AddressParser.parseAddressList("Doe, Jane, Jr. <jane@example.com>")
+            == [mailbox("jane@example.com", "Doe, Jane, Jr.")])
+        // A well-formed element before the last keeps the field a list, even
+        // when invalid text sits between them.
         #expect(AddressParser.parseAddressList("Team:;, Bob <bob@example.com>")
             == [.group(name: "Team", members: []), mailbox("bob@example.com", "Bob")])
+        #expect(AddressParser.parseAddressList("Team:;, Doe, John <john@example.com>")
+            == [.group(name: "Team", members: []), .invalid("Doe"), mailbox("john@example.com", "John")])
+        #expect(AddressParser.parseAddressList("a@example.com, Doe, John <john@example.com>")
+            == [mailbox("a@example.com"), .invalid("Doe"), mailbox("john@example.com", "John")])
     }
 
     @Test("A recovered mailbox reads back from its own string form")

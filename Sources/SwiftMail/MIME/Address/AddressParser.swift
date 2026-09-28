@@ -43,11 +43,12 @@ public enum AddressParser {
     /// ``AddressListEntry/invalid(_:)`` entries, and empty elements (`a, , b`)
     /// are skipped.
     ///
-    /// When the elements include invalid text but the whole field reads as one
-    /// mailbox, as `Doe, John <john@example.com>` does, that one mailbox is the
-    /// result: the text before its address names no other address, so the
-    /// unquoted comma belongs to its display name. A field that reads as
-    /// well-formed elements is never read this way.
+    /// When the elements before the last are all invalid text and the whole
+    /// field reads as one mailbox, as `Doe, John <john@example.com>` does, that
+    /// one mailbox is the result: the text before its address names no other
+    /// address, so the unquoted comma belongs to its display name. Any
+    /// well-formed element before the last keeps the field a list, so a
+    /// mailbox or group is never folded into a display name.
     ///
     /// - Parameter text: A field body, such as the value of a `To:` header field.
     ///   Folded lines are unfolded.
@@ -58,7 +59,8 @@ public enum AddressParser {
         while let entry = scanner.readListElement() {
             entries.append(entry)
         }
-        if entries.contains(where: \.isInvalid), let mailbox = parseMailbox(text) {
+        let earlier = entries.dropLast()
+        if !earlier.isEmpty, earlier.allSatisfy(\.isInvalid), let mailbox = parseMailbox(text) {
             return [.mailbox(mailbox)]
         }
         return entries
