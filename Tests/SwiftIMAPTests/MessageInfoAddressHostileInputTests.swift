@@ -11,9 +11,9 @@ import Testing
 // MARK: - Hostile sources
 
 /// An ENVELOPE group nested 100,000 levels deep. It is kept alive for the whole
-/// run: swift-nio-imap releases its nested groups recursively, which overflows
-/// the stack on its own at a few thousand levels, so only a structure that is
-/// never released can show that SwiftMail itself doesn't recurse.
+/// run: swift-nio-imap releases its nested groups recursively, which overflows a
+/// 512 KiB thread stack at about 1,300 levels (apple/swift-nio-imap#859), so only
+/// a structure that is never released can show that SwiftMail itself doesn't recurse.
 private let deeplyNestedGroup: EmailAddressListElement = {
     var element = EmailAddressListElement.singleAddress(envelopeAddress(nil, "a"))
     for level in 0..<100_000 {
