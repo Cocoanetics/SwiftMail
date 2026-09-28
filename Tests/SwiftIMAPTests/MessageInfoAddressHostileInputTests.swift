@@ -104,4 +104,29 @@ extension MessageInfoAddressTests {
         #expect(header.toAddresses == [.invalid("Victim <victim\u{0007}@example.com>"), .mailbox(Self.bob)])
         #expect(header.to.flatMap(AddressParser.parseAddressList).mailboxes == [Self.bob])
     }
+
+    @Test("MSG text that names no valid address stays invalid through the strings and EML, however it looks")
+    func msgInvalidTextStaysInvalid() throws {
+        // A trailing line break is no part of the address, and a display name that
+        // looks like an address is still only a name.
+        let recipient = CFBNode.storage(name: "__recip_version1.0_#00000000", children: mapiNodes([
+            .int32(.recipientType, 1), .unicode(.displayName, "Victim"), .unicode(.smtpAddress, "victim@example.com\n")
+        ], isTopLevel: false))
+        let msg = CompoundFileBuilder.build(root: mapiNodes([
+            .unicode(.subject, "Hallo"),
+            .unicode(.displayCc, "victim@example.com; Bob <bob@example.com>")
+        ], isTopLevel: true, extra: [recipient]))
+
+        let header = try MSGParser.parse(msg).header
+        #expect(header.toAddresses == [.invalid("Victim <victim@example.com\n>")])
+        #expect(header.ccAddresses == [.invalid("victim@example.com"), .invalid("Bob <bob@example.com>")])
+        #expect(header.cc == ["\"victim@example.com\"", "\"Bob <bob@example.com>\""])
+
+        // Read back from the legacy strings or from EML, every entry is the same invalid text.
+        #expect(header.to.flatMap(AddressParser.parseAddressList) == header.toAddresses)
+        #expect(header.cc.flatMap(AddressParser.parseAddressList) == header.ccAddresses)
+        let reparsed = try Message(emlData: Message(header: header, parts: []).emlData()).header
+        #expect(reparsed.toAddresses == header.toAddresses)
+        #expect(reparsed.ccAddresses == header.ccAddresses)
+    }
 }

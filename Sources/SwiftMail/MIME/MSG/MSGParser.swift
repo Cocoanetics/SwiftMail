@@ -164,15 +164,21 @@ public struct MSGParser {
     /// mailbox, of which only the address is kept. A name that merely repeats
     /// the address is dropped, and a name without a usable address is kept as
     /// invalid text, the address exactly as given.
+    ///
+    /// Only space and tab are trimmed from the address. A line break or other
+    /// control character is no part of an address, and dropping one, whether by
+    /// trimming or as the folding white space of a header, could leave a
+    /// different, valid address, so an address holding one is invalid text.
     private static func entry(name: String?, address: String?) -> AddressListEntry? {
         let name = name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let address = address?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let address = address?.trimmingWSP()
         guard let address, !address.isEmpty else {
             guard let name, !name.isEmpty else { return nil }
             return .invalid(name)
         }
         let displayName = name == address ? nil : name
-        guard let mailbox = AddressParser.parseMailbox(address) else {
+        guard !address.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl),
+              let mailbox = AddressParser.parseMailbox(address) else {
             return .invalid(AddressFormatter.invalidText(name: displayName, address: address))
         }
         return .mailbox(EmailAddress(name: displayName, address: mailbox.address))
