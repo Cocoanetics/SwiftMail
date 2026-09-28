@@ -302,15 +302,15 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 let host = emailAddress.host?.stringValue ?? ""
 
                 if !name.isEmpty {
-                    return "\"\(name)\" <\(mailbox)@\(host)>"
+                    return "\(AddressFormatter.quotedPhrase(name)) <\(mailbox)@\(host)>"
                 } else {
                     return "\(mailbox)@\(host)"
                 }
 
             case .group(let group):
                 let groupName = group.groupName.stringValue.decodeMIMEHeader()
-                let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
-                return "\(groupName): \(members)"
+                let members = group.children.map { formatAddress($0) }
+                return AddressFormatter.groupString(name: groupName, members: members)
         }
     }
 

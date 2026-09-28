@@ -171,13 +171,16 @@ public struct MSGParser {
         return value.hasPrefix("/") || value.uppercased().hasPrefix("EX:") ? nil : value
     }
 
+    /// A recipient as `Name <address>`, the name quoted where address syntax
+    /// needs it (`"Doe, Jane" <jane@example.com>`), so the text reads back as
+    /// one mailbox. A name without an address is returned as it is.
     private static func format(name: String?, address: String?) -> String? {
         let name = name?.trimmingCharacters(in: .whitespacesAndNewlines)
         let address = address?.trimmingCharacters(in: .whitespacesAndNewlines)
 
         switch (name, address) {
             case let (name?, address?) where !name.isEmpty && !address.isEmpty:
-                return name == address ? address : "\(name) <\(address)>"
+                return name == address ? address : EmailAddress(name: name, address: address).displayString
             case let (_, address?) where !address.isEmpty:
                 return address
             case let (name?, _) where !name.isEmpty:

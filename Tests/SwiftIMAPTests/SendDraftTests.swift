@@ -5,83 +5,99 @@ import Testing
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SendDraftTests {
 
-    // MARK: - parseEmailAddresses (single address)
+    private static func draft(
+        from: String? = "me@example.com", to: [String] = [], cc: [String] = [], bcc: [String] = []
+    ) -> MessageInfo {
+        MessageInfo(sequenceNumber: SequenceNumber(1), from: from, to: to, cc: cc, bcc: bcc)
+    }
+
+    private static func recipients(_ info: MessageInfo) throws -> [EmailAddress] {
+        try IMAPServer.sendDraftAddresses(from: info).recipients
+    }
+
+    // MARK: - Single addresses
 
     @Test
-    func testParseEmailAddressPlain() {
-        let results = IMAPServer.parseEmailAddresses(from: "user@example.com")
-        #expect(results.count == 1)
-        #expect(results[0].address == "user@example.com")
-        #expect(results[0].name == nil)
+    func testPlainAddress() throws {
+        #expect(try Self.recipients(Self.draft(to: ["user@example.com"]))
+            == [EmailAddress(address: "user@example.com")])
     }
 
     @Test
-    func testParseEmailAddressWithDisplayName() {
-        let results = IMAPServer.parseEmailAddresses(from: "John Doe <john@example.com>")
-        #expect(results.count == 1)
-        #expect(results[0].address == "john@example.com")
-        #expect(results[0].name == "John Doe")
+    func testDisplayName() throws {
+        #expect(try Self.recipients(Self.draft(to: ["John Doe <john@example.com>"]))
+            == [EmailAddress(name: "John Doe", address: "john@example.com")])
     }
 
     @Test
-    func testParseEmailAddressWithQuotedDisplayName() {
-        let results = IMAPServer.parseEmailAddresses(from: "\"Doe, John\" <john@example.com>")
-        #expect(results.count == 1)
-        #expect(results[0].address == "john@example.com")
-        #expect(results[0].name == "Doe, John")
+    func testQuotedDisplayNameWithComma() throws {
+        #expect(try Self.recipients(Self.draft(to: ["\"Doe, John\" <john@example.com>"]))
+            == [EmailAddress(name: "Doe, John", address: "john@example.com")])
     }
 
     @Test
-    func testParseEmailAddressAngleBracketsOnly() {
-        let results = IMAPServer.parseEmailAddresses(from: "<noreply@example.com>")
-        #expect(results.count == 1)
-        #expect(results[0].address == "noreply@example.com")
-        #expect(results[0].name == nil)
+    func testAngleBracketsOnlyAndWhitespace() throws {
+        #expect(try Self.recipients(Self.draft(to: ["<noreply@example.com>"], cc: ["  user@example.com  "]))
+            == [EmailAddress(address: "noreply@example.com"), EmailAddress(address: "user@example.com")])
     }
 
     @Test
-    func testParseEmailAddressTrimsWhitespace() {
-        let results = IMAPServer.parseEmailAddresses(from: "  user@example.com  ")
-        #expect(results.count == 1)
-        #expect(results[0].address == "user@example.com")
-        #expect(results[0].name == nil)
+    func testSenderIsTheFirstMailboxOfFrom() throws {
+        let info = Self.draft(from: "Alice <alice@example.com>, Bob <bob@example.com>", to: ["x@example.com"])
+        #expect(try IMAPServer.sendDraftAddresses(from: info).sender
+            == EmailAddress(name: "Alice", address: "alice@example.com"))
     }
 
-    // MARK: - parseEmailAddresses (RFC 2822 group syntax)
+    // MARK: - Groups
 
     @Test
-    func testParseEmailAddressesGroupSyntax() {
-        let results = IMAPServer.parseEmailAddresses(from: "Team: alice@example.com, bob@example.com;")
-        #expect(results.count == 2)
-        #expect(results[0].address == "alice@example.com")
-        #expect(results[1].address == "bob@example.com")
+    func testGroupMembersAreRecipients() throws {
+        #expect(try Self.recipients(Self.draft(to: ["Team: alice@example.com, bob@example.com;"])).map(\.address)
+            == ["alice@example.com", "bob@example.com"])
     }
 
     @Test
-    func testParseEmailAddressesGroupSyntaxWithNames() {
-        let results = IMAPServer.parseEmailAddresses(from: "Friends: Alice <alice@example.com>, Bob <bob@example.com>;")
-        #expect(results.count == 2)
-        #expect(results[0].address == "alice@example.com")
-        #expect(results[0].name == "Alice")
-        #expect(results[1].address == "bob@example.com")
-        #expect(results[1].name == "Bob")
+    func testGroupWithNamedMembers() throws {
+        let info = Self.draft(to: ["Friends: Alice <alice@example.com>, \"Doe, Bob\" <bob@example.com>;"])
+        #expect(try Self.recipients(info) == [
+            EmailAddress(name: "Alice", address: "alice@example.com"),
+            EmailAddress(name: "Doe, Bob", address: "bob@example.com")
+        ])
     }
 
     @Test
-    func testParseEmailAddressesGroupSyntaxEmpty() {
-        // Empty group should return no addresses
-        let results = IMAPServer.parseEmailAddresses(from: "Undisclosed recipients:;")
-        #expect(results.isEmpty)
+    func testEmptyGroupAddsNoRecipient() throws {
+        let info = Self.draft(to: ["Undisclosed recipients:;"], bcc: ["hidden@example.com"])
+        #expect(try Self.recipients(info) == [EmailAddress(address: "hidden@example.com")])
     }
 
     @Test
-    func testParseEmailAddressesGroupSyntaxMixed() {
-        let input = "Sales: plain@example.com, Named <named@example.com>, <brackets@example.com>;"
-        let results = IMAPServer.parseEmailAddresses(from: input)
-        #expect(results.count == 3)
-        #expect(results[0].address == "plain@example.com")
-        #expect(results[1].address == "named@example.com")
-        #expect(results[1].name == "Named")
-        #expect(results[2].address == "brackets@example.com")
+    func testGroupMixedMembers() throws {
+        let info = Self.draft(to: ["Sales: plain@example.com, Named <named@example.com>, <brackets@example.com>;"])
+        #expect(try Self.recipients(info).map(\.address)
+            == ["plain@example.com", "named@example.com", "brackets@example.com"])
+    }
+
+    // MARK: - Rejected drafts
+
+    @Test
+    func testInvalidRecipientRejectsTheDraft() {
+        let info = Self.draft(to: ["alice@example.com", "Bob <bob@example.com> carol@example.com"])
+        #expect(throws: IMAPError.self) {
+            try IMAPServer.sendDraftAddresses(from: info)
+        }
+    }
+
+    @Test
+    func testMissingOrUnusableAddressesRejectTheDraft() {
+        let unusable = [
+            Self.draft(from: nil, to: ["a@example.com"]),
+            Self.draft(from: "junk", to: ["a@example.com"]),
+            Self.draft(),
+            Self.draft(to: ["Nobody:;"])
+        ]
+        for info in unusable {
+            #expect(throws: IMAPError.self) { try IMAPServer.sendDraftAddresses(from: info) }
+        }
     }
 }

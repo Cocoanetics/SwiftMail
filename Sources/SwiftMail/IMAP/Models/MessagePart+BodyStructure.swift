@@ -231,14 +231,14 @@ extension Array where Element == MessagePart {
                 let mailbox = emailAddress.mailbox.map { $0.stringValue } ?? ""
                 let host = emailAddress.host.map { $0.stringValue } ?? ""
                 if !name.isEmpty {
-                    return "\"\(name)\" <\(mailbox)@\(host)>"
+                    return "\(AddressFormatter.quotedPhrase(name)) <\(mailbox)@\(host)>"
                 } else {
                     return "\(mailbox)@\(host)"
                 }
             case .group(let group):
                 let groupName = group.groupName.stringValue.decodeMIMEHeader()
-                let members = group.children.map { formatEnvelopeAddress($0) }.joined(separator: ", ")
-                return "\(groupName): \(members);"
+                let members = group.children.map { formatEnvelopeAddress($0) }
+                return AddressFormatter.groupString(name: groupName, members: members)
         }
     }
 
