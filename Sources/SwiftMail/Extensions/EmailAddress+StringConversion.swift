@@ -16,6 +16,11 @@ extension EmailAddress: LosslessStringConvertible {
      ``description`` or read off the wire arrives. Inside a *quoted-string* an
      encoded-word look-alike is literal text (RFC 2047 §5).
 
+     As the text is one mailbox and never a list, a display name may hold an
+     unquoted comma (`Doe, Jane <jane@example.com>`), and it may break the
+     phrase grammar in other ways mail commonly does, as long as a well-formed
+     `<address>` ends the text and the name names no other address.
+
      - Parameter description: The text of exactly one mailbox. A group, a list of
        addresses, or malformed text yields `nil`.
      */

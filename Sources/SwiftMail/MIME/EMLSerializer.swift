@@ -79,15 +79,10 @@ public struct EMLSerializer {
     /// as safe field bytes: display names encoded where they must be, the
     /// addr-spec never encoded (RFC 6532 keeps a UTF-8 one as it is), groups
     /// whole, and no control character that could start a header field. Text
-    /// that is not an address is written as unstructured text, encoded when it
-    /// isn't printable ASCII.
+    /// that is not an address is written as it is, so a lenient reader can
+    /// still find an address in it; see ``AddressListEntry/description``.
     private static func headerSafeAddress(_ value: String) -> String {
-        AddressParser.parseAddressList(value).map { entry in
-            if case .invalid(let text) = entry {
-                return text.rfc2047EncodedHeader()
-            }
-            return entry.description
-        }.joined(separator: ", ")
+        AddressParser.parseAddressList(value).map(\.description).joined(separator: ", ")
     }
 
     /// Emit the body: empty placeholder, single-part inline, or multipart.

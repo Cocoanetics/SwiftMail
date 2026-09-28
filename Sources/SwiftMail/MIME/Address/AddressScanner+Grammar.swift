@@ -20,20 +20,27 @@ extension AddressScanner {
     /// group = display-name ":" [group-list] ";" [CFWS], where the group-list
     /// may hold the empty elements of obs-group-list and obs-mbox-list. Groups
     /// don't nest, so every member is a mailbox.
-    mutating func readGroup() throws -> AddressListEntry {
+    ///
+    /// - Parameter endsAtEndOfText: Whether the end of the text closes the
+    ///   group as its missing ";" would. Recovery uses this for a group that
+    ///   runs to the end of the field: its members are the same whether the
+    ///   ";" was dropped or a display name held a colon.
+    mutating func readGroup(endsAtEndOfText: Bool = false) throws -> AddressListEntry {
         let name = try readPhrase()
         try expect(":")
         var members: [EmailAddress] = []
         while true {
             try skipCFWS()
-            if consume(";") {
+            if consume(";") || (endsAtEndOfText && isAtEnd) {
                 break
             }
             if consume(",") {
                 continue
             }
             members.append(try readMailbox())
-            guard current == "," || current == ";" else { throw AddressSyntaxError() }
+            guard current == "," || current == ";" || (endsAtEndOfText && isAtEnd) else {
+                throw AddressSyntaxError()
+            }
         }
         try skipCFWS()
         return .group(name: name, members: members)
@@ -118,17 +125,33 @@ extension AddressScanner {
     }
 
     /// local-part = dot-atom / quoted-string / obs-local-part, returned as the
-    /// text it stands for: its words joined by dots, without CFWS or quoting.
-    /// CFWS may surround the dots (obs-local-part), but two words need a dot
+    /// text it stands for: its words and dots without CFWS or quoting. CFWS
+    /// may surround the dots (obs-local-part), but two words need a dot
     /// between them: `first last` is not a local-part.
+    ///
+    /// A dot may also lead, trail or repeat, as in `taro.@docomo.ne.jp`: such
+    /// addresses were handed out by Japanese mobile carriers and are still in
+    /// use. The address is the text as written; ``AddressSyntax/addrSpec(localPart:domain:)``
+    /// quotes it, which makes it valid RFC 5322.
     mutating func readLocalPart() throws -> String {
-        var words: [String] = []
-        repeat {
+        var text = ""
+        var hasWord = false
+        var isAfterWord = false
+        while true {
             try skipCFWS()
-            words.append(try readWord())
-            try skipCFWS()
-        } while consume(".")
-        return words.joined(separator: ".")
+            if consume(".") {
+                text += "."
+                isAfterWord = false
+            } else if !isAfterWord, current == "\"" || current.map(AddressSyntax.isAtext) == true {
+                text += try readWord()
+                hasWord = true
+                isAfterWord = true
+            } else {
+                break
+            }
+        }
+        guard hasWord else { throw AddressSyntaxError() }
+        return text
     }
 
     /// word = atom / quoted-string, as its text.

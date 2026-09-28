@@ -24,8 +24,10 @@ extension Email {
     /// Initialize an `Email` from an IMAP `Message`.
     ///
     /// Each address field may name several mailboxes and groups; the sender is
-    /// the first mailbox of `from`, and group members are recipients like any
-    /// other. Text that is not an address is left out.
+    /// the first mailbox of `from` (or all of it, when it reads as one mailbox
+    /// whose display name holds an unquoted comma, as in `Doe, John <…>`), and
+    /// group members are recipients like any other. Text that is not an address
+    /// is left out.
     ///
     /// - Parameter message: The IMAP message to convert.
     /// - Throws: `ConversionError.missingSender` if the message has no `from` field,
@@ -34,7 +36,7 @@ extension Email {
         guard let fromStr = message.from else {
             throw ConversionError.missingSender
         }
-        guard let sender = Self.mailboxes(in: [fromStr]).first else {
+        guard let sender = EmailAddress(fromStr) ?? Self.mailboxes(in: [fromStr]).first else {
             throw ConversionError.unparsableSender(fromStr)
         }
 

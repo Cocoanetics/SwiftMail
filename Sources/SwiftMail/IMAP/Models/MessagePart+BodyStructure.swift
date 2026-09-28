@@ -230,10 +230,11 @@ extension Array where Element == MessagePart {
                 }()
                 let mailbox = emailAddress.mailbox.map { $0.stringValue } ?? ""
                 let host = emailAddress.host.map { $0.stringValue } ?? ""
+                let address = AddressSyntax.envelopeAddrSpec(mailbox: mailbox, host: host)
                 if !name.isEmpty {
-                    return "\(AddressFormatter.quotedPhrase(name)) <\(mailbox)@\(host)>"
+                    return "\(AddressFormatter.quotedPhrase(name)) <\(address)>"
                 } else {
-                    return "\(mailbox)@\(host)"
+                    return address
                 }
             case .group(let group):
                 let groupName = group.groupName.stringValue.decodeMIMEHeader()

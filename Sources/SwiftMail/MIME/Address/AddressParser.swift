@@ -22,12 +22,17 @@ import Foundation
 /// - An encoded-word is decoded only where RFC 2047 §5 allows it: as a whole
 ///   word of a display name, set off from the words around it by white space
 ///   or a comment. Inside a quoted-string it is literal text.
-/// - Nothing is guessed. An element that doesn't match the grammar, such as a
-///   missing comma, a control character, or an unterminated quoted-string,
-///   comment, domain literal, angle bracket or group, becomes an
-///   ``AddressListEntry/invalid(_:)`` entry that keeps its text. That text
-///   reaches up to the next comma the malformed syntax doesn't swallow, and the
-///   elements around it are read normally.
+/// - An address is never guessed at, repaired or dropped. A few malformations
+///   common in real mail are read anyway, because the address they name is
+///   unambiguous: a display name that breaks the phrase grammar in front of a
+///   well-formed `<address>` (`John [Sales] <john@example.com>`), a group
+///   missing its final ";", and a local-part with a leading, trailing or
+///   doubled dot (`taro.@docomo.ne.jp`). Any other element that doesn't match
+///   the grammar, such as a missing comma, a control character in an address,
+///   or an unterminated quoted-string, comment, domain literal or angle
+///   bracket, becomes an ``AddressListEntry/invalid(_:)`` entry that keeps its
+///   text. That text reaches up to the next comma the malformed syntax doesn't
+///   swallow, and the elements around it are read normally.
 ///
 /// ``AddressListEntry/description`` and ``EmailAddress/description`` write the
 /// text this parser reads back to the identical value.
@@ -55,10 +60,15 @@ public enum AddressParser {
         return entries
     }
 
-    /// Parses text that is exactly one mailbox, or returns `nil`.
+    /// Parses text that is exactly one mailbox, or returns `nil`. As the text
+    /// can't be a list, a display name may also hold an unquoted comma, as in
+    /// `Doe, Jane <jane@example.com>` (see
+    /// ``AddressScanner/recoverNameAddr(in:allowsCommas:)``).
     static func parseMailbox(_ text: String) -> EmailAddress? {
         var scanner = AddressScanner(text)
-        guard let mailbox = try? scanner.readMailbox(), scanner.isAtEnd else { return nil }
-        return mailbox
+        if let mailbox = try? scanner.readMailbox(), scanner.isAtEnd {
+            return mailbox
+        }
+        return scanner.recoverNameAddr(in: 0..<scanner.scalars.count, allowsCommas: true)
     }
 }

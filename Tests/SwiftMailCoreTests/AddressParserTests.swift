@@ -158,6 +158,15 @@ struct AddressParserTests {
         #expect(AddressParser.parseAddressList(text).mailboxes.first?.name == name)
     }
 
+    @Test("A fold between a backslash and the character it quotes is unfolded first (RFC 5322 §2.2.3)")
+    func foldInsideQuotedPair() {
+        #expect(AddressParser.parseAddressList("\"a\\\r\n b\"@example.com") == [mailbox(#""a b"@example.com"#)])
+        #expect(AddressParser.parseAddressList("a@example.com (a\\\r\n b)") == [mailbox("a@example.com", "a b")])
+        #expect(AddressParser.parseAddressList("\"Jo\\\r\n hn\" <j@example.com>")
+            == [mailbox("j@example.com", "Jo hn")])
+        #expect(AddressParser.parseAddressList("a@[1\\\r\n 2]") == [mailbox("a@[1\\ 2]")])
+    }
+
     @Test("An empty display name is no display name")
     func emptyDisplayName() {
         #expect(AddressParser.parseAddressList(#""" <a@example.com>"#) == [mailbox("a@example.com")])
@@ -204,9 +213,13 @@ struct AddressParserTests {
         (#"=?UTF-8?Q?John?="Doe" <john@example.com>"#, "=?UTF-8?Q?John?=Doe"),
         (#""Ann"=?UTF-8?Q?Lee?= <ann@example.com>"#, "Ann=?UTF-8?Q?Lee?="),
         ("=?UTF-8?Q?Dr?=. Who <who@example.com>", "=?UTF-8?Q?Dr?=. Who"),
-        // Not encoded-word syntax
+        // Not encoded-word syntax: no charset, no encoded text, or no such encoding
         ("=?UTF-8?X?John?= <john@example.com>", "=?UTF-8?X?John?="),
-        ("=??Q?John?= <john@example.com>", "=??Q?John?=")
+        ("=??Q?John?= <john@example.com>", "=??Q?John?="),
+        ("=?*en?Q?b?= <x@example.com>", "=?*en?Q?b?="),
+        ("John =?UTF-8?Q??= Doe <x@example.com>", "John =?UTF-8?Q??= Doe"),
+        // A word that doesn't decode stays exactly as written
+        ("=?X-UNKNOWN*en?Q?=ZZ?= <x@example.com>", "=?X-UNKNOWN*en?Q?=ZZ?=")
     ])
     func literalEncodedWordLookalikes(_ text: String, _ name: String) {
         #expect(AddressParser.parseAddressList(text).mailboxes.first?.name == name)
@@ -222,6 +235,10 @@ struct AddressParserTests {
         ("bob@example.com (Bob (the builder))", "Bob (the builder)"),
         (#"bob@example.com (Bob \) Smith)"#, "Bob ) Smith"),
         ("a@example.com (=?UTF-8?Q?J=C3=B6rg?=)", "Jörg"),
+        ("a@example.com (=?UTF-8?Q?J=C3=B6rg?= Smith)", "Jörg Smith"),
+        ("a@example.com ((=?UTF-8?Q?J=C3=B6rg?=))", "(Jörg)"),
+        ("a@example.com (=?UTF-8?Q?a?=  =?UTF-8?Q?b?= c)", "ab c"),
+        (#"a@example.com (\=?UTF-8?Q?J=C3=B6rg?=)"#, "=?UTF-8?Q?J=C3=B6rg?="),
         ("bob@example.com ()", nil),
         ("bob(Bob)@example.com", nil),
         ("Alice <alice@example.com> (work)", "Alice"),

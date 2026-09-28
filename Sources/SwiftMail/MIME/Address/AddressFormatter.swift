@@ -28,14 +28,16 @@ enum AddressFormatter {
 
     /// The text of a mailbox: `name <address>`, or the bare address without a name.
     static func string(for address: EmailAddress, form: Form) -> String {
-        let addrSpec = withoutControls(address.address, replacement: nil)
+        let addrSpec = withoutControls(address.address)
         guard let name = address.name, !name.isEmpty else { return addrSpec }
         return phrase(name, form: form) + " <" + addrSpec + ">"
     }
 
-    /// The text of an address-list element. A group is `name: members;`, and
-    /// invalid text is written as it is, with any control character replaced by
-    /// a space.
+    /// The text of an address-list element. A group is `name: members;`.
+    /// Invalid text is written as it is, keeping any address a lenient reader
+    /// can still find in it, unless it holds a control character: then it is
+    /// written as encoded-words, which a header can carry and which never read
+    /// as an address (replacing the control could turn the text into one).
     static func string(for entry: AddressListEntry, form: Form) -> String {
         switch entry {
             case .mailbox(let address):
@@ -44,7 +46,8 @@ enum AddressFormatter {
                 let list = members.map { string(for: $0, form: form) }.joined(separator: ", ")
                 return phrase(name, form: form) + ":" + (list.isEmpty ? "" : " " + list) + ";"
             case .invalid(let text):
-                return withoutControls(text, replacement: " ")
+                let hasControl = text.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl)
+                return hasControl ? text.rfc2047EncodedWords() : text
         }
     }
 
@@ -104,18 +107,12 @@ enum AddressFormatter {
     }
 
     /// `text` without the control characters a header field can't hold (see
-    /// ``AddressSyntax/isForbiddenControl(_:)``): dropped, or replaced by
-    /// `replacement`. HTAB is kept, as a quoted local-part may hold it.
-    private static func withoutControls(_ text: String, replacement: Unicode.Scalar?) -> String {
+    /// ``AddressSyntax/isForbiddenControl(_:)``). HTAB is kept, as a quoted
+    /// local-part may hold it.
+    private static func withoutControls(_ text: String) -> String {
         guard text.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl) else { return text }
         var safe = String.UnicodeScalarView()
-        for scalar in text.unicodeScalars {
-            if !AddressSyntax.isForbiddenControl(scalar) {
-                safe.append(scalar)
-            } else if let replacement {
-                safe.append(replacement)
-            }
-        }
+        safe.append(contentsOf: text.unicodeScalars.filter { !AddressSyntax.isForbiddenControl($0) })
         return String(safe)
     }
 }

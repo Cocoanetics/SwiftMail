@@ -65,7 +65,9 @@ extension AddressListEntry: LosslessStringConvertible {
 
     /// The entry as RFC 5322 text for a header field, which ``init(_:)`` reads
     /// back to this entry. Display names are written the way
-    /// ``EmailAddress/description`` writes them.
+    /// ``EmailAddress/description`` writes them. Invalid text is written as it
+    /// is, unless it holds a control character: then it is written as
+    /// encoded-words, which read back as invalid text, never as an address.
     public var description: String {
         AddressFormatter.string(for: self, form: .header)
     }

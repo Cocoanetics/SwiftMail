@@ -12,7 +12,7 @@ struct CFWSRun {
     /// Whether nothing was skipped.
     var isEmpty = true
 
-    /// The text of each comment, in order.
+    /// The raw text of each comment, in order (see ``AddressScanner/readComment(allowsControls:)``).
     var comments: [String] = []
 
     /// Whether the run held a comment.
@@ -64,14 +64,17 @@ struct AddressScanner {
 
 extension AddressScanner {
     /// Skips CFWS and reports what it held.
+    ///
+    /// - Parameter allowsControls: Whether a comment may hold a control
+    ///   character other than CR and LF, as in a display name being recovered.
     @discardableResult
-    mutating func skipCFWS() throws -> CFWSRun {
+    mutating func skipCFWS(allowsControls: Bool = false) throws -> CFWSRun {
         var run = CFWSRun()
         while true {
             if skipFWS() {
                 run.isEmpty = false
             } else if current == "(" {
-                run.comments.append(try readComment())
+                run.comments.append(try readComment(allowsControls: allowsControls))
                 run.isEmpty = false
             } else {
                 return run
@@ -107,9 +110,13 @@ extension AddressScanner {
         return lineFeed + 1 - position
     }
 
-    /// Reads a comment and returns its text: nested comments kept with their
-    /// parentheses, quoted-pairs resolved, and folds unfolded.
-    mutating func readComment() throws -> String {
+    /// Reads a comment and returns its raw text: nested comments kept with
+    /// their parentheses, quoted-pairs kept as written (a look-alike of an
+    /// encoded-word built from them is not one), and folds unfolded.
+    ///
+    /// - Parameter allowsControls: Whether a control character other than CR
+    ///   and LF is read as text, as it is in a display name being recovered.
+    mutating func readComment(allowsControls: Bool = false) throws -> String {
         try expect("(")
         var text: [Unicode.Scalar] = []
         var depth = 1
@@ -117,13 +124,15 @@ extension AddressScanner {
             if let length = foldLength() {
                 position += length
             } else if scalar == "\\" {
-                text.append(try readQuotedPair())
+                let quoted = try readQuotedPair(allowsControls: allowsControls)
+                text += ["\\", quoted]
             } else {
                 position += 1
                 depth += scalar == "(" ? 1 : 0
                 depth -= scalar == ")" ? 1 : 0
                 guard depth > 0 else { return String(unicodeScalars: text) }
-                guard scalar == "(" || scalar == ")" || AddressSyntax.isCommentText(scalar) else {
+                let isText = scalar == "(" || scalar == ")" || AddressSyntax.isCommentText(scalar)
+                guard isText || (allowsControls && AddressSyntax.isControlInText(scalar)) else {
                     throw AddressSyntaxError()
                 }
                 text.append(scalar)
@@ -133,10 +142,16 @@ extension AddressScanner {
     }
 
     /// Reads a quoted-pair, `\` followed by a visible character or WSP, and
-    /// returns the quoted scalar.
-    mutating func readQuotedPair() throws -> Unicode.Scalar {
+    /// returns the quoted scalar. A fold between the two is removed first, as
+    /// RFC 5322 §2.2.3 reads syntax after unfolding.
+    mutating func readQuotedPair(allowsControls: Bool = false) throws -> Unicode.Scalar {
         try expect("\\")
-        guard let scalar = current, AddressSyntax.isVisible(scalar) || AddressSyntax.isWSP(scalar) else {
+        if let length = foldLength() {
+            position += length
+        }
+        guard let scalar = current else { throw AddressSyntaxError() }
+        let isQuotable = AddressSyntax.isVisible(scalar) || AddressSyntax.isWSP(scalar)
+        guard isQuotable || (allowsControls && AddressSyntax.isControlInText(scalar)) else {
             throw AddressSyntaxError()
         }
         position += 1
@@ -159,19 +174,25 @@ extension AddressScanner {
     /// Reads a quoted-string and returns its content (RFC 5322 §3.2.4):
     /// quoted-pairs resolved, the line break of a fold removed, and white
     /// space kept.
-    mutating func readQuotedString() throws -> String {
+    ///
+    /// - Parameter allowsControls: Whether a control character other than CR
+    ///   and LF is read as text, as it is in a display name being recovered.
+    mutating func readQuotedString(allowsControls: Bool = false) throws -> String {
         try expect("\"")
         var content: [Unicode.Scalar] = []
         while let scalar = current {
             if let length = foldLength() {
                 position += length
             } else if scalar == "\\" {
-                content.append(try readQuotedPair())
+                content.append(try readQuotedPair(allowsControls: allowsControls))
             } else if scalar == "\"" {
                 position += 1
                 return String(unicodeScalars: content)
             } else {
-                guard AddressSyntax.isQuotedText(scalar) else { throw AddressSyntaxError() }
+                let isText = AddressSyntax.isQuotedText(scalar)
+                guard isText || (allowsControls && AddressSyntax.isControlInText(scalar)) else {
+                    throw AddressSyntaxError()
+                }
                 content.append(scalar)
                 position += 1
             }

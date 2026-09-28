@@ -69,6 +69,74 @@ struct AddressFieldIntegrationTests {
         #expect(try Email(message: message).recipients == [SwiftMail.EmailAddress(address: "bob@example.com")])
     }
 
+    @Test("Recovered addresses survive EML serialization", arguments: [
+        "Jörg [Vertrieb] <joerg@example.com>, bob@example.com",
+        "Zoë: Sales <zoe@example.com>, bob@example.com",
+        "john@example.com <john@example.com>, bob@example.com"
+    ])
+    func emlRecoveredAddressesSurviveSerialization(_ field: String) throws {
+        let eml = "From: a@example.com\r\nTo: \(field)\r\nSubject: x\r\n\r\nBody\r\n"
+        let message = try Message(emlData: Data(eml.utf8))
+        let recipients = try Email(message: message).recipients
+        #expect(recipients.count == 2)
+
+        let reparsed = try Message(emlData: message.emlData())
+        #expect(try Email(message: reparsed).recipients == recipients)
+    }
+
+    @Test("A stray Windows-1252 byte in a display name keeps the sender")
+    func emlStrayByteInDisplayName() throws {
+        var eml = Data("From: Caf".utf8)
+        eml.append(0x92)
+        eml.append(Data(" Owner <owner@example.com>\r\nTo: bob@example.com\r\n\r\nBody\r\n".utf8))
+        let message = try Message(emlData: eml)
+
+        #expect(try Email(message: message).sender.address == "owner@example.com")
+        let serialized = try #require(String(data: message.emlData(), encoding: .utf8))
+        #expect(serialized.contains("<owner@example.com>"))
+        #expect(try Email(message: Message(emlData: message.emlData())).sender.address == "owner@example.com")
+    }
+
+    @Test("Senders that break the grammar in ways mail commonly does still convert", arguments: [
+        ("john@example.com <john@example.com>", "john@example.com", "john@example.com" as String?),
+        ("John [Sales] <john@example.com>", "john@example.com", "John [Sales]"),
+        ("Taro <taro.@docomo.ne.jp>", #""taro."@docomo.ne.jp"#, "Taro"),
+        ("taro..yamada@docomo.ne.jp", #""taro..yamada"@docomo.ne.jp"#, nil),
+        ("Doe, John <john@example.com>", "john@example.com", "Doe, John")
+    ])
+    func emlLenientSenders(_ from: String, _ address: String, _ name: String?) throws {
+        let eml = "From: \(from)\r\nTo: bob@example.com\r\nSubject: x\r\n\r\nBody\r\n"
+        let sender = try Email(message: Message(emlData: Data(eml.utf8))).sender
+        #expect(sender == SwiftMail.EmailAddress(name: name, address: address))
+    }
+
+    @Test("A colon in a display name doesn't hide the recipients after it")
+    func emlColonInDisplayName() throws {
+        let eml = "From: a@example.com\r\nTo: Support: Sales <s@example.com>, bob@example.com\r\n\r\nBody\r\n"
+        #expect(try Email(message: Message(emlData: Data(eml.utf8))).recipients.map(\.address)
+            == ["s@example.com", "bob@example.com"])
+    }
+
+    // MARK: - Email string initializers
+
+    @Test("String initializers read each string as one mailbox, and never drop one")
+    func emailStringInitializers() {
+        let email = Email(
+            senderString: "Company, Inc. <billing@example.com>",
+            recipientStrings: ["Doe, John <john@example.com>", "bob@example.com"],
+            subject: "x", textBody: "y"
+        )
+        #expect(email?.sender == SwiftMail.EmailAddress(name: "Company, Inc.", address: "billing@example.com"))
+        #expect(email?.recipients == [
+            SwiftMail.EmailAddress(name: "Doe, John", address: "john@example.com"),
+            SwiftMail.EmailAddress(address: "bob@example.com")
+        ])
+        #expect(Email(senderString: "a@example.com", recipientStrings: ["bob@example.com", "junk"],
+                      subject: "x", textBody: "y") == nil)
+        #expect(Email(senderString: "a@example.com", recipientStrings: ["bob@example.com"],
+                      ccRecipientStrings: ["first last@example.com"], subject: "x", textBody: "y") == nil)
+    }
+
     // MARK: - MSG
 
     @Test("An MSG recipient named with a comma is quoted, so it reads back as one mailbox")
@@ -114,6 +182,27 @@ struct AddressFieldIntegrationTests {
         #expect(try Email(message: Message(header: info, parts: [])).recipients == [
             SwiftMail.EmailAddress(name: #"Jane "JJ" Doe"#, address: "jane@example.com"),
             Self.doeBob
+        ])
+    }
+
+    @Test("An ENVELOPE local-part that needs quotes gets them")
+    func envelopeLocalPartQuoting() async throws {
+        let envelope = "(NIL \"Hi\" ((\"Anna\" NIL \"anna\" \"example.com\")) NIL NIL "
+            + "((NIL NIL \"john doe\" \"example.com\")(\"John\" NIL \"a@b\" \"example.com\")"
+            + "(NIL NIL \"\\\"quoted already\\\"\" \"example.com\")) NIL NIL NIL \"<m@example.com>\")"
+        let infos = try await Self.executeFetch([
+            "* 1 FETCH (UID 1 ENVELOPE \(envelope))\r\n",
+            "A001 OK FETCH completed\r\n"
+        ])
+        let info = try #require(infos.first)
+
+        #expect(info.to == [
+            #""john doe"@example.com"#,
+            #""John" <"a@b"@example.com>"#,
+            #""quoted already"@example.com"#
+        ])
+        #expect(info.to.flatMap(AddressParser.parseAddressList).mailboxes.map(\.address) == [
+            #""john doe"@example.com"#, #""a@b"@example.com"#, #""quoted already"@example.com"#
         ])
     }
 

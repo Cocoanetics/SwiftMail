@@ -3,6 +3,7 @@
 // header and the display form, and no formatted address can carry a control character
 // into a header field. Values are generated from a fixed seed, so a failure reproduces.
 
+import Foundation
 import Testing
 @testable import SwiftMail
 
@@ -75,6 +76,8 @@ struct AddressRoundTripTests {
             #expect(isHeaderSafe(entry.description), "\(text.debugDescription)")
             if case .invalid(let invalidText) = entry {
                 #expect(!invalidText.isEmpty, "\(text.debugDescription)")
+                // Whatever invalid text is written as, it never reads back as an address.
+                #expect(AddressListEntry(entry.description)?.isInvalid != false, "\(text.debugDescription)")
             } else {
                 #expect(AddressListEntry(entry.description) == entry, "\(text.debugDescription)")
             }
@@ -97,6 +100,26 @@ struct AddressRoundTripTests {
         }
         // HTAB is legal inside a quoted local-part and is kept.
         #expect(EmailAddress(address: "\"first\tlast\"@example.com").description == "\"first\tlast\"@example.com")
+    }
+
+    @Test("A name that starts with U+FEFF keeps it through an encoded-word")
+    func byteOrderMarkInName() {
+        for name in ["\u{FEFF}John", "\u{FEFF}"] {
+            let address = EmailAddress(name: name, address: "j@example.com")
+            #expect(EmailAddress(address.description) == address, "\(address.description.debugDescription)")
+        }
+        let group = AddressListEntry.group(name: "\u{FEFF}Team", members: [])
+        #expect(AddressListEntry(group.description) == group)
+        #expect("=?UTF-8?B?77u/Sm9obg==?=".decodeMIMEHeader() == "\u{FEFF}John")
+    }
+
+    @Test("Decoding an address keeps an empty name as no name")
+    func codableEmptyName() throws {
+        let decoded = try JSONDecoder().decode(EmailAddress.self, from: Data(#"{"name":"","address":"a@b.com"}"#.utf8))
+        #expect(decoded == EmailAddress(address: "a@b.com"))
+        #expect(decoded.name == nil)
+        let named = EmailAddress(name: "Ann", address: "a@b.com")
+        #expect(try JSONDecoder().decode(EmailAddress.self, from: JSONEncoder().encode(named)) == named)
     }
 
     @Test("A UTF-8 addr-spec is written as address syntax, never as an encoded-word")
@@ -150,7 +173,7 @@ struct AddressGenerator {
     private static let namePieces = [
         "a", "Jane", "Z", "0", " ", " ", "  ", "\t", "\"", "\\", "(", ")", ",", ".", ":", ";", "<", ">", "@",
         "[", "]", "'", "_", "-", "=?UTF-8?Q?x?=", "=?", "?=", "é", "홍", "😀", "\u{0301}", "\u{00A0}",
-        "\u{2003}", "\u{202E}", "\r", "\n", "\r\n", "\u{0000}", "\u{000B}", "\u{007F}", "\u{0085}"
+        "\u{2003}", "\u{202E}", "\u{FEFF}", "\r", "\n", "\r\n", "\u{0000}", "\u{000B}", "\u{007F}", "\u{0085}"
     ]
     private static let atomPieces = [
         "a", "b", "Z", "0", "9", "+", "-", "_", "=", "?", "'", "{", "~", "é", "用", "\u{00A0}"

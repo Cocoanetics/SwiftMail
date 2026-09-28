@@ -23,3 +23,15 @@ public struct EmailAddress: Hashable, Codable, Sendable {
         self.address = address
     }
 }
+
+extension EmailAddress {
+    /// Decodes an address, storing an empty name as `nil` as
+    /// ``init(name:address:)`` does.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            name: try container.decodeIfPresent(String.self, forKey: .name),
+            address: try container.decode(String.self, forKey: .address)
+        )
+    }
+}

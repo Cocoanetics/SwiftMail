@@ -25,6 +25,14 @@ enum AddressSyntax {
         (scalar.value < 0x20 && scalar != "\t") || (0x7F...0x9F).contains(scalar.value)
     }
 
+    /// A control character that a recovered display name may carry as text:
+    /// any forbidden control other than CR and LF, such as a C1 control that a
+    /// Windows-1252 byte becomes when a header is read as Latin-1. The
+    /// formatter encodes such a name, so it never reaches a header raw.
+    static func isControlInText(_ scalar: Unicode.Scalar) -> Bool {
+        isForbiddenControl(scalar) && scalar != "\r" && scalar != "\n"
+    }
+
     /// VCHAR, which RFC 6532 extends to every non-ASCII scalar. C1 controls are
     /// left out: they are controls, not text.
     static func isVisible(_ scalar: Unicode.Scalar) -> Bool {
@@ -61,6 +69,19 @@ enum AddressSyntax {
     static func addrSpec(localPart: String, domain: String) -> String {
         let local = isDotAtomText(localPart) ? localPart : quotedString(localPart)
         return local + "@" + domain
+    }
+
+    /// The addr-spec of an IMAP ENVELOPE address, whose mailbox is the
+    /// local-part's text: servers such as Dovecot hand it over without the
+    /// quotes it needs, as `john doe` for `"john doe"@example.com`, so it is
+    /// quoted where a dot-atom can't carry it. A mailbox that already is a
+    /// quoted-string is kept as it is.
+    static func envelopeAddrSpec(mailbox: String, host: String) -> String {
+        var probe = AddressScanner(mailbox)
+        if mailbox.hasPrefix("\""), (try? probe.readQuotedString()) != nil, probe.isAtEnd {
+            return mailbox + "@" + host
+        }
+        return addrSpec(localPart: mailbox, domain: host)
     }
 
     /// Whether `text` is a dot-atom-text: atext runs joined by single dots.

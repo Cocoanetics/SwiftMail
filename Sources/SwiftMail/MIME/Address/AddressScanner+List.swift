@@ -17,9 +17,10 @@ extension AddressScanner {
     /// the text.
     ///
     /// An element that doesn't match the grammar, or that isn't followed by a
-    /// comma or the end of the text, becomes invalid text reaching up to the
-    /// next comma its syntax doesn't swallow (see ``elementEnd(from:)``). The
-    /// elements around it are read normally.
+    /// comma or the end of the text, reaches up to the next comma its syntax
+    /// doesn't swallow (see ``elementEnd(from:)``). It is read by the recovery
+    /// rules of ``recoverElement(in:)`` where one applies, and is invalid text
+    /// otherwise. The elements around it are read normally.
     mutating func readListElement() -> ParsedAddressEntry? {
         while true {
             let start = position
@@ -43,15 +44,23 @@ extension AddressScanner {
             _ = consume(",")
             return ParsedAddressEntry(entry: entry, source: source)
         }
+        let end = elementEnd(from: start)
+        if let entry = recoverElement(in: start..<end) {
+            return element(entry, endingAt: end, from: start)
+        }
         return invalidElement(from: start)
     }
 
     private mutating func invalidElement(from start: Int) -> ParsedAddressEntry {
         let end = elementEnd(from: start)
-        let source = sourceText(start..<end)
+        return element(.invalid(sourceText(start..<end)), endingAt: end, from: start)
+    }
+
+    /// An element read from `start` to `end`, which moves past it and its comma.
+    private mutating func element(_ entry: AddressListEntry, endingAt end: Int, from start: Int) -> ParsedAddressEntry {
         position = end
         _ = consume(",")
-        return ParsedAddressEntry(entry: .invalid(source), source: source)
+        return ParsedAddressEntry(entry: entry, source: sourceText(start..<end))
     }
 
     /// Where the element starting at `start` ends: at the next comma outside a
@@ -80,7 +89,7 @@ extension AddressScanner {
 
     /// Whether the scalar at `index` is the CR or LF of a line break that folds,
     /// i.e. white space follows the line break.
-    private func isFoldingLineBreak(at index: Int) -> Bool {
+    func isFoldingLineBreak(at index: Int) -> Bool {
         let lineFeed = scalars[index] == "\r" ? index + 1 : index
         guard scalar(at: lineFeed) == "\n", let next = scalar(at: lineFeed + 1) else { return false }
         return AddressSyntax.isWSP(next)

@@ -40,13 +40,98 @@ enum AddressPhrase {
         return text + decoded(encodedRun)
     }
 
-    /// The text of a comment used as a display name: its words separated by
-    /// single spaces, with encoded-words decoded (RFC 2047 §5 allows them in a
-    /// comment, set off by white space).
-    static func commentText(_ comment: String) -> String {
-        let words = comment.unicodeScalars.split(whereSeparator: AddressSyntax.isWSP)
-        let separated = CFWSRun(isEmpty: false)
-        return text(of: words.map { PhraseToken(kind: .atom, text: String(unicodeScalars: $0), separator: separated) })
+    /// The text of a comment used as a display name, from its raw text (see
+    /// ``AddressScanner/readComment(allowsControls:)``): white space collapsed
+    /// to single spaces and trimmed, quoted-pairs resolved, and encoded-words
+    /// decoded where RFC 2047 §5 allows them in a comment, set off by white
+    /// space or a parenthesis. A word holding a quoted-pair is never one.
+    static func commentText(_ raw: String) -> String {
+        var text = ""
+        var encodedRun: [String] = []
+        var hasPendingSpace = false
+
+        /// Writes out the pending encoded-words, then the space before the next piece.
+        func startPiece() {
+            text += decoded(encodedRun)
+            encodedRun = []
+            if hasPendingSpace && !text.isEmpty {
+                text += " "
+            }
+        }
+
+        for piece in commentPieces(raw) {
+            switch piece {
+                case .space:
+                    hasPendingSpace = true
+                    continue
+                case .word(let word) where !word.contains("\\") && EncodedWord.isEncodedWord(word):
+                    // White space between two encoded-words is not displayed (RFC 2047 §6.2).
+                    if encodedRun.isEmpty {
+                        startPiece()
+                    }
+                    encodedRun.append(word)
+                case .word(let word):
+                    startPiece()
+                    text += unescapingQuotedPairs(word)
+                case .parenthesis(let parenthesis):
+                    startPiece()
+                    text.unicodeScalars.append(parenthesis)
+            }
+            hasPendingSpace = false
+        }
+        return text + decoded(encodedRun)
+    }
+
+    /// A piece of a comment's raw text.
+    private enum CommentPiece {
+        case space
+        case parenthesis(Unicode.Scalar)
+        case word(String)
+    }
+
+    /// Splits a comment's raw text into white space, unescaped parentheses,
+    /// and the words between them, quoted-pairs kept.
+    private static func commentPieces(_ raw: String) -> [CommentPiece] {
+        var pieces: [CommentPiece] = []
+        var word: [Unicode.Scalar] = []
+        var isEscaped = false
+        func endWord() {
+            if !word.isEmpty {
+                pieces.append(.word(String(unicodeScalars: word)))
+                word = []
+            }
+        }
+        for scalar in raw.unicodeScalars {
+            if isEscaped || scalar == "\\" {
+                isEscaped = !isEscaped
+                word.append(scalar)
+            } else if AddressSyntax.isWSP(scalar) {
+                endWord()
+                pieces.append(.space)
+            } else if scalar == "(" || scalar == ")" {
+                endWord()
+                pieces.append(.parenthesis(scalar))
+            } else {
+                word.append(scalar)
+            }
+        }
+        endWord()
+        return pieces
+    }
+
+    /// `word` with each quoted-pair replaced by the character it quotes.
+    private static func unescapingQuotedPairs(_ word: String) -> String {
+        var text = String.UnicodeScalarView()
+        var isEscaped = false
+        for scalar in word.unicodeScalars {
+            if !isEscaped && scalar == "\\" {
+                isEscaped = true
+            } else {
+                text.append(scalar)
+                isEscaped = false
+            }
+        }
+        return String(text)
     }
 
     /// Whether the word at `index` is an encoded-word that RFC 2047 lets a
@@ -65,7 +150,7 @@ enum AddressPhrase {
     /// charset. A word that doesn't decode stays as written.
     private static func decoded(_ words: [String]) -> String {
         guard !words.isEmpty else { return "" }
-        return words.map(EncodedWord.removingLanguage).joined(separator: " ").decodeMIMEHeader()
+        return words.joined(separator: " ").decodeMIMEHeader()
     }
 }
 
@@ -88,32 +173,20 @@ struct PhraseToken {
 
 /// RFC 2047 encoded-word syntax: `=?charset?encoding?encoded-text?=`.
 enum EncodedWord {
-    /// Whether `text` is exactly one encoded-word: a charset (which RFC 2231 §5
-    /// lets carry a `*language` suffix), `B` or `Q`, and encoded text of
-    /// printable ASCII other than `?`.
+    /// Whether `text` is exactly one encoded-word (RFC 2047 §2): a charset name
+    /// (which RFC 2231 §5 lets carry a `*language` suffix), `B` or `Q`, and at
+    /// least one character of encoded text, all printable ASCII other than `?`.
     static func isEncodedWord(_ text: String) -> Bool {
         let scalars = Array(text.unicodeScalars)
-        guard scalars.count >= 8, scalars.starts(with: ["=", "?"]), Array(scalars.suffix(2)) == ["?", "="] else {
+        guard scalars.count >= 9, scalars.starts(with: ["=", "?"]), Array(scalars.suffix(2)) == ["?", "="] else {
             return false
         }
         let inner = scalars[2..<(scalars.count - 2)]
         let parts = inner.split(separator: "?", omittingEmptySubsequences: false)
-        guard parts.count == 3, !parts[0].isEmpty, parts[1].count == 1,
-              let encoding = parts[1].first, "BbQq".unicodeScalars.contains(encoding) else {
+        guard parts.count == 3, parts[0].first != "*", !parts[0].isEmpty, parts[1].count == 1,
+              let encoding = parts[1].first, "BbQq".unicodeScalars.contains(encoding), !parts[2].isEmpty else {
             return false
         }
         return inner.allSatisfy { $0.isASCII && AddressSyntax.isVisible($0) }
-    }
-
-    /// The encoded-word without an RFC 2231 language suffix on its charset
-    /// (`=?US-ASCII*EN?Q?a?=` becomes `=?US-ASCII?Q?a?=`), which the decoder
-    /// would otherwise take as part of the charset name.
-    static func removingLanguage(_ word: String) -> String {
-        let charsetStart = word.index(word.startIndex, offsetBy: 2)
-        guard let charsetEnd = word[charsetStart...].firstIndex(of: "?"),
-              let star = word[charsetStart..<charsetEnd].firstIndex(of: "*") else {
-            return word
-        }
-        return String(word[..<star]) + String(word[charsetEnd...])
     }
 }

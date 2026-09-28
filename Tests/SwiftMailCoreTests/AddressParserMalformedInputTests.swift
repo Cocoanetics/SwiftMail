@@ -1,6 +1,7 @@
 // AddressParserMalformedInputTests.swift
-// Malformed address text is never guessed at and never dropped: each malformed element
-// comes back as invalid text, and the well-formed elements around it are read as usual.
+// Malformed address text is never guessed at and never dropped: a malformed element that
+// no recovery rule reads comes back as invalid text, and the well-formed elements around
+// it are read as usual.
 //
 // Many of these cases come from the review of #240, where a parser that repaired or
 // silently shortened malformed lists handed consumers a different address than the
@@ -30,9 +31,9 @@ struct AddressParserMalformedInputTests {
         "alice@example.com: bob@example.com",
         "a@example.com; b@example.com",
         "Team: a@example.com; b@example.com",
-        // Groups that don't close, or nest
-        "Team: a@example.com",
+        // Groups that nest, or hold a member that isn't a mailbox
         "Team: a@example.com, Other: b@example.com;",
+        "Team: junk",
         // Constructs left open swallow the rest of the field
         "alice@example.com (unterminated, bob@example.com",
         "\"unterminated, bob@example.com",
@@ -42,9 +43,7 @@ struct AddressParserMalformedInputTests {
         "John <john@example.com",
         // Not addr-specs
         "<>",
-        "foo..bar@example.com",
-        ".a@example.com",
-        "a.@example.com",
+        ".@example.com",
         "a@example..com",
         "a@example.com.",
         "@example.com",
@@ -52,7 +51,10 @@ struct AddressParserMalformedInputTests {
         "user@[a[b]",
         "<@relay.example john@example.com>",
         "<:john@example.com>",
-        "Alice <alice@example.com>>"
+        "Alice <alice@example.com>>",
+        // A display name holding another address: a missing comma, never a name
+        "alice@example.com <bob@example.com>",
+        "x > y <a@example.com>"
     ])
     func malformedElementIsKept(_ text: String) {
         #expect(AddressParser.parseAddressList(text) == [.invalid(text)])
@@ -60,7 +62,6 @@ struct AddressParserMalformedInputTests {
 
     @Test("Control characters make an element invalid, wherever they are", arguments: [
         "a\u{0001}b@example.com",
-        "A\u{0001}B <ab@example.com>",
         "a\u{000B}b@example.com",
         "\"a\u{0000}b\"@example.com",
         "a@example.com (\u{007F})",
@@ -113,7 +114,7 @@ struct AddressParserMalformedInputTests {
         #expect(EmailAddress("first last@example.com") == nil)
         #expect(EmailAddress("a\u{0001}b@example.com") == nil)
         #expect(EmailAddress("Alice <alice@example.com") == nil)
-        #expect(EmailAddress("Doe, John <john@example.com>") == nil)
+        #expect(EmailAddress("alice@example.com Bob <bob@example.com>") == nil)
     }
 
     @Test("An invalid entry round-trips through its own text")
@@ -125,9 +126,27 @@ struct AddressParserMalformedInputTests {
         }
     }
 
-    @Test("Invalid text never carries a control character into a header")
-    func invalidTextIsHeaderSafe() {
-        let entry = AddressListEntry.invalid("a@example.com\r\nBcc: evil@example.com\u{000B}x")
-        #expect(entry.description == "a@example.com  Bcc: evil@example.com x")
+    @Test("Invalid text with a control character is written as encoded-words, which never read as an address")
+    func invalidTextWithControlIsEncoded() {
+        let texts = [
+            "a@example.com\r\nBcc: evil@example.com\u{000B}x",
+            "a\u{0000}@example.com",
+            "\u{0007}bob@example.com",
+            "victim@example.com\r",
+            "Jane\r@Doe"
+        ]
+        for text in texts {
+            let description = AddressListEntry.invalid(text).description
+            #expect(description.hasPrefix("=?UTF-8?B?"), "\(description.debugDescription)")
+            #expect(AddressRoundTripTests.isHeaderSafe(description), "\(description.debugDescription)")
+            #expect(AddressListEntry(description)?.isInvalid == true,
+                    "\(text.debugDescription) read back as an address")
+        }
+    }
+
+    @Test("Invalid text without a control character is written as it is")
+    func invalidTextWithoutControlIsVerbatim() {
+        let text = "Jörg [Vertrieb <joerg@example.com>"
+        #expect(AddressListEntry.invalid(text).description == text)
     }
 }
