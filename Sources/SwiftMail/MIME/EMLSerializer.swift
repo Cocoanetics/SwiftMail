@@ -44,6 +44,12 @@ public struct EMLSerializer {
     /// Emit the RFC 822 header block (`From:`, `To:`, …) and then `MIME-Version`.
     private static func writeHeaders(_ header: MessageInfo, into output: inout String) {
         appendAddressHeader("From", header.fromAddresses, into: &output)
+        // Reply-To only when it names someone else. An IMAP server fills a
+        // missing Reply-To with the From addresses (RFC 3501 §7.4.2), so
+        // writing that copy would add a header the message never had.
+        if header.replyToAddresses != header.fromAddresses {
+            appendAddressHeader("Reply-To", header.replyToAddresses, into: &output)
+        }
         appendAddressHeader("To", header.toAddresses, into: &output)
         appendAddressHeader("Cc", header.ccAddresses, into: &output)
         appendAddressHeader("Bcc", header.bccAddresses, into: &output)

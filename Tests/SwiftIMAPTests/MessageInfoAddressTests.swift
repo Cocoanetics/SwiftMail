@@ -281,3 +281,32 @@ struct MessageInfoAddressTests {
         #expect(throws: IMAPError.self) { try IMAPServer.sendDraftAddresses(from: info) }
     }
 }
+
+// MARK: - EML serialization
+
+extension MessageInfoAddressTests {
+    @Test("EML serialization keeps a Reply-To that names someone other than the sender")
+    func emlReplyTo() throws {
+        let eml = "From: Alice <alice@example.com>\r\nReply-To: Support: Bob <bob@example.com>, a@example.com;\r\n"
+            + "To: b@example.com\r\nSubject: x\r\n\r\nBody\r\n"
+        let message = try Message(emlData: Data(eml.utf8))
+        let written = try #require(String(data: message.emlData(), encoding: .utf8))
+
+        #expect(written.contains("Reply-To: Support: Bob <bob@example.com>, a@example.com;\r\n"))
+        #expect(try Message(emlData: message.emlData()).header.replyToAddresses == message.header.replyToAddresses)
+    }
+
+    @Test("EML serialization leaves out a Reply-To that only repeats From, as IMAP servers fill it in")
+    func emlReplyToCopiedFromFrom() throws {
+        var header = MessageInfo(sequenceNumber: SequenceNumber(1), subject: "x")
+        header.fromAddresses = [.mailbox(Self.alice)]
+        header.replyToAddresses = [.mailbox(Self.alice)]
+        header.toAddresses = [.mailbox(Self.bob)]
+        let written = try #require(String(data: Message(header: header, parts: []).emlData(), encoding: .utf8))
+        #expect(!written.contains("Reply-To:"))
+
+        header.replyToAddresses = []
+        let withoutReplyTo = try #require(String(data: Message(header: header, parts: []).emlData(), encoding: .utf8))
+        #expect(!withoutReplyTo.contains("Reply-To:"))
+    }
+}
