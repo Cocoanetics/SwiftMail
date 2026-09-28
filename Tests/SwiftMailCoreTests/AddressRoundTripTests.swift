@@ -98,6 +98,12 @@ struct AddressRoundTripTests {
             #expect(Self.isHeaderSafe(address.displayString), "\(address.displayString.debugDescription)")
             #expect(!address.description.contains("\nBcc"))
         }
+        // An address holding a control is written as encoded-words, never with the
+        // control stripped, which would name a different mailbox.
+        let victim = EmailAddress(address: "victim\u{0007}@example.com")
+        #expect(victim.description.hasPrefix("=?UTF-8?B?"))
+        #expect(EmailAddress(victim.description) == nil)
+        #expect(AddressParser.parseAddressList(victim.displayString).mailboxes.isEmpty)
         // HTAB is legal inside a quoted local-part and is kept.
         #expect(EmailAddress(address: "\"first\tlast\"@example.com").description == "\"first\tlast\"@example.com")
     }

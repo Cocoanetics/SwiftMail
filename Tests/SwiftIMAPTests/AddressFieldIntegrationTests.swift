@@ -102,7 +102,7 @@ struct AddressFieldIntegrationTests {
         ("John [Sales] <john@example.com>", "john@example.com", "John [Sales]"),
         ("Taro <taro.@docomo.ne.jp>", #""taro."@docomo.ne.jp"#, "Taro"),
         ("taro..yamada@docomo.ne.jp", #""taro..yamada"@docomo.ne.jp"#, nil),
-        ("Doe, John <john@example.com>", "john@example.com", "Doe, John")
+        ("Doe, John <john@example.com>", "john@example.com", "John")
     ])
     func emlLenientSenders(_ from: String, _ address: String, _ name: String?) throws {
         let eml = "From: \(from)\r\nTo: bob@example.com\r\nSubject: x\r\n\r\nBody\r\n"

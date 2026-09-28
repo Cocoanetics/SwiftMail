@@ -88,16 +88,12 @@ struct AddressParserRecoveryTests {
         // A list is still not one mailbox.
         #expect(EmailAddress("a@example.com, Bob <b@example.com>") == nil)
         #expect(EmailAddress("Alice <a@example.com>, Bob <b@example.com>") == nil)
-        // A field whose only address is that mailbox reads the same way; with
-        // another address in it, the comma separates elements.
+        // In an address list the comma separates elements, and elements are never
+        // merged: the invalid text stays visible rather than joining a name.
         #expect(AddressParser.parseAddressList("Doe, John <john@example.com>")
-            == [mailbox("john@example.com", "Doe, John")])
+            == [.invalid("Doe"), mailbox("john@example.com", "John")])
         #expect(AddressParser.parseAddressList("Doe, John <john@example.com>, bob@example.com")
             == [.invalid("Doe"), mailbox("john@example.com", "John"), mailbox("bob@example.com")])
-        #expect(AddressParser.parseAddressList("Doe, Jane, Jr. <jane@example.com>")
-            == [mailbox("jane@example.com", "Doe, Jane, Jr.")])
-        // A well-formed element before the last keeps the field a list, even
-        // when invalid text sits between them.
         #expect(AddressParser.parseAddressList("Team:;, Bob <bob@example.com>")
             == [.group(name: "Team", members: []), mailbox("bob@example.com", "Bob")])
         #expect(AddressParser.parseAddressList("Team:;, Doe, John <john@example.com>")

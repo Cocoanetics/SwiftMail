@@ -26,11 +26,17 @@ enum AddressFormatter {
         case display
     }
 
-    /// The text of a mailbox: `name <address>`, or the bare address without a name.
+    /// The text of a mailbox: `name <address>`, or the bare address without a
+    /// name. An address holding a control character can't be written in any
+    /// form, and stripping the control would name a different mailbox, so such
+    /// a mailbox is written as encoded-words instead: they never read back as
+    /// an address, nor as a header field of their own.
     static func string(for address: EmailAddress, form: Form) -> String {
-        let addrSpec = withoutControls(address.address)
-        guard let name = address.name, !name.isEmpty else { return addrSpec }
-        return phrase(name, form: form) + " <" + addrSpec + ">"
+        guard !address.address.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl) else {
+            return invalidText(name: address.name, address: address.address).rfc2047EncodedWords()
+        }
+        guard let name = address.name, !name.isEmpty else { return address.address }
+        return phrase(name, form: form) + " <" + address.address + ">"
     }
 
     /// The text of an address-list element. A group is `name: members;`.
@@ -98,13 +104,4 @@ enum AddressFormatter {
             || scalar == "-" || scalar == "'" || scalar == "_"
     }
 
-    /// `text` without the control characters a header field can't hold (see
-    /// ``AddressSyntax/isForbiddenControl(_:)``). HTAB is kept, as a quoted
-    /// local-part may hold it.
-    private static func withoutControls(_ text: String) -> String {
-        guard text.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl) else { return text }
-        var safe = String.UnicodeScalarView()
-        safe.append(contentsOf: text.unicodeScalars.filter { !AddressSyntax.isForbiddenControl($0) })
-        return String(safe)
-    }
 }
