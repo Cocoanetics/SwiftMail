@@ -23,6 +23,44 @@ extension IMAPServer {
     }
 
     /**
+     Rename a mailbox on the server
+
+     This method renames an existing mailbox (folder). Use forward slashes for
+     hierarchical names (e.g., "Work/Archive"); moving a mailbox to another parent
+     is a rename as well. Renaming INBOX moves its messages to the new mailbox and
+     leaves INBOX empty (RFC 3501, section 6.3.5).
+
+     - Parameters:
+       - mailboxName: The current name of the mailbox
+       - newName: The new name of the mailbox
+     - Throws:
+     - `IMAPError.invalidArgument` if a name is empty or both names are equal
+     - `IMAPError.commandFailed` if the server refuses the rename
+     - `IMAPError.connectionFailed` if not connected
+     */
+    public func renameMailbox(_ mailboxName: String, to newName: String) async throws {
+        let command = RenameMailboxCommand(from: resolveMailboxPath(mailboxName), to: resolveMailboxPath(newName))
+        try await executeCommand(command)
+    }
+
+    /**
+     Delete a mailbox on the server
+
+     This method deletes an existing mailbox (folder) with the messages in it.
+     Servers may refuse to delete INBOX or a mailbox that has children.
+
+     - Parameter mailboxName: The name of the mailbox to delete
+     - Throws:
+     - `IMAPError.invalidArgument` if the name is empty
+     - `IMAPError.commandFailed` if the server refuses the delete
+     - `IMAPError.connectionFailed` if not connected
+     */
+    public func deleteMailbox(_ mailboxName: String) async throws {
+        let command = DeleteMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
+        try await executeCommand(command)
+    }
+
+    /**
      Select a mailbox
 
      This method selects a mailbox and makes it the current mailbox for subsequent
