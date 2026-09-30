@@ -43,6 +43,31 @@ public struct Message: Codable, Sendable {
         return header.bcc
     }
 
+    /// The authors of the message, from the `From` field.
+    public var fromAddresses: [AddressListEntry] {
+        header.fromAddresses
+    }
+
+    /// Where replies should go, from the `Reply-To` field.
+    public var replyToAddresses: [AddressListEntry] {
+        header.replyToAddresses
+    }
+
+    /// The recipients, from the `To` field.
+    public var toAddresses: [AddressListEntry] {
+        header.toAddresses
+    }
+
+    /// The CC recipients, from the `Cc` field.
+    public var ccAddresses: [AddressListEntry] {
+        header.ccAddresses
+    }
+
+    /// The BCC recipients, from the `Bcc` field.
+    public var bccAddresses: [AddressListEntry] {
+        header.bccAddresses
+    }
+
     /// The date of the message
     public var date: Date? {
         return header.date

@@ -143,18 +143,20 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
     /// Populate standard message fields from a requested header literal when
     /// ENVELOPE was omitted or left a field nil. ENVELOPE values stay
-    /// authoritative when both representations are present.
+    /// authoritative when both representations are present, whichever of the
+    /// two the server sends first: ENVELOPE only sets an address field it has
+    /// (an empty group counts), and the header only fills one still empty.
     private static func applyMissingStandardHeaders(
         _ fields: [String: String],
         to header: inout MessageInfo
     ) {
         let parsed = EMLParser.buildMessageInfo(from: fields)
         if header.subject == nil { header.subject = parsed.subject }
-        if header.from == nil { header.from = parsed.from }
-        if header.replyTo.isEmpty { header.replyTo = parsed.replyTo }
-        if header.to.isEmpty { header.to = parsed.to }
-        if header.cc.isEmpty { header.cc = parsed.cc }
-        if header.bcc.isEmpty { header.bcc = parsed.bcc }
+        if header.fromAddresses.isEmpty { header.fromAddresses = parsed.fromAddresses }
+        if header.replyToAddresses.isEmpty { header.replyToAddresses = parsed.replyToAddresses }
+        if header.toAddresses.isEmpty { header.toAddresses = parsed.toAddresses }
+        if header.ccAddresses.isEmpty { header.ccAddresses = parsed.ccAddresses }
+        if header.bccAddresses.isEmpty { header.bccAddresses = parsed.bccAddresses }
         if header.date == nil, let rawDate = fields["date"] {
             header.date = parseEnvelopeDate(rawDate)
         }
@@ -235,13 +237,12 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
         if let subject = envelope.subject?.stringValue {
             header.subject = subject.decodeMIMEHeader()
         }
-        if !envelope.from.isEmpty {
-            header.from = formatAddress(envelope.from[0])
-        }
-        header.replyTo = envelope.reply.map { formatAddress($0) }
-        header.to = envelope.to.map { formatAddress($0) }
-        header.cc = envelope.cc.map { formatAddress($0) }
-        header.bcc = envelope.bcc.map { formatAddress($0) }
+        // A NIL list leaves what a header literal may already have supplied.
+        if !envelope.from.isEmpty { header.fromAddresses = .entries(fromEnvelope: envelope.from) }
+        if !envelope.reply.isEmpty { header.replyToAddresses = .entries(fromEnvelope: envelope.reply) }
+        if !envelope.to.isEmpty { header.toAddresses = .entries(fromEnvelope: envelope.to) }
+        if !envelope.cc.isEmpty { header.ccAddresses = .entries(fromEnvelope: envelope.cc) }
+        if !envelope.bcc.isEmpty { header.bccAddresses = .entries(fromEnvelope: envelope.bcc) }
         if let date = envelope.date, let parsed = Self.parseEnvelopeDate(String(date)) {
             header.date = parsed
             // If parsing fails we silently fall through. Callers can use `internalDate`
@@ -290,29 +291,4 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
                 return .custom(flagString)
         }
     }
-
-    /// Format an address for display
-    /// - Parameter address: The address to format
-    /// - Returns: A formatted string representation of the address
-    private func formatAddress(_ address: EmailAddressListElement) -> String {
-        switch address {
-            case .singleAddress(let emailAddress):
-                let name = emailAddress.personName?.stringValue.decodeMIMEHeader() ?? ""
-                let mailbox = emailAddress.mailbox?.stringValue ?? ""
-                let host = emailAddress.host?.stringValue ?? ""
-
-                let address = AddressSyntax.envelopeAddrSpec(mailbox: mailbox, host: host)
-                if !name.isEmpty {
-                    return "\(AddressFormatter.quotedPhrase(name)) <\(address)>"
-                } else {
-                    return address
-                }
-
-            case .group(let group):
-                let groupName = group.groupName.stringValue.decodeMIMEHeader()
-                let members = group.children.map { formatAddress($0) }
-                return AddressFormatter.groupString(name: groupName, members: members)
-        }
-    }
-
 }

@@ -24,19 +24,18 @@ extension Email {
     /// Initialize an `Email` from an IMAP `Message`.
     ///
     /// Each address field may name several mailboxes and groups; the sender is
-    /// the first mailbox of `from` (or all of it, when it reads as one mailbox
-    /// whose display name holds an unquoted comma, as in `Doe, John <…>`), and
-    /// group members are recipients like any other. Text that is not an address
-    /// is left out.
+    /// the first mailbox of ``MessageInfo/fromAddresses``, and group members
+    /// are recipients like any other. Text that is not an address is left out.
     ///
     /// - Parameter message: The IMAP message to convert.
     /// - Throws: `ConversionError.missingSender` if the message has no `from` field,
     ///           `ConversionError.unparsableSender` if the `from` string names no mailbox.
     public init(message: Message) throws {
-        guard let fromStr = message.from else {
+        let header = message.header
+        guard let fromStr = header.from else {
             throw ConversionError.missingSender
         }
-        guard let sender = EmailAddress(fromStr) ?? Self.mailboxes(in: [fromStr]).first else {
+        guard let sender = header.fromAddresses.mailboxes.first else {
             throw ConversionError.unparsableSender(fromStr)
         }
 
@@ -45,9 +44,9 @@ extension Email {
 
         self.init(
             sender: sender,
-            recipients: Self.mailboxes(in: message.to),
-            ccRecipients: Self.mailboxes(in: message.cc),
-            bccRecipients: Self.mailboxes(in: message.bcc),
+            recipients: header.toAddresses.mailboxes,
+            ccRecipients: header.ccAddresses.mailboxes,
+            bccRecipients: header.bccAddresses.mailboxes,
             subject: message.subject ?? "",
             textBody: message.textBody ?? "",
             htmlBody: message.htmlBody,
@@ -55,11 +54,6 @@ extension Email {
         )
         self.messageID = message.header.messageId
         self.additionalHeaders = (additionalHeaders?.isEmpty == false) ? additionalHeaders : nil
-    }
-
-    /// The mailboxes named by address field values, groups flattened to their members.
-    private static func mailboxes(in fields: [String]) -> [EmailAddress] {
-        fields.flatMap { AddressParser.parseAddressList($0).mailboxes }
     }
 
     /// Collect explicit attachments plus any CID-referenced inline parts not already

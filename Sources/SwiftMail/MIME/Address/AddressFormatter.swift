@@ -26,18 +26,23 @@ enum AddressFormatter {
         case display
     }
 
-    /// The text of a mailbox: `name <address>`, or the bare address without a name.
+    /// The text of a mailbox: `name <address>`, or the bare address without a
+    /// name. An address that isn't exactly one canonical addr-spec can't be
+    /// written in any form: writing it verbatim could turn one malformed value
+    /// into several real recipients, while normalizing it could name a
+    /// different mailbox. Such a mailbox is written as encoded-words instead:
+    /// they never read back as an address, nor as a header field of their own.
     static func string(for address: EmailAddress, form: Form) -> String {
-        let addrSpec = withoutControls(address.address)
-        guard let name = address.name, !name.isEmpty else { return addrSpec }
-        return phrase(name, form: form) + " <" + addrSpec + ">"
+        let parsed = AddressParser.parseMailbox(address.address)
+        guard parsed?.name == nil, parsed?.address == address.address else {
+            return invalidText(name: address.name, address: address.address).rfc2047EncodedWords()
+        }
+        guard let name = address.name, !name.isEmpty else { return address.address }
+        return phrase(name, form: form) + " <" + address.address + ">"
     }
 
-    /// The text of an address-list element. A group is `name: members;`.
-    /// Invalid text is written as it is, keeping any address a lenient reader
-    /// can still find in it, unless it holds a control character: then it is
-    /// written as encoded-words, which a header can carry and which never read
-    /// as an address (replacing the control could turn the text into one).
+    /// The text of an address-list element. A group is `name: members;`, and
+    /// invalid text is written as ``invalidString(_:form:)`` describes.
     static func string(for entry: AddressListEntry, form: Form) -> String {
         switch entry {
             case .mailbox(let address):
@@ -46,27 +51,43 @@ enum AddressFormatter {
                 let list = members.map { string(for: $0, form: form) }.joined(separator: ", ")
                 return phrase(name, form: form) + ":" + (list.isEmpty ? "" : " " + list) + ";"
             case .invalid(let text):
-                let hasControl = text.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl)
-                return hasControl ? text.rfc2047EncodedWords() : text
+                return invalidString(text, form: form)
         }
     }
 
-    /// A display name the way address strings built from an IMAP ENVELOPE
-    /// have always carried it: quoted, with `"` and `\` escaped so the string
-    /// reads back as the same name. A name holding a control character is
-    /// encoded instead, as no quoted-string can carry one.
-    static func quotedPhrase(_ name: String) -> String {
-        if name.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl) {
-            return name.rfc2047EncodedWords()
+    /// Invalid text as it is, when that reads back as exactly this invalid
+    /// text, keeping any address a lenient reader can still find in it.
+    ///
+    /// Other text would read back as something else: an address, a group,
+    /// several elements, or trimmed. It could also hold a control character,
+    /// which no form writes. Such text is written in a form that reads back as
+    /// the same invalid text (see ``AddressScanner/invalidText(_:)``):
+    ///
+    /// - In a header it becomes encoded-words. Other readers see those as a
+    ///   phrase, never as an address, whereas a lenient reader such as Python's
+    ///   `email.utils.getaddresses` takes a quoted-string's content for one.
+    /// - The display form quotes it, to stay readable, unless it holds a
+    ///   control character, which leaves only encoded-words.
+    ///
+    /// Empty text is `""` in both forms, as an encoded-word can't be empty.
+    static func invalidString(_ text: String, form: Form) -> String {
+        let hasControl = text.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl)
+        if !hasControl, AddressParser.parseAddressList(text) == [.invalid(text)] {
+            return text
         }
-        return AddressSyntax.quotedString(name)
+        let isQuoted = !hasControl && (form == .display || text.isEmpty)
+        return isQuoted ? AddressSyntax.quotedString(text) : text.rfc2047EncodedWords()
     }
 
-    /// A group written from its name and the text of its members:
-    /// `name: member, member;`, or `name:;` without members.
-    static func groupString(name: String, members: [String]) -> String {
-        let list = members.joined(separator: ", ")
-        return phrase(name, form: .display) + ":" + (list.isEmpty ? "" : " " + list) + ";"
+    /// Text for a name and address that don't make a mailbox, to keep as
+    /// ``AddressListEntry/invalid(_:)``: the name as a phrase, and the address
+    /// exactly as given. A control character in it is kept too, so the text is
+    /// written as encoded-words (see ``invalidString(_:form:)``); stripping it
+    /// could leave a valid address that reads back as a mailbox the source
+    /// never named.
+    static func invalidText(name: String?, address: String) -> String {
+        guard let name, !name.isEmpty else { return address }
+        return phrase(name, form: .display) + " <" + address + ">"
     }
 
     /// A display name or group name as a phrase.
@@ -106,13 +127,4 @@ enum AddressFormatter {
             || scalar == "-" || scalar == "'" || scalar == "_"
     }
 
-    /// `text` without the control characters a header field can't hold (see
-    /// ``AddressSyntax/isForbiddenControl(_:)``). HTAB is kept, as a quoted
-    /// local-part may hold it.
-    private static func withoutControls(_ text: String) -> String {
-        guard text.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl) else { return text }
-        var safe = String.UnicodeScalarView()
-        safe.append(contentsOf: text.unicodeScalars.filter { !AddressSyntax.isForbiddenControl($0) })
-        return String(safe)
-    }
 }

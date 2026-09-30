@@ -33,6 +33,10 @@ import Foundation
 ///   bracket, becomes an ``AddressListEntry/invalid(_:)`` entry that keeps its
 ///   text. That text reaches up to the next comma the malformed syntax doesn't
 ///   swallow, and the elements around it are read normally.
+/// - An element that is nothing but a quoted-string, or nothing but
+///   encoded-words, is invalid text of the text it stands for. That is how
+///   SwiftMail writes invalid text that would otherwise read back as something
+///   else: encoded-words in a header, and `"Doe, John"` for display.
 ///
 /// ``AddressListEntry/description`` and ``EmailAddress/description`` write the
 /// text this parser reads back to the identical value.
@@ -43,17 +47,17 @@ public enum AddressParser {
     /// ``AddressListEntry/invalid(_:)`` entries, and empty elements (`a, , b`)
     /// are skipped.
     ///
+    /// Elements are never merged: in `Doe, John <john@example.com>` the comma
+    /// separates invalid text, `Doe`, from the mailbox `John`. (Text known to be
+    /// one mailbox, such as ``EmailAddress/init(_:)`` reads, may hold an
+    /// unquoted comma in its display name.)
+    ///
     /// - Parameter text: A field body, such as the value of a `To:` header field.
     ///   Folded lines are unfolded.
     /// - Returns: The mailboxes, groups and invalid text of the field, in order.
     public static func parseAddressList(_ text: String) -> [AddressListEntry] {
-        parseEntries(text).map(\.entry)
-    }
-
-    /// The elements of an address field together with the text each was written as.
-    static func parseEntries(_ text: String) -> [ParsedAddressEntry] {
         var scanner = AddressScanner(text)
-        var entries: [ParsedAddressEntry] = []
+        var entries: [AddressListEntry] = []
         while let entry = scanner.readListElement() {
             entries.append(entry)
         }

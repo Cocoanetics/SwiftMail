@@ -23,8 +23,9 @@ public enum AddressListEntry: Hashable, Codable, Sendable {
     /// A group may have no members, as in `undisclosed-recipients:;`.
     case group(name: String, members: [EmailAddress])
 
-    /// Text that is not a valid address, kept verbatim so that a malformed field
-    /// is never silently shortened or read as a different address.
+    /// Text that is not a valid address. It is kept, never dropped or repaired,
+    /// so that a malformed field is never silently shortened or read as a
+    /// different address.
     case invalid(String)
 }
 
@@ -66,10 +67,64 @@ extension AddressListEntry: LosslessStringConvertible {
     /// The entry as RFC 5322 text for a header field, which ``init(_:)`` reads
     /// back to this entry. Display names are written the way
     /// ``EmailAddress/description`` writes them. Invalid text is written as it
-    /// is, unless it holds a control character: then it is written as
-    /// encoded-words, which read back as invalid text, never as an address.
+    /// is when that reads back as the same text. Otherwise, as when it holds a
+    /// control character or would read back as an address, it is written as
+    /// encoded-words, which read back as the same invalid text and never as an
+    /// address.
     public var description: String {
         AddressFormatter.string(for: self, form: .header)
+    }
+}
+
+// MARK: - Codable
+
+extension AddressListEntry {
+    private enum CodingKeys: String, CodingKey {
+        case mailbox
+        case group
+        case invalid
+    }
+
+    private enum GroupCodingKeys: String, CodingKey {
+        case name
+        case members
+    }
+
+    /// Decodes an entry from an object with one key naming its kind:
+    /// `{"mailbox": {"name": …, "address": …}}`,
+    /// `{"group": {"name": …, "members": […]}}` or `{"invalid": "…"}`.
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let address = try container.decodeIfPresent(EmailAddress.self, forKey: .mailbox) {
+            self = .mailbox(address)
+        } else if container.contains(.group) {
+            let group = try container.nestedContainer(keyedBy: GroupCodingKeys.self, forKey: .group)
+            self = .group(
+                name: try group.decode(String.self, forKey: .name),
+                members: try group.decode([EmailAddress].self, forKey: .members)
+            )
+        } else if let text = try container.decodeIfPresent(String.self, forKey: .invalid) {
+            self = .invalid(text)
+        } else {
+            throw DecodingError.dataCorrupted(DecodingError.Context(
+                codingPath: container.codingPath,
+                debugDescription: "An address-list entry needs a \"mailbox\", \"group\" or \"invalid\" key."
+            ))
+        }
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+            case .mailbox(let address):
+                try container.encode(address, forKey: .mailbox)
+            case let .group(name, members):
+                var group = container.nestedContainer(keyedBy: GroupCodingKeys.self, forKey: .group)
+                try group.encode(name, forKey: .name)
+                try group.encode(members, forKey: .members)
+            case .invalid(let text):
+                try container.encode(text, forKey: .invalid)
+        }
     }
 }
 

@@ -69,19 +69,41 @@ struct AddressRoundTripTests {
         }
     }
 
-    /// Every entry parsed from `text` is header-safe, and a mailbox or group
-    /// reads back from its own string form.
+    /// Every entry parsed from `text`, invalid text included, is header-safe
+    /// and reads back from its own header and display forms.
     private static func expectStableEntries(of text: String) {
         for entry in AddressParser.parseAddressList(text) {
+            let display = AddressFormatter.string(for: entry, form: .display)
             #expect(isHeaderSafe(entry.description), "\(text.debugDescription)")
-            if case .invalid(let invalidText) = entry {
-                #expect(!invalidText.isEmpty, "\(text.debugDescription)")
-                // Whatever invalid text is written as, it never reads back as an address.
-                #expect(AddressListEntry(entry.description)?.isInvalid != false, "\(text.debugDescription)")
-            } else {
-                #expect(AddressListEntry(entry.description) == entry, "\(text.debugDescription)")
-            }
+            #expect(isHeaderSafe(display), "\(text.debugDescription)")
+            #expect(AddressListEntry(entry.description) == entry, "\(text.debugDescription)")
+            #expect(AddressParser.parseAddressList(display) == [entry], "\(text.debugDescription)")
         }
+    }
+
+    @Test("Invalid text that would read back as something else is escaped, and reads back as itself")
+    func invalidTextNeedingEscapes() {
+        let texts = [
+            "victim@example.com", "Bob <bob@example.com>", "Jörg [Vertrieb <joerg@example.com>", "Team: a@example.com;",
+            "Doe, John", " padded ", "", "\"quoted\"", "=?UTF-8?Q?x?=", "bell\u{0007}",
+            "Zoë <zoe@example.com>\r\nBcc: attacker@example.com"
+        ]
+        for text in texts {
+            let entry = AddressListEntry.invalid(text)
+            let display = AddressFormatter.string(for: entry, form: .display)
+            #expect(AddressListEntry(entry.description) == entry, "header form: \(entry.description.debugDescription)")
+            #expect(AddressParser.parseAddressList(display) == [entry], "display form: \(display.debugDescription)")
+            #expect(Self.isHeaderSafe(entry.description), "\(entry.description.debugDescription)")
+            #expect(Self.isHeaderSafe(display), "\(display.debugDescription)")
+        }
+        // A header gets encoded-words, which no reader takes for an address; display text is quoted.
+        let victim = AddressListEntry.invalid("victim@example.com")
+        #expect(victim.description == "=?UTF-8?B?dmljdGltQGV4YW1wbGUuY29t?=")
+        #expect(AddressFormatter.string(for: victim, form: .display) == "\"victim@example.com\"")
+        #expect(AddressFormatter.string(for: .invalid("Doe, John"), form: .display) == "\"Doe, John\"")
+        // Text that reads back as itself is written as it is.
+        #expect(AddressListEntry.invalid("Doe").description == "Doe")
+        #expect(AddressListEntry.invalid("john@").description == "john@")
     }
 
     @Test("A caller-built address with a control character can't inject a header field")
@@ -98,8 +120,30 @@ struct AddressRoundTripTests {
             #expect(Self.isHeaderSafe(address.displayString), "\(address.displayString.debugDescription)")
             #expect(!address.description.contains("\nBcc"))
         }
+        // An address holding a control is written as encoded-words, never with the
+        // control stripped, which would name a different mailbox.
+        let victim = EmailAddress(address: "victim\u{0007}@example.com")
+        #expect(victim.description.hasPrefix("=?UTF-8?B?"))
+        #expect(EmailAddress(victim.description) == nil)
+        #expect(AddressParser.parseAddressList(victim.displayString).mailboxes.isEmpty)
         // HTAB is legal inside a quoted local-part and is kept.
         #expect(EmailAddress(address: "\"first\tlast\"@example.com").description == "\"first\tlast\"@example.com")
+    }
+
+    @Test("A caller-built malformed addr-spec can't become one or more real mailboxes")
+    func malformedAddrSpecNeverBecomesMailboxes() {
+        let values = [
+            "victim@example.com, attacker@example.com",
+            "Alice <alice@example.com>",
+            " victim@example.com",
+            "\"victim\"@example.com"
+        ]
+        for value in values {
+            let address = EmailAddress(address: value)
+            #expect(address.description.hasPrefix("=?UTF-8?"), "\(value)")
+            #expect(AddressParser.parseAddressList(address.description) == [.invalid(value)], "\(value)")
+            #expect(AddressParser.parseAddressList(address.displayString) == [.invalid(value)], "\(value)")
+        }
     }
 
     @Test("A name that starts with U+FEFF keeps it through an encoded-word")

@@ -1,20 +1,9 @@
 // EMLParser+AddressAndDate.swift
-// Helpers for splitting address fields and parsing RFC 2822 dates.
+// Helpers for parsing RFC 2822 dates.
 
 import Foundation
 
 extension EMLParser {
-
-    // MARK: - Address Parsing
-
-    /// Split an address field into its addresses, each in the text it was
-    /// written with: display names stay in wire form, and a group, members
-    /// included, stays one element. Malformed text is kept as its own element
-    /// rather than dropped; ``AddressParser`` decides where it ends.
-    static func parseAddressList(_ value: String?) -> [String] {
-        guard let value, !value.isEmpty else { return [] }
-        return AddressParser.parseEntries(value).map(\.source)
-    }
 
     // MARK: - Date Parsing
 

@@ -3,14 +3,6 @@
 
 import Foundation
 
-/// An address-list element and the text it was written as.
-struct ParsedAddressEntry {
-    let entry: AddressListEntry
-
-    /// The element's text, unfolded and without surrounding white space.
-    let source: String
-}
-
 extension AddressScanner {
     /// Reads the next element of an address-list (RFC 5322 §3.4), skipping the
     /// empty elements that obs-addr-list allows. Returns `nil` at the end of
@@ -21,7 +13,7 @@ extension AddressScanner {
     /// doesn't swallow (see ``elementEnd(from:)``). It is read by the recovery
     /// rules of ``recoverElement(in:)`` where one applies, and is invalid text
     /// otherwise. The elements around it are read normally.
-    mutating func readListElement() -> ParsedAddressEntry? {
+    mutating func readListElement() -> AddressListEntry? {
         while true {
             let start = position
             guard (try? skipCFWS()) != nil else {
@@ -37,30 +29,27 @@ extension AddressScanner {
         }
     }
 
-    private mutating func readAddressElement() -> ParsedAddressEntry {
+    private mutating func readAddressElement() -> AddressListEntry {
         let start = position
         if let entry = try? readAddress(), isAtEnd || current == "," {
-            let source = sourceText(start..<position)
             _ = consume(",")
-            return ParsedAddressEntry(entry: entry, source: source)
+            return entry
         }
         let end = elementEnd(from: start)
-        if let entry = recoverElement(in: start..<end) {
-            return element(entry, endingAt: end, from: start)
-        }
-        return invalidElement(from: start)
+        let entry = recoverElement(in: start..<end) ?? .invalid(invalidText(start..<end))
+        return element(entry, endingAt: end)
     }
 
-    private mutating func invalidElement(from start: Int) -> ParsedAddressEntry {
+    private mutating func invalidElement(from start: Int) -> AddressListEntry {
         let end = elementEnd(from: start)
-        return element(.invalid(sourceText(start..<end)), endingAt: end, from: start)
+        return element(.invalid(invalidText(start..<end)), endingAt: end)
     }
 
-    /// An element read from `start` to `end`, which moves past it and its comma.
-    private mutating func element(_ entry: AddressListEntry, endingAt end: Int, from start: Int) -> ParsedAddressEntry {
+    /// `entry`, read up to `end`; moves past it and its comma.
+    private mutating func element(_ entry: AddressListEntry, endingAt end: Int) -> AddressListEntry {
         position = end
         _ = consume(",")
-        return ParsedAddressEntry(entry: entry, source: sourceText(start..<end))
+        return entry
     }
 
     /// Where the element starting at `start` ends: at the next comma outside a
@@ -74,6 +63,24 @@ extension AddressScanner {
             index += 1
         }
         return index
+    }
+
+    /// The text of the invalid element in `range`: its source text, except in
+    /// the two forms ``AddressFormatter/invalidString(_:form:)`` writes invalid
+    /// text in when it can't be written as it is. A lone quoted-string stands
+    /// for its content, and a run of encoded-words for the text they encode.
+    /// Neither names an address, so the element is invalid text either way.
+    func invalidText(_ range: Range<Int>) -> String {
+        let text = sourceText(range)
+        let words = text.unicodeScalars.split(whereSeparator: AddressSyntax.isWSP).map { String(unicodeScalars: $0) }
+        if !words.isEmpty, words.allSatisfy(EncodedWord.isEncodedWord) {
+            return AddressPhrase.decoded(words)
+        }
+        var scanner = AddressScanner(text)
+        if let content = try? scanner.readQuotedString(), scanner.isAtEnd {
+            return content
+        }
+        return text
     }
 
     /// The text in `range`, with the line breaks of folds removed and without

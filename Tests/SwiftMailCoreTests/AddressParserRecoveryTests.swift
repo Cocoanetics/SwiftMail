@@ -88,9 +88,18 @@ struct AddressParserRecoveryTests {
         // A list is still not one mailbox.
         #expect(EmailAddress("a@example.com, Bob <b@example.com>") == nil)
         #expect(EmailAddress("Alice <a@example.com>, Bob <b@example.com>") == nil)
-        // In an address list the comma still separates elements.
+        // In an address list the comma separates elements, and elements are never
+        // merged: the invalid text stays visible rather than joining a name.
         #expect(AddressParser.parseAddressList("Doe, John <john@example.com>")
             == [.invalid("Doe"), mailbox("john@example.com", "John")])
+        #expect(AddressParser.parseAddressList("Doe, John <john@example.com>, bob@example.com")
+            == [.invalid("Doe"), mailbox("john@example.com", "John"), mailbox("bob@example.com")])
+        #expect(AddressParser.parseAddressList("Team:;, Bob <bob@example.com>")
+            == [.group(name: "Team", members: []), mailbox("bob@example.com", "Bob")])
+        #expect(AddressParser.parseAddressList("Team:;, Doe, John <john@example.com>")
+            == [.group(name: "Team", members: []), .invalid("Doe"), mailbox("john@example.com", "John")])
+        #expect(AddressParser.parseAddressList("a@example.com, Doe, John <john@example.com>")
+            == [mailbox("a@example.com"), .invalid("Doe"), mailbox("john@example.com", "John")])
     }
 
     @Test("A recovered mailbox reads back from its own string form")

@@ -165,18 +165,8 @@ extension EMLParser {
     // MARK: - MessageInfo Construction
 
     static func buildMessageInfo(from headers: [String: String]) -> MessageInfo {
-        // Address fields remain structured wire values. Display names are
-        // decoded only after EmailAddress has isolated the real addr-spec.
-        let parsedFrom = parseAddressList(headers["from"])
-        let from = parsedFrom.isEmpty ? headers["from"] : parsedFrom.joined(separator: ", ")
         let subject = headers["subject"].flatMap { decodeRFC2047($0) } ?? headers["subject"]
         let messageId = headers["message-id"].flatMap { MessageID($0) }
-
-        let replyTo = parseAddressList(headers["reply-to"])
-        let to = parseAddressList(headers["to"])
-        let cc = parseAddressList(headers["cc"])
-        let bcc = parseAddressList(headers["bcc"])
-
         let date = headers["date"].flatMap { parseRFC2822Date($0) }
 
         // Collect additional headers (everything except standard ones)
@@ -189,21 +179,19 @@ extension EMLParser {
             additional[key] = value
         }
 
-        return MessageInfo(
+        var info = MessageInfo(
             sequenceNumber: SequenceNumber(0),
-            uid: nil,
             subject: subject,
-            from: from,
-            replyTo: replyTo,
-            to: to,
-            cc: cc,
-            bcc: bcc,
             date: date,
             messageId: messageId,
-            flags: [],
-            parts: [],
             additionalFields: additional.isEmpty ? nil : additional
         )
+        info.fromAddresses = headers["from"].map(AddressParser.parseAddressList) ?? []
+        info.replyToAddresses = headers["reply-to"].map(AddressParser.parseAddressList) ?? []
+        info.toAddresses = headers["to"].map(AddressParser.parseAddressList) ?? []
+        info.ccAddresses = headers["cc"].map(AddressParser.parseAddressList) ?? []
+        info.bccAddresses = headers["bcc"].map(AddressParser.parseAddressList) ?? []
+        return info
     }
 }
 

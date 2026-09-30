@@ -102,7 +102,7 @@ struct AddressFieldIntegrationTests {
         ("John [Sales] <john@example.com>", "john@example.com", "John [Sales]"),
         ("Taro <taro.@docomo.ne.jp>", #""taro."@docomo.ne.jp"#, "Taro"),
         ("taro..yamada@docomo.ne.jp", #""taro..yamada"@docomo.ne.jp"#, nil),
-        ("Doe, John <john@example.com>", "john@example.com", "Doe, John")
+        ("Doe, John <john@example.com>", "john@example.com", "John")
     ])
     func emlLenientSenders(_ from: String, _ address: String, _ name: String?) throws {
         let eml = "From: \(from)\r\nTo: bob@example.com\r\nSubject: x\r\n\r\nBody\r\n"
@@ -198,7 +198,7 @@ struct AddressFieldIntegrationTests {
 
         #expect(info.to == [
             #""john doe"@example.com"#,
-            #""John" <"a@b"@example.com>"#,
+            #"John <"a@b"@example.com>"#,
             #""quoted already"@example.com"#
         ])
         #expect(info.to.flatMap(AddressParser.parseAddressList).mailboxes.map(\.address) == [
@@ -242,7 +242,7 @@ struct AddressFieldIntegrationTests {
 
     // MARK: - Helpers
 
-    private static func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
+    static func executeFetch(_ rawResponses: [String]) async throws -> [MessageInfo] {
         let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
 
         let promise = channel.eventLoop.makePromise(of: [MessageInfo].self)

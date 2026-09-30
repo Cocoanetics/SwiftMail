@@ -180,17 +180,17 @@ extension Array where Element == MessagePart {
             let decoded = raw.decodeMIMEHeader()
             return decoded.isEmpty ? raw : decoded
         }()
-        let from: String? = envelope.from.isEmpty
-            ? nil
-            : Self.formatEnvelopeAddress(envelope.from[0])
-        return MessageInfo(
+        var info = MessageInfo(
             sequenceNumber: SequenceNumber(0), // Not available for embedded messages
             subject: subject,
-            from: from,
-            to: Self.formatEnvelopeAddressesArray(envelope.to),
-            cc: Self.formatEnvelopeAddressesArray(envelope.cc),
             date: Self.parseEnvelopeDate(envelope.date)
         )
+        info.fromAddresses = .entries(fromEnvelope: envelope.from)
+        info.replyToAddresses = .entries(fromEnvelope: envelope.reply)
+        info.toAddresses = .entries(fromEnvelope: envelope.to)
+        info.ccAddresses = .entries(fromEnvelope: envelope.cc)
+        info.bccAddresses = .entries(fromEnvelope: envelope.bcc)
+        return info
     }
 
     /// Derive an `.eml` filename for an embedded `message/rfc822` part from its
@@ -211,37 +211,6 @@ extension Array where Element == MessagePart {
     }
 
     // MARK: - Envelope Helpers
-
-    /// Format an array of IMAP envelope addresses into individual display strings.
-    /// Matches the format used by FetchMessageInfoHandler for MessageInfo.to/cc.
-    private static func formatEnvelopeAddressesArray(_ addresses: [EmailAddressListElement]) -> [String] {
-        addresses.map { formatEnvelopeAddress($0) }
-    }
-
-    private static func formatEnvelopeAddress(_ address: EmailAddressListElement) -> String {
-        switch address {
-            case .singleAddress(let emailAddress):
-                let name: String = {
-                    guard let buf = emailAddress.personName else { return "" }
-                    let raw = buf.stringValue
-                    guard !raw.isEmpty else { return "" }
-                    let decoded = raw.decodeMIMEHeader()
-                    return decoded.isEmpty ? raw : decoded
-                }()
-                let mailbox = emailAddress.mailbox.map { $0.stringValue } ?? ""
-                let host = emailAddress.host.map { $0.stringValue } ?? ""
-                let address = AddressSyntax.envelopeAddrSpec(mailbox: mailbox, host: host)
-                if !name.isEmpty {
-                    return "\(AddressFormatter.quotedPhrase(name)) <\(address)>"
-                } else {
-                    return address
-                }
-            case .group(let group):
-                let groupName = group.groupName.stringValue.decodeMIMEHeader()
-                let members = group.children.map { formatEnvelopeAddress($0) }
-                return AddressFormatter.groupString(name: groupName, members: members)
-        }
-    }
 
     /// Parse an RFC 5322 date from the IMAP envelope into a Date.
     /// Uses the same format list as FetchMessageInfoHandler.

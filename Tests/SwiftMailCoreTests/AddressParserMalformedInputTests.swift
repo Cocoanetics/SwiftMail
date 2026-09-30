@@ -83,7 +83,8 @@ struct AddressParserMalformedInputTests {
     @Test("Well-formed elements around a malformed one are read as usual", arguments: [
         ("a@example.com, b\u{0007}@example.com", [mailbox("a@example.com"), .invalid("b\u{0007}@example.com")]),
         ("a@example.com, <>, b@example.com", [mailbox("a@example.com"), .invalid("<>"), mailbox("b@example.com")]),
-        ("Doe, John <john@example.com>", [.invalid("Doe"), mailbox("john@example.com", "John")]),
+        ("Doe, Jane <jane@example.com>, John <john@example.com>",
+         [.invalid("Doe"), mailbox("jane@example.com", "Jane"), mailbox("john@example.com", "John")]),
         ("x@example.com, first last@example.com , y@example.com",
          [mailbox("x@example.com"), .invalid("first last@example.com"), mailbox("y@example.com")]),
         ("Team: a@example.com, junk;, b@example.com",
@@ -126,7 +127,7 @@ struct AddressParserMalformedInputTests {
         }
     }
 
-    @Test("Invalid text with a control character is written as encoded-words, which never read as an address")
+    @Test("Invalid text with a control character is written as encoded-words, which read back as that text")
     func invalidTextWithControlIsEncoded() {
         let texts = [
             "a@example.com\r\nBcc: evil@example.com\u{000B}x",
@@ -139,14 +140,29 @@ struct AddressParserMalformedInputTests {
             let description = AddressListEntry.invalid(text).description
             #expect(description.hasPrefix("=?UTF-8?B?"), "\(description.debugDescription)")
             #expect(AddressRoundTripTests.isHeaderSafe(description), "\(description.debugDescription)")
-            #expect(AddressListEntry(description)?.isInvalid == true,
-                    "\(text.debugDescription) read back as an address")
+            #expect(AddressListEntry(description) == .invalid(text), "\(text.debugDescription) didn't read back")
         }
     }
 
-    @Test("Invalid text without a control character is written as it is")
+    @Test("Invalid text is written as it is only when it reads back as itself")
     func invalidTextWithoutControlIsVerbatim() {
-        let text = "Jörg [Vertrieb <joerg@example.com>"
-        #expect(AddressListEntry.invalid(text).description == text)
+        #expect(AddressListEntry.invalid("Jörg [Vertrieb").description == "Jörg [Vertrieb")
+        // Written as it is, this would read back as a mailbox (see the recovery rules).
+        let addressLike = AddressListEntry.invalid("Jörg [Vertrieb <joerg@example.com>")
+        #expect(addressLike.description.hasPrefix("=?UTF-8?B?"))
+        #expect(AddressListEntry(addressLike.description) == addressLike)
+    }
+
+    @Test("An element that is only a quoted-string, or only encoded-words, is invalid text of what it stands for")
+    func phraseOnlyElements() {
+        #expect(AddressParser.parseAddressList("\"Doe, John\", jane@example.com")
+            == [.invalid("Doe, John"), mailbox("jane@example.com")])
+        #expect(AddressParser.parseAddressList("\"victim@example.com\"") == [.invalid("victim@example.com")])
+        #expect(AddressParser.parseAddressList("=?UTF-8?Q?Doe=2C_John?=") == [.invalid("Doe, John")])
+        #expect(AddressParser.parseAddressList("=?UTF-8?Q?Doe=2C?=\r\n =?UTF-8?Q?_John?=") == [.invalid("Doe, John")])
+        #expect(AddressParser.parseAddressList("\"\", a@example.com") == [.invalid(""), mailbox("a@example.com")])
+        // Anything more is kept as written: a comment, or a word that isn't encoded.
+        #expect(AddressParser.parseAddressList("\"Doe\" (the one)") == [.invalid("\"Doe\" (the one)")])
+        #expect(AddressParser.parseAddressList("=?UTF-8?Q?Doe?= John") == [.invalid("=?UTF-8?Q?Doe?= John")])
     }
 }
