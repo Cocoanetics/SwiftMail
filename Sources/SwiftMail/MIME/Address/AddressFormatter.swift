@@ -27,12 +27,14 @@ enum AddressFormatter {
     }
 
     /// The text of a mailbox: `name <address>`, or the bare address without a
-    /// name. An address holding a control character can't be written in any
-    /// form, and stripping the control would name a different mailbox, so such
-    /// a mailbox is written as encoded-words instead: they never read back as
-    /// an address, nor as a header field of their own.
+    /// name. An address that isn't exactly one canonical addr-spec can't be
+    /// written in any form: writing it verbatim could turn one malformed value
+    /// into several real recipients, while normalizing it could name a
+    /// different mailbox. Such a mailbox is written as encoded-words instead:
+    /// they never read back as an address, nor as a header field of their own.
     static func string(for address: EmailAddress, form: Form) -> String {
-        guard !address.address.unicodeScalars.contains(where: AddressSyntax.isForbiddenControl) else {
+        let parsed = AddressParser.parseMailbox(address.address)
+        guard parsed?.name == nil, parsed?.address == address.address else {
             return invalidText(name: address.name, address: address.address).rfc2047EncodedWords()
         }
         guard let name = address.name, !name.isEmpty else { return address.address }

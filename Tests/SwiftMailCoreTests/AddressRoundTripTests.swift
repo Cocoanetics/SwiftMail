@@ -130,6 +130,22 @@ struct AddressRoundTripTests {
         #expect(EmailAddress(address: "\"first\tlast\"@example.com").description == "\"first\tlast\"@example.com")
     }
 
+    @Test("A caller-built malformed addr-spec can't become one or more real mailboxes")
+    func malformedAddrSpecNeverBecomesMailboxes() {
+        let values = [
+            "victim@example.com, attacker@example.com",
+            "Alice <alice@example.com>",
+            " victim@example.com",
+            "\"victim\"@example.com"
+        ]
+        for value in values {
+            let address = EmailAddress(address: value)
+            #expect(address.description.hasPrefix("=?UTF-8?"), "\(value)")
+            #expect(AddressParser.parseAddressList(address.description) == [.invalid(value)], "\(value)")
+            #expect(AddressParser.parseAddressList(address.displayString) == [.invalid(value)], "\(value)")
+        }
+    }
+
     @Test("A name that starts with U+FEFF keeps it through an encoded-word")
     func byteOrderMarkInName() {
         for name in ["\u{FEFF}John", "\u{FEFF}"] {

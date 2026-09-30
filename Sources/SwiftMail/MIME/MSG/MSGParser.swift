@@ -190,7 +190,7 @@ public struct MSGParser {
     private static func displayNames(_ value: String?) -> [AddressListEntry] {
         guard let value, !value.isEmpty else { return [] }
         return value
-            .split(whereSeparator: { $0 == ";" || $0 == "," })
+            .split(separator: ";")
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .map(AddressListEntry.invalid)

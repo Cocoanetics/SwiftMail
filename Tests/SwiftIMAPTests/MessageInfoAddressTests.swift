@@ -249,10 +249,10 @@ struct MessageInfoAddressTests {
     func msgDisplayNames() throws {
         let msg = CompoundFileBuilder.build(root: mapiNodes([
             .unicode(.subject, "Hallo"),
-            .unicode(.displayTo, "Anna Beispiel; Bernd Muster")
+            .unicode(.displayTo, "Doe, Jane; Bernd Muster")
         ], isTopLevel: true))
 
-        #expect(try MSGParser.parse(msg).header.toAddresses == [.invalid("Anna Beispiel"), .invalid("Bernd Muster")])
+        #expect(try MSGParser.parse(msg).header.toAddresses == [.invalid("Doe, Jane"), .invalid("Bernd Muster")])
     }
 
     @Test("Email to Message copies the addresses as they are")
@@ -285,6 +285,18 @@ struct MessageInfoAddressTests {
 // MARK: - EML serialization
 
 extension MessageInfoAddressTests {
+    @Test("EML serialization can't turn one malformed structured mailbox into recipients")
+    func malformedStructuredMailbox() throws {
+        let malformed = "victim@example.com, attacker@example.com"
+        var header = MessageInfo(sequenceNumber: SequenceNumber(1), subject: "x")
+        header.toAddresses = [.mailbox(EmailAddress(address: malformed))]
+
+        let data = try Message(header: header, parts: []).emlData()
+        let written = try #require(String(data: data, encoding: .utf8))
+        #expect(!written.contains("To: " + malformed))
+        #expect(try Message(emlData: data).header.toAddresses == [.invalid(malformed)])
+    }
+
     @Test("EML serialization keeps a Reply-To that names someone other than the sender")
     func emlReplyTo() throws {
         let eml = "From: Alice <alice@example.com>\r\nReply-To: Support: Bob <bob@example.com>, a@example.com;\r\n"
