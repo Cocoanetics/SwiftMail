@@ -28,7 +28,7 @@ extension IMAPServer {
      This method renames an existing mailbox (folder). Use forward slashes for
      hierarchical names (e.g., "Work/Archive"); moving a mailbox to another parent
      is a rename as well. Renaming INBOX moves its messages to the new mailbox and
-     leaves INBOX empty (RFC 3501, section 6.3.5).
+     leaves INBOX empty (RFC 3501 §6.3.5).
 
      - Parameters:
        - mailboxName: The current name of the mailbox
