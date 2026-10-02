@@ -13,7 +13,7 @@ extension IMAPServer {
 
      - Parameter mailboxName: The name of the mailbox to create
      - Throws:
-     - `IMAPError.commandFailed` if the mailbox cannot be created
+     - `IMAPError.createFailed` if the mailbox cannot be created
      - `IMAPError.connectionFailed` if not connected
      - Note: Logs mailbox creation at debug level
      */
@@ -35,7 +35,7 @@ extension IMAPServer {
        - newName: The new name of the mailbox
      - Throws:
      - `IMAPError.invalidArgument` if a name is empty or both names are equal
-     - `IMAPError.commandFailed` if the server refuses the rename
+     - `IMAPError.renameFailed` if the server refuses the rename
      - `IMAPError.connectionFailed` if not connected
      */
     public func renameMailbox(_ mailboxName: String, to newName: String) async throws {
@@ -52,7 +52,7 @@ extension IMAPServer {
      - Parameter mailboxName: The name of the mailbox to delete
      - Throws:
      - `IMAPError.invalidArgument` if the name is empty
-     - `IMAPError.commandFailed` if the server refuses the delete
+     - `IMAPError.deleteFailed` if the server refuses the delete
      - `IMAPError.connectionFailed` if not connected
      */
     public func deleteMailbox(_ mailboxName: String) async throws {
