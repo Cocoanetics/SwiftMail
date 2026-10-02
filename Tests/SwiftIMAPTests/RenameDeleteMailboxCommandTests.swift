@@ -20,7 +20,8 @@ struct RenameDeleteMailboxCommandTests {
 
     @Test
     func serializesRename() async throws {
-        let wire = try await Self.wire(RenameMailboxCommand(from: "Folders/Work", to: "Folders/Job").toTaggedCommand(tag: "R001"))
+        let command = RenameMailboxCommand(from: "Folders/Work", to: "Folders/Job")
+        let wire = try await Self.wire(command.toTaggedCommand(tag: "R001"))
         #expect(wire == "R001 RENAME \"Folders/Work\" \"Folders/Job\"\r\n")
     }
 

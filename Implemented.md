@@ -35,6 +35,8 @@
 - [x] LIST - List mailboxes.
   - [x] LIST (SPECIAL-USE) - List mailboxes with special-use attributes.
 - [x] STATUS - Get mailbox status information without selecting it.
+- [x] RENAME - Rename a mailbox.
+- [x] DELETE - Delete a mailbox.
 - [x] COPY - Copy messages to another mailbox.
 - [x] MOVE - Move messages to another mailbox.
 - [x] EXPUNGE - Expunge deleted messages from the selected mailbox.
