@@ -55,7 +55,7 @@ extension EMLParser {
             guard bytes.allSatisfy({ $0 < 0x80 }) else { return nil }
             return String(bytes: bytes, encoding: .ascii)
         }
-        guard let encoding = String.Encoding(ianaCharsetName: charset),
+        guard let encoding = String.Encoding(mimeCharset: charset),
               encoding != .utf8 || isGenuineUTF8Label(charset) else { return nil }
         return String(bytes: bytes, encoding: encoding)
     }

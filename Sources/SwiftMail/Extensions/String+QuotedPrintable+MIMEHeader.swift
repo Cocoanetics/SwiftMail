@@ -130,7 +130,7 @@ extension String {
         return MIMEEncodedWordParts(
             normalizedCharset: charset.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
             encoding: String(source[encodingRange]).uppercased(),
-            stringEncoding: String.Encoding(ianaCharsetName: charset) ?? .utf8,
+            stringEncoding: String.Encoding(mimeCharset: charset) ?? .utf8,
             encodedText: String(source[textRange]),
             originalWord: String(source[range]),
             upperBound: range.upperBound,
@@ -166,7 +166,10 @@ extension String {
         }
     }
 
-    /// Detects the charset from content and returns the appropriate String.Encoding
+    /// Detects the charset from content and returns the String.Encoding to decode it with
+    ///
+    /// The result is for decoding: a legacy CJK label resolves to the superset
+    /// it is decoded with (see ``Swift/String/Encoding/init(mimeCharset:)``).
     /// - Returns: The detected String.Encoding, or .utf8 as fallback
     public func detectCharsetEncoding() -> String.Encoding {
         // Look for Content-Type header with charset
@@ -174,7 +177,7 @@ extension String {
         if let range = self.range(of: contentTypePattern, options: .regularExpression, range: nil, locale: nil),
            let charsetRange = self[range].range(of: "charset=([^\\s;\"']+)", options: .regularExpression) {
             let charsetString = self[charsetRange].replacingOccurrences(of: "charset=", with: "")
-            return String.Encoding(ianaCharsetName: charsetString) ?? .utf8
+            return String.Encoding(mimeCharset: charsetString) ?? .utf8
         }
 
         // Look for meta tag with charset
@@ -182,7 +185,7 @@ extension String {
         if let range = self.range(of: metaPattern, options: .regularExpression, range: nil, locale: nil),
            let charsetRange = self[range].range(of: "charset=([^\\s;\"'/>]+)", options: .regularExpression) {
             let charsetString = self[charsetRange].replacingOccurrences(of: "charset=", with: "")
-            return String.Encoding(ianaCharsetName: charsetString) ?? .utf8
+            return String.Encoding(mimeCharset: charsetString) ?? .utf8
         }
 
         // Default to UTF-8
@@ -219,7 +222,7 @@ extension String {
                             .trimmingCharacters(in: .whitespacesAndNewlines)
                             .replacingOccurrences(of: "\"", with: "")
                             .replacingOccurrences(of: "'", with: "")
-                        contentEncoding = String.Encoding(ianaCharsetName: charsetString) ?? .utf8
+                        contentEncoding = String.Encoding(mimeCharset: charsetString) ?? .utf8
                     }
                 }
 
