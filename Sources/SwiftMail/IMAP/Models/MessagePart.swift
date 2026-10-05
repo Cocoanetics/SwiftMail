@@ -140,7 +140,7 @@ public struct MessagePart: Sendable {
 
         // Decode bytes exactly once, preferring the declared charset.
         if let declaredCharset {
-            let encoding = String.Encoding(ianaCharsetName: declaredCharset) ?? .utf8
+            let encoding = String.Encoding(mimeCharset: declaredCharset) ?? .utf8
             if let text = String(data: transferDecodedData, encoding: encoding) {
                 return text
             }

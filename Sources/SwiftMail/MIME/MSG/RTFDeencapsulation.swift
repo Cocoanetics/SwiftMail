@@ -69,7 +69,7 @@ enum RTFDeencapsulation {
     static func encoding(forCodePage codePage: Int) -> String.Encoding {
         if codePage == 65001 { return .utf8 }
         guard let name = codePageNames[codePage] else { return .windowsCP1252 }
-        return String.Encoding(ianaCharsetName: name) ?? .windowsCP1252
+        return String.Encoding(mimeCharset: name) ?? .windowsCP1252
     }
 }
 
