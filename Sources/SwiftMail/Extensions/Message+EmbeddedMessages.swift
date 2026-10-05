@@ -5,6 +5,17 @@ import Foundation
 
 public extension Message {
 
+    /// A message carried as a `message/rfc822` part, together with that part.
+    struct EmbeddedMessage: Sendable {
+        /// The `message/rfc822` part of the containing message, which carries
+        /// its section, filename and disposition.
+        public let part: MessagePart
+
+        /// The carried message, its parts renumbered as if it had been parsed
+        /// on its own.
+        public let message: Message
+    }
+
     /// The messages carried as `message/rfc822` parts, each with its own parts
     /// renumbered as if it had been parsed on its own.
     ///
@@ -17,11 +28,24 @@ public extension Message {
     ///
     /// Empty for a message with nothing embedded, which is the common case.
     var embeddedMessages: [Message] {
+        embeddedMessagesWithParts.map(\.message)
+    }
+
+    /// ``embeddedMessages``, each paired with the `message/rfc822` part that
+    /// carries it, in the same order.
+    ///
+    /// The part is what a caller needs to point back at the attachment: its
+    /// filename names it, and its section is its number within this message.
+    /// At the top level that is the number to fetch it by. A pair reached
+    /// through an embedded message is numbered within that renumbered message,
+    /// so its fetch section is each enclosing part's section followed by its
+    /// own — `2` inside the message at `2` is fetched as `2.2`.
+    var embeddedMessagesWithParts: [EmbeddedMessage] {
         // `ownParts`, not `parts`: a message forwarded inside a forwarded
         // message is that message's child, not this one's. Scanning the flat
         // array would return it here *and* again from its real parent, so a
         // caller that recurses would visit it twice.
-        ownParts.compactMap { part -> Message? in
+        ownParts.compactMap { part -> EmbeddedMessage? in
             guard let info = part.embeddedMessageInfo else { return nil }
             let prefix = part.section.components
 
@@ -46,7 +70,7 @@ public extension Message {
 
             var header = info
             header.parts = nested
-            return Message(header: header, parts: nested)
+            return EmbeddedMessage(part: part, message: Message(header: header, parts: nested))
         }
     }
 }
