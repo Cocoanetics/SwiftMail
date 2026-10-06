@@ -93,10 +93,15 @@ extension IMAPServer {
        - identifierSet: Optional set of message identifiers to search within. If nil, searches all messages.
        - criteria: The search criteria to apply. Multiple criteria are combined with AND logic.
        - calendar: The calendar used for date-to-day conversions.
-       - partialRange: Optional window for paged results (PARTIAL, RFC 5267). When provided and ESEARCH
-         is available, `PARTIAL` is requested instead of `ALL`, and results appear in
-         ``ExtendedSearchResult/partial`` rather than ``ExtendedSearchResult/all``. Ignored when the
-         server does not advertise ESEARCH.
+       - partialRange: Optional window for paged results (PARTIAL, RFC 9394/5267). When provided and the
+         server supports it (ESEARCH plus `PARTIAL` or `CONTEXT=SEARCH`; `CONTEXT=SORT` when `sortCriteria` is
+         set), `PARTIAL` is
+         requested instead of `ALL`, and results appear in ``ExtendedSearchResult/partial`` rather than
+         ``ExtendedSearchResult/all``. Ignored when the server lacks that support, as Gmail and iCloud do
+         (they advertise ESEARCH without PARTIAL): `ALL` is requested, ``ExtendedSearchResult/partial``
+         is `nil`, and callers page client-side from ``ExtendedSearchResult/all`` (or from
+         ``ExtendedSearchResult/ordered`` when `sortCriteria` is set: the search then falls back to a
+         plain `SORT`).
      - Returns: An ``ExtendedSearchResult`` containing COUNT, MIN, MAX and either ALL or PARTIAL when available.
      - Throws:
        - `IMAPError.commandFailed` if the search operation fails
@@ -122,7 +127,7 @@ extension IMAPServer {
             }
             throw IMAPError.commandNotSupported("SORT command not supported by server")
         }
-        let useEsearch = capabilities.contains(.extendedSearch) && (!useSort || partialRange != nil)
+        let plan = capabilities.extendedSearchPlan(useSort: useSort, partialRange: partialRange)
         let command = ExtendedSearchCommand<T>(
             identifierSet: identifierSet,
             criteria: criteria,
@@ -130,8 +135,8 @@ extension IMAPServer {
             sortCharset: sortCharset,
             calendar: calendar,
             useSort: useSort,
-            useEsearch: useEsearch,
-            partialRange: partialRange
+            useEsearch: plan.useEsearch,
+            partialRange: plan.partialRange
         )
         return try await executeCommand(command)
     }

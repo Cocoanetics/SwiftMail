@@ -55,9 +55,14 @@ extension IMAPNamedConnection {
     /// Search within the selected mailbox, returning structured ESEARCH results (RFC 4731).
     ///
     /// Uses ESEARCH when the server supports it; falls back to a plain SEARCH otherwise.
-    /// Pass `partialRange` to request paged results (PARTIAL, RFC 5267) — when set and ESEARCH is
-    /// available, `PARTIAL` is used instead of `ALL` and results appear in
-    /// ``ExtendedSearchResult/partial``.
+    /// Pass `partialRange` to request paged results (PARTIAL, RFC 9394/5267) — when set and the server
+    /// supports it (ESEARCH plus `PARTIAL` or `CONTEXT=SEARCH`; `CONTEXT=SORT` when `sortCriteria` is set),
+    /// `PARTIAL` is used instead of `ALL`
+    /// and results appear in ``ExtendedSearchResult/partial``. On servers that advertise ESEARCH
+    /// without PARTIAL (Gmail, iCloud) the window is dropped, `ALL` is requested, and
+    /// ``ExtendedSearchResult/partial`` is `nil`: page client-side from ``ExtendedSearchResult/all``
+    /// (or from ``ExtendedSearchResult/ordered`` when `sortCriteria` is set: the search then falls
+    /// back to a plain `SORT`).
     public func extendedSearch<T: MessageIdentifier>(
         identifierSet: MessageIdentifierSet<T>? = nil,
         criteria: [SearchCriteria],
@@ -78,7 +83,7 @@ extension IMAPNamedConnection {
             }
             throw IMAPError.commandNotSupported("SORT command not supported by server")
         }
-        let useEsearch = capabilities.contains(.extendedSearch) && (!useSort || partialRange != nil)
+        let plan = capabilities.extendedSearchPlan(useSort: useSort, partialRange: partialRange)
         let command = ExtendedSearchCommand<T>(
             identifierSet: identifierSet,
             criteria: criteria,
@@ -86,8 +91,8 @@ extension IMAPNamedConnection {
             sortCharset: sortCharset,
             calendar: calendar,
             useSort: useSort,
-            useEsearch: useEsearch,
-            partialRange: partialRange
+            useEsearch: plan.useEsearch,
+            partialRange: plan.partialRange
         )
         return try await executeCommand(command)
     }
