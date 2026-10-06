@@ -78,7 +78,7 @@ extension IMAPNamedConnection {
             }
             throw IMAPError.commandNotSupported("SORT command not supported by server")
         }
-        let useEsearch = capabilities.contains(.extendedSearch) && (!useSort || partialRange != nil)
+        let plan = capabilities.extendedSearchPlan(useSort: useSort, partialRange: partialRange)
         let command = ExtendedSearchCommand<T>(
             identifierSet: identifierSet,
             criteria: criteria,
@@ -86,8 +86,8 @@ extension IMAPNamedConnection {
             sortCharset: sortCharset,
             calendar: calendar,
             useSort: useSort,
-            useEsearch: useEsearch,
-            partialRange: partialRange
+            useEsearch: plan.useEsearch,
+            partialRange: plan.partialRange
         )
         return try await executeCommand(command)
     }
