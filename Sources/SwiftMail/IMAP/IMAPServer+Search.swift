@@ -94,7 +94,8 @@ extension IMAPServer {
        - criteria: The search criteria to apply. Multiple criteria are combined with AND logic.
        - calendar: The calendar used for date-to-day conversions.
        - partialRange: Optional window for paged results (PARTIAL, RFC 9394/5267). When provided and the
-         server supports it (ESEARCH plus `PARTIAL`, or `CONTEXT=SEARCH`/`CONTEXT=SORT`), `PARTIAL` is
+         server supports it (ESEARCH plus `PARTIAL` or `CONTEXT=SEARCH`; `CONTEXT=SORT` when `sortCriteria` is
+         set), `PARTIAL` is
          requested instead of `ALL`, and results appear in ``ExtendedSearchResult/partial`` rather than
          ``ExtendedSearchResult/all``. Ignored when the server lacks that support, as Gmail and iCloud do
          (they advertise ESEARCH without PARTIAL): `ALL` is requested, ``ExtendedSearchResult/partial``

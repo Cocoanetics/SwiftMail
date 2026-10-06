@@ -52,10 +52,19 @@ struct ExtendedSearchPlanTests {
     }
 
     @Test
-    func contextCapabilityWithoutEsearchTokenStillUsesTheWindow() {
+    func contextCapabilityWithoutEsearchGetsAPlainSearch() {
         let caps: Set<Capability> = [.context(.search)]
         let plan = caps.extendedSearchPlan(useSort: false, partialRange: range)
-        #expect(plan.useEsearch)
-        #expect(plan.partialRange != nil)
+        #expect(!plan.useEsearch)
+        #expect(plan.partialRange == nil)
+    }
+
+    @Test
+    func standalonePartialDoesNotCoverSort() {
+        // RFC 9394 extends SEARCH/FETCH only; SORT RETURN (PARTIAL) needs CONTEXT=SORT.
+        let caps: Set<Capability> = [.extendedSearch, .partial]
+        let plan = caps.extendedSearchPlan(useSort: true, partialRange: range)
+        #expect(!plan.useEsearch)
+        #expect(plan.partialRange == nil)
     }
 }

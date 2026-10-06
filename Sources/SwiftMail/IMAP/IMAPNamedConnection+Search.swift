@@ -56,7 +56,8 @@ extension IMAPNamedConnection {
     ///
     /// Uses ESEARCH when the server supports it; falls back to a plain SEARCH otherwise.
     /// Pass `partialRange` to request paged results (PARTIAL, RFC 9394/5267) — when set and the server
-    /// supports it (`PARTIAL`, or `CONTEXT=SEARCH`/`CONTEXT=SORT`), `PARTIAL` is used instead of `ALL`
+    /// supports it (ESEARCH plus `PARTIAL` or `CONTEXT=SEARCH`; `CONTEXT=SORT` when `sortCriteria` is set),
+    /// `PARTIAL` is used instead of `ALL`
     /// and results appear in ``ExtendedSearchResult/partial``. On servers that advertise ESEARCH
     /// without PARTIAL (Gmail, iCloud) the window is dropped, `ALL` is requested, and
     /// ``ExtendedSearchResult/partial`` is `nil`: page client-side from ``ExtendedSearchResult/all``
