@@ -35,4 +35,19 @@ struct ExtendedSearchPlanTests {
         let plan = caps.extendedSearchPlan(useSort: true, partialRange: range)
         #expect(!plan.useEsearch)
     }
+
+    @Test
+    func rfc5267ContextCapabilityKeepsTheWindow() {
+        // Older servers signal PARTIAL via CONTEXT=SEARCH / CONTEXT=SORT rather than PARTIAL.
+        let search: Set<Capability> = [.extendedSearch, .context(.search)]
+        #expect(search.extendedSearchPlan(useSort: false, partialRange: range).partialRange != nil)
+
+        let sort: Set<Capability> = [.extendedSearch, .context(.sort)]
+        let sorted = sort.extendedSearchPlan(useSort: true, partialRange: range)
+        #expect(sorted.useEsearch)
+        #expect(sorted.partialRange != nil)
+
+        // The context must match the command: CONTEXT=SORT does not cover a plain search.
+        #expect(sort.extendedSearchPlan(useSort: false, partialRange: range).partialRange == nil)
+    }
 }
