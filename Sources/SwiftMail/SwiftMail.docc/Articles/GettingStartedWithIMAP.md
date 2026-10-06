@@ -241,7 +241,8 @@ print("Unread in recent batch: \(scopedResult.all?.count ?? 0)")
 ### Paged results with PARTIAL
 
 Pass a ``PartialRange`` to retrieve a window of results instead of the full match list
-(requires server ESEARCH support; silently ignored on servers without it):
+(requires ESEARCH plus PARTIAL support, advertised as `PARTIAL` or `CONTEXT=SEARCH`/`CONTEXT=SORT`;
+silently ignored on servers without it):
 
 ```swift
 // Get the first 100 matching UIDs
@@ -260,9 +261,17 @@ let last50 = try await imapServer.extendedSearch(
 )
 ```
 
-When `partialRange` is set, `PARTIAL` is requested instead of `ALL`, and the
-result appears in ``ExtendedSearchResult/partial`` rather than
+When `partialRange` is set and the server supports it, `PARTIAL` is requested instead of
+`ALL`, and the result appears in ``ExtendedSearchResult/partial`` rather than
 ``ExtendedSearchResult/all``.
+
+Some servers (Gmail, iCloud) advertise ESEARCH without PARTIAL and reject the option. For those,
+SwiftMail drops the window and requests `ALL`, so ``ExtendedSearchResult/partial`` is `nil` and
+you page client-side from ``ExtendedSearchResult/all``:
+
+```swift
+let uids = result.partial?.results.toArray() ?? Array(result.all?.toArray().prefix(100) ?? [])
+```
 
 ## Getting Mailbox Status
 

@@ -55,9 +55,11 @@ extension IMAPNamedConnection {
     /// Search within the selected mailbox, returning structured ESEARCH results (RFC 4731).
     ///
     /// Uses ESEARCH when the server supports it; falls back to a plain SEARCH otherwise.
-    /// Pass `partialRange` to request paged results (PARTIAL, RFC 5267) — when set and ESEARCH is
-    /// available, `PARTIAL` is used instead of `ALL` and results appear in
-    /// ``ExtendedSearchResult/partial``.
+    /// Pass `partialRange` to request paged results (PARTIAL, RFC 9394/5267) — when set and the server
+    /// supports it (`PARTIAL`, or `CONTEXT=SEARCH`/`CONTEXT=SORT`), `PARTIAL` is used instead of `ALL`
+    /// and results appear in ``ExtendedSearchResult/partial``. On servers that advertise ESEARCH
+    /// without PARTIAL (Gmail, iCloud) the window is dropped, `ALL` is requested, and
+    /// ``ExtendedSearchResult/partial`` is `nil`: page client-side from ``ExtendedSearchResult/all``.
     public func extendedSearch<T: MessageIdentifier>(
         identifierSet: MessageIdentifierSet<T>? = nil,
         criteria: [SearchCriteria],
