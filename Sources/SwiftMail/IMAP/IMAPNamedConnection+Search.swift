@@ -59,7 +59,9 @@ extension IMAPNamedConnection {
     /// supports it (`PARTIAL`, or `CONTEXT=SEARCH`/`CONTEXT=SORT`), `PARTIAL` is used instead of `ALL`
     /// and results appear in ``ExtendedSearchResult/partial``. On servers that advertise ESEARCH
     /// without PARTIAL (Gmail, iCloud) the window is dropped, `ALL` is requested, and
-    /// ``ExtendedSearchResult/partial`` is `nil`: page client-side from ``ExtendedSearchResult/all``.
+    /// ``ExtendedSearchResult/partial`` is `nil`: page client-side from ``ExtendedSearchResult/all``
+    /// (or from ``ExtendedSearchResult/ordered`` when `sortCriteria` is set: the search then falls
+    /// back to a plain `SORT`).
     public func extendedSearch<T: MessageIdentifier>(
         identifierSet: MessageIdentifierSet<T>? = nil,
         criteria: [SearchCriteria],

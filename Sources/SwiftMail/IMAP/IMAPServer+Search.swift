@@ -98,7 +98,9 @@ extension IMAPServer {
          requested instead of `ALL`, and results appear in ``ExtendedSearchResult/partial`` rather than
          ``ExtendedSearchResult/all``. Ignored when the server lacks that support, as Gmail and iCloud do
          (they advertise ESEARCH without PARTIAL): `ALL` is requested, ``ExtendedSearchResult/partial``
-         is `nil`, and callers page client-side from ``ExtendedSearchResult/all``.
+         is `nil`, and callers page client-side from ``ExtendedSearchResult/all`` (or from
+         ``ExtendedSearchResult/ordered`` when `sortCriteria` is set: the search then falls back to a
+         plain `SORT`).
      - Returns: An ``ExtendedSearchResult`` containing COUNT, MIN, MAX and either ALL or PARTIAL when available.
      - Throws:
        - `IMAPError.commandFailed` if the search operation fails

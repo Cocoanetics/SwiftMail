@@ -267,7 +267,8 @@ When `partialRange` is set and the server supports it, `PARTIAL` is requested in
 
 Some servers (Gmail, iCloud) advertise ESEARCH without PARTIAL and reject the option. For those,
 SwiftMail drops the window and requests `ALL`, so ``ExtendedSearchResult/partial`` is `nil` and
-you page client-side from ``ExtendedSearchResult/all``:
+you page client-side from ``ExtendedSearchResult/all`` (or ``ExtendedSearchResult/ordered`` when
+`sortCriteria` is set, since the search then falls back to a plain `SORT`):
 
 ```swift
 let uids = result.partial?.results.toArray() ?? Array(result.all?.toArray().prefix(100) ?? [])

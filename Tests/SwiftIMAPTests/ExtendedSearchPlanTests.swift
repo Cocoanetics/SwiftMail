@@ -50,4 +50,12 @@ struct ExtendedSearchPlanTests {
         // The context must match the command: CONTEXT=SORT does not cover a plain search.
         #expect(sort.extendedSearchPlan(useSort: false, partialRange: range).partialRange == nil)
     }
+
+    @Test
+    func contextCapabilityWithoutEsearchTokenStillUsesTheWindow() {
+        let caps: Set<Capability> = [.context(.search)]
+        let plan = caps.extendedSearchPlan(useSort: false, partialRange: range)
+        #expect(plan.useEsearch)
+        #expect(plan.partialRange != nil)
+    }
 }
