@@ -208,10 +208,11 @@ public actor IMAPServer {
     /// typical mailboxes working without an unbounded buffer. Callers indexing
     /// very large or dense mailboxes can pass a larger value to the initializer.
     ///
-    /// - Note: NIOIMAP's `IMAPClientHandler` (0.4.0) independently caps a response line it has
-    ///   not finished parsing at 8 KiB, so a single SEARCH reply line longer than that still
-    ///   fails with `PayloadTooLargeError` whatever this limit is (apple/swift-nio-imap#849 makes
-    ///   that cap configurable, but no release includes it yet). For counts, use
+    /// - Note: NIOIMAP's `IMAPClientHandler` independently caps a response line it has not
+    ///   finished parsing at `IMAPDefaults.lineLengthLimit` (8 KiB) in every release so far,
+    ///   so a single SEARCH reply line longer than that still fails with `PayloadTooLargeError`
+    ///   whatever this limit is (apple/swift-nio-imap#849 makes that cap configurable, but no
+    ///   release includes it yet). For counts, use
     ///   ``searchCount(identifierSet:criteria:calendar:)``, whose reply stays short.
     public static let defaultResponseBufferLimit = 1024 * 1024
 
