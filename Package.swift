@@ -44,14 +44,18 @@ let package = Package(
     ] : []),
     dependencies: [
         .package(url: "https://github.com/thebarndog/swift-dotenv", from: "2.1.0"),
-		.package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
+		// 1.11.0 introduced LogEvent, which the demo log handlers implement.
+		.package(url: "https://github.com/apple/swift-log.git", from: "1.11.0"),
         // Cross-platform Foundation compatibility shims (UTType, charset/IANA
         // encoding, ProcessInfo.localIPAddress).
         .package(url: "https://github.com/Cocoanetics/SwiftCross", from: "1.2.0"),
         // 2.101.3 includes apple/swift-nio#3433, which fixes NIO/NIOPosix
         // compilation with Swift 6.3 and the current Windows SDK.
         .package(url: "https://github.com/apple/swift-nio", from: "2.101.3"),
-        .package(url: "https://github.com/apple/swift-nio-imap", from: "0.3.0"),
+        // 0.4.0 adds RFC 9979 and parses with pure-Swift ASCII checks instead of C
+        // ctype calls. Pre-1.0 minor releases may change API, so the floor is the
+        // version the package is built and tested against.
+        .package(url: "https://github.com/apple/swift-nio-imap", from: "0.4.0"),
         // 2.37.1 includes the Windows-SDK BoringSSL header workarounds from
         // apple/swift-nio-ssl#585, scoped to the CNIOBoringSSL target. Full
         // NIOSSL Windows support remains blocked on apple/swift-nio-ssl#567.
