@@ -30,6 +30,9 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
     /// Optional window for paged (PARTIAL) results. Only used when `useEsearch` is true.
     /// When non-nil, `PARTIAL` is requested instead of `ALL`.
     let partialRange: NIOIMAPCore.PartialRange?
+    /// Whether ESEARCH asks for `ALL` when there is no `partialRange`. `false` requests only
+    /// `COUNT MIN MAX`, which keeps the reply one short line however many messages match.
+    let returnsAll: Bool
 
     var timeoutSeconds: Int { return 60 }
 
@@ -41,7 +44,8 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         calendar: Calendar = Calendar(identifier: .gregorian),
         useSort: Bool = false,
         useEsearch: Bool,
-        partialRange: NIOIMAPCore.PartialRange? = nil
+        partialRange: NIOIMAPCore.PartialRange? = nil,
+        returnsAll: Bool = true
     ) {
         self.identifierSet = identifierSet
         self.criteria = criteria
@@ -51,6 +55,7 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         self.useSort = useSort
         self.useEsearch = useEsearch
         self.partialRange = partialRange
+        self.returnsAll = returnsAll
     }
 
     func validate() throws {
@@ -83,8 +88,10 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
             if let range = partialRange {
                 // PARTIAL and ALL are mutually exclusive; use PARTIAL for paged results.
                 returnOptions = [.count, .min, .max, .partial(range)]
-            } else {
+            } else if returnsAll {
                 returnOptions = [.count, .min, .max, .all]
+            } else {
+                returnOptions = [.count, .min, .max]
             }
         } else {
             returnOptions = []
