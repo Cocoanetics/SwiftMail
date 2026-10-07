@@ -96,4 +96,31 @@ extension IMAPNamedConnection {
         )
         return try await executeCommand(command)
     }
+
+    /// Count the messages in the selected mailbox that match the criteria, without listing them.
+    ///
+    /// With ESEARCH this asks only for `COUNT MIN MAX`, so the reply stays one short line however
+    /// many messages match; `extendedSearch` without a window also asks for `ALL`, and for a large
+    /// mailbox that reply line can exceed what the response parser buffers. Without ESEARCH the
+    /// server can only answer with the full list: count, minimum and maximum are then derived from
+    /// it, and ``ExtendedSearchResult/all`` is set as well.
+    public func searchCount<T: MessageIdentifier>(
+        identifierSet: MessageIdentifierSet<T>? = nil,
+        criteria: [SearchCriteria],
+        calendar: Calendar = Calendar(identifier: .gregorian)
+    ) async throws -> ExtendedSearchResult<T> {
+        if criteria.contains(where: { $0.requiresWithin }) && !capabilities.contains(.within) {
+            throw IMAPError.commandNotSupported(
+                "WITHIN extension not supported by server (required for OLDER/YOUNGER search)"
+            )
+        }
+        let command = ExtendedSearchCommand<T>(
+            identifierSet: identifierSet,
+            criteria: criteria,
+            calendar: calendar,
+            useEsearch: capabilities.contains(.extendedSearch),
+            returnsAll: false
+        )
+        return try await executeCommand(command)
+    }
 }
