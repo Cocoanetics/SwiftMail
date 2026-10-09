@@ -131,10 +131,10 @@ extension EMLParser {
     /// the sender wrote.
     ///
     /// A quoted value ends at the first unescaped `"`; an unquoted value
-    /// already ends at the segment's `;`. The quoted form is read with the
-    /// same RFC 2045 quoted-pair rule the splitter used to find the segment —
-    /// a `\` escapes the next character — and unescaped as it is read, so
-    /// `"a\"b"` yields `a"b`.
+    /// already ends at the segment's `;`. The quoted form ends where the
+    /// splitter found it to end — `\"` never closes it — and is unescaped as
+    /// it is read, so `"a\"b"` yields `a"b`; see ``unquote(_:)`` for the
+    /// backslashes it keeps.
     static func parameters(of header: String) -> [(attribute: String, value: String)] {
         var parameters: [(attribute: String, value: String)] = []
 
@@ -151,9 +151,17 @@ extension EMLParser {
         return parameters
     }
 
-    /// Read a MIME quoted-string, stopping at the first unescaped `"` and
-    /// unescaping each RFC 2045 quoted-pair (`\x` → `x`). `quoted` must begin
-    /// with the opening `"`.
+    /// Read a MIME quoted-string, stopping at the first unescaped `"`. `quoted`
+    /// must begin with the opening `"`.
+    ///
+    /// Only the two quoted-pairs a quoted-string needs are unescaped: `\"` → `"`
+    /// and `\\` → `\`. A `\` before any other character is kept as written.
+    /// RFC 2045 would drop it (`\x` → `x`), but Outlook writes Windows paths
+    /// into filenames without escaping them — `name="docs\reference\a.md"` —
+    /// and the strict reading turns that into `docsreferencea.md`. A sender
+    /// who does escape gets the same value under either rule, and the value
+    /// still ends where ``parameterSegments(of:)`` says it does, because `\"`
+    /// stays an escaped quote.
     private static func unquote(_ quoted: String) -> String {
         var result = String.UnicodeScalarView()
         let scalars = quoted.unicodeScalars
@@ -164,8 +172,13 @@ extension EMLParser {
             if scalar == "\\" {
                 let next = scalars.index(after: index)
                 guard next < scalars.endIndex else { break }
-                result.append(scalars[next])
-                index = scalars.index(after: next)
+                if scalars[next] == "\"" || scalars[next] == "\\" {
+                    result.append(scalars[next])
+                    index = scalars.index(after: next)
+                } else {
+                    result.append(scalar)
+                    index = next
+                }
             } else if scalar == "\"" {
                 break
             } else {

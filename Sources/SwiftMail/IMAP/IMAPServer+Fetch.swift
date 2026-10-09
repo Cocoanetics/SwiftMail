@@ -20,10 +20,26 @@ extension IMAPServer {
      - Returns: The message's body parts
      - Throws: `IMAPError.fetchFailed` if the fetch operation fails
      - Note: Logs structure fetch at debug level
+
+     When a part is named, a second FETCH reads the named parts' MIME headers
+     (`BODY.PEEK[n.MIME]`) to put back backslashes the server dropped from the
+     names (Outlook writes Windows paths unescaped; Dovecot resolves each `\x`
+     to `x`). Only backslashes are put back, nothing else. If that FETCH
+     fails, the names are the ones BODYSTRUCTURE gave.
      */
     public func fetchStructure<T: MessageIdentifier>(_ identifier: T) async throws -> [MessagePart] {
-        let command = FetchStructureCommand(identifier: identifier)
-        return try await executeCommand(command)
+        let parts = try await executeCommand(FetchStructureCommand(identifier: identifier))
+        let sections = parts.sectionsForFilenameCheck
+        guard !sections.isEmpty else { return parts }
+        do {
+            let headers = try await executeCommand(FetchMIMEHeadersCommand(identifier: identifier, sections: sections))
+            return parts.restoringFilenames(fromMIMEHeaders: headers)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            logger.debug("MIME headers for filenames unavailable, keeping BODYSTRUCTURE names: \(error)")
+            return parts
+        }
     }
 
     /**

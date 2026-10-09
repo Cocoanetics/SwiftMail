@@ -537,6 +537,30 @@ struct MIMEParameterParsingTests {
         #expect(EMLParser.extractFilename(from: #"attachment; filename="report.pdf""#) == "report.pdf")
     }
 
+    @Test("An escaped backslash is unescaped to one backslash")
+    func escapedBackslashIsUnescaped() {
+        #expect(EMLParser.extractFilename(from: #"attachment; filename="a\\b.txt""#) == #"a\b.txt"#)
+    }
+
+    @Test("A backslash before any other character is kept, as Outlook writes Windows paths")
+    func unescapedWindowsPathKeepsBackslashes() {
+        // Outlook names an attachment after its path without escaping the
+        // separators. Resolving `\r` to `r` would read `zpo-berufungreferenceakt.md`.
+        let header = #"attachment; filename="zpo-berufung\reference\akt.md""#
+
+        #expect(EMLParser.extractFilename(from: header) == #"zpo-berufung\reference\akt.md"#)
+    }
+
+    @Test("An Outlook attachment named after its path keeps the path")
+    func outlookAttachmentKeepsPath() throws {
+        let filename = try attachmentFilename(
+            contentType: "application/octet-stream;\r\n\tname=\"zpo-berufung\\training\\README.md\"",
+            disposition: "attachment;\r\n\tfilename=\"zpo-berufung\\training\\README.md\""
+        )
+
+        #expect(filename == #"zpo-berufung\training\README.md"#)
+    }
+
     /// Parse a two-part multipart/mixed whose second part carries the given
     /// headers, and return that part's resolved filename.
     private func attachmentFilename(contentType: String, disposition: String) throws -> String? {
