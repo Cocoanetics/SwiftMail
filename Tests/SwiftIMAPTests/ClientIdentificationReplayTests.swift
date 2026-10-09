@@ -69,7 +69,7 @@ struct ClientIdentificationReplayTests {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
         do {
-            let xoauth2 = Capability.authenticate(AuthenticationMechanism("XOAUTH2"))
+            let xoauth2 = Capability.authenticate(AuthenticationMechanism("XOAUTH2")!)
             let harness = try await makeHarness(group: group, capabilities: [xoauth2, .saslIR])
             let authentication = IMAPServer.Authentication(
                 method: .xoauth2(email: "user@example.com", accessTokenProvider: { "token123" }),

@@ -49,7 +49,7 @@ public enum Flag: Sendable {
                     return .keyword(keyword)
                 } else {
                     // Fallback to a safe default if the keyword is invalid
-                    return .keyword(NIOIMAPCore.Flag.Keyword("CUSTOM")!)
+                    return .keyword("CUSTOM")
                 }
         }
     }

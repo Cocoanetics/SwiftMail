@@ -233,7 +233,7 @@ public indirect enum SearchCriteria: Sendable {
      * - Returns: A Flag.Keyword representation of the string.
      */
     private func stringToKeyword(_ str: String) -> NIOIMAPCore.Flag.Keyword {
-        NIOIMAPCore.Flag.Keyword(str) ?? NIOIMAPCore.Flag.Keyword("CUSTOM")!
+        NIOIMAPCore.Flag.Keyword(str) ?? "CUSTOM"
     }
 
     /** Converts the SwiftMail search criteria to the NIO IMAP search key format.

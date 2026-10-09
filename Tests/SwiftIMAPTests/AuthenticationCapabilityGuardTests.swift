@@ -127,7 +127,7 @@ struct AuthenticationCapabilityGuardTests {
                 connection.replaceCapabilitiesForTesting([
                     Capability("IMAP4rev1"),
                     Capability("SASL-IR"),
-                    .authenticate(AuthenticationMechanism("PLAIN"))
+                    .authenticate(.plain)
                 ])
             }
             let replacement = Harness(connection: connection, channel: replacementChannel)

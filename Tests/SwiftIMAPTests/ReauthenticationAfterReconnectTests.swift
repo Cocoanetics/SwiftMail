@@ -152,7 +152,7 @@ struct ReauthenticationAfterReconnectTests {
         let primary = await server.primaryConnection
         let channel = try await makeTestingChannel(for: primary)
         primary.replaceCapabilitiesForTesting([
-            Capability("IMAP4rev1"), Capability("SASL-IR"), .authenticate(AuthenticationMechanism("PLAIN"))
+            Capability("IMAP4rev1"), Capability("SASL-IR"), .authenticate(.plain)
         ])
         await server.replaceAuthenticationForTesting(
             .init(method: .plain(username: "user", password: "secret"), identification: nil)
