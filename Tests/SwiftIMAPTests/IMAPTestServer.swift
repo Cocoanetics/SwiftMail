@@ -61,6 +61,9 @@ final class IMAPTestServer {
     private let partialFetchBehavior: PartialFetchBehavior
     private let withholdsLiteralContinuation: Bool
     private let withheldLiteralReply: String?
+    private let bodystructureOverride: String?
+    private let mimeHeaders: [String: String]
+    private let rejectsMIMEHeaderFetch: Bool
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
     private var commandLogStorage: [String] = []
@@ -85,6 +88,9 @@ final class IMAPTestServer {
         partialFetchBehavior: PartialFetchBehavior = .honor,
         withholdsLiteralContinuation: Bool = false,
         withheldLiteralReply: String? = nil,
+        bodystructureOverride: String? = nil,
+        mimeHeaders: [String: String] = [:],
+        rejectsMIMEHeaderFetch: Bool = false,
         maildirURL: URL
     ) throws {
         self.host = host
@@ -100,6 +106,9 @@ final class IMAPTestServer {
         self.partialFetchBehavior = partialFetchBehavior
         self.withholdsLiteralContinuation = withholdsLiteralContinuation
         self.withheldLiteralReply = withheldLiteralReply
+        self.bodystructureOverride = bodystructureOverride
+        self.mimeHeaders = mimeHeaders
+        self.rejectsMIMEHeaderFetch = rejectsMIMEHeaderFetch
         self.messages = try Self.loadMaildir(maildirURL)
     }
 
@@ -611,6 +620,10 @@ final class IMAPTestServer {
                     break
             }
         }
+        let mimeSections = parseMIMEHeaderSections(itemsStr)
+        if !mimeSections.isEmpty, rejectsMIMEHeaderFetch {
+            return "\(tag) NO MIME header fetch is unavailable\r\n"
+        }
         var response = ""
 
         for msg in matched {
@@ -633,7 +646,12 @@ final class IMAPTestServer {
                 fetchItems.append("RFC822.SIZE \(msg.raw.count)")
             }
             if itemsStr.contains("BODYSTRUCTURE") {
-                fetchItems.append("BODYSTRUCTURE \(buildBodystructure(msg))")
+                fetchItems.append("BODYSTRUCTURE \(bodystructureOverride ?? buildBodystructure(msg))")
+            }
+            for section in mimeSections {
+                if let header = mimeHeaders[section] {
+                    fetchItems.append("BODY[\(section).MIME] {\(header.utf8.count)}\r\n\(header)")
+                }
             }
             if let request = partialRequest, request.section == "1" {
                 fetchItems.append(partialBodyFetchItem(request, body: msg.body))
@@ -661,6 +679,15 @@ final class IMAPTestServer {
 
         response += "\(tag) OK \(uidMode ? "UID " : "")FETCH completed\r\n"
         return response
+    }
+
+    /// The sections of every `BODY[.PEEK][<section>.MIME]` item asked for.
+    private func parseMIMEHeaderSections(_ items: String) -> [String] {
+        let pattern = #"BODY(?:\.PEEK)?\[([0-9]+(?:\.[0-9]+)*)\.MIME\]"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        return regex.matches(in: items, range: NSRange(items.startIndex..., in: items)).compactMap {
+            Range($0.range(at: 1), in: items).map { String(items[$0]) }
+        }
     }
 
     private struct PartialBodyRequest {

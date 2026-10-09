@@ -2,9 +2,21 @@ import Foundation
 
 extension IMAPNamedConnection {
     /// Fetch message structure for a single message identifier.
+    ///
+    /// Named parts get their filename checked against their MIME header, as
+    /// in ``IMAPServer/fetchStructure(_:)``.
     public func fetchStructure<T: MessageIdentifier>(_ identifier: T) async throws -> [MessagePart] {
-        let command = FetchStructureCommand(identifier: identifier)
-        return try await executeCommand(command)
+        let parts = try await executeCommand(FetchStructureCommand(identifier: identifier))
+        let sections = parts.sectionsForFilenameCheck
+        guard !sections.isEmpty else { return parts }
+        do {
+            let headers = try await executeCommand(FetchMIMEHeadersCommand(identifier: identifier, sections: sections))
+            return parts.restoringFilenames(fromMIMEHeaders: headers)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return parts
+        }
     }
 
     /// Fetch a specific body section for a message.
