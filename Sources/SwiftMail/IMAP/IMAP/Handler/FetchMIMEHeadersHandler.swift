@@ -51,6 +51,17 @@ final class FetchMIMEHeadersHandler: BaseIMAPCommandHandler<[Section: Data]>, IM
         return handled
     }
 
+    override func handleUntaggedResponse(_ response: Response) -> Bool {
+        // Keep only connection-termination responses. Retaining the streamed
+        // FETCH events in the base history would hold every byte the server
+        // sends, past the cap on each header.
+        if case .untagged(.conditionalState(.bye)) = response {
+            return super.handleUntaggedResponse(response)
+        }
+        if case .fatal = response { return super.handleUntaggedResponse(response) }
+        return false
+    }
+
     private func process(_ response: FetchResponse) {
         switch response {
             case .streamingBegin(kind: .body(let specifier, _), _):

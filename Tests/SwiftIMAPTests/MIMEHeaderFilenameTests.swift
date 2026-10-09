@@ -1,4 +1,8 @@
 import Foundation
+import NIO
+import NIOEmbedded
+@preconcurrency import NIOIMAP
+import NIOIMAPCore
 import Testing
 @testable import SwiftMail
 
@@ -50,6 +54,30 @@ struct MIMEHeaderFilenameTests {
         #expect(restored[2].filename == "logo.png")
     }
 
+    @Test("The handler keeps each header up to its cap and none of the streamed bytes in its history")
+    func handlerBoundsWhatItKeeps() throws {
+        let loop = EmbeddedEventLoop()
+        let promise = loop.makePromise(of: [Section: Data].self)
+        let handler = FetchMIMEHeadersHandler(commandTag: "A1", promise: promise, sections: [Section([2])])
+        let specifier = FetchMIMEHeadersCommand<SwiftMail.UID>.specifier(for: Section([2]))
+        let oversized = FetchMIMEHeadersHandler.maximumHeaderBytes + 1000
+        let chunk = ByteBuffer(repeating: UInt8(ascii: "x"), count: 4096)
+
+        _ = handler.processResponse(.fetch(.start(1)))
+        _ = handler.processResponse(.fetch(.streamingBegin(kind: .body(section: specifier, offset: nil),
+                                                           byteCount: oversized)))
+        for _ in 0..<(oversized / chunk.readableBytes + 1) {
+            _ = handler.processResponse(.fetch(.streamingBytes(chunk)))
+        }
+        _ = handler.processResponse(.fetch(.streamingEnd))
+        _ = handler.processResponse(.fetch(.finish))
+        #expect(handler.untaggedResponses.isEmpty)
+
+        _ = handler.processResponse(.tagged(TaggedResponse(tag: "A1", state: .ok(ResponseText(text: "done")))))
+        let headers = try promise.futureResult.wait()
+        #expect(headers[Section([2])]?.count == FetchMIMEHeadersHandler.maximumHeaderBytes)
+    }
+
     #if os(macOS)
         /// BODYSTRUCTURE as Dovecot sends it for the Outlook message: the
         /// attachment's name and filename have lost their backslashes.
@@ -99,7 +127,7 @@ struct MIMEHeaderFilenameTests {
                 try await server.login(username: "testuser", password: "testpass")
                 _ = try await server.selectMailbox("INBOX")
 
-                filenames = try await server.fetchStructure(UID(1)).map(\.filename)
+                filenames = try await server.fetchStructure(SwiftMail.UID(1)).map(\.filename)
 
                 try await server.disconnect()
             }
@@ -107,4 +135,24 @@ struct MIMEHeaderFilenameTests {
             return filenames
         }
     #endif
+}
+
+/// The lenient reading is for filenames only; other parameters stay by the RFC.
+@Suite("Backslashes outside filenames")
+struct StrictParameterBackslashTests {
+    @Test("A boundary's quoted-pair is resolved, as its delimiter lines carry it")
+    func boundaryStaysStrict() {
+        #expect(EMLParser.extractBoundary(from: #"multipart/mixed; boundary="foo\bar""#) == "foobar")
+    }
+
+    @Test("A multipart whose boundary is written with a quoted-pair still splits")
+    func multipartWithEscapedBoundarySplits() throws {
+        let eml = "From: a@example.com\r\nSubject: Boundary\r\n"
+            + "Content-Type: multipart/mixed; boundary=\"foo\\bar\"\r\n\r\n"
+            + "--foobar\r\nContent-Type: text/plain\r\n\r\nOne\r\n"
+            + "--foobar\r\nContent-Type: text/plain\r\n\r\nTwo\r\n--foobar--\r\n"
+
+        let message = try Message(emlData: Data(eml.utf8))
+        #expect(message.parts.count == 2)
+    }
 }

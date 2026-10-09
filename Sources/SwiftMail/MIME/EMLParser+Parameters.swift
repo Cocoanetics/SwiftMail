@@ -115,9 +115,16 @@ extension EMLParser {
     /// is one parameter naming `evil.exe …`, and reading its interior `name*=`
     /// reports `invoice.pdf` instead. Anchoring also keeps `name` and `filename`
     /// distinct attributes, so neither is found inside the other.
-    static func extractHeaderParam(from header: String, named name: String) -> String? {
+    ///
+    /// `keepingStrayBackslashes` is for filenames only; see ``unquote(_:keepingStrayBackslashes:)``.
+    static func extractHeaderParam(
+        from header: String,
+        named name: String,
+        keepingStrayBackslashes: Bool = false
+    ) -> String? {
         let attribute = name.lowercased()
-        return parameters(of: header).first { $0.attribute == attribute }?.value
+        return parameters(of: header, keepingStrayBackslashes: keepingStrayBackslashes)
+            .first { $0.attribute == attribute }?.value
     }
 
     /// Every `attribute=value` parameter of a header field body, in order,
@@ -133,9 +140,12 @@ extension EMLParser {
     /// A quoted value ends at the first unescaped `"`; an unquoted value
     /// already ends at the segment's `;`. The quoted form ends where the
     /// splitter found it to end — `\"` never closes it — and is unescaped as
-    /// it is read, so `"a\"b"` yields `a"b`; see ``unquote(_:)`` for the
-    /// backslashes it keeps.
-    static func parameters(of header: String) -> [(attribute: String, value: String)] {
+    /// it is read, so `"a\"b"` yields `a"b`; see ``unquote(_:keepingStrayBackslashes:)``
+    /// for the backslashes a filename keeps.
+    static func parameters(
+        of header: String,
+        keepingStrayBackslashes: Bool = false
+    ) -> [(attribute: String, value: String)] {
         var parameters: [(attribute: String, value: String)] = []
 
         for rawSegment in parameterSegments(of: header) {
@@ -145,24 +155,30 @@ extension EMLParser {
             let value = String(segment[segment.index(after: equals)...])
                 .trimmingCharacters(in: .whitespaces)
 
-            parameters.append((attribute, value.unicodeScalars.first == "\"" ? unquote(value) : value))
+            let isQuoted = value.unicodeScalars.first == "\""
+            parameters.append((
+                attribute,
+                isQuoted ? unquote(value, keepingStrayBackslashes: keepingStrayBackslashes) : value
+            ))
         }
 
         return parameters
     }
 
-    /// Read a MIME quoted-string, stopping at the first unescaped `"`. `quoted`
-    /// must begin with the opening `"`.
+    /// Read a MIME quoted-string, stopping at the first unescaped `"` and
+    /// unescaping each RFC 2045 quoted-pair (`\x` → `x`). `quoted` must begin
+    /// with the opening `"`.
     ///
-    /// Only the two quoted-pairs a quoted-string needs are unescaped: `\"` → `"`
-    /// and `\\` → `\`. A `\` before any other character is kept as written.
-    /// RFC 2045 would drop it (`\x` → `x`), but Outlook writes Windows paths
-    /// into filenames without escaping them — `name="docs\reference\a.md"` —
-    /// and the strict reading turns that into `docsreferencea.md`. A sender
-    /// who does escape gets the same value under either rule, and the value
-    /// still ends where ``parameterSegments(of:)`` says it does, because `\"`
-    /// stays an escaped quote.
-    private static func unquote(_ quoted: String) -> String {
+    /// With `keepingStrayBackslashes`, only `\"` → `"` and `\\` → `\` are
+    /// unescaped, and a `\` before any other character is kept as written.
+    /// Outlook writes Windows paths into filenames without escaping them —
+    /// `name="docs\reference\a.md"` — and the strict reading turns that into
+    /// `docsreferencea.md`. It is for filenames only: any other parameter, a
+    /// boundary above all, is read by the RFC, so `boundary="a\b"` stays the
+    /// `ab` its delimiter lines carry. Either way the value ends where
+    /// ``parameterSegments(of:)`` says it does, because `\"` stays an escaped
+    /// quote.
+    private static func unquote(_ quoted: String, keepingStrayBackslashes: Bool) -> String {
         var result = String.UnicodeScalarView()
         let scalars = quoted.unicodeScalars
         var index = scalars.index(after: scalars.startIndex) // past the opening quote
@@ -172,7 +188,7 @@ extension EMLParser {
             if scalar == "\\" {
                 let next = scalars.index(after: index)
                 guard next < scalars.endIndex else { break }
-                if scalars[next] == "\"" || scalars[next] == "\\" {
+                if !keepingStrayBackslashes || scalars[next] == "\"" || scalars[next] == "\\" {
                     result.append(scalars[next])
                     index = scalars.index(after: next)
                 } else {
@@ -226,7 +242,7 @@ extension EMLParser {
             for header in headers {
                 let value = spelling.extended
                     ? extractExtendedHeaderParam(from: header, named: spelling.attribute)
-                    : extractHeaderParam(from: header, named: spelling.attribute)
+                    : extractHeaderParam(from: header, named: spelling.attribute, keepingStrayBackslashes: true)
                 if let value {
                     return value
                 }
