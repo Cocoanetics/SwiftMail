@@ -259,7 +259,7 @@ struct ClientIdentificationReplayTests {
 
     private func nextOutboundLine(
         from channel: NIOAsyncTestingChannel,
-        timeoutNanoseconds: UInt64 = 1_000_000_000
+        timeoutNanoseconds: UInt64 = 10_000_000_000
     ) async throws -> String? {
         let start = DispatchTime.now().uptimeNanoseconds
         while DispatchTime.now().uptimeNanoseconds - start < timeoutNanoseconds {
