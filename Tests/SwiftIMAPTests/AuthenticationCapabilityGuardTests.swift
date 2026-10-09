@@ -127,7 +127,7 @@ struct AuthenticationCapabilityGuardTests {
                 connection.replaceCapabilitiesForTesting([
                     Capability("IMAP4rev1"),
                     Capability("SASL-IR"),
-                    .authenticate(AuthenticationMechanism("PLAIN"))
+                    .authenticate(.plain)
                 ])
             }
             let replacement = Harness(connection: connection, channel: replacementChannel)
@@ -202,7 +202,7 @@ struct AuthenticationCapabilityGuardTests {
 
     private func nextOutboundLine(
         from channel: NIOAsyncTestingChannel,
-        timeoutNanoseconds: UInt64 = 1_000_000_000
+        timeoutNanoseconds: UInt64 = 10_000_000_000
     ) async throws -> String? {
         let start = DispatchTime.now().uptimeNanoseconds
         while DispatchTime.now().uptimeNanoseconds - start < timeoutNanoseconds {

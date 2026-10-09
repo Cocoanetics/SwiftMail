@@ -46,7 +46,7 @@ struct XOAUTH2AuthenticationHandlerTests {
         let command = TaggedCommand(
             tag: "A001",
             command: .authenticate(
-                mechanism: AuthenticationMechanism("XOAUTH2"),
+                mechanism: AuthenticationMechanism("XOAUTH2")!,
                 initialResponse: InitialResponse(makeCredentialBuffer(using: channel.allocator))
             )
         )
@@ -78,7 +78,7 @@ struct XOAUTH2AuthenticationHandlerTests {
         let command = TaggedCommand(
             tag: "A002",
             command: .authenticate(
-                mechanism: AuthenticationMechanism("XOAUTH2"),
+                mechanism: AuthenticationMechanism("XOAUTH2")!,
                 initialResponse: nil
             )
         )
@@ -121,7 +121,7 @@ struct XOAUTH2AuthenticationHandlerTests {
         let command = TaggedCommand(
             tag: "A002A",
             command: .authenticate(
-                mechanism: AuthenticationMechanism("XOAUTH2"),
+                mechanism: AuthenticationMechanism("XOAUTH2")!,
                 initialResponse: InitialResponse(makeCredentialBuffer(using: channel.allocator))
             )
         )
@@ -164,7 +164,7 @@ struct XOAUTH2AuthenticationHandlerTests {
         let command = TaggedCommand(
             tag: "A003",
             command: .authenticate(
-                mechanism: AuthenticationMechanism("XOAUTH2"),
+                mechanism: AuthenticationMechanism("XOAUTH2")!,
                 initialResponse: InitialResponse(makeCredentialBuffer(using: channel.allocator))
             )
         )
@@ -212,7 +212,7 @@ struct XOAUTH2AuthenticationHandlerTests {
         let command = TaggedCommand(
             tag: "A004",
             command: .authenticate(
-                mechanism: AuthenticationMechanism("XOAUTH2"),
+                mechanism: AuthenticationMechanism("XOAUTH2")!,
                 initialResponse: InitialResponse(makeCredentialBuffer(using: channel.allocator))
             )
         )
@@ -247,7 +247,7 @@ struct XOAUTH2AuthenticationHandlerTests {
         let command = TaggedCommand(
             tag: "A005",
             command: .authenticate(
-                mechanism: AuthenticationMechanism("XOAUTH2"),
+                mechanism: AuthenticationMechanism("XOAUTH2")!,
                 initialResponse: InitialResponse(makeCredentialBuffer(using: channel.allocator))
             )
         )
@@ -284,7 +284,7 @@ struct XOAUTH2AuthenticationHandlerTests {
         let command = TaggedCommand(
             tag: "A006",
             command: .authenticate(
-                mechanism: AuthenticationMechanism("XOAUTH2"),
+                mechanism: AuthenticationMechanism("XOAUTH2")!,
                 initialResponse: nil
             )
         )

@@ -12,7 +12,7 @@ extension IMAPConnection {
     /// entry points live in `IMAPConnection+Reauthentication.swift`.
     func authenticatePlainBody(username: String, password: String) async throws {
         try await authenticateUntilTransportIsStable(operation: "PLAIN authentication") { [self] in
-            let mechanism = AuthenticationMechanism("PLAIN")
+            let mechanism = AuthenticationMechanism.plain
             let channel = try await prepareAuthenticationChannel(
                 operation: "PLAIN authenticate", advertising: .authenticate(mechanism), name: "PLAIN"
             )
@@ -221,7 +221,8 @@ extension IMAPConnection {
 
     func authenticateXOAUTH2Body(email: String, accessToken: String) async throws {
         try await authenticateUntilTransportIsStable(operation: "XOAUTH2 authentication") { [self] in
-            let mechanism = AuthenticationMechanism("XOAUTH2")
+            // A valid atom, so the failable initializer cannot return nil.
+            let mechanism = AuthenticationMechanism("XOAUTH2")!
             let channel = try await prepareAuthenticationChannel(
                 operation: "XOAUTH2 authenticate", advertising: .authenticate(mechanism), name: "XOAUTH2"
             )

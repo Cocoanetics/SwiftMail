@@ -22,13 +22,15 @@ let buildCLIDemos = Context.environment["TARGET_OS_ANDROID"] == nil
 let package = Package(
     name: "SwiftMail",
     platforms: [
-		// Floors raised to satisfy the SwiftCross dependency (iOS 15 / tvOS 15 /
-		// watchOS 8); SwiftCross's own floor is set by its URLSession.bytes shim.
-		.macOS("12.0"),
-		.iOS("15.0"),
-		.tvOS("15.0"),
-		.watchOS("8.0"),
-		.macCatalyst("15.0")
+		// The swift-nio-imap revision below declares macOS 15 / iOS 18 / tvOS 18 /
+		// watchOS 11 / visionOS 2, which sets these floors (SwiftCross alone needs
+		// only iOS 15 / tvOS 15 / watchOS 8).
+		.macOS("15.0"),
+		.iOS("18.0"),
+		.tvOS("18.0"),
+		.watchOS("11.0"),
+		.visionOS("2.0"),
+		.macCatalyst("18.0")
     ],
     products: [
         .library(
@@ -52,10 +54,12 @@ let package = Package(
         // 2.101.3 includes apple/swift-nio#3433, which fixes NIO/NIOPosix
         // compilation with Swift 6.3 and the current Windows SDK.
         .package(url: "https://github.com/apple/swift-nio", from: "2.101.3"),
-        // 0.4.0 adds RFC 9979 and parses with pure-Swift ASCII checks instead of C
-        // ctype calls. Pre-1.0 minor releases may change API, so the floor is the
-        // version the package is built and tested against.
-        .package(url: "https://github.com/apple/swift-nio-imap", from: "0.4.0"),
+        // Pinned to main past 0.4.0 for apple/swift-nio-imap#849, which lets
+        // IMAPClientHandler take a maximumBufferSize. 0.4.0 hardcodes it at 8 KiB,
+        // so any single response line longer than that, such as the BODYSTRUCTURE
+        // of a message with dozens of attachments, fails with PayloadTooLargeError.
+        // Return to a version requirement once a release includes #849.
+        .package(url: "https://github.com/apple/swift-nio-imap", revision: "14ad3887dab9ca5aba38ee0ace18fddf40e9491f"),
         // 2.37.1 includes the Windows-SDK BoringSSL header workarounds from
         // apple/swift-nio-ssl#585, scoped to the CNIOBoringSSL target. Full
         // NIOSSL Windows support remains blocked on apple/swift-nio-ssl#567.

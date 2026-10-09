@@ -41,20 +41,20 @@ public struct IMAPParserLimits: Sendable, Equatable {
     /// Defaults to `NIOIMAPCore.IMAPDefaults.literalSizeLimit` (4 KB).
     ///
     /// - Important: **Cannot exceed 8 KiB**, and the initializer rejects larger values rather
-    ///   than accept a limit it cannot keep. `IMAPClientHandler` constructs its
-    ///   `NIOSingleStepByteToMessageProcessor` with `maximumBufferSize:
-    ///   IMAPDefaults.lineLengthLimit` (8,192 bytes), hardcoded and independent of these
-    ///   options. A larger literal therefore parses only when the network happens to deliver it
-    ///   in few enough reads; if fragmentation leaves more than 8 KiB buffered before the
-    ///   literal completes, it fails with `PayloadTooLargeError` — below every configured limit.
+    ///   than accept a limit it cannot keep. `IMAPClientHandler`'s decoder buffer is the
+    ///   connection's `responseBufferLimit`, which these options do not see. A literal larger
+    ///   than that buffer parses only when the network happens to deliver it in few enough
+    ///   reads; if fragmentation leaves more buffered than the decoder allows before the literal
+    ///   completes, it fails with `PayloadTooLargeError` — below every configured limit.
     ///   A configuration whose behaviour depends on packet boundaries is not a limit, it is a
     ///   coin toss, so ``maximumSupportedLiteralSizeLimit`` is enforced up front.
     public var literalSizeLimit: Int
 
     /// The largest value ``literalSizeLimit`` can take: `IMAPDefaults.lineLengthLimit` (8 KiB).
     ///
-    /// Raising it further needs a configurable `maximumBufferSize` in `IMAPClientHandler`, which
-    /// NIOIMAP does not offer as of 0.3.0.
+    /// This was `IMAPClientHandler`'s hardcoded decoder buffer before apple/swift-nio-imap#849.
+    /// The buffer is now the connection's `responseBufferLimit`, but this cap stays at 8 KiB
+    /// because these limits cannot check the value an `IMAPServer` is created with.
     public static let maximumSupportedLiteralSizeLimit = IMAPDefaults.lineLengthLimit
 
     /// SwiftMail's previous behaviour: bodies and attribute counts unbounded.

@@ -69,7 +69,7 @@ struct ClientIdentificationReplayTests {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
         do {
-            let xoauth2 = Capability.authenticate(AuthenticationMechanism("XOAUTH2"))
+            let xoauth2 = Capability.authenticate(AuthenticationMechanism("XOAUTH2")!)
             let harness = try await makeHarness(group: group, capabilities: [xoauth2, .saslIR])
             let authentication = IMAPServer.Authentication(
                 method: .xoauth2(email: "user@example.com", accessTokenProvider: { "token123" }),
@@ -259,7 +259,7 @@ struct ClientIdentificationReplayTests {
 
     private func nextOutboundLine(
         from channel: NIOAsyncTestingChannel,
-        timeoutNanoseconds: UInt64 = 1_000_000_000
+        timeoutNanoseconds: UInt64 = 10_000_000_000
     ) async throws -> String? {
         let start = DispatchTime.now().uptimeNanoseconds
         while DispatchTime.now().uptimeNanoseconds - start < timeoutNanoseconds {

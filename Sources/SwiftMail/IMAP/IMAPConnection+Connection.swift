@@ -75,7 +75,7 @@ extension IMAPConnection {
                     }
 
                     try channel.pipeline.syncOperations.addHandlers([
-                        IMAPClientHandler(parserOptions: parserOptions),
+                        IMAPClientHandler(parserOptions: parserOptions, maximumBufferSize: responseBufferLimit),
                         // Directly behind the decoder: it sees every response and every
                         // parser-limit error before any command handler does. The parser bounds
                         // a single body section; this bounds the whole FETCH response, which is

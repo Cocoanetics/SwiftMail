@@ -19,7 +19,7 @@ public struct QuotaResource: Codable, Sendable {
 
     /// Create from NIOIMAPCore representation
     internal init(from nio: NIOIMAPCore.QuotaResource) {
-        self.resourceName = nio.resourceName
+        self.resourceName = String(nio.resourceName)
         self.usage = nio.usage
         self.limit = nio.limit
     }

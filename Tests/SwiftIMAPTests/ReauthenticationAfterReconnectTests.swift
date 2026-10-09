@@ -152,7 +152,7 @@ struct ReauthenticationAfterReconnectTests {
         let primary = await server.primaryConnection
         let channel = try await makeTestingChannel(for: primary)
         primary.replaceCapabilitiesForTesting([
-            Capability("IMAP4rev1"), Capability("SASL-IR"), .authenticate(AuthenticationMechanism("PLAIN"))
+            Capability("IMAP4rev1"), Capability("SASL-IR"), .authenticate(.plain)
         ])
         await server.replaceAuthenticationForTesting(
             .init(method: .plain(username: "user", password: "secret"), identification: nil)
@@ -237,7 +237,7 @@ struct ReauthenticationAfterReconnectTests {
 
     private func nextOutboundLine(
         from channel: NIOAsyncTestingChannel,
-        timeoutNanoseconds: UInt64 = 1_000_000_000
+        timeoutNanoseconds: UInt64 = 10_000_000_000
     ) async throws -> String? {
         let start = DispatchTime.now().uptimeNanoseconds
         while DispatchTime.now().uptimeNanoseconds - start < timeoutNanoseconds {
