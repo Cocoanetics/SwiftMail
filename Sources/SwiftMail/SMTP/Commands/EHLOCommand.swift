@@ -11,7 +11,7 @@ struct EHLOCommand: SMTPCommand {
     /// The handler type that will process responses for this command
     typealias HandlerType = EHLOHandler
 
-    /// Timeout in seconds for EHLO command (typically quick to respond)
+    /// Fallback timeout in seconds; `SMTPServer` waits for `SMTPConnectionTimeouts.ehloResponse` instead
     let timeoutSeconds: Int = 30
 
     /// The client identity to use for the EHLO command

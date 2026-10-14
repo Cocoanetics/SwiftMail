@@ -4,6 +4,7 @@
 
 import Foundation
 import NIOCore
+import NIOEmbedded
 import Testing
 @testable import SwiftMail
 
@@ -1292,6 +1293,68 @@ struct SMTPTests {
     }
 
     @Test
+    func testConnectionTimeoutDefaultsFollowRFCRecommendations() {
+        let timeouts = SMTPConnectionTimeouts()
+        #expect(timeouts.greeting == 5 * 60)
+        #expect(timeouts.ehloResponse == 5 * 60)
+        #expect(timeouts.startTLSResponse == 2 * 60)
+    }
+
+    /// Runs `body` against a client whose channel is a testing channel that
+    /// never replies, so every command waits out its timeout.
+    private func withSilentChannel(
+        connectionTimeouts: SMTPConnectionTimeouts,
+        _ body: (SMTPServer) async throws -> Void
+    ) async throws {
+        let client = SMTPServer(
+            host: "smtp.example.com",
+            port: 587,
+            connectionTimeouts: connectionTimeouts
+        )
+        let channel = NIOAsyncTestingChannel()
+        try await channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 587))
+        await client.replaceChannelForTesting(channel)
+        try await body(client)
+        await client.replaceChannelForTesting(nil)
+        try? await channel.close().get()
+    }
+
+    @Test
+    func testEHLOTimeoutNamesTheStep() async throws {
+        try await withSilentChannel(
+            connectionTimeouts: SMTPConnectionTimeouts(ehloResponse: 0.2)
+        ) { client in
+            let error = await #expect(throws: SMTPError.self) {
+                try await client.fetchCapabilities()
+            }
+            guard case .connectionFailed(let reason)? = error else {
+                Issue.record("Expected connectionFailed, got \(String(describing: error))")
+                return
+            }
+            #expect(reason == "EHLO timeout")
+        }
+    }
+
+    @Test
+    func testSTARTTLSTimeoutNamesTheStep() async throws {
+        try await withSilentChannel(
+            connectionTimeouts: SMTPConnectionTimeouts(startTLSResponse: 0.2)
+        ) { client in
+            let error = await #expect(throws: SMTPError.self) {
+                try await client.applyPostEHLOTLSPolicy(
+                    transportMode: .startTLSRequired,
+                    capabilities: ["STARTTLS"]
+                )
+            }
+            guard case .tlsFailed(let reason)? = error else {
+                Issue.record("Expected tlsFailed, got \(String(describing: error))")
+                return
+            }
+            #expect(reason.contains("STARTTLS timeout"))
+        }
+    }
+
+    @Test
     func testSubmissionBufferPlanPreservesTerminatorAcrossChunkBoundaries() {
         let bufferBytes = SMTPServer.submissionDataBufferBytes
         let contentByteCounts = [0, 1] + Array((bufferBytes - 3)...(bufferBytes + 3))
@@ -1362,6 +1425,30 @@ struct SMTPTests {
                 try? await client.disconnect()
                 throw error
             }
+        }
+    }
+
+    @Test
+    func testGreetingTimeoutNamesTheStep() async throws {
+        var script = SMTPServerScript()
+        script.greeting = .silence
+        let testServer = SMTPTestServer(script: script)
+        try testServer.start()
+        try await testServer.run {
+            let client = SMTPServer(
+                host: "127.0.0.1",
+                port: testServer.port,
+                transportSecurity: .plainText,
+                connectionTimeouts: SMTPConnectionTimeouts(greeting: 0.2)
+            )
+            let error = await #expect(throws: SMTPError.self) {
+                try await client.connect()
+            }
+            guard case .connectionFailed(let reason)? = error else {
+                Issue.record("Expected connectionFailed, got \(String(describing: error))")
+                return
+            }
+            #expect(reason == "Greeting timeout")
         }
     }
 

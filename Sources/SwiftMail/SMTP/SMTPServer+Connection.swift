@@ -90,10 +90,10 @@ extension SMTPServer {
     }
 
     /// Await the server greeting captured by the greeting handler installed in
-    /// the channel initializer, bounded by a 5-second timeout.
+    /// the channel initializer, bounded by ``SMTPConnectionTimeouts/greeting``.
     private func waitForGreeting(greetingPromise: EventLoopPromise<SMTPGreeting>) async throws -> SMTPGreeting {
-        let timeoutTask = group.next().scheduleTask(in: .seconds(5)) {
-            greetingPromise.fail(SMTPError.connectionFailed("Response timeout"))
+        let timeoutTask = group.next().scheduleTask(in: Self.nioTimeAmount(seconds: connectionTimeouts.greeting)) {
+            greetingPromise.fail(SMTPError.connectionFailed("Greeting timeout"))
         }
         defer { timeoutTask.cancel() }
 
@@ -357,7 +357,12 @@ extension SMTPServer {
     private func startTLS(holding permit: SMTPOperationGate.Permit) async throws {
         // Send STARTTLS command using the modernized command approach
         let command = StartTLSCommand()
-        let success = try await executeCommand(command, holding: permit)
+        let success = try await executeCommand(
+            command,
+            holding: permit,
+            responseTimeout: connectionTimeouts.startTLSResponse,
+            timeoutReason: "STARTTLS timeout"
+        )
 
         // Check if STARTTLS was accepted
         guard success else {

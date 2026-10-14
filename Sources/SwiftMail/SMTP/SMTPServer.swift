@@ -81,6 +81,9 @@ public actor SMTPServer {
     /// Lowest TLS version any transport for this server may negotiate.
     let minimumTLSVersion: MailTLSMinimumVersion
 
+    /// Timeout budgets for SMTP connection setup.
+    public let connectionTimeouts: SMTPConnectionTimeouts
+
     /// Timeout budgets for the SMTP mail-submission dialogue.
     public let submissionTimeouts: SMTPSubmissionTimeouts
 
@@ -159,6 +162,7 @@ public actor SMTPServer {
        - transportSecurity: The transport security policy to use for this connection
        - certificateVerificationPolicy: The certificate verification policy to use for TLS connections
        - numberOfThreads: The number of threads to use for the event loop group
+       - connectionTimeouts: Timeout budgets for the greeting, `EHLO` and `STARTTLS` during ``connect()``
        - submissionTimeouts: Timeout budgets for the SMTP mail-submission dialogue
        - clientIdentity: The RFC 5321 domain or address literal sent in `EHLO` commands. The
          lookup-free default is ``SMTPServer/defaultClientIdentity``. A configured value is
@@ -180,6 +184,7 @@ public actor SMTPServer {
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
         minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
         numberOfThreads: Int = 1,
+        connectionTimeouts: SMTPConnectionTimeouts = SMTPConnectionTimeouts(),
         submissionTimeouts: SMTPSubmissionTimeouts = SMTPSubmissionTimeouts(),
         clientIdentity: String = SMTPServer.defaultClientIdentity
     ) {
@@ -189,6 +194,7 @@ public actor SMTPServer {
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
         self.minimumTLSVersion = minimumTLSVersion
+        self.connectionTimeouts = connectionTimeouts
         self.submissionTimeouts = submissionTimeouts
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
@@ -222,18 +228,24 @@ public actor SMTPServer {
      3. Managing command timeouts
      4. Handling command-specific requirements (e.g., LOGIN auth)
 
-     - Parameter command: The command to execute
+     - Parameters:
+       - command: The command to execute
+       - permit: The operation-gate permit that owns the channel
+       - responseTimeout: Overrides the command's `timeoutSeconds`, in seconds
+       - timeoutReason: The `SMTPError.connectionFailed` reason when the timeout expires
      - Returns: The result of the command execution
      - Throws:
        - `SMTPError.connectionFailed` if not connected
        - `SMTPError.commandFailed` if the command execution fails
-       - `SMTPError.timeout` if the command times out
+       - `SMTPError.connectionFailed` with `timeoutReason` if the command times out
      - Note: Logs command execution at debug level
      */
     @discardableResult
     func executeCommand<CommandType: SMTPCommand>(
         _ command: CommandType,
-        holding permit: SMTPOperationGate.Permit
+        holding permit: SMTPOperationGate.Permit,
+        responseTimeout: TimeInterval? = nil,
+        timeoutReason: String = "Response timeout"
     ) async throws -> CommandType.ResultType {
         precondition(operationGate.isHeld(permit), "SMTP command executed without owning the channel")
 
@@ -249,8 +261,9 @@ public actor SMTPServer {
         let commandData = command.toCommandData()
         let handler = makeCommandHandler(for: command, commandTag: commandTag, resultPromise: resultPromise)
 
-        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(command.timeoutSeconds))) {
-            resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
+        let timeout = responseTimeout ?? TimeInterval(command.timeoutSeconds)
+        let scheduledTask = group.next().scheduleTask(in: Self.nioTimeAmount(seconds: timeout)) {
+            resultPromise.fail(SMTPError.connectionFailed(timeoutReason))
         }
 
         do {
