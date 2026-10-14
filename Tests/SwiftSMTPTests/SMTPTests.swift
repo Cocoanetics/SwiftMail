@@ -1304,7 +1304,7 @@ struct SMTPTests {
     /// never replies, so every command waits out its timeout.
     private func withSilentChannel(
         connectionTimeouts: SMTPConnectionTimeouts,
-        _ body: (SMTPServer) async throws -> Void
+        _ body: (SMTPServer, NIOAsyncTestingChannel) async throws -> Void
     ) async throws {
         let client = SMTPServer(
             host: "smtp.example.com",
@@ -1314,7 +1314,7 @@ struct SMTPTests {
         let channel = NIOAsyncTestingChannel()
         try await channel.connect(to: SocketAddress(ipAddress: "127.0.0.1", port: 587))
         await client.replaceChannelForTesting(channel)
-        try await body(client)
+        try await body(client, channel)
         await client.replaceChannelForTesting(nil)
         try? await channel.close().get()
     }
@@ -1323,7 +1323,7 @@ struct SMTPTests {
     func testEHLOTimeoutNamesTheStep() async throws {
         try await withSilentChannel(
             connectionTimeouts: SMTPConnectionTimeouts(ehloResponse: 0.2)
-        ) { client in
+        ) { client, _ in
             let error = await #expect(throws: SMTPError.self) {
                 try await client.fetchCapabilities()
             }
@@ -1339,7 +1339,7 @@ struct SMTPTests {
     func testSTARTTLSTimeoutNamesTheStep() async throws {
         try await withSilentChannel(
             connectionTimeouts: SMTPConnectionTimeouts(startTLSResponse: 0.2)
-        ) { client in
+        ) { client, _ in
             let error = await #expect(throws: SMTPError.self) {
                 try await client.applyPostEHLOTLSPolicy(
                     transportMode: .startTLSRequired,
@@ -1351,6 +1351,22 @@ struct SMTPTests {
                 return
             }
             #expect(reason.contains("STARTTLS timeout"))
+        }
+    }
+
+    @Test
+    func testCancellingEHLOWaitReleasesTheConnection() async throws {
+        try await withSilentChannel(connectionTimeouts: SMTPConnectionTimeouts()) { client, channel in
+            let task = Task { try await client.fetchCapabilities() }
+            // Cancel only once EHLO is on the wire, so the reply wait is what gets cancelled.
+            while try await channel.readOutbound(as: ByteBuffer.self) == nil {
+                try await Task.sleep(nanoseconds: 5_000_000)
+            }
+            task.cancel()
+            await #expect(throws: CancellationError.self) {
+                try await task.value
+            }
+            #expect(await !client.hasChannelForTesting)
         }
     }
 
@@ -1449,6 +1465,31 @@ struct SMTPTests {
                 return
             }
             #expect(reason == "Greeting timeout")
+        }
+    }
+
+    @Test
+    func testCancellingGreetingWaitReleasesTheConnection() async throws {
+        var script = SMTPServerScript()
+        script.greeting = .silence
+        let testServer = SMTPTestServer(script: script)
+        try testServer.start()
+        try await testServer.run {
+            let client = SMTPServer(
+                host: "127.0.0.1",
+                port: testServer.port,
+                transportSecurity: .plainText
+            )
+            let task = Task { try await client.connect() }
+            // The channel is stored once TCP connects, before the greeting wait.
+            while await !client.hasChannelForTesting {
+                try await Task.sleep(nanoseconds: 5_000_000)
+            }
+            task.cancel()
+            await #expect(throws: CancellationError.self) {
+                try await task.value
+            }
+            #expect(await !client.hasChannelForTesting)
         }
     }
 
