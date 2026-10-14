@@ -81,6 +81,9 @@ public actor SMTPServer {
     /// Lowest TLS version any transport for this server may negotiate.
     let minimumTLSVersion: MailTLSMinimumVersion
 
+    /// Timeout budgets for SMTP connection setup.
+    public let connectionTimeouts: SMTPConnectionTimeouts
+
     /// Timeout budgets for the SMTP mail-submission dialogue.
     public let submissionTimeouts: SMTPSubmissionTimeouts
 
@@ -159,6 +162,7 @@ public actor SMTPServer {
        - transportSecurity: The transport security policy to use for this connection
        - certificateVerificationPolicy: The certificate verification policy to use for TLS connections
        - numberOfThreads: The number of threads to use for the event loop group
+       - connectionTimeouts: Timeout budgets for the greeting, `EHLO` and `STARTTLS` during ``connect()``
        - submissionTimeouts: Timeout budgets for the SMTP mail-submission dialogue
        - clientIdentity: The RFC 5321 domain or address literal sent in `EHLO` commands. The
          lookup-free default is ``SMTPServer/defaultClientIdentity``. A configured value is
@@ -180,6 +184,7 @@ public actor SMTPServer {
         certificateVerificationPolicy: MailCertificateVerificationPolicy = .fullVerification,
         minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
         numberOfThreads: Int = 1,
+        connectionTimeouts: SMTPConnectionTimeouts = SMTPConnectionTimeouts(),
         submissionTimeouts: SMTPSubmissionTimeouts = SMTPSubmissionTimeouts(),
         clientIdentity: String = SMTPServer.defaultClientIdentity
     ) {
@@ -189,6 +194,7 @@ public actor SMTPServer {
         self.transportSecurity = transportSecurity
         self.certificateVerificationPolicy = certificateVerificationPolicy
         self.minimumTLSVersion = minimumTLSVersion
+        self.connectionTimeouts = connectionTimeouts
         self.submissionTimeouts = submissionTimeouts
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
@@ -222,18 +228,25 @@ public actor SMTPServer {
      3. Managing command timeouts
      4. Handling command-specific requirements (e.g., LOGIN auth)
 
-     - Parameter command: The command to execute
+     - Parameters:
+       - command: The command to execute
+       - permit: The operation-gate permit that owns the channel
+       - responseTimeout: Overrides the command's `timeoutSeconds`, in seconds
+       - timeoutReason: The `SMTPError.connectionFailed` reason when the timeout expires
      - Returns: The result of the command execution
      - Throws:
        - `SMTPError.connectionFailed` if not connected
        - `SMTPError.commandFailed` if the command execution fails
-       - `SMTPError.timeout` if the command times out
+       - `SMTPError.connectionFailed` with `timeoutReason` if the command times out
+       - `CancellationError` if the task is cancelled; the connection is then closed
      - Note: Logs command execution at debug level
      */
     @discardableResult
     func executeCommand<CommandType: SMTPCommand>(
         _ command: CommandType,
-        holding permit: SMTPOperationGate.Permit
+        holding permit: SMTPOperationGate.Permit,
+        responseTimeout: TimeInterval? = nil,
+        timeoutReason: String = "Response timeout"
     ) async throws -> CommandType.ResultType {
         precondition(operationGate.isHeld(permit), "SMTP command executed without owning the channel")
 
@@ -249,8 +262,9 @@ public actor SMTPServer {
         let commandData = command.toCommandData()
         let handler = makeCommandHandler(for: command, commandTag: commandTag, resultPromise: resultPromise)
 
-        let scheduledTask = group.next().scheduleTask(in: .seconds(Int64(command.timeoutSeconds))) {
-            resultPromise.fail(SMTPError.connectionFailed("Response timeout"))
+        let timeout = responseTimeout ?? TimeInterval(command.timeoutSeconds)
+        let scheduledTask = group.next().scheduleTask(in: Self.nioTimeAmount(seconds: timeout)) {
+            resultPromise.fail(SMTPError.connectionFailed(timeoutReason))
         }
 
         do {
@@ -262,7 +276,13 @@ public actor SMTPServer {
             buffer.writeBytes([0x0D, 0x0A]) // CRLF
             try await channel.writeAndFlush(buffer).get()
 
-            let result = try await resultPromise.futureResult.get()
+            // `EventLoopFuture.get()` ignores task cancellation; fail the
+            // promise so a cancelled caller releases the channel at once.
+            let result = try await withTaskCancellationHandler {
+                try await resultPromise.futureResult.get()
+            } onCancel: {
+                resultPromise.fail(CancellationError())
+            }
             scheduledTask.cancel()
             duplexLogger.flushInboundBuffer()
             return result
@@ -270,7 +290,12 @@ public actor SMTPServer {
             scheduledTask.cancel()
             // Ensure the promise is resolved to prevent NIO "leaking promise" fatal error
             resultPromise.fail(error)
-            if error is SMTPError {
+            if error is CancellationError {
+                // The reply is still in flight and would be read as the answer
+                // to the next command, so the session cannot be reused.
+                await closeAndClearChannel(holding: permit)
+                throw error
+            } else if error is SMTPError {
                 throw error
             } else {
                 throw SMTPError.connectionFailed("Command failed: \(error.localizedDescription)")
@@ -287,6 +312,27 @@ public actor SMTPServer {
         resultPromise: EventLoopPromise<CommandType.ResultType>
     ) -> CommandType.HandlerType {
         command.makeHandler(commandTag: commandTag, promise: resultPromise)
+    }
+
+    /// Close and clear the channel when the session can no longer be used: a
+    /// failed or cancelled connection step, a STARTTLS policy failure, or a
+    /// failed submission. A later ``connect()`` starts a fresh session.
+    func closeAndClearChannel(holding permit: SMTPOperationGate.Permit) async {
+        precondition(operationGate.isHeld(permit), "SMTP channel closed without owning it")
+        let channel = self.channel
+        self.channel = nil
+        self.isTLSEnabled = false
+        self.capabilities = []
+
+        guard let channel else {
+            return
+        }
+
+        do {
+            try await channel.close().get()
+        } catch {
+            logger.debug("Channel close after unusable session reported: \(error)")
+        }
     }
 
     /**

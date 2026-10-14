@@ -29,7 +29,12 @@ extension SMTPServer {
         let command = EHLOCommand(clientIdentity: clientIdentity)
 
         do {
-            let response = try await executeCommand(command, holding: permit)
+            let response = try await executeCommand(
+                command,
+                holding: permit,
+                responseTimeout: connectionTimeouts.ehloResponse,
+                timeoutReason: "EHLO timeout"
+            )
 
             // Parse the capabilities from the raw response
             let capabilities = parseCapabilities(from: response)

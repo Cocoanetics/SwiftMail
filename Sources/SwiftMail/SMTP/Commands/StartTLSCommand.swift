@@ -11,7 +11,7 @@ struct StartTLSCommand: SMTPCommand {
     /// The handler type that will process responses for this command
     typealias HandlerType = StartTLSHandler
 
-    /// Default timeout in seconds
+    /// Fallback timeout in seconds; `SMTPServer` waits for `SMTPConnectionTimeouts.startTLSResponse` instead
     let timeoutSeconds: Int = 10
 
     /**

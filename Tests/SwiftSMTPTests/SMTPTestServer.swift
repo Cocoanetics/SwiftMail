@@ -104,6 +104,8 @@ enum SMTPScriptAction {
 /// command across the whole connection; the last action repeats once the list
 /// is exhausted, so single-element scripts describe a constant behavior.
 struct SMTPServerScript {
+    /// What the server sends as soon as it accepts the connection.
+    var greeting: SMTPScriptAction = .reply("220 smtp.test ESMTP SMTPTestServer ready")
     var onMailFrom: [SMTPScriptAction] = [.reply("250 OK")]
     var onRcptTo: [SMTPScriptAction] = [.reply("250 OK")]
     var onData: [SMTPScriptAction] = [.reply("354 End data with <CRLF>.<CRLF>")]
@@ -397,7 +399,9 @@ final class SMTPTestServer {
             )
         }
 
-        sendLine(fd: fileDescriptor, "220 smtp.test ESMTP SMTPTestServer ready\r\n")
+        if case .closeConnection = apply(script.greeting, fd: fileDescriptor) {
+            return
+        }
 
         var buffer = Data()
         var inDataMode = false

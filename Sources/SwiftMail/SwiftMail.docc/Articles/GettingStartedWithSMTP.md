@@ -45,6 +45,28 @@ do not put private device or user information in this value. The identity must
 be a single printable ASCII domain or address literal as defined by
 [RFC 5321](https://www.rfc-editor.org/rfc/rfc5321.html#section-4.1.1.1).
 
+## Configuring Connection Timeouts
+
+``SMTPServer/connect()`` waits for the server's greeting, the `EHLO` reply and,
+when it upgrades the connection, the `STARTTLS` reply. The greeting wait defaults
+to the five minutes recommended in [RFC 5321 section 4.5.3.2.1](https://www.rfc-editor.org/rfc/rfc5321.html#section-4.5.3.2.1),
+because some servers hold back their greeting while they check a new connection.
+You can shorten or lengthen each wait:
+
+```swift
+let timeouts = SMTPConnectionTimeouts(greeting: 30)
+let smtpServer = SMTPServer(
+    host: "smtp.example.com",
+    port: 587,
+    connectionTimeouts: timeouts
+)
+```
+
+When a wait expires, the error names the step: `Greeting timeout`,
+`EHLO timeout` or `STARTTLS timeout`. Before the upgrade it is reported as
+``SMTPError/connectionFailed(_:)``; during the STARTTLS upgrade, including the
+`EHLO` that follows it, it is reported as ``SMTPError/tlsFailed(_:)``.
+
 ## Configuring Submission Timeouts
 
 SwiftMail uses separate timeout budgets for the SMTP command replies, message
@@ -164,4 +186,5 @@ strings while preserving the payload-free reason case from SwiftMail 1.10.
 ## Topics
 
 - ``SMTPServer``
+- ``SMTPConnectionTimeouts``
 - ``SMTPSubmissionTimeouts``

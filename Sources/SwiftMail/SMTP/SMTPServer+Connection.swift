@@ -17,10 +17,14 @@ extension SMTPServer {
      4. Fetches server capabilities using EHLO
      5. Upgrades to TLS using STARTTLS if on port 587
 
+     If a step after the TCP connection fails or is cancelled, the connection is
+     closed, and a later call starts a fresh session.
+
      - Throws:
        - `SMTPError.connectionFailed` if the connection cannot be established
        - `SMTPError.tlsFailed` if TLS negotiation fails
        - `NIOSSLError` if SSL/TLS setup fails
+       - `CancellationError` if the task is cancelled while waiting for the server
      - Note: Logs connection attempts and capability retrieval at info level
      */
     public func connect() async throws {
@@ -69,36 +73,49 @@ extension SMTPServer {
         // Store the channel
         self.channel = channel
 
-        // Wait for the server greeting
-        let greeting = try await waitForGreeting(greetingPromise: greetingPromise)
+        // A setup step that fails or is cancelled leaves the session half set
+        // up, so close the channel; a later connect() starts afresh.
+        do {
+            // Wait for the server greeting
+            let greeting = try await waitForGreeting(greetingPromise: greetingPromise)
 
-        // Check if the greeting is positive
-        guard greeting.code >= 200 && greeting.code < 300 else {
-            throw SMTPError.connectionFailed("Server rejected connection: \(greeting.message)")
+            // Check if the greeting is positive
+            guard greeting.code >= 200 && greeting.code < 300 else {
+                throw SMTPError.connectionFailed("Server rejected connection: \(greeting.message)")
+            }
+
+            // Fetch capabilities using our new method
+            let capabilities = try await fetchCapabilities(holding: permit)
+
+            try await applyPostEHLOTLSPolicy(
+                transportMode: transportMode,
+                capabilities: capabilities,
+                holding: permit
+            )
+        } catch {
+            await closeAndClearChannel(holding: permit)
+            throw error
         }
-
-        // Fetch capabilities using our new method
-        let capabilities = try await fetchCapabilities(holding: permit)
-
-        try await applyPostEHLOTLSPolicy(
-            transportMode: transportMode,
-            capabilities: capabilities,
-            holding: permit
-        )
 
         logger.info("Connected to SMTP server \(self.host):\(self.port)")
     }
 
     /// Await the server greeting captured by the greeting handler installed in
-    /// the channel initializer, bounded by a 5-second timeout.
+    /// the channel initializer, bounded by ``SMTPConnectionTimeouts/greeting``.
+    /// `EventLoopFuture.get()` ignores task cancellation, so cancellation fails
+    /// the promise instead of leaving the caller waiting out the timeout.
     private func waitForGreeting(greetingPromise: EventLoopPromise<SMTPGreeting>) async throws -> SMTPGreeting {
-        let timeoutTask = group.next().scheduleTask(in: .seconds(5)) {
-            greetingPromise.fail(SMTPError.connectionFailed("Response timeout"))
+        let timeoutTask = group.next().scheduleTask(in: Self.nioTimeAmount(seconds: connectionTimeouts.greeting)) {
+            greetingPromise.fail(SMTPError.connectionFailed("Greeting timeout"))
         }
         defer { timeoutTask.cancel() }
 
         do {
-            let greeting = try await greetingPromise.futureResult.get()
+            let greeting = try await withTaskCancellationHandler {
+                try await greetingPromise.futureResult.get()
+            } onCancel: {
+                greetingPromise.fail(CancellationError())
+            }
             duplexLogger.flushInboundBuffer()
             return greeting
         } catch {
@@ -192,7 +209,7 @@ extension SMTPServer {
             let errorMessage = "STARTTLS required for \(host):\(port) but was not advertised. "
                 + "Cannot continue without encryption."
             logger.error("\(errorMessage)")
-            await closeAndClearChannelAfterSTARTTLSPolicyFailure(holding: permit)
+            await closeAndClearChannel(holding: permit)
             throw SMTPError.tlsFailed("STARTTLS required but not advertised by server")
         }
 
@@ -211,11 +228,14 @@ extension SMTPServer {
                 // the same stored client identity when establishing the new
                 // EHLO state and refreshing the encrypted capabilities.
                 try await fetchCapabilities(holding: permit)
+            } catch let error as CancellationError {
+                await closeAndClearChannel(holding: permit)
+                throw error
             } catch {
                 let failureMessage = "STARTTLS failed for \(host):\(port): \(error.localizedDescription). "
                     + "Cannot continue without encryption."
                 logger.error("\(failureMessage)")
-                await closeAndClearChannelAfterSTARTTLSPolicyFailure(holding: permit)
+                await closeAndClearChannel(holding: permit)
                 throw SMTPError.tlsFailed("STARTTLS upgrade failed: \(error.localizedDescription)")
             }
         }
@@ -279,26 +299,6 @@ extension SMTPServer {
         self.channel = channel
     }
 
-    private func closeAndClearChannelAfterSTARTTLSPolicyFailure(
-        holding permit: SMTPOperationGate.Permit
-    ) async {
-        precondition(operationGate.isHeld(permit), "SMTP channel closed without owning it")
-        let channel = self.channel
-        self.channel = nil
-        self.isTLSEnabled = false
-        self.capabilities = []
-
-        guard let channel else {
-            return
-        }
-
-        do {
-            try await channel.close().get()
-        } catch {
-            logger.debug("Channel close after STARTTLS policy failure reported: \(error)")
-        }
-    }
-
     /**
      Disconnect from the SMTP server
 
@@ -357,7 +357,12 @@ extension SMTPServer {
     private func startTLS(holding permit: SMTPOperationGate.Permit) async throws {
         // Send STARTTLS command using the modernized command approach
         let command = StartTLSCommand()
-        let success = try await executeCommand(command, holding: permit)
+        let success = try await executeCommand(
+            command,
+            holding: permit,
+            responseTimeout: connectionTimeouts.startTLSResponse,
+            timeoutReason: "STARTTLS timeout"
+        )
 
         // Check if STARTTLS was accepted
         guard success else {
