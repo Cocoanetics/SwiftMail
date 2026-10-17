@@ -42,7 +42,7 @@ struct ExtendedSearchPlanTests {
         let search: Set<Capability> = [.extendedSearch, .context(.search)]
         #expect(search.extendedSearchPlan(useSort: false, partialRange: range).partialRange != nil)
 
-        let sort: Set<Capability> = [.extendedSearch, .context(.sort)]
+        let sort: Set<Capability> = [.extendedSearch, .esort, .context(.sort)]
         let sorted = sort.extendedSearchPlan(useSort: true, partialRange: range)
         #expect(sorted.useEsearch)
         #expect(sorted.partialRange != nil)
@@ -66,5 +66,19 @@ struct ExtendedSearchPlanTests {
         let plan = caps.extendedSearchPlan(useSort: true, partialRange: range)
         #expect(!plan.useEsearch)
         #expect(plan.partialRange == nil)
+    }
+
+    @Test
+    func sortReturnNeedsEsortNotEsearch() {
+        // SORT RETURN (...) is ESORT syntax (RFC 5267); ESEARCH alone covers SEARCH only.
+        let esearchOnly: Set<Capability> = [.extendedSearch, .context(.sort)]
+        let withoutEsort = esearchOnly.extendedSearchPlan(useSort: true, partialRange: range)
+        #expect(!withoutEsort.useEsearch)
+        #expect(withoutEsort.partialRange == nil)
+
+        let esortOnly: Set<Capability> = [.esort, .context(.sort)]
+        let withEsort = esortOnly.extendedSearchPlan(useSort: true, partialRange: range)
+        #expect(withEsort.useEsearch)
+        #expect(withEsort.partialRange != nil)
     }
 }
