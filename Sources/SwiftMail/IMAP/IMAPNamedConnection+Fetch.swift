@@ -58,6 +58,16 @@ extension IMAPNamedConnection {
         return try await executeCommand(command)
     }
 
+    /// Fetch the raw header lines of the named fields for a set of messages
+    /// (`BODY.PEEK[HEADER.FIELDS (...)]`), keyed by identifier, as in
+    /// ``IMAPServer/fetchHeaderFields(_:using:)``.
+    public func fetchHeaderFields<T: MessageIdentifier>(
+        _ fields: [String],
+        using identifierSet: MessageIdentifierSet<T>
+    ) async throws -> [T: Data] {
+        try await executeCommand(FetchHeaderFieldsCommand(identifierSet: identifierSet, fields: fields))
+    }
+
     /// Fetch message metadata for one identifier.
     /// - Parameters:
     ///   - identifier: The message identifier to fetch.
