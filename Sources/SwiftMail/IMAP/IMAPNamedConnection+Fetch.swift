@@ -58,6 +58,28 @@ extension IMAPNamedConnection {
         return try await executeCommand(command)
     }
 
+    /// Fetch the raw header lines of the named fields for a set of messages
+    /// (`BODY.PEEK[HEADER.FIELDS (...)]`), keyed by identifier, as in
+    /// ``IMAPServer/fetchHeaderFields(_:using:chunkSize:timeoutSeconds:)``: one command
+    /// per chunk of at most `chunkSize` messages (200 when `nil`), each with a deadline
+    /// of `timeoutSeconds` (30 when `nil`).
+    public func fetchHeaderFields<T: MessageIdentifier>(
+        _ fields: [String],
+        using identifierSet: MessageIdentifierSet<T>,
+        chunkSize: Int? = nil,
+        timeoutSeconds: Int? = nil
+    ) async throws -> [T: Data] {
+        let commands = try FetchHeaderFieldsCommand.chunks(
+            fields: fields, identifierSet: identifierSet, chunkSize: chunkSize, timeoutSeconds: timeoutSeconds
+        )
+        var blocks: [T: Data] = [:]
+        for command in commands {
+            try Task.checkCancellation()
+            blocks.merge(try await executeCommand(command)) { _, latest in latest }
+        }
+        return blocks
+    }
+
     /// Fetch message metadata for one identifier.
     /// - Parameters:
     ///   - identifier: The message identifier to fetch.
