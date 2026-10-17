@@ -254,7 +254,7 @@ print("Unread in recent batch: \(scopedResult.all?.count ?? 0)")
 ### Paged results with PARTIAL
 
 Pass a ``PartialRange`` to retrieve a window of results instead of the full match list
-(requires ESEARCH plus PARTIAL support, advertised as `PARTIAL` or `CONTEXT=SEARCH`/`CONTEXT=SORT`;
+(requires ESEARCH plus `PARTIAL` or `CONTEXT=SEARCH`, or for a sorted search ESORT plus `CONTEXT=SORT`;
 silently ignored on servers without it):
 
 ```swift
