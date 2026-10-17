@@ -30,7 +30,10 @@ final class FetchHeaderFieldsHandler<T: MessageIdentifier>:
 
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
         super.handleTaggedOKResponse(response)
-        let (headers, failure) = lock.withLock { (headers, failure) }
+        // Two plain reads: older Swift compilers (Xcode 26) crash on a tuple
+        // destructured from the lock's closure here.
+        let headers: [T: Data] = lock.withLock { self.headers }
+        let failure: IMAPError? = lock.withLock { self.failure }
         if let failure {
             failWithError(failure)
         } else {
