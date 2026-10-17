@@ -151,8 +151,10 @@ if let latestMessagesSet = mailboxInfo.latest(10) {
 
 When you need header lines exactly as the message carries them, such as every
 `Received` or `Authentication-Results` field in order or the raw `Reply-To`,
-fetch the raw header block for the named fields. This sends one
-`UID FETCH ... BODY.PEEK[HEADER.FIELDS (...)]` and leaves `\Seen` alone:
+fetch the raw header block for the named fields. This sends
+`UID FETCH ... BODY.PEEK[HEADER.FIELDS (...)]`, one command per 200 messages
+(`chunkSize:` changes that, `timeoutSeconds:` each command's deadline), and
+leaves `\Seen` alone:
 
 ```swift
 let blocks = try await imapServer.fetchHeaderFields(

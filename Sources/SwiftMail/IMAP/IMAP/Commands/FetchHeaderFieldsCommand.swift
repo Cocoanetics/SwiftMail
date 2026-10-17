@@ -17,18 +17,44 @@ struct FetchHeaderFieldsCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     typealias ResultType = [T: Data]
     typealias HandlerType = FetchHeaderFieldsHandler<T>
 
+    /// The most messages one command asks for when the caller sets no chunk size.
+    static var defaultChunkSize: Int { 200 }
+
+    /// The deadline for one command when the caller sets none.
+    static var defaultTimeoutSeconds: Int { 30 }
+
     /// The messages whose header fields are asked for
     let identifierSet: MessageIdentifierSet<T>
 
     /// The header field names to request
     let fields: [String]
 
-    /// Custom timeout for this operation
-    var timeoutSeconds: Int { return 30 }
+    /// The deadline for the server's complete answer to this command
+    let timeoutSeconds: Int
 
-    init(identifierSet: MessageIdentifierSet<T>, fields: [String]) {
+    init(identifierSet: MessageIdentifierSet<T>, fields: [String], timeoutSeconds: Int? = nil) {
         self.identifierSet = identifierSet
         self.fields = fields
+        self.timeoutSeconds = timeoutSeconds ?? Self.defaultTimeoutSeconds
+    }
+
+    /// The commands that fetch `fields` for `identifierSet`, at most
+    /// `chunkSize` messages each (``defaultChunkSize`` when `nil`; zero or
+    /// less sends one command). A set that ends in `*` is sent whole: it
+    /// cannot be split without expanding the open range.
+    static func chunks(
+        fields: [String],
+        identifierSet: MessageIdentifierSet<T>,
+        chunkSize: Int?,
+        timeoutSeconds: Int?
+    ) throws -> [FetchHeaderFieldsCommand<T>] {
+        guard !identifierSet.isEmpty else {
+            throw IMAPError.emptyIdentifierSet
+        }
+        let sets = identifierSet.contains(T.latest)
+            ? [identifierSet]
+            : identifierSet.chunked(size: chunkSize ?? defaultChunkSize)
+        return sets.map { FetchHeaderFieldsCommand(identifierSet: $0, fields: fields, timeoutSeconds: timeoutSeconds) }
     }
 
     func validate() throws {
@@ -41,12 +67,15 @@ struct FetchHeaderFieldsCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         for field in fields where !Self.isValidFieldName(field) {
             throw IMAPError.invalidArgument("Invalid header field name: \(field)")
         }
+        guard timeoutSeconds > 0 else {
+            throw IMAPError.invalidArgument("Timeout must be positive: \(timeoutSeconds)")
+        }
     }
 
     func toTaggedCommand(tag: String) -> TaggedCommand {
         let attributes: [FetchAttribute] = [
             .uid,
-            .bodySection(peek: true, SectionSpecifier(kind: .headerFields(fields)), nil)
+            .bodySection(peek: true, .wholeMessageHeaderFields(fields), nil)
         ]
 
         if T.self == UID.self {
@@ -64,5 +93,13 @@ struct FetchHeaderFieldsCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     /// other than the colon (RFC 5322 §3.6.8).
     static func isValidFieldName(_ name: String) -> Bool {
         !name.isEmpty && name.utf8.allSatisfy { $0 >= 33 && $0 <= 126 && $0 != UInt8(ascii: ":") }
+    }
+}
+
+extension SectionSpecifier {
+    /// `HEADER.FIELDS (<fields>)` of the whole message, as ``FetchMessageInfoCommand``
+    /// and ``FetchHeaderFieldsCommand`` request it.
+    static func wholeMessageHeaderFields(_ fields: [String]) -> SectionSpecifier {
+        SectionSpecifier(part: .init([]), kind: .headerFields(fields))
     }
 }

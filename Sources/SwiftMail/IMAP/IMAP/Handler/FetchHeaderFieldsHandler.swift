@@ -10,22 +10,32 @@ import NIO
 /// `BODY[HEADER.FIELDS (...)]` and files it under the message's identifier.
 ///
 /// The identifier is known only once the message's FETCH response ends: a
-/// server may send `UID` after the body section. Each block is capped at
-/// ``maximumHeaderBytes``.
+/// server may send `UID` after the body section. Invalid server data fails
+/// the command once its tagged response arrives, so the rest of the response
+/// is still consumed here: a block over ``maximumHeaderBytes``, and in a UID
+/// fetch a block whose FETCH response carries no UID.
 final class FetchHeaderFieldsHandler<T: MessageIdentifier>:
     BaseIMAPCommandHandler<[T: Data]>, IMAPCommandHandler, @unchecked Sendable {
-    /// The most bytes kept for one message's header block.
+    /// The most bytes one message's header block may have.
     static var maximumHeaderBytes: Int { 256 * 1024 }
 
     private var headers: [T: Data] = [:]
     private var sequenceNumber: SequenceNumber?
     private var uid: UID?
     private var block: Data?
+    private var blockIsOversized = false
     private var collecting = false
+    /// The first invalid server data seen; reported instead of the result.
+    private var failure: IMAPError?
 
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
         super.handleTaggedOKResponse(response)
-        succeedWithResult(lock.withLock { headers })
+        let (headers, failure) = lock.withLock { (headers, failure) }
+        if let failure {
+            failWithError(failure)
+        } else {
+            succeedWithResult(headers)
+        }
     }
 
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
@@ -67,9 +77,7 @@ final class FetchHeaderFieldsHandler<T: MessageIdentifier>:
             case .streamingEnd:
                 collecting = false
             case .finish:
-                if let block, let key = identifier() {
-                    headers[key] = block
-                }
+                finishMessage()
                 beginMessage(sequenceNumber: nil, uid: nil)
             default:
                 break
@@ -77,17 +85,43 @@ final class FetchHeaderFieldsHandler<T: MessageIdentifier>:
     }
 
     private func append(_ bytes: ByteBuffer) {
-        guard collecting, var data = block else { return }
-        let room = Self.maximumHeaderBytes - data.count
-        guard room > 0 else { return }
-        data.append(contentsOf: bytes.readableBytesView.prefix(room))
+        guard collecting, !blockIsOversized, var data = block else { return }
+        guard data.count + bytes.readableBytes <= Self.maximumHeaderBytes else {
+            // Keep nothing more of this block; it fails the command.
+            blockIsOversized = true
+            block = Data()
+            return
+        }
+        data.append(contentsOf: bytes.readableBytesView)
         block = data
+    }
+
+    private func finishMessage() {
+        guard let block else { return }
+        guard let key = identifier() else {
+            record(.fetchFailed(
+                "Server sent a header block for \(messageDescription) without its UID in a UID FETCH"
+            ))
+            return
+        }
+        guard !blockIsOversized else {
+            record(.fetchFailed(
+                "Header block for \(messageDescription) exceeds \(Self.maximumHeaderBytes) bytes"
+            ))
+            return
+        }
+        headers[key] = block
+    }
+
+    private func record(_ error: IMAPError) {
+        if failure == nil { failure = error }
     }
 
     private func beginMessage(sequenceNumber: SequenceNumber?, uid: UID?) {
         self.sequenceNumber = sequenceNumber
         self.uid = uid
         block = nil
+        blockIsOversized = false
         collecting = false
     }
 
@@ -98,6 +132,13 @@ final class FetchHeaderFieldsHandler<T: MessageIdentifier>:
             return uid.map { T($0.value) }
         }
         return sequenceNumber.map { T($0.value) }
+    }
+
+    /// The finished message, by the identifiers its response carried.
+    private var messageDescription: String {
+        if let uid { return "UID \(uid.value)" }
+        if let sequenceNumber { return "message \(sequenceNumber.value)" }
+        return "a message"
     }
 
     /// Only one body section is requested, so any `HEADER.FIELDS` section of

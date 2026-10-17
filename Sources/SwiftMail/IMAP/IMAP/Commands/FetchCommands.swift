@@ -74,8 +74,7 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
         if options.contains(.fullHeader) {
             attributes.append(.bodySection(peek: true, .header, nil))
         } else if let fields = headerFields, !fields.isEmpty {
-            let section = SectionSpecifier(part: .init([]), kind: .headerFields(fields))
-            attributes.append(.bodySection(peek: true, section, nil))
+            attributes.append(.bodySection(peek: true, .wholeMessageHeaderFields(fields), nil))
         }
 
         if T.self == UID.self {

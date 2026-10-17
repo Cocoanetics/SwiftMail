@@ -124,33 +124,82 @@ struct FetchHeaderFieldsTests {
         }
     }
 
-    @Test("The handler keeps each block up to its cap and none of the streamed bytes in its history")
-    func handlerBoundsWhatItKeeps() throws {
-        let loop = EmbeddedEventLoop()
-        let promise = loop.makePromise(of: [SwiftMail.UID: Data].self)
-        let handler = FetchHeaderFieldsHandler<SwiftMail.UID>(commandTag: "A1", promise: promise)
-        let maximum = FetchHeaderFieldsHandler<SwiftMail.UID>.maximumHeaderBytes
-        let oversized = maximum + 1000
-        let chunk = ByteBuffer(repeating: UInt8(ascii: "x"), count: 4096)
-        let section = SectionSpecifier(kind: .headerFields(["Received"]))
+    @Test("In a UID fetch a header block without its UID fails the command; a sequence fetch keys it by number")
+    func blockWithoutUID() async throws {
+        let block = Data("Reply-To: someone@example.com\r\n\r\n".utf8)
+        var withoutUID = Data("* 3 FETCH (BODY[HEADER.FIELDS (Reply-To)] {\(block.count)}\r\n".utf8)
+        withoutUID.append(block)
+        withoutUID.append(contentsOf: Data(")\r\n".utf8))
+        let completed = Data("A001 OK FETCH completed\r\n".utf8)
 
-        _ = handler.processResponse(.fetch(.start(1)))
-        _ = handler.processResponse(.fetch(.simpleAttribute(.uid(5))))
-        _ = handler.processResponse(.fetch(.streamingBegin(kind: .body(section: section, offset: nil),
-                                                           byteCount: oversized)))
-        for _ in 0..<(oversized / chunk.readableBytes + 1) {
-            _ = handler.processResponse(.fetch(.streamingBytes(chunk)))
+        let error = await #expect(throws: IMAPError.self) {
+            _ = try await executeFetch([withoutUID, completed])
         }
-        _ = handler.processResponse(.fetch(.streamingEnd))
-        _ = handler.processResponse(.fetch(.finish))
+        #expect(error?.description.contains("without its UID") == true)
+
+        let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
+        let promise = channel.eventLoop.makePromise(of: [SwiftMail.SequenceNumber: Data].self)
+        try await channel.pipeline.addHandler(
+            FetchHeaderFieldsHandler<SwiftMail.SequenceNumber>(commandTag: "A001", promise: promise)
+        )
+        try await send(on: channel, [withoutUID, completed])
+        #expect(try await promise.futureResult.get() == [SwiftMail.SequenceNumber(3): block])
+    }
+
+    @Test("A block of exactly the cap is kept whole and none of the streamed bytes stay in the history")
+    func blockAtTheCapIsKept() async throws {
+        let maximum = FetchHeaderFieldsHandler<SwiftMail.UID>.maximumHeaderBytes
+        let (handler, promise) = streamedHandler(blocks: [(uid: 5, byteCount: maximum)])
         #expect(handler.untaggedResponses.isEmpty)
 
         _ = handler.processResponse(.tagged(TaggedResponse(tag: "A1", state: .ok(ResponseText(text: "done")))))
-        let blocks = try promise.futureResult.wait()
+        let blocks = try await promise.futureResult.get()
         #expect(blocks[SwiftMail.UID(5)]?.count == maximum)
     }
 
+    @Test("A block over the cap fails the command once the server has finished answering")
+    func blockOverTheCapFails() async throws {
+        let maximum = FetchHeaderFieldsHandler<SwiftMail.UID>.maximumHeaderBytes
+        let (handler, promise) = streamedHandler(blocks: [(uid: 5, byteCount: maximum + 1), (uid: 6, byteCount: 10)])
+        // The rest of the response is still consumed by this command.
+        #expect(!handler.isCompleted)
+        #expect(handler.untaggedResponses.isEmpty)
+
+        _ = handler.processResponse(.tagged(TaggedResponse(tag: "A1", state: .ok(ResponseText(text: "done")))))
+        let error = await #expect(throws: IMAPError.self) {
+            _ = try await promise.futureResult.get()
+        }
+        #expect(error?.description.contains("UID 5 exceeds \(maximum) bytes") == true)
+    }
+
     // MARK: - Helpers
+
+    /// A handler that has been fed one streamed block per entry (UID first,
+    /// `byteCount` bytes of `x`), without the tagged response.
+    private func streamedHandler(
+        blocks: [(uid: Int, byteCount: Int)]
+    ) -> (FetchHeaderFieldsHandler<SwiftMail.UID>, EventLoopPromise<[SwiftMail.UID: Data]>) {
+        let loop = EmbeddedEventLoop()
+        let promise = loop.makePromise(of: [SwiftMail.UID: Data].self)
+        let handler = FetchHeaderFieldsHandler<SwiftMail.UID>(commandTag: "A1", promise: promise)
+        let section = SectionSpecifier.wholeMessageHeaderFields(["Received"])
+        for (index, block) in blocks.enumerated() {
+            _ = handler.processResponse(.fetch(.start(NIOIMAPCore.SequenceNumber(rawValue: UInt32(index + 1)))))
+            _ = handler.processResponse(.fetch(.simpleAttribute(.uid(NIOIMAPCore.UID(rawValue: UInt32(block.uid))))))
+            _ = handler.processResponse(.fetch(.streamingBegin(kind: .body(section: section, offset: nil),
+                                                               byteCount: block.byteCount)))
+            var remaining = block.byteCount
+            while remaining > 0 {
+                let count = min(remaining, 4096)
+                let bytes = ByteBuffer(repeating: UInt8(ascii: "x"), count: count)
+                _ = handler.processResponse(.fetch(.streamingBytes(bytes)))
+                remaining -= count
+            }
+            _ = handler.processResponse(.fetch(.streamingEnd))
+            _ = handler.processResponse(.fetch(.finish))
+        }
+        return (handler, promise)
+    }
 
     private func executeFetch(_ rawResponses: [Data]) async throws -> [SwiftMail.UID: Data] {
         let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
@@ -199,4 +248,94 @@ struct FetchHeaderFieldsTests {
         }
         return data
     }
+}
+
+@Suite("Fetch header fields in chunks", .timeLimit(.minutes(1)))
+struct FetchHeaderFieldsChunkTests {
+    @Test("A large set is split into chunks that carry the timeout; a set ending in * is sent whole")
+    func chunks() throws {
+        let uids = SwiftMail.UIDSet(SwiftMail.UID(1)...SwiftMail.UID(450))
+        let byDefault = try FetchHeaderFieldsCommand.chunks(
+            fields: ["Received"], identifierSet: uids, chunkSize: nil, timeoutSeconds: nil
+        )
+        #expect(byDefault.map(\.identifierSet.count) == [200, 200, 50])
+        #expect(byDefault.map { $0.identifierSet.toArray().first } == [1, 201, 401].map { SwiftMail.UID($0) })
+        #expect(byDefault.allSatisfy { $0.timeoutSeconds == 30 && $0.fields == ["Received"] })
+
+        let three = SwiftMail.UIDSet([SwiftMail.UID(4), SwiftMail.UID(9), SwiftMail.UID(12)])
+        let custom = try FetchHeaderFieldsCommand.chunks(
+            fields: ["Received"], identifierSet: three, chunkSize: 2, timeoutSeconds: 90
+        )
+        #expect(custom.map { $0.identifierSet.toArray() } == [[4, 9], [12]].map { $0.map { SwiftMail.UID($0) } })
+        #expect(custom.allSatisfy { $0.timeoutSeconds == 90 })
+
+        let whole = try FetchHeaderFieldsCommand.chunks(
+            fields: ["Received"], identifierSet: uids, chunkSize: 0, timeoutSeconds: nil
+        )
+        #expect(whole.map(\.identifierSet.count) == [450])
+
+        let openEnded = SwiftMail.UIDSet(SwiftMail.UID(7)...)
+        let open = try FetchHeaderFieldsCommand.chunks(
+            fields: ["Received"], identifierSet: openEnded, chunkSize: 2, timeoutSeconds: nil
+        )
+        #expect(open.map(\.identifierSet.count) == [openEnded.count])
+        #expect(open.first?.identifierSet.contains(SwiftMail.UID(7)) == true)
+        #expect(open.first?.identifierSet.contains(SwiftMail.UID.latest) == true)
+
+        #expect(throws: IMAPError.self) {
+            try FetchHeaderFieldsCommand.chunks(
+                fields: ["Received"], identifierSet: SwiftMail.UIDSet(), chunkSize: nil, timeoutSeconds: nil
+            )
+        }
+        #expect(throws: IMAPError.self) {
+            try FetchHeaderFieldsCommand(identifierSet: three, fields: ["Received"], timeoutSeconds: 0).validate()
+        }
+    }
+
+    #if os(macOS)
+        @Test("fetchHeaderFields sends one UID FETCH per chunk and merges the blocks")
+        func fetchHeaderFieldsInChunks() async throws {
+            let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            let maildir = tempRoot.appendingPathComponent("Maildir")
+            try FileManager.default.createDirectory(
+                at: maildir.appendingPathComponent("cur"), withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(
+                at: maildir.appendingPathComponent("new"), withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: tempRoot) }
+            for number in 1...3 {
+                let eml = "Received: from relay\(number).example.net\r\n\tby mx.example.org\r\n"
+                    + "From: a@example.com\r\nReceived: from origin\(number).example.com\r\n"
+                    + "Subject: Message \(number)\r\n\r\nHello\r\n"
+                try Data(eml.utf8).write(to: maildir.appendingPathComponent("cur/\(number).eml"))
+            }
+
+            let testServer = try IMAPTestServer(maildirURL: maildir)
+            try testServer.start()
+
+            let blocks = try await testServer.run {
+                let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+                try await server.connect()
+                try await server.login(username: "testuser", password: "testpass")
+                _ = try await server.selectMailbox("INBOX")
+                let blocks = try await server.fetchHeaderFields(
+                    ["Received"], using: SwiftMail.UIDSet(SwiftMail.UID(1)...SwiftMail.UID(3)),
+                    chunkSize: 2, timeoutSeconds: 10
+                )
+                try await server.disconnect()
+                return blocks
+            }
+
+            let expected = (1...3).map { number in
+                Data(("Received: from relay\(number).example.net\r\n\tby mx.example.org\r\n"
+                    + "Received: from origin\(number).example.com\r\n\r\n").utf8)
+            }
+            #expect(blocks == [
+                SwiftMail.UID(1): expected[0], SwiftMail.UID(2): expected[1], SwiftMail.UID(3): expected[2]
+            ])
+            let fetches = testServer.commandLog.filter { $0.uppercased().contains("HEADER.FIELDS") }
+            #expect(fetches.count == 2)
+            #expect(fetches.first?.contains("UID FETCH 1:2 ") == true)
+            #expect(fetches.last?.contains("UID FETCH 3 ") == true)
+        }
+    #endif
 }
