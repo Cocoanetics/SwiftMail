@@ -149,6 +149,19 @@ if let latestMessagesSet = mailboxInfo.latest(10) {
 }
 ```
 
+When you need header lines exactly as the message carries them, such as every
+`Received` or `Authentication-Results` field in order or the raw `Reply-To`,
+fetch the raw header block for the named fields. This sends one
+`UID FETCH ... BODY.PEEK[HEADER.FIELDS (...)]` and leaves `\Seen` alone:
+
+```swift
+let blocks = try await imapServer.fetchHeaderFields(
+    ["Reply-To", "Delivered-To", "Authentication-Results"],
+    using: UIDSet(uidRange)
+)
+// blocks[uid] holds the matching lines, topmost first, as the server sent them
+```
+
 ## Searching Messages
 
 SwiftMail provides powerful search capabilities using different types of message identifiers:
