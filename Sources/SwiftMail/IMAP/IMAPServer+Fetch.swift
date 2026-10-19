@@ -129,12 +129,20 @@ extension IMAPServer {
     /**
      Fetches the complete raw RFC822 message (headers + body) without setting the \Seen flag.
 
-     - Parameter identifier: The identifier of the message
+     The deadline covers the whole answer, from sending the command to the tagged OK, so the
+     entire message has to arrive within it. The default of 10 seconds suits typical mail; for
+     large messages on slow lines, size it from `RFC822.SIZE`, for example
+     `max(10, size / 500_000)` for about 4 Mbit/s.
+
+     - Parameters:
+       - identifier: The identifier of the message
+       - timeoutSeconds: The deadline in seconds; 10 when `nil`
      - Returns: The complete raw message data
-     - Throws: `IMAPError.fetchFailed` if the fetch operation fails
+     - Throws: `IMAPError.fetchFailed` if the fetch operation fails, `IMAPError.timeout` if the
+       message does not arrive in time, `IMAPError.invalidArgument` for a timeout of zero or less
      */
-    public func fetchRawMessage<T: MessageIdentifier>(identifier: T) async throws -> Data {
-        let command = FetchRawMessageCommand(identifier: identifier)
+    public func fetchRawMessage<T: MessageIdentifier>(identifier: T, timeoutSeconds: Int? = nil) async throws -> Data {
+        let command = FetchRawMessageCommand(identifier: identifier, timeoutSeconds: timeoutSeconds)
         return try await executeCommand(command)
     }
 

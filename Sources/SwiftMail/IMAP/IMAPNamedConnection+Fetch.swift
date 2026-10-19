@@ -52,9 +52,11 @@ extension IMAPNamedConnection {
         return grouped
     }
 
-    /// Fetch a full raw RFC822 message.
-    public func fetchRawMessage<T: MessageIdentifier>(identifier: T) async throws -> Data {
-        let command = FetchRawMessageCommand(identifier: identifier)
+    /// Fetch a full raw RFC822 message, as in
+    /// ``IMAPServer/fetchRawMessage(identifier:timeoutSeconds:)``: the whole message has to
+    /// arrive within `timeoutSeconds` (10 when `nil`).
+    public func fetchRawMessage<T: MessageIdentifier>(identifier: T, timeoutSeconds: Int? = nil) async throws -> Data {
+        let command = FetchRawMessageCommand(identifier: identifier, timeoutSeconds: timeoutSeconds)
         return try await executeCommand(command)
     }
 
