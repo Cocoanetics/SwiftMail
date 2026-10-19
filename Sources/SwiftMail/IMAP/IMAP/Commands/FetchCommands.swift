@@ -174,13 +174,26 @@ struct FetchRawMessageCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     /// The message identifier to fetch
     let identifier: T
 
-    /// Custom timeout for this operation
-    var timeoutSeconds: Int { return 10 }
+    /// The deadline for one command when the caller sets none.
+    static var defaultTimeoutSeconds: Int { 10 }
+
+    /// The deadline for the server's complete answer, from the write to the
+    /// tagged response. The whole message has to arrive within it.
+    let timeoutSeconds: Int
 
     /// Initialize a new fetch raw message command
-    /// - Parameter identifier: The message identifier to fetch
-    init(identifier: T) {
+    /// - Parameters:
+    ///   - identifier: The message identifier to fetch
+    ///   - timeoutSeconds: The deadline for the complete answer; ``defaultTimeoutSeconds`` when `nil`
+    init(identifier: T, timeoutSeconds: Int? = nil) {
         self.identifier = identifier
+        self.timeoutSeconds = timeoutSeconds ?? Self.defaultTimeoutSeconds
+    }
+
+    func validate() throws {
+        guard timeoutSeconds > 0 else {
+            throw IMAPError.invalidArgument("Timeout must be positive: \(timeoutSeconds)")
+        }
     }
 
     /// Convert to an IMAP tagged command

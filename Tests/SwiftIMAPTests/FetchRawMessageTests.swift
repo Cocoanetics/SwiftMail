@@ -2,6 +2,24 @@ import Foundation
 import Testing
 @testable import SwiftMail
 
+@Suite("Fetch Raw Message Command")
+struct FetchRawMessageCommandTests {
+    @Test("the timeout defaults to 10 seconds, can be raised and must be positive")
+    func timeoutIsConfigurableAndValidated() throws {
+        #expect(FetchRawMessageCommand(identifier: UID(1)).timeoutSeconds == 10)
+        #expect(FetchRawMessageCommand(identifier: UID(1), timeoutSeconds: nil).timeoutSeconds == 10)
+        let raised = FetchRawMessageCommand(identifier: UID(1), timeoutSeconds: 120)
+        #expect(raised.timeoutSeconds == 120)
+        try raised.validate()
+
+        for invalid in [0, -1] {
+            #expect(throws: IMAPError.self) {
+                try FetchRawMessageCommand(identifier: UID(1), timeoutSeconds: invalid).validate()
+            }
+        }
+    }
+}
+
 #if os(macOS)
     @Suite("Fetch Raw Message", .serialized, .timeLimit(.minutes(1)))
     struct FetchRawMessageTests {
@@ -50,6 +68,9 @@ import Testing
                 let raw = try await server.fetchRawMessage(identifier: UID(1))
                 #expect(raw == sampleMessage)
                 #expect(String(data: raw, encoding: .utf8)?.contains("Received: from mx.example.com") == true)
+
+                let withTimeout = try await server.fetchRawMessage(identifier: UID(1), timeoutSeconds: 60)
+                #expect(withTimeout == sampleMessage)
 
                 try await server.disconnect()
             }
