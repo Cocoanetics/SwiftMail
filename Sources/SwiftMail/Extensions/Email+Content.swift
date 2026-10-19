@@ -61,25 +61,25 @@ extension Email {
      - Parameter use8BitMIME: Set to `true` if the SMTP server announced the
        `8BITMIME` capability. The text and HTML bodies are only transmitted as
        8bit if they are deemed safe via ``String/isSafe8BitContent()``.
+     - Parameter includeBccHeader: Name ``bccRecipients`` in a `Bcc` header. Only for a copy the
+       sender keeps (a Sent copy appended over IMAP), never for SMTP (RFC 5322 section 3.6.3).
      - Returns: The complete message body ready to be sent via SMTP.
      */
-    public func constructContent(use8BitMIME: Bool = false) -> String {
+    public func constructContent(use8BitMIME: Bool = false, includeBccHeader: Bool = false) -> String {
         var content = ""
-        writeHeaders(into: &content)
+        writeHeaders(includeBccHeader: includeBccHeader, into: &content)
         writeBody(use8BitMIME: use8BitMIME, into: &content)
         return content
     }
 
-    /// Top-level RFC 5322 header block (`From`, `To`, `Cc`, `Subject`, `Date`,
-    /// `Message-Id`, `MIME-Version`) plus any caller-supplied additional
+    /// Top-level RFC 5322 header block (`From`, `To`, `Cc`, optional `Bcc`, `Subject`,
+    /// `Date`, `Message-Id`, `MIME-Version`) plus any caller-supplied additional
     /// headers, suppressing a duplicate `Message-Id` when one is already set.
-    private func writeHeaders(into content: inout String) {
+    private func writeHeaders(includeBccHeader: Bool, into content: inout String) {
         content += "From: \(self.sender.headerString())\r\n"
-        if !self.recipients.isEmpty {
-            content += "To: \(self.recipients.map { $0.headerString() }.joined(separator: ", "))\r\n"
-        }
-        if !self.ccRecipients.isEmpty {
-            content += "Cc: \(self.ccRecipients.map { $0.headerString() }.joined(separator: ", "))\r\n"
+        let bcc = includeBccHeader ? [("Bcc", self.bccRecipients)] : []
+        for (name, addresses) in [("To", self.recipients), ("Cc", self.ccRecipients)] + bcc where !addresses.isEmpty {
+            content += "\(name): \(addresses.map { $0.headerString() }.joined(separator: ", "))\r\n"
         }
         content += "Subject: \(self.subject.rfc2047EncodedHeader())\r\n"
         content += "Date: \(Self.rfc2822Date())\r\n"

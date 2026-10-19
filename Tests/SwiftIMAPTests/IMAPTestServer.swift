@@ -140,6 +140,17 @@ final class IMAPTestServer {
         metricsQueue.sync { commandLogStorage.append(line) }
     }
 
+    /// The message literal of every APPEND received, in order.
+    var appendedMessages: [Data] {
+        metricsQueue.sync { appendedMessagesStorage }
+    }
+
+    private var appendedMessagesStorage: [Data] = []
+
+    private func recordAppendedMessage(_ message: Data) {
+        metricsQueue.sync { appendedMessagesStorage.append(message) }
+    }
+
     var lastExaminedMailbox: String? {
         metricsQueue.sync { lastExaminedMailboxStorage }
     }
@@ -348,17 +359,35 @@ final class IMAPTestServer {
         defer { readBuf.deallocate() }
 
         var idleTag: String?  // non-nil while in IDLE state
+        var appendLiteral: (tag: String, size: Int)?  // an APPEND literal still arriving
+        var appendTag: String?  // an APPEND whose literal arrived, awaiting its line end
 
         while true {
             let bytesRead = read(fileDescriptor, readBuf, 65536)
             if bytesRead <= 0 { break }
             buffer.append(readBuf, count: bytesRead)
 
-            while let crlfRange = buffer.range(of: Data("\r\n".utf8)) {
+            while true {
+                if let pending = appendLiteral {
+                    guard buffer.count >= pending.size else { break }
+                    recordAppendedMessage(Data(buffer.prefix(pending.size)))
+                    buffer = Data(buffer.dropFirst(pending.size))
+                    appendLiteral = nil
+                    appendTag = pending.tag
+                    continue
+                }
+                guard let crlfRange = buffer.range(of: Data("\r\n".utf8)) else { break }
                 let lineData = buffer[buffer.startIndex..<crlfRange.lowerBound]
                 buffer = Data(buffer[crlfRange.upperBound...])
 
                 guard let line = String(data: lineData, encoding: .utf8) else { continue }
+
+                // The line end after an APPEND literal completes the command.
+                if let tag = appendTag {
+                    appendTag = nil
+                    sendLine(fd: fileDescriptor, "\(tag) OK APPEND completed\r\n")
+                    continue
+                }
 
                 // Handle DONE (untagged) while in IDLE state
                 if let tag = idleTag, line.uppercased() == "DONE" {
@@ -392,6 +421,17 @@ final class IMAPTestServer {
                 let command = parts[1].uppercased()
                 let args = parts.count > 2 ? parts[2] : ""
                 recordCommand(line)
+
+                if command == "APPEND",
+                   let match = line.range(of: #"\{\d+\+?\}$"#, options: .regularExpression) {
+                    let literal = line[match].dropFirst().dropLast()
+                    let synchronizing = !literal.hasSuffix("+")
+                    appendLiteral = (tag, Int(literal.filter(\.isNumber)) ?? 0)
+                    if synchronizing {
+                        sendLine(fd: fileDescriptor, "+ Ready for literal data\r\n")
+                    }
+                    continue
+                }
 
                 if command == "IDLE" {
                     recordIdleCommand()

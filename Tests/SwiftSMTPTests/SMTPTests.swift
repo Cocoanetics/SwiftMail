@@ -2205,7 +2205,7 @@ struct SMTPTests {
 }
 // swiftlint:enable type_body_length
 
-/// MIME parameter and field-body serialization in ``Email/constructContent(use8BitMIME:)``.
+/// MIME parameter and field-body serialization in ``Email/constructContent(use8BitMIME:includeBccHeader:)``.
 /// Every assertion is made on the final serialized bytes, or on what
 /// ``Message/init(emlData:)`` recovers from them.
 @Suite("MIME parameter encoding", .serialized, .timeLimit(.minutes(1)))
