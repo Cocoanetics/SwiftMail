@@ -46,11 +46,14 @@ extension IMAPServer {
      mailbox other people read (a shared folder), append the content of
      ``Email/constructContent(use8BitMIME:includeBccHeader:)`` without the
      header through ``append(rawMessage:to:flags:internalDate:)`` instead,
-     ending it with a CRLF as this method does.
+     ending it with a CRLF as this method does. Do not send a message appended
+     this way with ``sendDraft(uid:via:from:to:)``, which sends the stored bytes,
+     `Bcc` header included, to every recipient.
+     ``createDraft(from:in:date:additionalFlags:)`` writes a draft without it.
 
      - Parameters:
         - email: The email to append.
-        - mailbox: The destination mailbox path (e.g. "Drafts").
+        - mailbox: The destination mailbox path (e.g. "Sent").
         - flags: Optional message flags to set during append.
         - internalDate: Optional internal date to store on the server. Defaults to the server-provided date.
      - Returns: ``AppendResult`` describing server-assigned identifiers.

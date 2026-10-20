@@ -61,9 +61,9 @@ extension Email {
      - Parameter use8BitMIME: Set to `true` if the SMTP server announced the
        `8BITMIME` capability. The text and HTML bodies are only transmitted as
        8bit if they are deemed safe via ``String/isSafe8BitContent()``.
-     - Parameter includeBccHeader: Name ``bccRecipients`` in a `Bcc` header. Only for a copy the
-       sender keeps (a Sent copy appended over IMAP), never for SMTP (RFC 5322 section 3.6.3).
-     - Returns: The complete message body ready to be sent via SMTP.
+     - Parameter includeBccHeader: Name ``bccRecipients`` in a `Bcc` header, for a copy the sender keeps
+       (a Sent copy). This library puts BCC recipients in the SMTP envelope only (RFC 5322 3.6.3, method 1).
+     - Returns: The complete message; without the `Bcc` header, ready to be sent via SMTP.
      */
     public func constructContent(use8BitMIME: Bool = false, includeBccHeader: Bool = false) -> String {
         var content = ""
