@@ -110,8 +110,12 @@ extension Array where Element == MessagePart {
             case .message(let message):
                 contentType = "message/\(String(message.message))"
         }
-        if let charset = part.fields.parameters.first(where: { $0.key.lowercased() == "charset" })?.value {
-            contentType += "; charset=\(charset)"
+        // The parameters that say how the text is read: its charset, and the
+        // RFC 3676 `format` and `delsp` a `format=flowed` body is decoded by.
+        for name in ["charset", "format", "delsp"] {
+            if let value = part.fields.parameters.first(where: { $0.key.lowercased() == name })?.value {
+                contentType += "; \(name)=\(value)"
+            }
         }
         return contentType
     }
