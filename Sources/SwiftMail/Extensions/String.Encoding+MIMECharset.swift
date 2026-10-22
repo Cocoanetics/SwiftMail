@@ -86,18 +86,33 @@ extension String.Encoding {
 
 extension String {
     /// Decodes unlabelled bytes as legacy Japanese only when the result actually
-    /// reads as Japanese (contains kana or kanji), so Latin-1 bytes such as NEL
-    /// are not misread as CP932 symbols.
+    /// reads as Japanese, so Latin-1 text keeps its Latin fallback.
     static func plausibleJapanese(_ data: Data) -> String? {
         for encoding in String.Encoding.japaneseFallbacks {
-            guard let text = String(data: data, encoding: encoding) else { continue }
-            let hasJapanese = text.unicodeScalars.contains { scalar in
-                (0x3040...0x30FF).contains(scalar.value)      // Hiragana and Katakana
-                    || (0x4E00...0x9FFF).contains(scalar.value) // CJK Unified Ideographs
-                    || (0xFF66...0xFF9F).contains(scalar.value) // Half-width Katakana
-            }
-            if hasJapanese { return text }
+            guard let text = String(data: data, encoding: encoding), text.readsAsJapanese else { continue }
+            return text
         }
         return nil
+    }
+
+    /// In CP932 every byte from 0xA1 to 0xDF is a half-width katakana, which
+    /// covers the Latin-1 capitals and symbols (Ä → ﾄ, ° → ｰ), and a Latin-1
+    /// small letter followed by an ASCII letter can pair into a kanji ("é" "u"
+    /// in "Réunion"). Neither is evidence of Japanese. Full-width kana, or two
+    /// ideographs in a row, are: Latin-1 text practically never produces them.
+    private var readsAsJapanese: Bool {
+        var ideographRun = 0
+        for scalar in unicodeScalars {
+            if (0x3041...0x30FF).contains(scalar.value) {        // Hiragana and Katakana
+                return true
+            }
+            if (0x4E00...0x9FFF).contains(scalar.value) {        // CJK Unified Ideographs
+                ideographRun += 1
+                if ideographRun >= 2 { return true }
+            } else {
+                ideographRun = 0
+            }
+        }
+        return false
     }
 }

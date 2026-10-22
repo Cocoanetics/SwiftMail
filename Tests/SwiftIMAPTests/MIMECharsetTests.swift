@@ -18,7 +18,44 @@ struct MIMECharsetTests {
         #expect(String.Encoding(mimeCharset: "binary") == nil)
     }
 
+    // Every one of these is also valid CP932: the capitals and symbols are
+    // half-width katakana there (Ä → ﾄ, ß → ﾟ, ° → ｰ, © → ｩ), and "é" "u"
+    // in "Réunion" pairs into a single kanji.
+    private static let latin1Lines = ["Änderung", "Straße", "Übersicht", "Öffnungszeiten", "50°", "© 2024", "Réunion"]
+
+    @Test("Raw Latin-1 header lines that are also valid CP932 stay Latin-1")
+    func rawLatin1HeaderLinesStayLatin1() throws {
+        for text in Self.latin1Lines {
+            var raw = Data("Subject: ".utf8)
+            raw.append(try #require(text.data(using: .isoLatin1)))
+            raw.append(Data("\r\nFrom: a@example.com\r\n\r\nbody\r\n".utf8))
+            let message = try EMLParser.parse(raw)
+            #expect(message.subject == text)
+        }
+    }
+
+    @Test("Unlabelled Latin-1 bodies that are also valid CP932 stay Latin-1")
+    func unlabelledLatin1BodiesStayLatin1() throws {
+        for text in Self.latin1Lines {
+            let part = MessagePart(
+                sectionString: "1",
+                contentType: "text/plain",
+                data: try #require(text.data(using: .isoLatin1))
+            )
+            #expect(part.textContent == text)
+        }
+    }
+
     #if canImport(Darwin)
+
+    @Test("A raw Shift_JIS line with kana decodes")
+    func rawShiftJISKanaDecodes() {
+        // "テスト" in Shift_JIS: 83 65 83 58 83 67, and "メ" alone: 83 81
+        #expect(String.plausibleJapanese(Data([0x83, 0x65, 0x83, 0x58, 0x83, 0x67])) == "テスト")
+        #expect(String.plausibleJapanese(Data([0x83, 0x81])) == "メ")
+        // A single kanji is no evidence: E9 75 is also "éu" in Latin-1.
+        #expect(String.plausibleJapanese(Data([0xE9, 0x75])) == nil)
+    }
 
     @Test("Shift_JIS mail decodes as CP932 so ①, ㈱ and 髙 survive")
     func shiftJISDecodesAsCP932() {
