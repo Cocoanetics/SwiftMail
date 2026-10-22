@@ -11,7 +11,7 @@ struct MIMECharsetTests {
 
     @Test("Labels outside the legacy CJK family resolve as their IANA name does")
     func otherLabelsAreUnchanged() {
-        for label in ["utf-8", "UTF-8", "iso-8859-1", "windows-1252", "shift_jis", "big5", "koi8-r"] {
+        for label in ["utf-8", "UTF-8", "iso-8859-1", "windows-1252", "big5", "koi8-r"] {
             #expect(String.Encoding(mimeCharset: label) == String.Encoding(ianaCharsetName: label))
         }
         #expect(String.Encoding(mimeCharset: "x-no-such-charset") == nil)
@@ -19,6 +19,37 @@ struct MIMECharsetTests {
     }
 
     #if canImport(Darwin)
+
+    @Test("Shift_JIS mail decodes as CP932 so ①, ㈱ and 髙 survive")
+    func shiftJISDecodesAsCP932() {
+        // "①㈱髙" in CP932: 87 40 / 87 8A / FB FC
+        #expect("=?Shift_JIS?B?h0CHivv8?=".decodeMIMEHeader() == "①㈱髙")
+    }
+
+    @Test("ISO-2022-JP with NEC row 13 decodes")
+    func iso2022JPWithNECExtensionDecodes() {
+        // ESC $ B 2D 21 ESC ( B = ①
+        #expect("=?ISO-2022-JP?B?GyRCLSEbKEI=?=".decodeMIMEHeader() == "①")
+    }
+
+    @Test("A raw Shift_JIS subject without encoded-words decodes")
+    func rawShiftJISSubjectDecodes() throws {
+        // "件名" in Shift_JIS: 8C 8F 96 BC
+        var raw = Data("Subject: ".utf8)
+        raw.append(contentsOf: [0x8C, 0x8F, 0x96, 0xBC])
+        raw.append(Data("\r\nFrom: a@example.com\r\n\r\nbody\r\n".utf8))
+        let message = try EMLParser.parse(raw)
+        #expect(message.subject == "件名")
+    }
+
+    @Test("An unlabelled Shift_JIS body decodes")
+    func unlabelledShiftJISBodyDecodes() throws {
+        // "日本語" in Shift_JIS: 93 FA 96 7B 8C EA
+        var raw = Data("Subject: test\r\nFrom: a@example.com\r\nContent-Type: text/plain\r\n\r\n".utf8)
+        raw.append(contentsOf: [0x93, 0xFA, 0x96, 0x7B, 0x8C, 0xEA])
+        let message = try EMLParser.parse(raw)
+        #expect(message.textBody == "日本語")
+    }
 
     // `A8 43` is the en dash in GBK and GB18030; GB2312 has no such
     // character. Mail labelled `gb2312` carries it all the same.

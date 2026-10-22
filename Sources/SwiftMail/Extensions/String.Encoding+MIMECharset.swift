@@ -47,7 +47,12 @@ extension String.Encoding {
             coreFoundationEncoding(.EUC_CN): gb18030,
             coreFoundationEncoding(.GBK_95): gb18030,
             coreFoundationEncoding(.dosChineseSimplif): gb18030,
-            coreFoundationEncoding(.EUC_KR): coreFoundationEncoding(.dosKorean)
+            coreFoundationEncoding(.EUC_KR): coreFoundationEncoding(.dosKorean),
+            // Japanese: mail labelled Shift_JIS is almost always CP932 (①, ㈱, 髙),
+            // and ISO-2022-JP often carries NEC/IBM extensions.
+            .shiftJIS: coreFoundationEncoding(.dosJapanese),
+            coreFoundationEncoding(.shiftJIS): coreFoundationEncoding(.dosJapanese),
+            .iso2022JP: coreFoundationEncoding(.ISO_2022_JP_2)
         ]
         #else
         // Without CoreFoundation these charsets have no converter to widen;
@@ -61,4 +66,38 @@ extension String.Encoding {
         String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(CFStringEncoding(encoding.rawValue)))
     }
     #endif
+}
+
+extension String.Encoding {
+    /// Legacy Japanese encodings tried before the Latin fallbacks for unlabelled
+    /// or mislabelled mail: ISO-2022-JP (with extensions), CP932, then EUC-JP.
+    static var japaneseFallbacks: [String.Encoding] {
+        #if canImport(CoreFoundation) && (os(macOS) || os(iOS) || os(tvOS) || os(watchOS) || os(visionOS))
+        return [
+            coreFoundationEncoding(.ISO_2022_JP_2),
+            coreFoundationEncoding(.dosJapanese),
+            coreFoundationEncoding(.EUC_JP)
+        ]
+        #else
+        return []
+        #endif
+    }
+}
+
+extension String {
+    /// Decodes unlabelled bytes as legacy Japanese only when the result actually
+    /// reads as Japanese (contains kana or kanji), so Latin-1 bytes such as NEL
+    /// are not misread as CP932 symbols.
+    static func plausibleJapanese(_ data: Data) -> String? {
+        for encoding in String.Encoding.japaneseFallbacks {
+            guard let text = String(data: data, encoding: encoding) else { continue }
+            let hasJapanese = text.unicodeScalars.contains { scalar in
+                (0x3040...0x30FF).contains(scalar.value)      // Hiragana and Katakana
+                    || (0x4E00...0x9FFF).contains(scalar.value) // CJK Unified Ideographs
+                    || (0xFF66...0xFF9F).contains(scalar.value) // Half-width Katakana
+            }
+            if hasJapanese { return text }
+        }
+        return nil
+    }
 }
