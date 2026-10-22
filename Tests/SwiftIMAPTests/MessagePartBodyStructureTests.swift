@@ -95,6 +95,76 @@ struct MessagePartBodyStructureTests {
         #expect(parts.first?.declaredCharset == "UTF-8")
     }
 
+    @Test(arguments: [
+        ("CHARSET", "FORMAT", "DELSP"),
+        ("Charset", "Format", "DelSp"),
+    ])
+    func textPartParametersAreReadInAnyNameCase(names: (String, String, String)) throws {
+        // A server reports parameter names as the sender wrote them.
+        let typed = "日本語の下書き"
+        let bytes = try #require(typed.data(using: .iso2022JP))
+        let fields = BodyStructure.Fields(
+            parameters: [names.0: "iso-2022-jp", names.1: "FLOWED", names.2: "YES"],
+            id: nil, contentDescription: nil, encoding: nil, octetCount: bytes.count)
+        let text = BodyStructure.Singlepart.Text(mediaSubtype: "plain", lineCount: 1)
+        let structure = BodyStructure.singlepart(BodyStructure.Singlepart(kind: .text(text), fields: fields))
+
+        let parts = [MessagePart](structure)
+
+        #expect(parts.count == 1)
+        guard parts.count == 1 else { return }
+        var part = parts[0]
+        part.data = bytes
+        #expect(part.declaredCharset == "iso-2022-jp")
+        #expect(part.contentTypeParameter(named: "format") == "FLOWED")
+        #expect(part.contentTypeParameter(named: "delsp") == "YES")
+        #expect(part.textContent == typed)
+    }
+
+    @Test
+    func aParameterValueStaysOneParameter() {
+        // BODYSTRUCTURE hands over a quoted value already unquoted; written back
+        // bare, its `;` would end it and `charset=windows-1251` would read as a
+        // charset the part never declared.
+        let value = "flowed; charset=windows-1251"
+        let fields = BodyStructure.Fields(
+            parameters: ["format": value], id: nil, contentDescription: nil, encoding: nil, octetCount: 12)
+        let text = BodyStructure.Singlepart.Text(mediaSubtype: "plain", lineCount: 1)
+        let structure = BodyStructure.singlepart(BodyStructure.Singlepart(kind: .text(text), fields: fields))
+
+        let parts = [MessagePart](structure)
+
+        #expect(parts.count == 1)
+        guard parts.count == 1 else { return }
+        var part = parts[0]
+        let typed = "Привет"
+        part.data = Data(typed.utf8)
+        #expect(part.contentTypeParameter(named: "format") == value)
+        #expect(part.declaredCharset == nil)
+        #expect(part.textContent == typed)
+    }
+
+    @Test(arguments: [
+        ("text/plain; format=flowed", "flowed"),
+        ("text/plain; Format=\"flowed\"", "flowed"),
+        ("text/plain; format=flowed (a comment)", "flowed"),
+        ("text/plain; format=\"fl\\\"owed\"", "fl\"owed"),
+    ])
+    func contentTypeParameterReadsAMIMEParameter(contentType: String, expected: String) {
+        let part = MessagePart(sectionString: "1", contentType: contentType, data: nil)
+        #expect(part.contentTypeParameter(named: "format") == expected)
+    }
+
+    @Test(arguments: [
+        "text/plain",
+        "text/plain; x-note=\"keep; format=flowed\"",
+    ])
+    func contentTypeParameterIsNilWhenAbsent(contentType: String) {
+        // A `format=` inside another parameter's quoted value is that value's text.
+        let part = MessagePart(sectionString: "1", contentType: contentType, data: nil)
+        #expect(part.contentTypeParameter(named: "format") == nil)
+    }
+
     @Test
     func rfc822WithMultipartNestedBodyProducesInnerParts() {
         // message/rfc822 wrapping multipart/alternative(text/plain, text/html)

@@ -114,10 +114,26 @@ extension Array where Element == MessagePart {
         // RFC 3676 `format` and `delsp` a `format=flowed` body is decoded by.
         for name in ["charset", "format", "delsp"] {
             if let value = part.fields.parameters.first(where: { $0.key.lowercased() == name })?.value {
-                contentType += "; \(name)=\(value)"
+                contentType += "; \(name)=\(parameterValue(value))"
             }
         }
         return contentType
+    }
+
+    /// A BODYSTRUCTURE parameter value written back as RFC 2045 writes it: bare
+    /// when it is a token, else a quoted-string, so a value holding `;`, `=` or
+    /// a space stays the one parameter it was rather than adding another.
+    private static func parameterValue(_ value: String) -> String {
+        // RFC 2045 §5.1 `tspecials`: the characters a token cannot hold.
+        let tspecials = Set("()<>@,;:\\\"/[]?=".unicodeScalars)
+        let isToken = !value.isEmpty && value.unicodeScalars.allSatisfy {
+            $0.value > 0x20 && $0.value < 0x7F && !tspecials.contains($0)
+        }
+        if isToken { return value }
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
     }
 
     /// Pull the disposition and filename out of a singlepart's Content-Type
