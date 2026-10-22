@@ -79,6 +79,23 @@ struct MessagePartBodyStructureTests {
     // MARK: - Tests
 
     @Test
+    func textPartKeepsTheParametersItsTextIsReadBy() {
+        // RFC 3676: a format=flowed body is decoded by its format and delsp
+        // parameters, as its charset decodes its bytes; other parameters stay out.
+        let fields = BodyStructure.Fields(
+            parameters: ["charset": "UTF-8", "format": "flowed", "delsp": "yes", "markup": "basic"],
+            id: nil, contentDescription: nil, encoding: nil, octetCount: 0)
+        let text = BodyStructure.Singlepart.Text(mediaSubtype: "plain", lineCount: 1)
+        let structure = BodyStructure.singlepart(BodyStructure.Singlepart(kind: .text(text), fields: fields))
+
+        let parts = [MessagePart](structure)
+
+        #expect(parts.count == 1)
+        #expect(parts.first?.contentType == "text/plain; charset=UTF-8; format=flowed; delsp=yes")
+        #expect(parts.first?.declaredCharset == "UTF-8")
+    }
+
+    @Test
     func rfc822WithMultipartNestedBodyProducesInnerParts() {
         // message/rfc822 wrapping multipart/alternative(text/plain, text/html)
         let nested = BodyStructure.multipart(
