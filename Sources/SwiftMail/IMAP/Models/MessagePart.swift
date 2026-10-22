@@ -147,7 +147,16 @@ public struct MessagePart: Sendable {
         }
 
         // Fallbacks for malformed/unknown charset labels in real-world mail.
-        let fallbackEncodings: [String.Encoding] = [.utf8, .windowsCP1252, .isoLatin1, .ascii]
+        if let text = String.iso2022JP(transferDecodedData) {
+            return text
+        }
+        if let text = String(data: transferDecodedData, encoding: .utf8) {
+            return text
+        }
+        if let text = String.plausibleJapanese(transferDecodedData) {
+            return text
+        }
+        let fallbackEncodings: [String.Encoding] = [.windowsCP1252, .isoLatin1, .ascii]
         for fallback in fallbackEncodings {
             if let text = String(data: transferDecodedData, encoding: fallback) {
                 return text
