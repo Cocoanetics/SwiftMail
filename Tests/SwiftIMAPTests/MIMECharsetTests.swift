@@ -18,6 +18,19 @@ struct MIMECharsetTests {
         #expect(String.Encoding(mimeCharset: "binary") == nil)
     }
 
+    @Test("A quoted or upper-case charset parameter is the declared charset")
+    func quotedCharsetParameterIsDeclared() {
+        let declared = { (contentType: String) in
+            MessagePart(sectionString: "1", contentType: contentType, data: Data()).declaredCharset
+        }
+        #expect(declared("text/plain; charset=iso-2022-jp") == "iso-2022-jp")
+        #expect(declared("text/plain; charset=\"iso-2022-jp\"") == "iso-2022-jp")
+        #expect(declared("text/plain; format=flowed; Charset=\"windows-1251\"") == "windows-1251")
+        #expect(declared("TEXT/PLAIN; CHARSET = UTF-8 (comment)") == "UTF-8")
+        #expect(declared("text/plain") == nil)
+        #expect(declared("text/plain; charset=\"\"") == nil)
+    }
+
     #if canImport(Darwin)
 
     // `A8 43` is the en dash in GBK and GB18030; GB2312 has no such
@@ -147,6 +160,18 @@ struct MIMECharsetTests {
             data: Data(Self.gb2312Zhongwen + [0xB0, 0x40])
         )
         #expect(part.textContent == "中文\u{7645}")
+    }
+
+    /// A quoted charset is the one the text is decoded in, not the fallback:
+    /// ISO-2022-JP read as Latin text keeps its escape sequences as characters.
+    @Test("Text under a quoted charset decodes in that charset")
+    func quotedCharsetDecodesText() {
+        let japanese = "日本語の下書き"
+        let bytes = japanese.data(using: .iso2022JP)!
+        for contentType in ["text/plain; charset=\"iso-2022-jp\"", "text/plain; CHARSET=\"ISO-2022-JP\""] {
+            let part = MessagePart(sectionString: "1", contentType: contentType, data: bytes)
+            #expect(part.textContent == japanese, "\(contentType)")
+        }
     }
 
     /// The declared charset wins, as in browsers and Thunderbird: UTF-8 bytes
