@@ -147,6 +147,9 @@ public struct MessagePart: Sendable {
         }
 
         // Fallbacks for malformed/unknown charset labels in real-world mail.
+        if let text = String.iso2022JP(transferDecodedData) {
+            return text
+        }
         if let text = String(data: transferDecodedData, encoding: .utf8) {
             return text
         }
