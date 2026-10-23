@@ -145,6 +145,36 @@ struct MessagePartBodyStructureTests {
     }
 
     @Test(arguments: [
+        #"f\lowed"#,
+        #"flo"wed"#,
+        #"tail\"#,
+        #"slash\"quote"#,
+        "x; delsp=yes",
+        " \t ",
+        "",
+    ])
+    func aParameterValueReadsBackAsWritten(value: String) {
+        // Quotes and backslashes are escaped in the quoted-string and unescaped
+        // by the reader; the value never changes and never becomes a second parameter.
+        let fields = BodyStructure.Fields(
+            parameters: ["charset": "UTF-8", "format": value, "delsp": "no"],
+            id: nil, contentDescription: nil, encoding: nil, octetCount: 9)
+        let text = BodyStructure.Singlepart.Text(mediaSubtype: "plain", lineCount: 1)
+        let structure = BodyStructure.singlepart(BodyStructure.Singlepart(kind: .text(text), fields: fields))
+
+        let parts = [MessagePart](structure)
+
+        #expect(parts.count == 1)
+        guard parts.count == 1 else { return }
+        var part = parts[0]
+        part.data = Data("body text".utf8)
+        #expect(part.contentTypeParameter(named: "FORMAT") == value)
+        #expect(part.contentTypeParameter(named: "delsp") == "no")
+        #expect(part.declaredCharset == "UTF-8")
+        #expect(part.textContent == "body text")
+    }
+
+    @Test(arguments: [
         ("text/plain; format=flowed", "flowed"),
         ("text/plain; Format=\"flowed\"", "flowed"),
         ("text/plain; format=flowed (a comment)", "flowed"),
