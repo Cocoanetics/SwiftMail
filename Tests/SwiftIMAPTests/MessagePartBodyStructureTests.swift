@@ -167,11 +167,46 @@ struct MessagePartBodyStructureTests {
         #expect(parts.count == 1)
         guard parts.count == 1 else { return }
         var part = parts[0]
+        // The written value is RFC 2045 syntax on its own, whatever the reader accepts.
+        let written = part.contentType
+        let start = written.range(of: "; format=")
+        let end = written.range(of: "; delsp=no", options: .backwards)
+        #expect(start != nil && end != nil, "unexpected content type \(written)")
+        if let start, let end, start.upperBound <= end.lowerBound {
+            let emitted = written[start.upperBound..<end.lowerBound]
+            #expect(Self.isMIMEParameterValue(emitted), "format=\(emitted) is not a token or a quoted-string")
+        }
         part.data = Data("body text".utf8)
         #expect(part.contentTypeParameter(named: "FORMAT") == value)
         #expect(part.contentTypeParameter(named: "delsp") == "no")
         #expect(part.declaredCharset == "UTF-8")
         #expect(part.textContent == "body text")
+    }
+
+    /// RFC 2045 §5.1 `value := token / quoted-string`, checked independently of the
+    /// reader: a token is one or more printable ASCII characters outside `tspecials`;
+    /// a quoted-string (RFC 822) is quoted, with a backslash escaping the next
+    /// character and no bare quote or line break inside.
+    private static func isMIMEParameterValue(_ value: Substring) -> Bool {
+        let tspecials = Set("()<>@,;:\\\"/[]?=".unicodeScalars)
+        let scalars = Array(value.unicodeScalars)
+        if !scalars.isEmpty, scalars.allSatisfy({ $0.value > 0x20 && $0.value < 0x7F && !tspecials.contains($0) }) {
+            return true
+        }
+        guard scalars.count >= 2, scalars.first == "\"", scalars.last == "\"" else { return false }
+        var index = 1
+        while index < scalars.count - 1 {
+            switch scalars[index] {
+            case "\\":
+                guard index + 1 < scalars.count - 1 else { return false }
+                index += 2
+            case "\"", "\r", "\n":
+                return false
+            default:
+                index += 1
+            }
+        }
+        return true
     }
 
     @Test(arguments: [
