@@ -428,7 +428,8 @@ struct MIMEParameterParsingTests {
         // The first occurrence of a repeated section stands.
         #expect(EMLParser.extractFilename(from: "application/pdf; name*0*=UTF-8''a; name*1*=b; name*1*=z") == "ab")
         // Literal sections from the first one on carry no charset (RFC 2231 §3).
-        #expect(EMLParser.extractFilename(from: "attachment; filename*0=\"long report\"; filename*1=\".pdf\"") == "long report.pdf")
+        let continued = "attachment; filename*0=\"long report\"; filename*1=\".pdf\""
+        #expect(EMLParser.extractFilename(from: continued) == "long report.pdf")
     }
 
     @Test("Reading a parameter with many continuation sections stays linear")
