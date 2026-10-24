@@ -22,9 +22,11 @@ extension SMTPServer {
             if blindFieldNames.contains(field.name.lowercased()) {
                 throw SMTPError.sendFailed("Header \(field.name) would show blind-copy recipients to every recipient")
             }
+            // Unfolding keeps the space or tab, so the first replacement cannot
+            // join a CRLF to the next whitespace into a fold the second one removes.
             let unfolded = field.value
-                .replacingOccurrences(of: "\r\n ", with: "")
-                .replacingOccurrences(of: "\r\n\t", with: "")
+                .replacingOccurrences(of: "\r\n ", with: " ")
+                .replacingOccurrences(of: "\r\n\t", with: "\t")
             if unfolded.unicodeScalars.contains(where: { $0 == "\r" || $0 == "\n" }) {
                 throw SMTPError.sendFailed("Header \(field.name) has a line break that would start a new header field")
             }

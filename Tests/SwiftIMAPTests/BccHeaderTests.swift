@@ -180,6 +180,32 @@ struct BccHeaderTests {
             #expect(testServer.appendedMessages.isEmpty)
         }
 
+        @Test("append and createDraft refuse an unsafe header field and append nothing", arguments: [
+            ["X-Note": "note\r\n\r\n \tcontinued"],
+            ["X-Note": "note\rX-Injected: yes"],
+            ["Bcc": "extra@example.com"],
+            ["X Note": "value"]
+        ], [false, true])
+        func keptCopyRefusesUnsafeHeader(headers: [String: String], createDraft: Bool) async throws {
+            var email = BccHeaderTests.email
+            email.additionalHeaders = headers
+            let testServer = try await Self.runTestServer { server in
+                await #expect(throws: IMAPError.self) {
+                    if createDraft {
+                        _ = try await server.createDraft(from: email, in: "Drafts")
+                    } else {
+                        _ = try await server.append(email: email, to: "Sent", flags: [.seen])
+                    }
+                }
+                // The same session stores a valid copy.
+                _ = try await server.append(email: BccHeaderTests.email, to: "Sent", flags: [.seen])
+            }
+            #expect(testServer.appendedMessages.count == 1)
+            let stored = String(bytes: testServer.appendedMessages.first ?? Data(), encoding: .utf8) ?? ""
+            #expect(stored.contains("Body text."))
+            #expect(!stored.contains("continued") && !stored.contains("X-Injected") && !stored.contains("extra@"))
+        }
+
         @Test("sendEmail delivers to BCC recipients without naming them")
         func sendEmailKeepsBccOutOfTheDeliveredCopy() async throws {
             let smtp = SMTPCaptureServer()
@@ -198,10 +224,16 @@ struct BccHeaderTests {
             #expect(!delivered.contains("second@example.com"))
         }
 
-        @Test("sendEmail refuses a blind-copy additional header and sends nothing")
-        func sendEmailRefusesBlindAdditionalHeader() async throws {
+        /// Unfolding "\r\n\r\n \t" one fold at a time, dropping each fold's
+        /// whitespace, would leave no line break and pass a blank line that ends
+        /// the header.
+        @Test("sendEmail refuses an unsafe additional header and sends nothing", arguments: [
+            ["Resent-Bcc": "resent@example.com"],
+            ["X-Note": "note\r\n\r\n \tcontinued"]
+        ])
+        func sendEmailRefusesUnsafeAdditionalHeader(headers: [String: String]) async throws {
             var email = BccHeaderTests.email
-            email.additionalHeaders = ["Resent-Bcc": "resent@example.com"]
+            email.additionalHeaders = headers
             let smtp = SMTPCaptureServer()
             try await smtp.start()
             let client = SMTPServer(host: "127.0.0.1", port: smtp.port, transportSecurity: .plainText)
@@ -304,8 +336,17 @@ struct BccHeaderTests {
 
         /// Runs `body` against an IMAP test server whose one mailbox holds
         /// `seeding` (when given), and returns the stopped server.
-        private static func runTestServer(
+        static func runTestServer(
             seeding message: String? = nil,
+            _ body: (IMAPServer) async throws -> Void
+        ) async throws -> IMAPTestServer {
+            try await runTestServer(seeding: message.map { Data($0.utf8) }, body)
+        }
+
+        /// Runs `body` against an IMAP test server whose one mailbox holds the
+        /// bytes `seeding` (when given), and returns the stopped server.
+        static func runTestServer(
+            seeding message: Data?,
             _ body: (IMAPServer) async throws -> Void
         ) async throws -> IMAPTestServer {
             let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -316,7 +357,7 @@ struct BccHeaderTests {
                 at: maildir.appendingPathComponent("new"), withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: tempRoot) }
             if let message {
-                try Data(message.utf8).write(to: maildir.appendingPathComponent("cur/1.eml"))
+                try message.write(to: maildir.appendingPathComponent("cur/1.eml"))
             }
 
             let testServer = try IMAPTestServer(maildirURL: maildir)

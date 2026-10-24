@@ -16,6 +16,8 @@ struct AdditionalHeaderLineBreakTests {
         ["X-Note": "note\r\nX-Injected: yes"],
         ["X-Note": "note\r\n \nBcc: \(blind)"],
         ["X-Note": "note\r\n"],
+        ["X-Note": "note\r\n\r\n \tBcc: \(blind)"],
+        ["X-Note": "note\r\n\r\n\t Bcc: \(blind)"],
         ["X-Note\r\nBcc": blind]
     ])
     func refusesUnfoldedLineBreak(headers: [String: String]) {
@@ -70,6 +72,7 @@ struct AdditionalHeaderLineBreakTests {
         ["X-Note": "note\rBcc: \(blind)"],
         ["X-Note": "note\nReply-To: \(blind)"],
         ["X-Note": "note\r\nBcc: \(blind)"],
+        ["X-Note": "note\r\n\r\n \tcontinued"],
         ["Bcc": blind],
         ["X Note": "p"]
     ])

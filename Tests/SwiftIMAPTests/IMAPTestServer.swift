@@ -442,6 +442,11 @@ final class IMAPTestServer {
                     continue
                 }
 
+                if let reply = fetchReply(tag: tag, command: command, args: args, selectedMailbox: selectedMailbox) {
+                    sendBytes(fd: fileDescriptor, reply)
+                    continue
+                }
+
                 let response = handleCommand(
                     tag: tag,
                     command: command,
@@ -502,7 +507,10 @@ final class IMAPTestServer {
     }
 
     private func sendLine(fd fileDescriptor: Int32, _ text: String) {
-        guard let data = text.data(using: .utf8) else { return }
+        sendBytes(fd: fileDescriptor, Data(text.utf8))
+    }
+
+    private func sendBytes(fd fileDescriptor: Int32, _ data: Data) {
         data.withUnsafeBytes { buf in
             guard let ptr = buf.baseAddress else { return }
             var sent = 0
@@ -569,8 +577,8 @@ final class IMAPTestServer {
                 guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
                 return handleUID(tag: tag, args: args)
             case "FETCH":
-                guard selectedMailbox != nil else { return "\(tag) NO No mailbox selected\r\n" }
-                return handleFetch(tag: tag, args: args, uidMode: false)
+                // With a mailbox selected, fetchReply answers.
+                return "\(tag) NO No mailbox selected\r\n"
             case "NAMESPACE":
                 return "* NAMESPACE ((\"\(personalNamespacePrefix)\" \"\(namespaceDelimiter)\")) NIL NIL\r\n"
                     + "\(tag) OK NAMESPACE completed\r\n"
@@ -600,8 +608,6 @@ final class IMAPTestServer {
             return "\(tag) NO Injected UID \(subcmd) failure\r\n"
         }
         switch subcmd {
-            case "FETCH":
-                return handleFetch(tag: tag, args: subargs, uidMode: true)
             case "SEARCH":
                 let uids = messages.map { String($0.uid) }.joined(separator: " ")
                 return "* SEARCH \(uids)\r\n\(tag) OK UID SEARCH completed\r\n"
@@ -641,7 +647,27 @@ final class IMAPTestServer {
         }
     }
 
-    private func handleFetch(tag: String, args: String, uidMode: Bool) -> String {
+    /// The reply to FETCH or UID FETCH in a selected mailbox, as bytes: its literals
+    /// carry the stored message bytes, which need not be UTF-8. Nil for any other
+    /// command, which `handleCommand` answers.
+    private func fetchReply(tag: String, command: String, args: String, selectedMailbox: String?) -> Data? {
+        guard selectedMailbox != nil else { return nil }
+        if command == "FETCH" {
+            return handleFetch(tag: tag, args: args, uidMode: false)
+        }
+        let parts = args.split(separator: " ", maxSplits: 1).map(String.init)
+        guard command == "UID", parts.first?.uppercased() == "FETCH", rejectedUIDSubcommand != "FETCH" else {
+            return nil
+        }
+        return handleFetch(tag: tag, args: parts.count > 1 ? parts[1] : "", uidMode: true)
+    }
+
+    /// `name {count}` and the bytes, an IMAP literal.
+    private static func literal(_ name: String, _ bytes: Data) -> Data {
+        Data("\(name) {\(bytes.count)}\r\n".utf8) + bytes
+    }
+
+    private func handleFetch(tag: String, args: String, uidMode: Bool) -> Data {
         let seqStr: String
         let itemsStr: String
 
@@ -651,7 +677,7 @@ final class IMAPTestServer {
             itemsStr = String(args[args.index(after: parenOpen)..<parenClose]).uppercased()
         } else {
             let fetchParts = args.split(separator: " ", maxSplits: 1).map(String.init)
-            guard fetchParts.count == 2 else { return "\(tag) BAD Invalid FETCH arguments\r\n" }
+            guard fetchParts.count == 2 else { return Data("\(tag) BAD Invalid FETCH arguments\r\n".utf8) }
             seqStr = fetchParts[0]
             itemsStr = fetchParts[1].uppercased()
         }
@@ -661,9 +687,9 @@ final class IMAPTestServer {
         if partialRequest != nil {
             switch partialFetchBehavior {
                 case .rejectWithBad:
-                    return "\(tag) BAD Partial FETCH ranges are unsupported\r\n"
+                    return Data("\(tag) BAD Partial FETCH ranges are unsupported\r\n".utf8)
                 case .rejectWithNo:
-                    return "\(tag) NO Partial FETCH is temporarily unavailable\r\n"
+                    return Data("\(tag) NO Partial FETCH is temporarily unavailable\r\n".utf8)
                 default:
                     break
             }
@@ -671,35 +697,35 @@ final class IMAPTestServer {
         let headerFieldNames = parseHeaderFieldNames(itemsStr)
         let mimeSections = parseMIMEHeaderSections(itemsStr)
         if !mimeSections.isEmpty, rejectsMIMEHeaderFetch {
-            return "\(tag) NO MIME header fetch is unavailable\r\n"
+            return Data("\(tag) NO MIME header fetch is unavailable\r\n".utf8)
         }
-        var response = ""
+        var response = Data()
 
         for msg in matched {
             let seqnum = (messages.firstIndex(where: { $0.uid == msg.uid }) ?? 0) + 1
-            var fetchItems: [String] = []
+            var fetchItems: [Data] = []
 
             if itemsStr.contains("UID") || uidMode {
-                fetchItems.append("UID \(msg.uid)")
+                fetchItems.append(Data("UID \(msg.uid)".utf8))
             }
             if itemsStr.contains("FLAGS") {
-                fetchItems.append("FLAGS (\\Seen)")
+                fetchItems.append(Data("FLAGS (\\Seen)".utf8))
             }
             if itemsStr.contains("ENVELOPE") {
-                fetchItems.append("ENVELOPE \(buildEnvelope(msg))")
+                fetchItems.append(Data("ENVELOPE \(buildEnvelope(msg))".utf8))
             }
             if itemsStr.contains("INTERNALDATE") {
-                fetchItems.append("INTERNALDATE \"\(msg.internalDate)\"")
+                fetchItems.append(Data("INTERNALDATE \"\(msg.internalDate)\"".utf8))
             }
             if itemsStr.contains("RFC822.SIZE") {
-                fetchItems.append("RFC822.SIZE \(msg.raw.count)")
+                fetchItems.append(Data("RFC822.SIZE \(msg.raw.count)".utf8))
             }
             if itemsStr.contains("BODYSTRUCTURE") {
-                fetchItems.append("BODYSTRUCTURE \(bodystructureOverride ?? buildBodystructure(msg))")
+                fetchItems.append(Data("BODYSTRUCTURE \(bodystructureOverride ?? buildBodystructure(msg))".utf8))
             }
             for section in mimeSections {
                 if let header = mimeHeaders[section] {
-                    fetchItems.append("BODY[\(section).MIME] {\(header.utf8.count)}\r\n\(header)")
+                    fetchItems.append(Self.literal("BODY[\(section).MIME]", Data(header.utf8)))
                 }
             }
             if let request = partialRequest, request.section == "1" {
@@ -707,31 +733,29 @@ final class IMAPTestServer {
             }
             if partialRequest == nil,
                itemsStr.contains("BODY.PEEK[1]") || itemsStr.contains("BODY[1]") {
-                let bodyString = String(data: msg.body, encoding: .utf8) ?? ""
-                fetchItems.append("BODY[1] {\(msg.body.count)}\r\n\(bodyString)")
+                fetchItems.append(Self.literal("BODY[1]", msg.body))
             }
             if itemsStr.contains("BODY[]") || itemsStr.contains("BODY.PEEK[]") {
-                let rawStr = String(data: msg.raw, encoding: .utf8) ?? ""
-                fetchItems.append("BODY[] {\(msg.raw.count)}\r\n\(rawStr)")
+                fetchItems.append(Self.literal("BODY[]", msg.raw))
             }
             if itemsStr.contains("BODY[HEADER]") || itemsStr.contains("BODY.PEEK[HEADER]") {
-                let headerStr = String(data: msg.headerData, encoding: .utf8) ?? ""
-                fetchItems.append("BODY[HEADER] {\(msg.headerData.count)}\r\n\(headerStr)")
+                fetchItems.append(Self.literal("BODY[HEADER]", msg.headerData))
             }
             if let names = headerFieldNames {
                 let block = Self.headerFieldsBlock(msg.headerData, names: names)
                 let echoed = names.joined(separator: " ")
-                fetchItems.append("BODY[HEADER.FIELDS (\(echoed))] {\(block.utf8.count)}\r\n\(block)")
+                fetchItems.append(Self.literal("BODY[HEADER.FIELDS (\(echoed))]", Data(block.utf8)))
             }
             if itemsStr.contains("BODY[TEXT]") || itemsStr.contains("BODY.PEEK[TEXT]") {
-                let bodyStr = String(data: msg.body, encoding: .utf8) ?? ""
-                fetchItems.append("BODY[TEXT] {\(msg.body.count)}\r\n\(bodyStr)")
+                fetchItems.append(Self.literal("BODY[TEXT]", msg.body))
             }
 
-            response += "* \(seqnum) FETCH (\(fetchItems.joined(separator: " ")))\r\n"
+            response += Data("* \(seqnum) FETCH (".utf8)
+            response += Data(fetchItems.joined(separator: Data(" ".utf8)))
+            response += Data(")\r\n".utf8)
         }
 
-        response += "\(tag) OK \(uidMode ? "UID " : "")FETCH completed\r\n"
+        response += Data("\(tag) OK \(uidMode ? "UID " : "")FETCH completed\r\n".utf8)
         return response
     }
 
@@ -798,19 +822,17 @@ final class IMAPTestServer {
     private func partialBodyFetchItem(
         _ request: PartialBodyRequest,
         body: Data
-    ) -> String {
+    ) -> Data {
         let start = min(request.offset, body.count)
         let end = min(start + request.count, body.count)
         let bytes = body.subdata(in: start..<end)
-        let bodyString = String(data: bytes, encoding: .utf8) ?? ""
         switch partialFetchBehavior {
             case .honor, .rejectWithBad, .rejectWithNo:
-                return "BODY[\(request.section)]<\(request.offset)> {\(bytes.count)}\r\n\(bodyString)"
+                return Self.literal("BODY[\(request.section)]<\(request.offset)>", bytes)
             case .wrongOffset:
-                return "BODY[\(request.section)]<\(request.offset + 1)> {\(bytes.count)}\r\n\(bodyString)"
+                return Self.literal("BODY[\(request.section)]<\(request.offset + 1)>", bytes)
             case .ignoreRange:
-                let wholeBody = String(data: body, encoding: .utf8) ?? ""
-                return "BODY[\(request.section)] {\(body.count)}\r\n\(wholeBody)"
+                return Self.literal("BODY[\(request.section)]", body)
         }
     }
 
