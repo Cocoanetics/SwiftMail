@@ -219,7 +219,8 @@ struct MessagePartBodyStructureTests {
                 dispositionAndLanguage: BodyStructure.DispositionAndLanguage(
                     disposition: BodyStructure.Disposition(kind: .init(rawValue: kind), parameters: [:])))
         }
-        let structure = BodyStructure.singlepart(BodyStructure.Singlepart(kind: .text(text), fields: fields, extension: ext))
+        let structure = BodyStructure.singlepart(
+            BodyStructure.Singlepart(kind: .text(text), fields: fields, extension: ext))
 
         let parts = [MessagePart](structure)
 
