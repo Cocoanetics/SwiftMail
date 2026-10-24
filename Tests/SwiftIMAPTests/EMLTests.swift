@@ -430,6 +430,15 @@ struct MIMEParameterParsingTests {
         // Literal sections from the first one on carry no charset (RFC 2231 §3).
         let continued = "attachment; filename*0=\"long report\"; filename*1=\".pdf\""
         #expect(EMLParser.extractFilename(from: continued) == "long report.pdf")
+        // Literal sections join in section order, and their `%` is text.
+        #expect(EMLParser.extractFilename(from: "attachment; filename*0=a; filename*1=b; filename*2=c") == "abc")
+        #expect(EMLParser.extractFilename(from: "application/pdf; name*0=a; name*1=b; name*2=c") == "abc")
+        #expect(EMLParser.extractFilename(from: "attachment; filename*0=report; filename*1=%2Etxt") == "report%2Etxt")
+        // A malformed encoded section after a literal one voids the value,
+        // so the plain spelling wins where the sender wrote one.
+        let malformed = "attachment; filename*0=report; filename*1*=%GG"
+        #expect(EMLParser.extractFilename(from: malformed + "; filename=fallback.pdf") == "fallback.pdf")
+        #expect(EMLParser.extractFilename(from: malformed) == nil)
     }
 
     @Test("Reading a parameter with many continuation sections stays linear")

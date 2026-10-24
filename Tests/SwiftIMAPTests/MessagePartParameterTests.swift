@@ -225,6 +225,9 @@ struct MessagePartParameterTests {
         ("text/plain; format*0=flo; format*1=wed", "flowed"),
         ("text/plain; format*0=\"flo\"; format*1*=%77ed", "flowed"),
         ("text/plain; format*0=flo; format*1*=%E9d; format=fixed", "fixed"),
+        ("text/plain; format*0=fl; format*1=o; format*2=wed", "flowed"),
+        ("text/plain; format*0=fl; format*1=%6Fwed", "fl%6Fwed"),
+        ("text/plain; format*0=flo; format*1*=%GG; format=fixed", "fixed"),
         ("text/plain; format=fixed; format*=utf-8''flowed", "flowed"),
         ("text/plain; format*=no-such-charset''flowed; format=fixed", "fixed")
     ])
@@ -235,7 +238,8 @@ struct MessagePartParameterTests {
 
     @Test(arguments: [
         "text/plain",
-        "text/plain; x-note=\"keep; format=flowed\""
+        "text/plain; x-note=\"keep; format=flowed\"",
+        "text/plain; format*0=flo; format*1*=%GG"
     ])
     func contentTypeParameterIsNilWhenAbsent(contentType: String) {
         // A `format=` inside another parameter's quoted value is that value's text.
