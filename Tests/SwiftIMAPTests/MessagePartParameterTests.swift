@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import SwiftMail
 import NIOIMAPCore
+import OrderedCollections
 
 /// Tests for the Content-Type parameters of a message part: those a BODYSTRUCTURE
 /// part's content type keeps, and how `contentTypeParameter(named:)` and
@@ -87,7 +88,43 @@ struct MessagePartParameterTests {
         let gbk = String.Encoding(mimeCharset: "gbk")
         #expect(gbk != nil)
         #expect(part.textContent == gbk.flatMap { String(data: bytes, encoding: $0) })
-        #expect(part.textContent != "\u{00A9}", "the UTF-8 reading of the same bytes")
+    }
+
+    @Test
+    func textPartReadsRFC2231PlainContinuedParameters() {
+        // RFC 2231 §3 continuations need not be encoded: with no charset to
+        // carry, a sender writes `name*0=` and `name*1=`, as Python's set_param
+        // does for a long plain value.
+        checkExtendedParameters(BodyStructure.Fields(
+            parameters: [
+                "charset*0": "g", "charset*1": "bk", "Format*0": "flo", "format*1": "wed", "delsp*0": "yes"
+            ],
+            id: nil, contentDescription: nil, encoding: nil, octetCount: 2))
+    }
+
+    @Test(arguments: [
+        ["charset*": "iso-8859-1''iso-8859-1"],
+        ["charset*0*": "''iso-8859", "charset*1": "-1"],
+        ["charset*0": "iso-8859", "charset*1": "-1"]
+    ])
+    func mediaPartReadsRFC2231Charset(parameters: [String: String]) {
+        // A charset is a parameter of more than text: application/xml carries
+        // one too (RFC 7303), in any of its spellings.
+        let bytes = Data([0x3C, 0x78, 0x3E, 0xE9, 0x3C, 0x2F, 0x78, 0x3E])
+        let fields = BodyStructure.Fields(
+            parameters: OrderedDictionary(uniqueKeysWithValues: parameters.sorted { $0.key < $1.key }),
+            id: nil, contentDescription: nil, encoding: nil, octetCount: bytes.count)
+        let structure = BodyStructure.singlepart(BodyStructure.Singlepart(
+            kind: .basic(Media.MediaType(topLevel: "application", sub: "xml")), fields: fields))
+
+        let parts = [MessagePart](structure)
+
+        #expect(parts.count == 1)
+        guard parts.count == 1 else { return }
+        var part = parts[0]
+        part.data = bytes
+        #expect(part.declaredCharset?.lowercased() == "iso-8859-1")
+        #expect(part.textContent == "<x>\u{00E9}</x>")
     }
 
     @Test
@@ -185,6 +222,9 @@ struct MessagePartParameterTests {
         ("text/plain; format=\"fl\\\"owed\"", "fl\"owed"),
         ("text/plain; format*=utf-8''flowed", "flowed"),
         ("text/plain; Format*0*=utf-8''flo; format*1=wed", "flowed"),
+        ("text/plain; format*0=flo; format*1=wed", "flowed"),
+        ("text/plain; format*0=\"flo\"; format*1*=%77ed", "flowed"),
+        ("text/plain; format*0=flo; format*1*=%E9d; format=fixed", "fixed"),
         ("text/plain; format=fixed; format*=utf-8''flowed", "flowed"),
         ("text/plain; format*=no-such-charset''flowed; format=fixed", "fixed")
     ])
