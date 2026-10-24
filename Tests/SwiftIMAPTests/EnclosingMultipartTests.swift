@@ -178,7 +178,10 @@ struct EnclosingMultipartTests {
 
     @Test("A comment in an .eml Content-Type is not part of the multipart subtype", arguments: [
         "multipart/Alternative (representation); boundary=b",
-        "multipart/Alternative (a; b); boundary=b"
+        "multipart/Alternative (a; b); boundary=b",
+        "multipart/(a; b)Alternative; boundary=b",
+        "multipart/Alternative (outer (inner) tail); boundary=b",
+        "multipart/Alternative (a \\) ; b); boundary=b"
     ])
     func emlSubtypeIgnoresComments(_ contentType: String) throws {
         let message = try Message(emlData: Data((
