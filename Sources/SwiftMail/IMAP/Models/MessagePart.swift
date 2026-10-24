@@ -117,18 +117,24 @@ public struct MessagePart: Sendable {
         }
     }
 
-    /// The charset declared in the Content-Type header (if present).
+    /// The charset declared in the Content-Type header (if present), read as a
+    /// MIME parameter: the name in any case, a quoted value unquoted. A content
+    /// type taken from a part's own header carries the value as the sender wrote
+    /// it, and `charset="iso-2022-jp"` is as common there as the bare form.
     public var declaredCharset: String? {
-        let charsetPattern = "charset=([^\\s;\"']+)"
-        guard let range = contentType.range(of: charsetPattern, options: .regularExpression) else {
+        guard let charset = contentTypeParameter(named: "charset")?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !charset.isEmpty else {
             return nil
         }
+        return charset
+    }
 
-        return String(contentType[range])
-            .replacingOccurrences(of: "charset=", with: "", options: .caseInsensitive)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\"", with: "")
-            .replacingOccurrences(of: "'", with: "")
+    /// The value of the Content-Type parameter `name`, read as a MIME parameter:
+    /// the name in any case, a quoted value unquoted, comments removed. Nil when
+    /// the content type has no such parameter. A text part's RFC 3676 `format`
+    /// and `delsp` say how its text is read, as its charset says how its bytes are.
+    public func contentTypeParameter(named name: String) -> String? {
+        EMLParser.extractHeaderParam(from: contentType, named: name)
     }
 
     /// The text content of the part
