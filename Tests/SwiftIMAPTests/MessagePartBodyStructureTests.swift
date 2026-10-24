@@ -204,6 +204,37 @@ struct MessagePartBodyStructureTests {
         #expect(parts[0].filename == "image123@example.com")
     }
 
+    @Test(arguments: ["plain", "html"])
+    func textPartWithCIDHasNoFilename(subtype: String) {
+        // A text part with a Content-ID (e.g. the root of multipart/related) is
+        // text to read, not a file: no filename is generated from its Content-ID.
+        var fields = emptyFields()
+        fields.id = "<root@example.com>"
+        let text = BodyStructure.Singlepart.Text(mediaSubtype: .init(subtype), lineCount: 3)
+        let structure = BodyStructure.singlepart(BodyStructure.Singlepart(kind: .text(text), fields: fields))
+
+        let parts = [MessagePart](structure)
+
+        #expect(parts.count == 1)
+        guard parts.count == 1 else { return }
+        #expect(parts[0].filename == nil)
+        #expect(parts[0].contentId == "<root@example.com>")
+    }
+
+    @Test
+    func textPartWithCIDKeepsItsOwnFilename() {
+        // A named text attachment keeps its name whether or not it has a Content-ID.
+        var fields = emptyFields()
+        fields.id = "<notes@example.com>"
+        fields.parameters = ["name": "notes.txt"]
+        let text = BodyStructure.Singlepart.Text(mediaSubtype: "plain", lineCount: 3)
+        let structure = BodyStructure.singlepart(BodyStructure.Singlepart(kind: .text(text), fields: fields))
+
+        let parts = [MessagePart](structure)
+
+        #expect(parts.first?.filename == "notes.txt")
+    }
+
     @Test
     func rfc822InsideMultipartMixed() {
         // multipart/mixed(text/plain, message/rfc822(multipart/alternative(text/plain, text/html)))
