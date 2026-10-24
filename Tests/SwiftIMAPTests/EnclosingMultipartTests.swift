@@ -46,7 +46,7 @@ struct EnclosingMultipartTests {
     /// writes for a body with an attachment.
     private static let mixedWithAlternative = multipart(.mixed, [
         multipart(.alternative, [text("plain"), text("html")]),
-        image(),
+        image()
     ])
 
     private static let mixed = EnclosingMultipart(path: [], subtype: "mixed")
@@ -90,7 +90,7 @@ struct EnclosingMultipartTests {
         #expect(parts.map(\.enclosingMultiparts) == [
             [Self.mixed, Self.alternative],
             [Self.mixed, Self.alternative],
-            [Self.mixed],
+            [Self.mixed]
         ])
     }
 
@@ -116,14 +116,14 @@ struct EnclosingMultipartTests {
     func attachedMessageMultipartSitsAtItsSection() {
         let structure = Self.multipart(.mixed, [
             Self.text("plain"),
-            Self.message(Self.multipart(.alternative, [Self.text("plain"), Self.text("html")])),
+            Self.message(Self.multipart(.alternative, [Self.text("plain"), Self.text("html")]))
         ])
         let parts = [MessagePart](structure)
         let inner = EnclosingMultipart(path: [2], subtype: "alternative")
 
         #expect(parts.map(\.section.description) == ["1", "2", "2.1", "2.2"])
         #expect(parts.map(\.enclosingMultiparts) == [
-            [Self.mixed], [Self.mixed], [Self.mixed, inner], [Self.mixed, inner],
+            [Self.mixed], [Self.mixed], [Self.mixed, inner], [Self.mixed, inner]
         ])
         #expect(parts.map { $0.branch(of: inner) } == [nil, nil, 1, 2])
 
@@ -132,7 +132,7 @@ struct EnclosingMultipartTests {
         guard embedded.count == 1 else { return }
         #expect(embedded[0].message.parts.map(\.enclosingMultiparts) == [
             [EnclosingMultipart(path: [], subtype: "alternative")],
-            [EnclosingMultipart(path: [], subtype: "alternative")],
+            [EnclosingMultipart(path: [], subtype: "alternative")]
         ], "inside the attached message, its multipart is the top-level body")
     }
 
