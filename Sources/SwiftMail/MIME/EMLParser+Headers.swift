@@ -61,7 +61,9 @@ extension EMLParser {
             .split(separator: lineFeed, omittingEmptySubsequences: false)
             .map { line -> String in
                 let lineData = Data(line.last == carriageReturn ? line.dropLast() : line)
-                return String(data: lineData, encoding: .utf8)
+                return String.iso2022JP(lineData)
+                    ?? String(data: lineData, encoding: .utf8)
+                    ?? String.plausibleJapanese(lineData)
                     ?? String(data: lineData, encoding: .isoLatin1)
                     ?? ""
             }
