@@ -53,6 +53,44 @@ struct MessagePartParameterTests {
     }
 
     @Test
+    func textPartReadsRFC2231ExtendedParameters() {
+        // RFC 2231 lets a sender write any parameter in extended form, which a
+        // server reports as written; Python's set_param with a tuple writes it.
+        checkExtendedParameters(BodyStructure.Fields(
+            parameters: ["charset*": "utf-8''gbk", "format*": "utf-8''flowed", "delsp*": "utf-8''yes"],
+            id: nil, contentDescription: nil, encoding: nil, octetCount: 2))
+    }
+
+    @Test
+    func textPartReadsRFC2231ContinuedParameters() {
+        // Numbered continuations, any name case, an empty charset prefix, and a
+        // plain parameter beside them.
+        checkExtendedParameters(BodyStructure.Fields(
+            parameters: ["Charset*0*": "utf-8''g", "Charset*1": "bk", "FORMAT*": "''flowed", "delsp": "yes"],
+            id: nil, contentDescription: nil, encoding: nil, octetCount: 2))
+    }
+
+    private func checkExtendedParameters(_ fields: BodyStructure.Fields) {
+        let bytes = Data([0xC2, 0xA9])
+        let text = BodyStructure.Singlepart.Text(mediaSubtype: "plain", lineCount: 1)
+        let structure = BodyStructure.singlepart(BodyStructure.Singlepart(kind: .text(text), fields: fields))
+
+        let parts = [MessagePart](structure)
+
+        #expect(parts.count == 1)
+        guard parts.count == 1 else { return }
+        var part = parts[0]
+        part.data = bytes
+        #expect(part.declaredCharset == "gbk")
+        #expect(part.contentTypeParameter(named: "format") == "flowed")
+        #expect(part.contentTypeParameter(named: "delsp") == "yes")
+        let gbk = String.Encoding(mimeCharset: "gbk")
+        #expect(gbk != nil)
+        #expect(part.textContent == gbk.flatMap { String(data: bytes, encoding: $0) })
+        #expect(part.textContent != "\u{00A9}", "the UTF-8 reading of the same bytes")
+    }
+
+    @Test
     func aParameterValueStaysOneParameter() {
         // BODYSTRUCTURE hands over a quoted value already unquoted; written back
         // bare, its `;` would end it and `charset=windows-1251` would read as a
@@ -144,7 +182,11 @@ struct MessagePartParameterTests {
         ("text/plain; format=flowed", "flowed"),
         ("text/plain; Format=\"flowed\"", "flowed"),
         ("text/plain; format=flowed (a comment)", "flowed"),
-        ("text/plain; format=\"fl\\\"owed\"", "fl\"owed")
+        ("text/plain; format=\"fl\\\"owed\"", "fl\"owed"),
+        ("text/plain; format*=utf-8''flowed", "flowed"),
+        ("text/plain; Format*0*=utf-8''flo; format*1=wed", "flowed"),
+        ("text/plain; format=fixed; format*=utf-8''flowed", "flowed"),
+        ("text/plain; format*=no-such-charset''flowed; format=fixed", "fixed")
     ])
     func contentTypeParameterReadsAMIMEParameter(contentType: String, expected: String) {
         let part = MessagePart(sectionString: "1", contentType: contentType, data: nil)

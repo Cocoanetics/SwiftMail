@@ -133,8 +133,13 @@ public struct MessagePart: Sendable {
     /// the name in any case, a quoted value unquoted, comments removed. Nil when
     /// the content type has no such parameter. A text part's RFC 3676 `format`
     /// and `delsp` say how its text is read, as its charset says how its bytes are.
+    ///
+    /// An RFC 2231 extended value (`charset*=utf-8''gbk`, or numbered
+    /// continuations) is read first; when it is absent or cannot be decoded, the
+    /// plain spelling is read, as for filenames.
     public func contentTypeParameter(named name: String) -> String? {
-        EMLParser.extractHeaderParam(from: contentType, named: name)
+        EMLParser.extractExtendedHeaderParam(from: contentType, named: name)
+            ?? EMLParser.extractHeaderParam(from: contentType, named: name)
     }
 
     /// The text content of the part
