@@ -34,6 +34,8 @@ final class IMAPTestServer {
         let subject: String
         let from: String
         let to: String
+        let cc: String
+        let bcc: String
         let date: String
         let internalDate: String  // IMAP format: "DD-Mon-YYYY HH:MM:SS +ZZZZ"
         let messageID: String
@@ -854,7 +856,9 @@ final class IMAPTestServer {
         let fromAddr = buildAddrList(msg.from)
         let toAddr = buildAddrList(msg.to)
         let msgID = quote(msg.messageID)
-        return "(\(date) \(subject) \(fromAddr) \(fromAddr) \(fromAddr) \(toAddr) NIL NIL NIL \(msgID))"
+        let ccAddr = buildAddrList(msg.cc)
+        let bccAddr = buildAddrList(msg.bcc)
+        return "(\(date) \(subject) \(fromAddr) \(fromAddr) \(fromAddr) \(toAddr) \(ccAddr) \(bccAddr) NIL \(msgID))"
     }
 
     private func buildAddrList(_ header: String) -> String {
@@ -996,6 +1000,8 @@ final class IMAPTestServer {
             subject: header("Subject"),
             from: header("From"),
             to: header("To"),
+            cc: header("Cc"),
+            bcc: header("Bcc"),
             date: dateStr,
             internalDate: internalDate,
             messageID: header("Message-ID"),

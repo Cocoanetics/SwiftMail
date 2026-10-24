@@ -2,8 +2,8 @@ import Foundation
 import Testing
 @testable import SwiftMail
 
-/// A copy the sender keeps (a Sent copy) names its BCC recipients; a message
-/// handed to SMTP never does (RFC 5322 section 3.6.3).
+/// A copy the sender keeps (a draft, a Sent copy) names its BCC recipients; a
+/// message handed to SMTP never does (RFC 5322 section 3.6.3).
 @Suite("Bcc header")
 struct BccHeaderTests {
     static let email = Email(
@@ -68,7 +68,7 @@ struct BccHeaderTests {
         #expect(line.contains("second@example.com"))
     }
 
-    /// A message may have BCC recipients only, with or without CC.
+    /// A draft may have BCC recipients only, with or without CC.
     @Test("a kept copy with no To recipient names its BCC recipients only in its Bcc header",
           arguments: [1, 2], [false, true])
     func keptCopyWithoutTo(bccCount: Int, withCc: Bool) {
@@ -99,23 +99,43 @@ struct BccHeaderTests {
         #expect(!content.contains("second@example.com"))
         #expect(!Self.headerSection(content).lowercased().contains("bcc:"))
     }
+
+    // MARK: - Blind-copy fields in additionalHeaders (SMTP send)
+
+    @Test("an SMTP send refuses a blind-copy field given as an additional header",
+          arguments: ["Bcc", "bcc", "Resent-Bcc", " RESENT-BCC "])
+    func sendRefusesBlindAdditionalHeader(name: String) {
+        var email = Self.email
+        email.additionalHeaders = [name: "extra@example.com"]
+        #expect(throws: SMTPError.self) { try SMTPServer.prepareEmailForSend(email, capabilities: []) }
+    }
+
+    @Test("an SMTP send keeps other additional headers")
+    func sendKeepsOtherAdditionalHeaders() throws {
+        var email = Self.email
+        email.additionalHeaders = ["X-Bcc-Note": "n", "Resent-To": "resent@example.com"]
+        let prepared = try SMTPServer.prepareEmailForSend(email, capabilities: [])
+        let content = String(bytes: prepared.contentData, encoding: .utf8) ?? ""
+        #expect(Self.fields("X-Bcc-Note", in: content) == ["n"])
+        #expect(Self.fields("Resent-To", in: content) == ["resent@example.com"])
+        #expect(!content.contains("hidden@example.com"))
+    }
 }
 
 #if os(macOS)
-    @Suite("Bcc header over IMAP", .serialized, .timeLimit(.minutes(1)))
+    @Suite("Bcc header over IMAP and SMTP", .serialized, .timeLimit(.minutes(1)))
     struct BccAppendTests {
-        static let withBcc = Email(
-            sender: EmailAddress(address: "sender@example.com"),
-            recipients: [EmailAddress(address: "to@example.com")],
-            bccRecipients: [EmailAddress(name: "Hidden", address: "hidden@example.com")],
-            subject: "Copy with Bcc",
-            textBody: "Copy body."
-        )
-
         @Test("a message appended over IMAP names its BCC recipients")
         func appendWritesBcc() async throws {
             let appended = try await Self.appendedMessage { server in
-                try await server.append(email: Self.withBcc, to: "Sent", flags: [.seen])
+                let email = Email(
+                    sender: EmailAddress(address: "sender@example.com"),
+                    recipients: [EmailAddress(address: "to@example.com")],
+                    bccRecipients: [EmailAddress(name: "Hidden", address: "hidden@example.com")],
+                    subject: "Copy with Bcc",
+                    textBody: "Copy body."
+                )
+                try await server.append(email: email, to: "Sent", flags: [.seen])
             }
             let stored = String(bytes: appended, encoding: .utf8) ?? ""
             #expect(BccHeaderTests.fields("To", in: stored) == ["to@example.com"])
@@ -124,23 +144,170 @@ struct BccHeaderTests {
             #expect(stored.contains("Copy body."))
         }
 
-        /// sendDraft sends a draft's stored bytes to every recipient, so a draft
-        /// must not name its BCC recipients.
-        @Test("a draft created over IMAP names no BCC recipient")
-        func createDraftWritesNoBcc() async throws {
+        @Test("a draft created over IMAP names its BCC recipients")
+        func createDraftWritesBcc() async throws {
             let appended = try await Self.appendedMessage { server in
-                try await server.createDraft(from: Self.withBcc, in: "Drafts")
+                let email = Email(
+                    sender: EmailAddress(address: "sender@example.com"),
+                    recipients: [EmailAddress(address: "to@example.com")],
+                    bccRecipients: [EmailAddress(name: "Hidden", address: "hidden@example.com")],
+                    subject: "Draft with Bcc",
+                    textBody: "Draft body."
+                )
+                try await server.createDraft(from: email, in: "Drafts")
             }
             let stored = String(bytes: appended, encoding: .utf8) ?? ""
             #expect(BccHeaderTests.fields("To", in: stored) == ["to@example.com"])
-            #expect(BccHeaderTests.fields("Bcc", in: stored).isEmpty)
-            #expect(!stored.contains("hidden@example.com"))
-            #expect(stored.contains("Copy body."))
+            #expect(BccHeaderTests.fields("Cc", in: stored).isEmpty)
+            #expect(BccHeaderTests.fields("Bcc", in: stored) == ["Hidden <hidden@example.com>"])
+            #expect(stored.contains("Draft body."))
         }
 
-        /// Runs `body` against an IMAP test server with an empty mailbox, and
-        /// returns the one message it APPENDed.
-        private static func appendedMessage(_ body: (IMAPServer) async throws -> Void) async throws -> Data {
+        /// A message copied with `Email(message:)` keeps a lone carriage return
+        /// in a header value; stored as it was, it would add a Bcc field that
+        /// a later send of the draft delivers to.
+        @Test("createDraft refuses a copied message whose header would add a field, and appends nothing")
+        func createDraftRefusesInjectedField() async throws {
+            let eml = "From: sender@example.com\r\nTo: to@example.com\r\nSubject: Copied\r\n"
+                + "X-Note: note\rBcc: attacker@example.com\r\n\r\nBody.\r\n"
+            let email = try Email(message: Message(emlData: Data(eml.utf8)))
+            #expect(email.bccRecipients.isEmpty)
+            let testServer = try await Self.runTestServer { server in
+                await #expect(throws: IMAPError.self) {
+                    try await server.createDraft(from: email, in: "Drafts")
+                }
+            }
+            #expect(testServer.appendedMessages.isEmpty)
+        }
+
+        @Test("sendEmail delivers to BCC recipients without naming them")
+        func sendEmailKeepsBccOutOfTheDeliveredCopy() async throws {
+            let smtp = SMTPCaptureServer()
+            try await smtp.start()
+            let client = SMTPServer(host: "127.0.0.1", port: smtp.port, transportSecurity: .plainText)
+            try await client.connect()
+            _ = try await client.sendEmail(BccHeaderTests.email)
+            try await client.disconnect()
+            try await smtp.stop()
+
+            #expect(smtp.recipients.sorted()
+                == ["cc@example.com", "hidden@example.com", "second@example.com", "to@example.com"])
+            let delivered = String(bytes: smtp.content, encoding: .utf8) ?? ""
+            #expect(delivered.contains("Body text."))
+            #expect(!delivered.contains("hidden@example.com"))
+            #expect(!delivered.contains("second@example.com"))
+        }
+
+        @Test("sendEmail refuses a blind-copy additional header and sends nothing")
+        func sendEmailRefusesBlindAdditionalHeader() async throws {
+            var email = BccHeaderTests.email
+            email.additionalHeaders = ["Resent-Bcc": "resent@example.com"]
+            let smtp = SMTPCaptureServer()
+            try await smtp.start()
+            let client = SMTPServer(host: "127.0.0.1", port: smtp.port, transportSecurity: .plainText)
+            try await client.connect()
+            await #expect(throws: SMTPError.self) { try await client.sendEmail(email) }
+            try await client.disconnect()
+            try await smtp.stop()
+            #expect(smtp.recipients.isEmpty)
+            #expect(smtp.content.isEmpty)
+        }
+
+        /// Sending a draft that names BCC recipients delivers to them, sends no
+        /// one a copy that names them, and files a Sent copy that does.
+        @Test("sendDraft delivers to BCC recipients without naming them, and the Sent copy names them")
+        func sendDraftKeepsBccOutOfTheDeliveredCopy() async throws {
+            let draft = [
+                "From: sender@example.com",
+                "To: to@example.com",
+                "Bcc: Hidden <hidden@example.com>",
+                "Subject: Draft with Bcc",
+                "Message-ID: <draft-bcc@example.com>",
+                "",
+                "Draft body.",
+                ""
+            ].joined(separator: "\r\n")
+            let smtp = SMTPCaptureServer()
+            try await smtp.start()
+            let testServer = try await Self.runTestServer(seeding: draft) { server in
+                let client = SMTPServer(host: "127.0.0.1", port: smtp.port, transportSecurity: .plainText)
+                try await client.connect()
+                _ = try await server.sendDraft(uid: UID(1), via: client, from: "Drafts", to: "Sent")
+                try await client.disconnect()
+            }
+            try await smtp.stop()
+            #expect(testServer.appendedMessages.count == 1)
+            let appended = try #require(testServer.appendedMessages.first)
+
+            // The draft is retired only after its Sent copy is stored.
+            let commands = testServer.commandLog.map { $0.uppercased() }
+            let append = commands.firstIndex { $0.contains(" APPEND ") }
+            let store = commands.firstIndex {
+                $0.contains(" STORE ") && $0.contains("+FLAGS") && $0.contains("\\DELETED")
+            }
+            let expunge = commands.firstIndex { $0.contains("EXPUNGE") }
+            #expect(append != nil && store != nil && expunge != nil)
+            if let append, let store, let expunge {
+                #expect(append < store && store < expunge)
+            }
+
+            #expect(smtp.recipients.sorted() == ["hidden@example.com", "to@example.com"])
+            let delivered = String(bytes: smtp.content, encoding: .utf8) ?? ""
+            #expect(delivered.contains("Draft body."))
+            #expect(!delivered.contains("hidden@example.com"))
+            let sentCopy = (String(bytes: appended, encoding: .utf8) ?? "")
+                .components(separatedBy: "\r\n\r\n").first ?? ""
+            #expect(sentCopy.components(separatedBy: "\r\n").contains("Bcc: Hidden <hidden@example.com>"))
+        }
+
+        /// A draft whose header holds a lone carriage return or a Resent-Bcc
+        /// field is refused before anything reaches SMTP, and stays in the
+        /// Drafts folder as it was.
+        @Test("sendDraft refuses a draft it cannot send without disclosing a blind recipient",
+              arguments: ["\rX-Note: odd", "Resent-Bcc: resent@example.com",
+                          "Bcc\r\n : leak@example.com", "Bcc\u{0B}: leak@example.com",
+                          "X-Note: odd\n"])
+        func sendDraftRefusesUnsafeHeader(line: String) async throws {
+            let draft = "From: sender@example.com\r\nTo: to@example.com\r\n\(line)\r\n"
+                + "Bcc: hidden@example.com\r\nSubject: Draft\r\nMessage-ID: <draft-cr@example.com>\r\n"
+                + "\r\nDraft body.\r\n"
+            let smtp = SMTPCaptureServer()
+            try await smtp.start()
+            let testServer = try await Self.runTestServer(seeding: draft) { server in
+                let client = SMTPServer(host: "127.0.0.1", port: smtp.port, transportSecurity: .plainText)
+                try await client.connect()
+                await #expect(throws: IMAPError.self) {
+                    try await server.sendDraft(uid: UID(1), via: client, from: "Drafts", to: "Sent")
+                }
+                try await client.disconnect()
+            }
+            try await smtp.stop()
+
+            #expect(smtp.recipients.isEmpty)
+            #expect(smtp.content.isEmpty)
+            #expect(testServer.appendedMessages.isEmpty)
+            let commands = testServer.commandLog.map { $0.uppercased() }
+            #expect(commands.contains { $0.contains("FETCH") })
+            #expect(!commands.contains { $0.contains("STORE") || $0.contains("EXPUNGE") })
+        }
+
+        /// Runs `body` against an IMAP test server whose one mailbox holds
+        /// `seeding` (when given), and returns the one message it APPENDed.
+        private static func appendedMessage(
+            seeding message: String? = nil,
+            _ body: (IMAPServer) async throws -> Void
+        ) async throws -> Data {
+            let messages = try await runTestServer(seeding: message, body).appendedMessages
+            #expect(messages.count == 1)
+            return try #require(messages.first)
+        }
+
+        /// Runs `body` against an IMAP test server whose one mailbox holds
+        /// `seeding` (when given), and returns the stopped server.
+        private static func runTestServer(
+            seeding message: String? = nil,
+            _ body: (IMAPServer) async throws -> Void
+        ) async throws -> IMAPTestServer {
             let tempRoot = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
             let maildir = tempRoot.appendingPathComponent("Maildir")
             try FileManager.default.createDirectory(
@@ -148,6 +315,9 @@ struct BccHeaderTests {
             try FileManager.default.createDirectory(
                 at: maildir.appendingPathComponent("new"), withIntermediateDirectories: true)
             defer { try? FileManager.default.removeItem(at: tempRoot) }
+            if let message {
+                try Data(message.utf8).write(to: maildir.appendingPathComponent("cur/1.eml"))
+            }
 
             let testServer = try IMAPTestServer(maildirURL: maildir)
             try testServer.start()
@@ -158,9 +328,7 @@ struct BccHeaderTests {
                 try await body(server)
                 try await server.disconnect()
             }
-            let messages = testServer.appendedMessages
-            #expect(messages.count == 1)
-            return try #require(messages.first)
+            return testServer
         }
     }
 #endif

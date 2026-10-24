@@ -41,15 +41,17 @@ extension IMAPServer {
 
      This helper builds the MIME body using ``Email/constructContent(use8BitMIME:includeBccHeader:)``
      and streams it to the server using the IMAP `APPEND` command. An appended
-     message is a copy the sender keeps (a Sent copy), so it names its BCC
-     recipients in a `Bcc` header; otherwise the copy would lose them. For a
-     mailbox other people read (a shared folder), append the content of
+     message is a copy the sender keeps (a draft, a Sent copy), so it names its
+     BCC recipients in a `Bcc` header; otherwise a draft would lose them. For
+     a mailbox other people read (a shared folder), append the content of
      ``Email/constructContent(use8BitMIME:includeBccHeader:)`` without the
      header through ``append(rawMessage:to:flags:internalDate:)`` instead,
-     ending it with a CRLF as this method does. Do not send a message appended
-     this way with ``sendDraft(uid:via:from:to:)``, which sends the stored bytes,
-     `Bcc` header included, to every recipient.
-     ``createDraft(from:in:date:additionalFlags:)`` writes a draft without it.
+     ending it with a CRLF as this method does.
+
+     The header fields get the check ``SMTPServer/sendEmail(_:)`` makes: a field
+     name that is not an RFC 5322 field name, a `Bcc` or `Resent-Bcc` field in
+     ``Email/additionalHeaders``, or a line break in a value that is not a fold
+     throws ``IMAPError/invalidArgument(_:)`` and nothing is appended.
 
      - Parameters:
         - email: The email to append.
@@ -69,7 +71,7 @@ extension IMAPServer {
             throw IMAPError.invalidArgument("Mailbox name must not be empty")
         }
 
-        var content = canonicalizeCRLF(email.constructContent(use8BitMIME: true, includeBccHeader: true))
+        var content = canonicalizeCRLF(try email.keptCopyContent(use8BitMIME: true))
         if !content.hasSuffix("\r\n") {
             content.append("\r\n")
         }
@@ -81,8 +83,9 @@ extension IMAPServer {
      Create a brand-new draft message by appending the provided email to the drafts mailbox.
 
      The method automatically sets the `\\Draft` flag and relies on the server's drafts mailbox if no
-     custom mailbox is supplied. The draft names no BCC recipient:
-     ``sendDraft(uid:via:from:to:)`` sends its stored bytes to every recipient.
+     custom mailbox is supplied. The draft names its BCC recipients in a `Bcc` header, so a
+     client that resumes it keeps them; ``sendDraft(uid:via:from:to:)`` removes the header from
+     the copy it delivers.
 
      - Parameters:
         - email: The email content to store as a draft.
@@ -116,9 +119,6 @@ extension IMAPServer {
             headers["X-Uniform-Type-Identifier"] = "com.apple.mail-draft"
         }
         draft.additionalHeaders = headers
-        // sendDraft sends a draft's stored bytes to every recipient, so a draft
-        // written here names no BCC recipient.
-        draft.bccRecipients = []
 
         return try await append(email: draft, to: targetMailbox, flags: flags, internalDate: date)
     }

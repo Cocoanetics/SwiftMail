@@ -33,6 +33,13 @@ extension SMTPServer {
          no recipients, an invalid address, or a message exceeding the
          server-advertised `SIZE` limit. These are proven pre-submission
          failures and can follow normal retry policy.
+       - ``SMTPError/sendFailed(_:)``, before the dialogue starts, when the
+         header would not be read as written: an ``Email/additionalHeaders``
+         name that is not a header field name, a `Bcc` or `Resent-Bcc` field
+         (put BCC recipients in ``Email/bccRecipients``), or a CR or LF other
+         than a fold (CRLF, then a space or tab) in any header value, including
+         ``Email/messageID`` and the sender domain a generated Message-ID
+         takes. Retrying the same ``Email`` fails the same way.
        - `CancellationError` if the task is cancelled before the dialogue starts.
      - Note:
        - All public operations on one ``SMTPServer`` are queued so commands,
@@ -96,10 +103,14 @@ extension SMTPServer {
         return result
     }
 
-    /// Send a pre-built RFC 822 message (e.g., a draft fetched from IMAP).
+    /// Send a pre-built RFC 822 message.
     ///
     /// Unlike ``sendEmail(_:)`` which constructs the MIME body from an ``Email``
     /// struct, this method transmits an already-formatted message verbatim as raw bytes.
+    /// Every recipient receives those bytes, so a message that names BCC recipients
+    /// in a `Bcc` header, such as a stored draft, must have it removed first; to send
+    /// a draft from an IMAP mailbox, use ``IMAPServer/sendDraft(uid:via:from:to:)``,
+    /// which does that.
     ///
     /// Recipient handling is all-or-nothing: the first rejected `RCPT TO` aborts
     /// the transaction (with a best-effort `RSET`) and the message is transmitted
@@ -341,6 +352,7 @@ extension SMTPServer {
     static func prepareEmailForSend(_ email: Email, capabilities: [String]) throws -> PreparedEmailForSend {
         let use8BitMIME = capabilities.contains("8BITMIME")
         let preparedContent = email.preparedContent(use8BitMIME: use8BitMIME)
+        try checkHeaderFields(preparedContent.headerFields)
         let maximumMessageSizeOctets = maximumMessageSizeOctets(from: capabilities)
 
         if let maximumMessageSizeOctets,
