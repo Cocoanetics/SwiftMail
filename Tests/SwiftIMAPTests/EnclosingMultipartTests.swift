@@ -136,6 +136,27 @@ struct EnclosingMultipartTests {
         ], "inside the attached message, its multipart is the top-level body")
     }
 
+    @Test("An extracted message keeps the paths of its nested multiparts, relative to itself",
+          arguments: [false, true])
+    func extractedMessageRebasesNestedMultiparts(deep: Bool) throws {
+        let carried = Self.message(Self.multipart(.mixed, [
+            Self.multipart(.alternative, [Self.text("plain"), Self.text("html")]),
+            Self.text("plain")
+        ]))
+        let structure = Self.multipart(.mixed, deep
+            ? [Self.multipart(.related, [Self.text("plain"), carried]), Self.text("plain")]
+            : [Self.text("plain"), carried])
+        let message = Message(header: MessageInfo(sequenceNumber: SequenceNumber(1)), parts: [MessagePart](structure))
+        let nested = try #require(message.embeddedMessagesWithParts.first).message
+        let alternative = EnclosingMultipart(path: [1], subtype: "alternative")
+
+        #expect(nested.parts.map(\.section.description) == ["1.1", "1.2", "2"])
+        #expect(nested.parts.map(\.enclosingMultiparts) == [
+            [Self.mixed, alternative], [Self.mixed, alternative], [Self.mixed]
+        ])
+        #expect(nested.parts.map { $0.branch(of: alternative) } == [1, 2, nil])
+    }
+
     // MARK: - EML
 
     @Test("Parts parsed from an .eml record the same multiparts as from its BODYSTRUCTURE")
@@ -153,6 +174,33 @@ struct EnclosingMultipartTests {
             "From: sender@example.com\r\nSubject: One\r\nContent-Type: text/plain\r\n\r\nBody\r\n".utf8))
 
         #expect(message.parts.map(\.enclosingMultiparts) == [[]])
+    }
+
+    @Test("A comment in an .eml Content-Type is not part of the multipart subtype", arguments: [
+        "multipart/Alternative (representation); boundary=b",
+        "multipart/Alternative (a; b); boundary=b"
+    ])
+    func emlSubtypeIgnoresComments(_ contentType: String) throws {
+        let message = try Message(emlData: Data((
+            "From: sender@example.com\r\nSubject: Two\r\nContent-Type: \(contentType)\r\n\r\n"
+            + "--b\r\nContent-Type: text/plain\r\n\r\nfirst\r\n"
+            + "--b\r\nContent-Type: text/plain\r\n\r\nsecond\r\n--b--\r\n").utf8))
+        let alternative = EnclosingMultipart(path: [], subtype: "alternative")
+
+        #expect(message.parts.map(\.section.description) == ["1", "2"])
+        #expect(message.parts.map(\.enclosingMultiparts) == [[alternative], [alternative]])
+    }
+
+    @Test("A nested multipart the .eml parser keeps opaque still records its enclosing multipart",
+          arguments: ["multipart/alternative", "multipart/alternative; boundary=missing"])
+    func opaqueEMLMultipartKeepsItsEnclosingMultipart(_ contentType: String) throws {
+        let message = try Message(emlData: Data((
+            "From: sender@example.com\r\nSubject: Opaque\r\nContent-Type: multipart/mixed; boundary=b\r\n\r\n"
+            + "--b\r\nContent-Type: \(contentType)\r\n\r\nopaque bytes\r\n--b--\r\n").utf8))
+
+        #expect(message.parts.map(\.section.description) == ["1"])
+        #expect(message.parts.map(\.data) == [Data("opaque bytes".utf8)])
+        #expect(message.parts.map(\.enclosingMultiparts) == [[Self.mixed]])
     }
 
     // MARK: - Copies and coding
@@ -181,6 +229,18 @@ struct EnclosingMultipartTests {
         #expect(older.removeValue(forKey: "enclosingMultiparts") != nil)
         let olderData = try JSONSerialization.data(withJSONObject: older)
         #expect(try JSONDecoder().decode(MessagePart.self, from: olderData).enclosingMultiparts == [])
+    }
+
+    @Test("Both initializers keep the multiparts they are given")
+    func initializersKeepMultiparts() {
+        let enclosing = EnclosingMultipart(path: [1], subtype: "alternative")
+        let parts = [
+            MessagePart(section: Section([1, 2]), contentType: "text/plain", enclosingMultiparts: [enclosing]),
+            MessagePart(sectionString: "1.2", contentType: "text/plain", enclosingMultiparts: [enclosing])
+        ]
+
+        #expect(parts.map(\.enclosingMultiparts) == [[enclosing], [enclosing]])
+        #expect(parts.map { $0.branch(of: enclosing) } == [2, 2])
     }
 
     @Test("A multipart subtype is stored lowercased")

@@ -8,9 +8,11 @@ extension EMLParser {
     // MARK: - Header Parameter Extraction
 
     /// Extract the MIME type (e.g. "text/html") from a full Content-Type value.
+    /// RFC 2045 comments are not part of it: `multipart/alternative (a; b)` is
+    /// `multipart/alternative`.
     static func extractMIMEType(from contentType: String) -> String {
-        let parts = contentType.split(separator: ";", maxSplits: 1)
-        return parts.first.map { String($0).trimmingCharacters(in: .whitespaces) } ?? contentType
+        guard let type = parameterSegments(of: contentType).first else { return contentType }
+        return removingComments(from: type).trimmingCharacters(in: .whitespaces)
     }
 
     // The branches are the MIME lexical states rather than independent paths.
