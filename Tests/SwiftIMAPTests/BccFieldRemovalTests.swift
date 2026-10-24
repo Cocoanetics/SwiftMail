@@ -115,7 +115,8 @@ struct BccFieldRemovalTests {
         "To: you@example.com\r\nBcc: hidden@example.com\r\n\nBody\r\n"
     ])
     func refusesBareLFInHeader(raw: String) {
-        #expect(throws: IMAPError.self) { try Self.strip(raw) }
+        let error = #expect(throws: IMAPError.self) { try Self.strip(raw) }
+        #expect(BccHeaderTests.isInvalidArgument(error))
     }
 
     @Test("keeps bare line feeds in the body")

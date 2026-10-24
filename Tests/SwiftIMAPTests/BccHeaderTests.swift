@@ -23,6 +23,12 @@ struct BccHeaderTests {
     }
 
     /// The unfolded body of every header field named `name` (any case), in order.
+    /// Whether `error` is the permanent refusal of an argument the caller wrote.
+    static func isInvalidArgument(_ error: IMAPError?) -> Bool {
+        guard case .invalidArgument = error else { return false }
+        return true
+    }
+
     static func fields(_ name: String, in content: String) -> [String] {
         let unfolded = headerSection(content).replacingOccurrences(of: "\r\n ", with: " ")
             .replacingOccurrences(of: "\r\n\t", with: " ")
@@ -190,13 +196,14 @@ struct BccHeaderTests {
             var email = BccHeaderTests.email
             email.additionalHeaders = headers
             let testServer = try await Self.runTestServer { server in
-                await #expect(throws: IMAPError.self) {
+                let error = await #expect(throws: IMAPError.self) {
                     if createDraft {
                         _ = try await server.createDraft(from: email, in: "Drafts")
                     } else {
                         _ = try await server.append(email: email, to: "Sent", flags: [.seen])
                     }
                 }
+                #expect(BccHeaderTests.isInvalidArgument(error))
                 // The same session stores a valid copy.
                 _ = try await server.append(email: BccHeaderTests.email, to: "Sent", flags: [.seen])
             }
@@ -308,9 +315,10 @@ struct BccHeaderTests {
             let testServer = try await Self.runTestServer(seeding: draft) { server in
                 let client = SMTPServer(host: "127.0.0.1", port: smtp.port, transportSecurity: .plainText)
                 try await client.connect()
-                await #expect(throws: IMAPError.self) {
+                let error = await #expect(throws: IMAPError.self) {
                     try await server.sendDraft(uid: UID(1), via: client, from: "Drafts", to: "Sent")
                 }
+                #expect(BccHeaderTests.isInvalidArgument(error))
                 try await client.disconnect()
             }
             try await smtp.stop()

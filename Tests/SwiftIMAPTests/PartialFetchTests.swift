@@ -105,6 +105,29 @@ struct PartialFetchTests {
         }
     }
 
+    @Test("Partial fetches return a body's bytes as stored, not as UTF-8 text")
+    func keepsNonUTF8Bytes() async throws {
+        let body = Data([0x61, 0xE9, 0x62, 0xFF, 0x0D, 0x0A, 0x63])
+        let fixture = try makeFixture(body: body)
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let testServer = try IMAPTestServer(maildirURL: fixture.maildir)
+        try testServer.start()
+
+        try await testServer.run {
+            let server = try await connectedServer(testServer)
+            let byUID = try await server.fetchPart(
+                section: Section([1]), of: UID(1), offset: 0, count: body.count
+            )
+            let bySequence = try await server.fetchPart(
+                section: Section([1]), of: SwiftMail.SequenceNumber(1), offset: 1, count: 3
+            )
+            #expect(byUID == body)
+            #expect(bySequence == body.subdata(in: 1..<4))
+            #expect(testServer.commandLog.contains { $0.contains("BODY.PEEK[1]<0.7>") })
+            try await server.disconnect()
+        }
+    }
+
     @Test("Ignored and malformed ranges are rejected")
     func rejectsInvalidResponses() async throws {
         let cases: [(IMAPTestServer.PartialFetchBehavior, Data)] = [

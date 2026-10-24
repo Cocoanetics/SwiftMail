@@ -79,7 +79,8 @@ struct AdditionalHeaderLineBreakTests {
     func keptCopyRefusesUnsafeHeader(headers: [String: String]) {
         var email = BccHeaderTests.email
         email.additionalHeaders = headers
-        #expect(throws: IMAPError.self) { try email.keptCopyContent(use8BitMIME: true) }
+        let error = #expect(throws: IMAPError.self) { try email.keptCopyContent(use8BitMIME: true) }
+        #expect(BccHeaderTests.isInvalidArgument(error))
     }
 
     @Test("a copy kept over IMAP refuses a Message-ID or sender domain with a line break")
