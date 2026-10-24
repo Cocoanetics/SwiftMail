@@ -256,7 +256,7 @@ struct MIMECharsetTests {
     }
 
     /// A quoted charset is the one the text is decoded in, not the fallback:
-    /// ISO-2022-JP read as Latin text keeps its escape sequences as characters.
+    /// Windows-1251 text read as Windows-1252 comes out as Latin mojibake.
     @Test("Text under a quoted charset decodes in that charset")
     func quotedCharsetDecodesText() {
         let japanese = "日本語の下書き"
@@ -265,6 +265,15 @@ struct MIMECharsetTests {
             let part = MessagePart(sectionString: "1", contentType: contentType, data: bytes)
             #expect(part.textContent == japanese, "\(contentType)")
         }
+        // Unlabelled ISO-2022-JP is recognised by its escape sequences, but no
+        // fallback can tell Windows-1251 bytes from Windows-1252 ones.
+        let cyrillic = "Привет"
+        let part = MessagePart(
+            sectionString: "1",
+            contentType: "text/plain; Charset=\"windows-1251\"",
+            data: cyrillic.data(using: .windowsCP1251)
+        )
+        #expect(part.textContent == cyrillic)
     }
 
     /// The declared charset wins, as in browsers and Thunderbird: UTF-8 bytes
