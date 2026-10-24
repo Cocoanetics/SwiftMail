@@ -14,16 +14,23 @@ extension Array where Element == MessagePart {
      inner parts (text/html, text/plain, nested attachments) while keeping the
      message/rfc822 part itself as an attachment entry with envelope metadata.
 
+     Each part records the multipart bodies that enclose it
+     (``MessagePart/enclosingMultiparts``).
+
      - Parameter structure: The body structure to process
      - Parameter sectionPath: Path representing the section numbering, default is empty
      */
     public init(_ structure: BodyStructure, sectionPath: [Int] = []) {
+        self.init(structure, sectionPath: sectionPath, enclosing: [])
+    }
+
+    private init(_ structure: BodyStructure, sectionPath: [Int], enclosing: [EnclosingMultipart]) {
         self = []
         switch structure {
             case .singlepart(let part):
-                appendSinglepart(part, sectionPath: sectionPath)
+                appendSinglepart(part, sectionPath: sectionPath, enclosing: enclosing)
             case .multipart(let multipart):
-                appendMultipart(multipart, sectionPath: sectionPath)
+                appendMultipart(multipart, sectionPath: sectionPath, enclosing: enclosing)
         }
     }
 
@@ -31,7 +38,8 @@ extension Array where Element == MessagePart {
     /// it, then recurse into the embedded body of any `message/rfc822` part.
     private mutating func appendSinglepart(
         _ part: BodyStructure.Singlepart,
-        sectionPath: [Int]
+        sectionPath: [Int],
+        enclosing: [EnclosingMultipart]
     ) {
         let section = Section(sectionPath.isEmpty ? [1] : sectionPath)
         let contentType = Self.contentType(for: part)
@@ -63,22 +71,26 @@ extension Array where Element == MessagePart {
             contentId: contentId,
             size: size,
             data: nil,
-            embeddedMessageInfo: embeddedMessageInfo
+            embeddedMessageInfo: embeddedMessageInfo,
+            enclosingMultiparts: enclosing
         ))
 
         if case .message(let message) = part.kind {
-            appendEmbeddedRFC822(message.body, sectionPath: sectionPath)
+            appendEmbeddedRFC822(message.body, sectionPath: sectionPath, enclosing: enclosing)
         }
     }
 
     /// Recursively walk a multipart structure, numbering children per RFC 3501.
     private mutating func appendMultipart(
         _ multipart: BodyStructure.Multipart,
-        sectionPath: [Int]
+        sectionPath: [Int],
+        enclosing: [EnclosingMultipart]
     ) {
+        let enclosing = enclosing + [EnclosingMultipart(
+            path: sectionPath, subtype: multipart.mediaSubtype.debugDescription)]
         for (index, childPart) in multipart.parts.enumerated() {
             let childSectionPath = sectionPath.isEmpty ? [index + 1] : sectionPath + [index + 1]
-            self.append(contentsOf: [MessagePart](childPart, sectionPath: childSectionPath))
+            self.append(contentsOf: [MessagePart](childPart, sectionPath: childSectionPath, enclosing: enclosing))
         }
     }
 
@@ -87,14 +99,15 @@ extension Array where Element == MessagePart {
     /// is at parent.1.
     private mutating func appendEmbeddedRFC822(
         _ body: BodyStructure,
-        sectionPath: [Int]
+        sectionPath: [Int],
+        enclosing: [EnclosingMultipart]
     ) {
         let parentPath = sectionPath.isEmpty ? [1] : sectionPath
         switch body {
             case .multipart:
-                self.append(contentsOf: [MessagePart](body, sectionPath: parentPath))
+                self.append(contentsOf: [MessagePart](body, sectionPath: parentPath, enclosing: enclosing))
             case .singlepart:
-                self.append(contentsOf: [MessagePart](body, sectionPath: parentPath + [1]))
+                self.append(contentsOf: [MessagePart](body, sectionPath: parentPath + [1], enclosing: enclosing))
         }
     }
 

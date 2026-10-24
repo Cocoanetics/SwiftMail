@@ -43,7 +43,8 @@ extension Array where Element == MessagePart {
                 contentId: part.contentId,
                 size: part.size,
                 data: part.data,
-                embeddedMessageInfo: part.embeddedMessageInfo
+                embeddedMessageInfo: part.embeddedMessageInfo,
+                enclosingMultiparts: part.enclosingMultiparts
             )
         }
     }

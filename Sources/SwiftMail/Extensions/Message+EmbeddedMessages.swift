@@ -64,7 +64,8 @@ public extension Message {
                     contentId: candidate.contentId,
                     size: candidate.size,
                     data: candidate.data,
-                    embeddedMessageInfo: candidate.embeddedMessageInfo
+                    embeddedMessageInfo: candidate.embeddedMessageInfo,
+                    enclosingMultiparts: candidate.enclosingMultiparts.rebased(onto: prefix)
                 )
             }
 
