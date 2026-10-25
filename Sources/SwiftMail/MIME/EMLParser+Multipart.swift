@@ -7,17 +7,20 @@ extension EMLParser {
 
     // MARK: - MIME Body Parsing
 
-    /// Parse the body into MessagePart(s) based on Content-Type.
+    /// Parse the body into MessagePart(s) based on Content-Type. `enclosing`:
+    /// the multipart bodies around this one, outermost first.
     static func parseParts(
         contentType: String,
         encoding: String?,
         bodyData: Data,
-        sectionPath: [Int]
+        sectionPath: [Int],
+        enclosing: [EnclosingMultipart] = []
     ) -> [MessagePart] {
         let lowercased = contentType.lowercased()
 
         if lowercased.hasPrefix("multipart/") {
-            return parseMultipart(contentType: contentType, bodyData: bodyData, sectionPath: sectionPath)
+            return parseMultipart(
+                contentType: contentType, bodyData: bodyData, sectionPath: sectionPath, enclosing: enclosing)
         } else {
             // Single part
             let section = sectionPath.isEmpty ? [1] : sectionPath
@@ -31,7 +34,8 @@ extension EMLParser {
                 encoding: encoding,
                 filename: filename,
                 contentId: nil,
-                data: bodyData
+                data: bodyData,
+                enclosingMultiparts: enclosing
             )
             return [part]
         }
@@ -43,8 +47,14 @@ extension EMLParser {
     /// message size.
     private static let maxBoundaryLength = 70
 
-    /// Parse a multipart body, splitting by boundary.
-    static func parseMultipart(contentType: String, bodyData: Data, sectionPath: [Int]) -> [MessagePart] {
+    /// Parse a multipart body, splitting by boundary. Each part records this
+    /// multipart, after `enclosing`, as enclosing it.
+    static func parseMultipart(
+        contentType: String,
+        bodyData: Data,
+        sectionPath: [Int],
+        enclosing: [EnclosingMultipart] = []
+    ) -> [MessagePart] {
         guard let boundary = extractBoundary(from: contentType),
               !boundary.isEmpty, boundary.utf8.count <= maxBoundaryLength else {
             // No usable boundary — treat as opaque
@@ -52,7 +62,8 @@ extension EMLParser {
             return [MessagePart(
                 section: Section(section),
                 contentType: extractMIMEType(from: contentType),
-                data: bodyData
+                data: bodyData,
+                enclosingMultiparts: enclosing
             )]
         }
 
@@ -65,12 +76,18 @@ extension EMLParser {
             return bodyData.isEmpty ? [] : [MessagePart(
                 section: Section(section),
                 contentType: extractMIMEType(from: contentType),
-                data: bodyData
+                data: bodyData,
+                enclosingMultiparts: enclosing
             )]
         }
 
+        // The text after the first "/", so an empty subtype stays empty.
+        let mimeType = extractMIMEType(from: contentType)
+        let subtype = mimeType.firstIndex(of: "/")
+            .map { mimeType[mimeType.index(after: $0)...].trimmingCharacters(in: .whitespaces) } ?? ""
+        let enclosing = enclosing + [EnclosingMultipart(path: sectionPath, subtype: subtype)]
         return rawParts.enumerated().flatMap { index, rawPart -> [MessagePart] in
-            buildMultipartChild(rawPart: rawPart, index: index, sectionPath: sectionPath)
+            buildMultipartChild(rawPart: rawPart, index: index, sectionPath: sectionPath, enclosing: enclosing)
         }
     }
 
@@ -187,11 +204,13 @@ extension EMLParser {
     }
 
     /// Build the `MessagePart` value(s) for a single raw multipart child.
-    /// Recursively descends into nested multipart parts.
+    /// Recursively descends into nested multipart parts. `enclosing`: the
+    /// multipart bodies around the child, outermost first.
     static func buildMultipartChild(
         rawPart: Data,
         index: Int,
-        sectionPath: [Int]
+        sectionPath: [Int],
+        enclosing: [EnclosingMultipart] = []
     ) -> [MessagePart] {
         let partNumber = index + 1
         let childPath = sectionPath.isEmpty ? [partNumber] : sectionPath + [partNumber]
@@ -211,7 +230,8 @@ extension EMLParser {
 
         if partContentType.lowercased().hasPrefix("multipart/") {
             // Recursive multipart
-            return parseMultipart(contentType: partContentType, bodyData: partBody, sectionPath: childPath)
+            return parseMultipart(
+                contentType: partContentType, bodyData: partBody, sectionPath: childPath, enclosing: enclosing)
         }
 
         let part = MessagePart(
@@ -221,7 +241,8 @@ extension EMLParser {
             encoding: partEncoding?.trimmingCharacters(in: .whitespaces),
             filename: filename.flatMap { decodeRFC2047($0) },
             contentId: partContentId,
-            data: partBody
+            data: partBody,
+            enclosingMultiparts: enclosing
         )
         return [part]
     }

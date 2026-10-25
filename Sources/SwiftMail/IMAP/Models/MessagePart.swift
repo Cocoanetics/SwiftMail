@@ -37,6 +37,14 @@ public struct MessagePart: Sendable {
     /// Other MessageInfo fields (uid, flags, parts, etc.) are defaults.
     public let embeddedMessageInfo: MessageInfo?
 
+    /// The multipart bodies that enclose this part, outermost first, so a
+    /// reader can tell the alternatives of a `multipart/alternative` (versions
+    /// of one body, RFC 2046 section 5.1.4) from the pieces of a
+    /// `multipart/mixed` or `multipart/related` body. Filled when the parts are
+    /// built from a BODYSTRUCTURE response or parsed from an `.eml`; empty for a
+    /// part that is the whole body, or one built without its MIME structure.
+    public let enclosingMultiparts: [EnclosingMultipart]
+
     /// Creates a new message part
     /// - Parameters:
     ///   - section: The section number (e.g., [1, 2, 3] represents "1.2.3")
@@ -48,6 +56,7 @@ public struct MessagePart: Sendable {
     ///   - size: The body size in octets from BODYSTRUCTURE (optional)
     ///   - data: The content data (optional)
     ///   - embeddedMessageInfo: Envelope headers for message/rfc822 parts (optional)
+    ///   - enclosingMultiparts: The multipart bodies enclosing the part, outermost first (optional)
     public init(
         section: Section,
         contentType: String,
@@ -57,7 +66,8 @@ public struct MessagePart: Sendable {
         contentId: String? = nil,
         size: Int? = nil,
         data: Data? = nil,
-        embeddedMessageInfo: MessageInfo? = nil
+        embeddedMessageInfo: MessageInfo? = nil,
+        enclosingMultiparts: [EnclosingMultipart] = []
     ) {
         self.section = section
         self.contentType = contentType
@@ -68,6 +78,7 @@ public struct MessagePart: Sendable {
         self.size = size
         self.data = data
         self.embeddedMessageInfo = embeddedMessageInfo
+        self.enclosingMultiparts = enclosingMultiparts
     }
 
     /// Initialize a new message part with a dot-separated string section number
@@ -78,6 +89,7 @@ public struct MessagePart: Sendable {
     ///   - filename: The filename
     ///   - contentId: The content ID
     ///   - data: The content data (optional)
+    ///   - enclosingMultiparts: The multipart bodies enclosing the part, outermost first (optional)
     public init(
         sectionString: String,
         contentType: String,
@@ -87,7 +99,8 @@ public struct MessagePart: Sendable {
         contentId: String? = nil,
         size: Int? = nil,
         data: Data? = nil,
-        embeddedMessageInfo: MessageInfo? = nil
+        embeddedMessageInfo: MessageInfo? = nil,
+        enclosingMultiparts: [EnclosingMultipart] = []
     ) {
         self.section = Section(sectionString)
         self.contentType = contentType
@@ -98,6 +111,19 @@ public struct MessagePart: Sendable {
         self.size = size
         self.data = data
         self.embeddedMessageInfo = embeddedMessageInfo
+        self.enclosingMultiparts = enclosingMultiparts
+    }
+
+    /// The number of the child of `multipart` that holds this part (1 for its
+    /// first child), or nil when `multipart` does not enclose this part. Two
+    /// parts of a `multipart/alternative` are in the same alternative when this
+    /// number is the same for both.
+    public func branch(of multipart: EnclosingMultipart) -> Int? {
+        let components = section.components
+        guard enclosingMultiparts.contains(multipart),
+              components.count > multipart.path.count,
+              components.starts(with: multipart.path) else { return nil }
+        return components[multipart.path.count]
     }
 
     /// Get a suggested filename for the part
@@ -192,6 +218,7 @@ public struct MessagePart: Sendable {
 extension MessagePart: Codable {
     private enum CodingKeys: String, CodingKey {
         case section, contentType, disposition, encoding, filename, contentId, size, data, embeddedMessageInfo
+        case enclosingMultiparts
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -206,6 +233,7 @@ extension MessagePart: Codable {
         try container.encodeIfPresent(size, forKey: .size)
         try container.encodeIfPresent(data, forKey: .data)
         try container.encodeIfPresent(embeddedMessageInfo, forKey: .embeddedMessageInfo)
+        try container.encode(enclosingMultiparts, forKey: .enclosingMultiparts)
     }
 
     public init(from decoder: Decoder) throws {
@@ -220,5 +248,7 @@ extension MessagePart: Codable {
         size = try container.decodeIfPresent(Int.self, forKey: .size)
         data = try container.decodeIfPresent(Data.self, forKey: .data)
         embeddedMessageInfo = try container.decodeIfPresent(MessageInfo.self, forKey: .embeddedMessageInfo)
+        enclosingMultiparts = try container.decodeIfPresent(
+            [EnclosingMultipart].self, forKey: .enclosingMultiparts) ?? []
     }
 }
