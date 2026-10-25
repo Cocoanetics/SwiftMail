@@ -181,7 +181,10 @@ jobs:
     # Package.swift also drops the ArgumentParser-based CLI demos on Android
     # (keyed on the TARGET_OS_ANDROID env the action sets) to avoid a spurious
     # explicit-module dependency cycle.
-    runs-on: ubuntu-latest
+    #
+    # Pinned to 24.04: ubuntu-latest moved to 26.04, for which download.swift.org
+    # has no Swift 6.3.2 host toolchain yet (the toolchain download 404s).
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
