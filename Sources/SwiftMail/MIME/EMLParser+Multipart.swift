@@ -81,8 +81,10 @@ extension EMLParser {
             )]
         }
 
-        let subtype = extractMIMEType(from: contentType).split(separator: "/", maxSplits: 1).last
-            .map { String($0).trimmingCharacters(in: .whitespaces) } ?? ""
+        // The text after the first "/", so an empty subtype stays empty.
+        let mimeType = extractMIMEType(from: contentType)
+        let subtype = mimeType.firstIndex(of: "/")
+            .map { mimeType[mimeType.index(after: $0)...].trimmingCharacters(in: .whitespaces) } ?? ""
         let enclosing = enclosing + [EnclosingMultipart(path: sectionPath, subtype: subtype)]
         return rawParts.enumerated().flatMap { index, rawPart -> [MessagePart] in
             buildMultipartChild(rawPart: rawPart, index: index, sectionPath: sectionPath, enclosing: enclosing)

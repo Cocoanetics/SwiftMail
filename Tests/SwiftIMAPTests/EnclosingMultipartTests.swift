@@ -194,6 +194,22 @@ struct EnclosingMultipartTests {
         #expect(message.parts.map(\.enclosingMultiparts) == [[alternative], [alternative]])
     }
 
+    @Test("An .eml multipart with an empty subtype records it empty", arguments: [
+        "multipart/; boundary=b",
+        "multipart/(comment); boundary=b",
+        "multipart/ ; boundary=b"
+    ])
+    func emlEmptySubtypeStaysEmpty(_ contentType: String) throws {
+        let message = try Message(emlData: Data((
+            "From: sender@example.com\r\nSubject: Empty\r\nContent-Type: \(contentType)\r\n\r\n"
+            + "--b\r\nContent-Type: text/plain\r\n\r\nfirst\r\n"
+            + "--b\r\nContent-Type: text/plain\r\n\r\nsecond\r\n--b--\r\n").utf8))
+        let unnamed = EnclosingMultipart(path: [], subtype: "")
+
+        #expect(message.parts.map(\.section.description) == ["1", "2"])
+        #expect(message.parts.map(\.enclosingMultiparts) == [[unnamed], [unnamed]])
+    }
+
     @Test("A nested multipart the .eml parser keeps opaque still records its enclosing multipart",
           arguments: ["multipart/alternative", "multipart/alternative; boundary=missing"])
     func opaqueEMLMultipartKeepsItsEnclosingMultipart(_ contentType: String) throws {
