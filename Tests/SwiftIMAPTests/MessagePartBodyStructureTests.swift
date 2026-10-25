@@ -190,10 +190,11 @@ struct MessagePartBodyStructureTests {
         #expect(parts[0].filename == "With CID.eml")
     }
 
-    @Test
-    func nonMessagePartUsesCIDAsFilename() {
-        // A basic image part with Content-ID but no filename — should use CID
-        let mediaType = Media.MediaType(topLevel: "image", sub: "png")
+    @Test(arguments: [("image", "png"), ("application", "pdf")])
+    func nonMessagePartUsesCIDAsFilename(topLevel: String, sub: String) {
+        // A basic media part (an image, or any other non-text type) with a
+        // Content-ID but no filename — should use CID
+        let mediaType = Media.MediaType(topLevel: topLevel, sub: sub)
         var fields = emptyFields()
         fields.id = "<image123@example.com>"
         let part = BodyStructure.Singlepart(kind: .basic(mediaType), fields: fields)
@@ -202,6 +203,46 @@ struct MessagePartBodyStructureTests {
         let parts = [MessagePart](structure)
 
         #expect(parts[0].filename == "image123@example.com")
+    }
+
+    @Test(arguments: ["plain", "html", "csv"], [nil, "inline", "attachment"] as [String?])
+    func textPartWithCIDHasNoFilename(subtype: String, disposition: String?) {
+        // A text part with a Content-ID (e.g. the root of multipart/related) is
+        // text to read, not a file: no filename is generated from its Content-ID,
+        // whatever its subtype and disposition.
+        var fields = emptyFields()
+        fields.id = "<root@example.com>"
+        let text = BodyStructure.Singlepart.Text(mediaSubtype: .init(subtype), lineCount: 3)
+        let ext = disposition.map { kind in
+            BodyStructure.Singlepart.Extension(
+                digest: nil,
+                dispositionAndLanguage: BodyStructure.DispositionAndLanguage(
+                    disposition: BodyStructure.Disposition(kind: .init(rawValue: kind), parameters: [:])))
+        }
+        let structure = BodyStructure.singlepart(
+            BodyStructure.Singlepart(kind: .text(text), fields: fields, extension: ext))
+
+        let parts = [MessagePart](structure)
+
+        #expect(parts.count == 1)
+        guard parts.count == 1 else { return }
+        #expect(parts[0].filename == nil)
+        #expect(parts[0].disposition?.lowercased() == disposition)
+        #expect(parts[0].contentId == "<root@example.com>")
+    }
+
+    @Test
+    func textPartWithCIDKeepsItsOwnFilename() {
+        // A named text attachment keeps its name whether or not it has a Content-ID.
+        var fields = emptyFields()
+        fields.id = "<notes@example.com>"
+        fields.parameters = ["name": "notes.txt"]
+        let text = BodyStructure.Singlepart.Text(mediaSubtype: "plain", lineCount: 3)
+        let structure = BodyStructure.singlepart(BodyStructure.Singlepart(kind: .text(text), fields: fields))
+
+        let parts = [MessagePart](structure)
+
+        #expect(parts.first?.filename == "notes.txt")
     }
 
     @Test

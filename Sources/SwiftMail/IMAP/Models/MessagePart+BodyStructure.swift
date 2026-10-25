@@ -161,12 +161,15 @@ extension Array where Element == MessagePart {
             filename = "invite.ics"
         }
 
-        // Content-ID fallback (skip for message/rfc822 — that uses the envelope subject).
-        let isMessageKind: Bool = {
-            if case .message = part.kind { return true }
+        // Content-ID fallback for media parts only (images and other non-text
+        // content). A text part with a Content-ID, such as the root of a
+        // multipart/related body (RFC 2387), is text to read, not a file; a
+        // message/rfc822 part is named from its envelope subject.
+        let isMediaKind: Bool = {
+            if case .basic = part.kind { return true }
             return false
         }()
-        if !isMessageKind, filename == nil, let contentId = part.fields.id {
+        if isMediaKind, filename == nil, let contentId = part.fields.id {
             let cleanId = String(contentId).trimmingCharacters(in: CharacterSet(charactersIn: "<>"))
             if !cleanId.isEmpty {
                 filename = cleanId
