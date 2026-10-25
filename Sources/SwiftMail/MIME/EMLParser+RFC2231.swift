@@ -14,6 +14,11 @@ extension EMLParser {
     /// (`name*0*=`, `name*1*=`) with literal ones (`name*2=`). Encoded segments
     /// are percent-decoded individually while literal segments retain `%`
     /// sequences as text, per RFC 2231 §4.1.
+    ///
+    /// Continuations whose initial section is literal (`name*0=`, `name*1=`)
+    /// carry no charset prefix, which RFC 2231 §3 allows: their sections are
+    /// joined as written, and any encoded section among them must decode to
+    /// US-ASCII, as there is no charset to read it in.
     static func extractExtendedHeaderParam(from header: String, named name: String) -> String? {
         let raw: String
         let continuations: [(value: String, encoded: Bool)]
@@ -21,7 +26,10 @@ extension EMLParser {
             raw = single
             continuations = []
         } else if let continued = extendedContinuation(from: header, named: name) {
-            raw = continued.initial
+            guard continued.initial.encoded else {
+                return literalContinuation(continued.initial.value, continued.following)
+            }
+            raw = continued.initial.value
             continuations = continued.following
         } else {
             return nil
@@ -85,18 +93,38 @@ extension EMLParser {
         #endif
     }
 
+    /// The value of continuations whose initial section is literal: the
+    /// sections joined in order, an encoded one percent-decoded as US-ASCII.
+    /// Nil when an encoded section is malformed or decodes to other bytes.
+    private static func literalContinuation(
+        _ initial: String,
+        _ following: [(value: String, encoded: Bool)]
+    ) -> String? {
+        var value = initial
+        for section in following {
+            guard section.encoded else {
+                value += section.value
+                continue
+            }
+            guard let bytes = percentDecodedBytes(section.value[...]),
+                  let decoded = decodeExtendedBytes(bytes, charset: "") else { return nil }
+            value += decoded
+        }
+        return value
+    }
+
     /// Collect the RFC 2231 §3 continuation sections of an extended
     /// parameter from ONE pass over the header's parameters.
     ///
     /// Section numbers start at 0, count in decimal without leading zeroes,
     /// and have no gaps; the value ends at the first missing section. Where
     /// a sender repeats a section, the first occurrence stands, matching
-    /// ``extractHeaderParam(from:named:)``. The initial section has to be the
-    /// encoded spelling (`name*0*=`), which is where the charset prefix is.
+    /// ``extractHeaderParam(from:named:)``. The initial section is either
+    /// encoded (`name*0*=`, carrying the charset prefix) or literal (`name*0=`).
     private static func extendedContinuation(
         from header: String,
         named name: String
-    ) -> (initial: String, following: [(value: String, encoded: Bool)])? {
+    ) -> (initial: (value: String, encoded: Bool), following: [(value: String, encoded: Bool)])? {
         let prefix = name.lowercased() + "*"
         var sections: [Int: (value: String, encoded: Bool)] = [:]
 
@@ -115,14 +143,14 @@ extension EMLParser {
             sections[section] = (parameter.value, encoded)
         }
 
-        guard let initial = sections[0], initial.encoded else { return nil }
+        guard let initial = sections[0] else { return nil }
         var following: [(value: String, encoded: Bool)] = []
         var index = 1
         while let next = sections[index] {
             following.append(next)
             index += 1
         }
-        return (initial.value, following)
+        return (initial, following)
     }
 
     private static func decodedContinuationBytes(_ continuations: [(value: String, encoded: Bool)]) -> [UInt8]? {

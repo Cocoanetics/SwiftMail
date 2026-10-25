@@ -111,13 +111,24 @@ extension Array where Element == MessagePart {
                 contentType = "message/\(String(message.message))"
         }
         // The parameters that say how the text is read: its charset, and the
-        // RFC 3676 `format` and `delsp` a `format=flowed` body is decoded by.
+        // RFC 3676 `format` and `delsp` a `format=flowed` body is decoded by,
+        // each in its plain or RFC 2231 extended spelling (`charset*`,
+        // `charset*0*`, ...), which `contentTypeParameter(named:)` reads back.
         for name in ["charset", "format", "delsp"] {
-            if let value = part.fields.parameters.first(where: { $0.key.lowercased() == name })?.value {
-                contentType += "; \(name)=\(parameterValue(value))"
+            for (key, value) in part.fields.parameters where isSpelling(key.lowercased(), ofParameter: name) {
+                contentType += "; \(key.lowercased())=\(parameterValue(value))"
             }
         }
         return contentType
+    }
+
+    /// Whether `key` (lowercased) is parameter `name` in its plain spelling or an
+    /// RFC 2231 extended one: `name*`, or a continuation `name*N` / `name*N*`.
+    private static func isSpelling(_ key: String, ofParameter name: String) -> Bool {
+        guard key.hasPrefix(name) else { return false }
+        let rest = key.dropFirst(name.count)
+        guard let star = rest.first else { return true }
+        return star == "*" && rest.dropFirst().allSatisfy { $0 == "*" || ($0.isASCII && $0.isNumber) }
     }
 
     /// A BODYSTRUCTURE parameter value written back as RFC 2045 writes it: bare
