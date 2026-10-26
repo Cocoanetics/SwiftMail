@@ -11,10 +11,10 @@ extension String {
         // ("taro."@docomo.ne.jp). Japanese carriers issued addresses whose local part
         // ends with a dot or has consecutive dots; on the wire they must be quoted.
         let pattern = ##"""
-        ^(?:(?:[a-zA-Z0-9](?:[a-zA-Z0-9._%+-]{0,61}[a-zA-Z0-9])?|"(?:[\x20\x21\x23-\x5B\x5D-\x7E]|\\[\x20-\x7E]){1,64}")@
+        \A(?:(?:[a-zA-Z0-9](?:[a-zA-Z0-9._%+-]{0,61}[a-zA-Z0-9])?|"(?:[\x20\x21\x23-\x5B\x5D-\x7E]|\\[\x20-\x7E]){1,64}")@
         [a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?
         (?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*
-        \.[a-zA-Z]{2,})$
+        \.[a-zA-Z]{2,})\z
         """##
 
         do {

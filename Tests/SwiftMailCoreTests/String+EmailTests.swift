@@ -169,5 +169,8 @@ struct StringEmailTests {
         #expect(!"\"\"@example.com".isValidEmail(), "empty quoted string")
         #expect(!"\"a\"b\"@example.com".isValidEmail(), "unescaped quote inside")
         #expect(!"\"日本\"@example.com".isValidEmail(), "non-ASCII inside quotes")
+        // A trailing line break must not pass (it would end the SMTP command early)
+        #expect(!"user@example.com\n".isValidEmail())
+        #expect(!"\"taro.\"@docomo.ne.jp\r\n".isValidEmail())
     }
 }
