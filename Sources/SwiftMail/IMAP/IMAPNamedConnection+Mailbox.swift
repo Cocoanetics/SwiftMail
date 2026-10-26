@@ -156,14 +156,19 @@ extension IMAPNamedConnection {
     }
 
     /// List mailboxes.
+    ///
+    /// - Throws: ``ExceededListResponseLimitError`` if the server sends more LIST responses than
+    ///   ``IMAPParserLimits/maximumListResponses``; the connection is then closed.
     public func listMailboxes(wildcard: String = "*") async throws -> [Mailbox.Info] {
+        // One budget for the whole listing, so the per-namespace commands cannot each use it up.
+        let budget = ListResponseBudget(maximumCount: connection.parserLimits.maximumListResponses)
         if let namespaces = connection.namespacesSnapshot {
             let patterns = namespaces.listingPatterns(for: wildcard)
             var allMailboxes: [Mailbox.Info] = []
             var seenNames: Set<String> = []
 
             for pattern in patterns {
-                let command = ListCommand(wildcard: pattern)
+                let command = ListCommand(wildcard: pattern, budget: budget)
                 let listed = try await executeCommand(command)
                 for mailbox in listed where seenNames.insert(mailbox.name).inserted {
                     allMailboxes.append(mailbox)
@@ -175,7 +180,7 @@ extension IMAPNamedConnection {
             }
         }
 
-        let command = ListCommand(wildcard: wildcard)
+        let command = ListCommand(wildcard: wildcard, budget: budget)
         return try await executeCommand(command)
     }
 

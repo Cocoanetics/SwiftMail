@@ -122,6 +122,7 @@ final class IMAPResponseLimitGuard: ChannelInboundHandler {
             || error is ExceededMaximumMessageAttributesError
             || error is ExceededLiteralSizeLimitError
             || error is ExceededResponseBodySizeError
+            || error is ExceededListResponseLimitError
     }
 }
 
@@ -139,6 +140,24 @@ public struct ExceededResponseBodySizeError: Error, Equatable, CustomStringConve
 
     public var description: String {
         "FETCH response declared \(accumulatedCount) bytes of body data across its sections, "
+            + "exceeding the configured limit of \(maximumCount)"
+    }
+}
+
+/// A mailbox listing received more LIST responses than ``IMAPParserLimits/maximumListResponses``.
+///
+/// Raised by the response that goes one past the limit, before it is retained. The listing fails
+/// as a whole and the connection is closed: a truncated listing is never returned as a complete
+/// one.
+public struct ExceededListResponseLimitError: Error, Equatable, CustomStringConvertible {
+    /// LIST responses received by the listing so far, including the one that was rejected.
+    public let receivedCount: Int
+
+    /// The configured ``IMAPParserLimits/maximumListResponses``.
+    public let maximumCount: Int
+
+    public var description: String {
+        "Mailbox listing received \(receivedCount) LIST responses, "
             + "exceeding the configured limit of \(maximumCount)"
     }
 }

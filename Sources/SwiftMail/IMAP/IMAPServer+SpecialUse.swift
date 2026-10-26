@@ -47,7 +47,10 @@ extension IMAPServer {
 
     /// Use the IMAP SPECIAL-USE extension to identify mailboxes.
     private func detectSpecialFoldersViaSpecialUse() async throws -> (folders: [Mailbox.Info], foundInbox: Bool) {
-        let command = ListCommand(returnOptions: [.specialUse])
+        let command = ListCommand(
+            returnOptions: [.specialUse],
+            budget: ListResponseBudget(maximumCount: parserLimits.maximumListResponses)
+        )
         let mailboxesWithAttributes = try await executeCommand(command)
 
         var specialFolders: [Mailbox.Info] = []

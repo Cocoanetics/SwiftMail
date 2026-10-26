@@ -231,8 +231,9 @@ public actor IMAPServer {
      a downgrade impossible regardless of what the server offers.
      - numberOfThreads: The number of threads to use for the event loop group
      - parserLimits: Bounds the response parser enforces against a hostile or malfunctioning
-     server. Defaults to ``IMAPParserLimits/default``, which leaves body size and attribute
-     count unbounded — the behaviour before this parameter existed.
+     server. They apply to the primary connection and to every named connection. Defaults to
+     ``IMAPParserLimits/default``, which leaves body size, attribute count and the number of
+     LIST responses unbounded — the behaviour before this parameter existed.
      - responseBufferLimit: Maximum bytes the IMAP response parser may buffer
      before failing with `PayloadTooLargeError`. Defaults to
      ``IMAPServer/defaultResponseBufferLimit`` (1 MB), which handles large SEARCH
