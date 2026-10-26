@@ -66,6 +66,7 @@ final class IMAPTestServer {
     private let bodystructureOverride: String?
     private let mimeHeaders: [String: String]
     private let rejectsMIMEHeaderFetch: Bool
+    private let listedMailboxNames: [String]
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
     private var commandLogStorage: [String] = []
@@ -93,6 +94,7 @@ final class IMAPTestServer {
         bodystructureOverride: String? = nil,
         mimeHeaders: [String: String] = [:],
         rejectsMIMEHeaderFetch: Bool = false,
+        listedMailboxNames: [String] = ["INBOX"],
         maildirURL: URL
     ) throws {
         self.host = host
@@ -111,6 +113,7 @@ final class IMAPTestServer {
         self.bodystructureOverride = bodystructureOverride
         self.mimeHeaders = mimeHeaders
         self.rejectsMIMEHeaderFetch = rejectsMIMEHeaderFetch
+        self.listedMailboxNames = listedMailboxNames
         self.messages = try Self.loadMaildir(maildirURL)
     }
 
@@ -583,7 +586,9 @@ final class IMAPTestServer {
                 return "* NAMESPACE ((\"\(personalNamespacePrefix)\" \"\(namespaceDelimiter)\")) NIL NIL\r\n"
                     + "\(tag) OK NAMESPACE completed\r\n"
             case "LIST":
-                return "* LIST (\\HasNoChildren) \"/\" \"INBOX\"\r\n\(tag) OK LIST completed\r\n"
+                // Every name in one write, so the client decodes them from a single read.
+                return listedMailboxNames.map { "* LIST (\\HasNoChildren) \"/\" \"\($0)\"\r\n" }.joined()
+                    + "\(tag) OK LIST completed\r\n"
             case "ID":
                 recordIDCommand()
                 return "* ID NIL\r\n\(tag) OK ID completed\r\n"
