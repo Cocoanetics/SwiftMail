@@ -152,4 +152,22 @@ struct StringEmailTests {
         // Test that plus sign is typically allowed (common use case)
         #expect("user+tag@example.com".isValidEmail(), "Plus sign should typically be allowed in email addresses")
     }
+
+    @Test("Quoted local parts (RFC 5321 Quoted-string) are accepted")
+    func testQuotedLocalPart() {
+        // Japanese carrier addresses whose local part ends with a dot or has consecutive dots
+        // are sent quoted on the wire
+        #expect("\"taro.\"@docomo.ne.jp".isValidEmail())
+        #expect("\"taro..yamada\"@ezweb.ne.jp".isValidEmail())
+        #expect("\"john doe\"@example.com".isValidEmail())
+        #expect("\"a\\\"b\"@example.com".isValidEmail(), "escaped quote inside")
+        // The unquoted forms stay invalid (not RFC 5321 dot-strings)
+        #expect(!"taro.@docomo.ne.jp".isValidEmail())
+        #expect(!".taro@docomo.ne.jp".isValidEmail())
+        // Broken quoting stays invalid
+        #expect(!"\"taro@docomo.ne.jp".isValidEmail())
+        #expect(!"\"\"@example.com".isValidEmail(), "empty quoted string")
+        #expect(!"\"a\"b\"@example.com".isValidEmail(), "unescaped quote inside")
+        #expect(!"\"日本\"@example.com".isValidEmail(), "non-ASCII inside quotes")
+    }
 }
