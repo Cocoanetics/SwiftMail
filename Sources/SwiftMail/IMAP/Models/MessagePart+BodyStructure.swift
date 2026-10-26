@@ -168,17 +168,20 @@ extension Array where Element == MessagePart {
         for part: BodyStructure.Singlepart,
         contentType: String
     ) -> (disposition: String?, filename: String?) {
-        var filename = filenameFromContentTypeParameters(part)
         var disposition: String?
-
+        var dispositionHeader = ""
         if let ext = part.extension, let disp = ext.dispositionAndLanguage?.disposition {
             disposition = String(disp.kind.rawValue)
-            // Content-Disposition's filename overrides Content-Type's filename/name.
-            for (key, value) in disp.parameters where key.lowercased() == "filename" && !value.isEmpty {
-                filename = value
-                break
-            }
+            dispositionHeader = parameterHeader(disp.parameters.map { ($0.key, $0.value) })
         }
+        // Rank the filename spellings across Content-Type and Content-Disposition
+        // together, exactly as a parsed MIME header is ranked (`filename*`,
+        // `filename`, `name*`, `name`), so a part gets the same name from
+        // BODYSTRUCTURE as from its .eml. RFC 2231 extended spellings
+        // (`filename*=UTF-8''...`, `filename*0*=...`) carry non-ASCII names.
+        let contentTypeHeader = parameterHeader(part.fields.parameters.map { ($0.key, $0.value) })
+        var filename = EMLParser.extractFilename(from: contentTypeHeader, dispositionHeader)
+        if filename?.isEmpty == true { filename = nil }
 
         // Default filename for text/calendar parts (Outlook often omits filename).
         if filename == nil, contentType.lowercased().hasPrefix("text/calendar") {
@@ -210,14 +213,10 @@ extension Array where Element == MessagePart {
         return (disposition, filename)
     }
 
-    private static func filenameFromContentTypeParameters(_ part: BodyStructure.Singlepart) -> String? {
-        for (key, value) in part.fields.parameters {
-            let lowerKey = key.lowercased()
-            if (lowerKey == "filename" || lowerKey == "name") && !value.isEmpty {
-                return value
-            }
-        }
-        return nil
+    /// BODYSTRUCTURE parameters written back as a header value (`x; name=value; ...`)
+    /// for the MIME header parameter readers.
+    private static func parameterHeader(_ parameters: [(String, String)]) -> String {
+        "x; " + parameters.map { "\($0.0)=\(parameterValue($0.1))" }.joined(separator: "; ")
     }
 
     /// Build the embedded `MessageInfo` for a `message/rfc822` part from its envelope.

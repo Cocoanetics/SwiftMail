@@ -310,3 +310,64 @@ struct MessagePartBodyStructureTests {
         #expect(components.day == 15)
     }
 }
+
+// MARK: - RFC 2231 filenames
+
+extension MessagePartBodyStructureTests {
+    /// A media part with the given Content-Disposition and Content-Type parameters.
+    private func attachmentParts(disposition: [String: String], contentType: [String: String] = [:]) -> [MessagePart] {
+        let fields = BodyStructure.Fields(
+            parameters: .init(uniqueKeysWithValues: contentType.map { ($0.key, $0.value) }),
+            id: nil, contentDescription: nil, encoding: .base64, octetCount: 12)
+        let ext = BodyStructure.Singlepart.Extension(
+            digest: nil,
+            dispositionAndLanguage: BodyStructure.DispositionAndLanguage(
+                disposition: BodyStructure.Disposition(
+                    kind: .init(rawValue: "attachment"),
+                    parameters: .init(uniqueKeysWithValues: disposition.map { ($0.key, $0.value) }))))
+        let kind = BodyStructure.Singlepart.Kind.basic(.init(topLevel: .application, sub: .init("pdf")))
+        let part = BodyStructure.Singlepart(kind: kind, fields: fields, extension: ext)
+        return [MessagePart](BodyStructure.singlepart(part))
+    }
+
+    @Test(arguments: [
+        // A non-ASCII name as RFC 2231 writes it, and the same split into continuations
+        ["filename*": "UTF-8''%E7%B4%8D%E5%93%81%E6%9B%B8.pdf"],
+        ["filename*0*": "UTF-8''%E7%B4%8D%E5%93%81", "filename*1*": "%E6%9B%B8.pdf"]
+    ])
+    func attachmentReadsRFC2231FilenameFromDisposition(parameters: [String: String]) {
+        let parts = attachmentParts(disposition: parameters)
+        #expect(parts.first?.filename == "納品書.pdf")
+        #expect(parts.first?.suggestedFilename == "納品書.pdf")
+    }
+
+    @Test
+    func attachmentReadsRFC2231NameFromContentType() {
+        let parts = attachmentParts(disposition: [:], contentType: ["name*": "UTF-8''%E8%A6%8B%E7%A9%8D.pdf"])
+        #expect(parts.first?.filename == "見積.pdf")
+    }
+
+    @Test
+    func attachmentKeepsPlainFilename() {
+        let parts = attachmentParts(disposition: ["filename": "report.pdf"])
+        #expect(parts.first?.filename == "report.pdf")
+    }
+
+    /// The spellings are ranked across both headers as for a parsed MIME header:
+    /// a plain `filename` outranks a Content-Type `name*`, and a Content-Type
+    /// `filename*` outranks a plain Content-Disposition `filename` fallback.
+    @Test
+    func attachmentFilenameRankingMatchesMIMEHeaders() {
+        let plainOverName = attachmentParts(
+            disposition: [:], contentType: ["name*": "UTF-8''%E8%A6%8B.pdf", "filename": "quote.pdf"])
+        #expect(plainOverName.first?.filename == "quote.pdf")
+        #expect(EMLParser.extractFilename(from: "x; name*=UTF-8''%E8%A6%8B.pdf; filename=quote.pdf", "") == "quote.pdf")
+
+        let extendedOverFallback = attachmentParts(
+            disposition: ["filename": "___.pdf"],
+            contentType: ["filename*": "UTF-8''%E7%B4%8D%E5%93%81%E6%9B%B8.pdf"])
+        #expect(extendedOverFallback.first?.filename == "納品書.pdf")
+        #expect(EMLParser.extractFilename(
+            from: "x; filename*=UTF-8''%E7%B4%8D%E5%93%81%E6%9B%B8.pdf", "attachment; filename=___.pdf") == "納品書.pdf")
+    }
+}
