@@ -173,4 +173,24 @@ struct StringEmailTests {
         #expect(!"user@example.com\n".isValidEmail())
         #expect(!"\"taro.\"@docomo.ne.jp\r\n".isValidEmail())
     }
+
+    @Test("RFC 5322 atext local parts that AddressParser reads as one mailbox are accepted")
+    func testAtextLocalParts() {
+        // The parser and formatter take these as canonical mailboxes; SMTP must accept them
+        // too, or the header names an address the envelope refuses (or vice versa)
+        let addresses = [
+            "o'neil@example.com", "!user@example.com", "{x}@example.com", "a#b@example.com", "~me@example.com"
+        ]
+        for address in addresses {
+            #expect(address.isValidEmail(), "\(address)")
+            #expect(EmailAddress(address: address).description == address, "header form stays the same address")
+        }
+        // Still refused: non-ASCII, white space, control characters, over-long local parts, bad domains
+        #expect(!"用户@example.com".isValidEmail())
+        #expect(!"o'neil @example.com".isValidEmail())
+        #expect(!"o'neil@example.com\r\nBcc: x@example.com".isValidEmail())
+        #expect(!(String(repeating: "'", count: 65) + "@example.com").isValidEmail())
+        #expect(!"o'neil@192.168.1.1".isValidEmail())
+        #expect(!"o'neil@example".isValidEmail())
+    }
 }
