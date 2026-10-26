@@ -15,13 +15,22 @@ struct ListCommand: IMAPTaggedCommand {
     // Return options for the LIST command
     private let returnOptions: [ReturnOption]
 
+    // The LIST responses the listing this command belongs to may still receive
+    private let budget: ListResponseBudget
+
     /// Initialize a new LIST command
     /// - Parameters:
     ///   - wildcard: The wildcard pattern used when listing mailboxes. Defaults to "*".
     ///   - returnOptions: Optional list of return options for the LIST command (e.g. SPECIAL-USE)
-    init(wildcard: String = "*", returnOptions: [ReturnOption] = []) {
+    ///   - budget: The LIST response count shared by every command of one listing.
+    init(wildcard: String = "*", returnOptions: [ReturnOption] = [], budget: ListResponseBudget) {
         self.wildcard = wildcard
         self.returnOptions = returnOptions
+        self.budget = budget
+    }
+
+    func makeHandler(commandTag: String, promise: EventLoopPromise<[Mailbox.Info]>) -> ListCommandHandler {
+        ListCommandHandler(commandTag: commandTag, promise: promise, budget: budget)
     }
 
     func toTaggedCommand(tag: String) -> TaggedCommand {

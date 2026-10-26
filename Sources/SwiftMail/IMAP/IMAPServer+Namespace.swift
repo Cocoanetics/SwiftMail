@@ -26,17 +26,21 @@ extension IMAPServer {
 
      - Parameter wildcard: The wildcard pattern used when listing mailboxes. Defaults to "*".
      - Returns: An array of mailbox information
-     - Throws: `IMAPError.commandFailed` if the list operation fails
+     - Throws: `IMAPError.commandFailed` if the list operation fails, or
+       ``ExceededListResponseLimitError`` if the server sends more LIST responses than
+       ``IMAPParserLimits/maximumListResponses``; the connection is then closed.
      - Note: Logs mailbox listing at info level with count
      */
     public func listMailboxes(wildcard: String = "*") async throws -> [Mailbox.Info] {
+        // One budget for the whole listing, so the per-namespace commands cannot each use it up.
+        let budget = ListResponseBudget(maximumCount: parserLimits.maximumListResponses)
         if let namespaces {
             let patterns = namespaces.listingPatterns(for: wildcard)
             var allMailboxes: [Mailbox.Info] = []
             var seenNames: Set<String> = []
 
             for pattern in patterns {
-                let command = ListCommand(wildcard: pattern)
+                let command = ListCommand(wildcard: pattern, budget: budget)
                 let listed = try await executeCommand(command)
                 for mailbox in listed where seenNames.insert(mailbox.name).inserted {
                     allMailboxes.append(mailbox)
@@ -49,7 +53,7 @@ extension IMAPServer {
             }
         }
 
-        let command = ListCommand(wildcard: wildcard)
+        let command = ListCommand(wildcard: wildcard, budget: budget)
         let listed = try await executeCommand(command)
         updateMailboxes(listed)
         return listed

@@ -50,6 +50,19 @@ public struct IMAPParserLimits: Sendable, Equatable {
     ///   coin toss, so ``maximumSupportedLiteralSizeLimit`` is enforced up front.
     public var literalSizeLimit: Int
 
+    /// Maximum number of LIST responses one mailbox listing may receive.
+    ///
+    /// Counted as the responses arrive, before each one is kept, so a server cannot make a
+    /// listing grow past this many mailboxes in memory. A listing of exactly this many succeeds;
+    /// one more fails with ``ExceededListResponseLimitError`` and closes the connection.
+    ///
+    /// The count covers every LIST command of one ``IMAPServer/listMailboxes(wildcard:)`` or
+    /// ``IMAPNamedConnection/listMailboxes(wildcard:)`` call, including the extra commands it
+    /// sends per namespace, and it counts responses before duplicates are merged.
+    ///
+    /// Defaults to `Int.max` (unbounded), matching SwiftMail's previous behaviour.
+    public var maximumListResponses: Int
+
     /// The largest value ``literalSizeLimit`` can take: `IMAPDefaults.lineLengthLimit` (8 KiB).
     ///
     /// This was `IMAPClientHandler`'s hardcoded decoder buffer before apple/swift-nio-imap#849.
@@ -57,17 +70,19 @@ public struct IMAPParserLimits: Sendable, Equatable {
     /// because these limits cannot check the value an `IMAPServer` is created with.
     public static let maximumSupportedLiteralSizeLimit = IMAPDefaults.lineLengthLimit
 
-    /// SwiftMail's previous behaviour: bodies and attribute counts unbounded.
+    /// SwiftMail's previous behaviour: bodies, attribute counts and listings unbounded.
     public static let `default` = IMAPParserLimits()
 
     public init(
         bodySizeLimit: UInt64 = .max,
         messageAttributeLimit: Int = .max,
-        literalSizeLimit: Int = IMAPDefaults.literalSizeLimit
+        literalSizeLimit: Int = IMAPDefaults.literalSizeLimit,
+        maximumListResponses: Int = .max
     ) {
         precondition(bodySizeLimit > 0, "bodySizeLimit must be greater than 0")
         precondition(messageAttributeLimit > 0, "messageAttributeLimit must be greater than 0")
         precondition(literalSizeLimit > 0, "literalSizeLimit must be greater than 0")
+        precondition(maximumListResponses > 0, "maximumListResponses must be greater than 0")
         precondition(
             literalSizeLimit <= Self.maximumSupportedLiteralSizeLimit,
             """
@@ -80,6 +95,7 @@ public struct IMAPParserLimits: Sendable, Equatable {
         self.bodySizeLimit = bodySizeLimit
         self.messageAttributeLimit = messageAttributeLimit
         self.literalSizeLimit = literalSizeLimit
+        self.maximumListResponses = maximumListResponses
     }
 
     /// Translates these limits into `ResponseParser.Options`.
