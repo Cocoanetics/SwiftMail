@@ -173,10 +173,16 @@ extension Array where Element == MessagePart {
 
         if let ext = part.extension, let disp = ext.dispositionAndLanguage?.disposition {
             disposition = String(disp.kind.rawValue)
-            // Content-Disposition's filename overrides Content-Type's filename/name.
-            for (key, value) in disp.parameters where key.lowercased() == "filename" && !value.isEmpty {
-                filename = value
-                break
+            // Content-Disposition's filename overrides Content-Type's filename/name,
+            // in its plain spelling or the RFC 2231 extended one (`filename*=UTF-8''...`,
+            // `filename*0*=...`), which non-ASCII names are written in.
+            if let extended = extendedParameter("filename", in: disp.parameters.map { ($0.key, $0.value) }) {
+                filename = extended
+            } else {
+                for (key, value) in disp.parameters where key.lowercased() == "filename" && !value.isEmpty {
+                    filename = value
+                    break
+                }
             }
         }
 
@@ -210,7 +216,23 @@ extension Array where Element == MessagePart {
         return (disposition, filename)
     }
 
+    /// The decoded value of an RFC 2231 extended parameter (`name*` or the
+    /// continuations `name*0*`, `name*1`, ...) among BODYSTRUCTURE parameters, or nil
+    /// when the parameter only appears in its plain spelling.
+    private static func extendedParameter(_ name: String, in parameters: [(String, String)]) -> String? {
+        guard parameters.contains(where: { $0.0.lowercased().hasPrefix(name + "*") }) else { return nil }
+        // Write the parameters back as a header value and let the RFC 2231 reader decode them.
+        let header = "x; " + parameters.map { "\($0.0)=\(parameterValue($0.1))" }.joined(separator: "; ")
+        guard let value = EMLParser.extractExtendedHeaderParam(from: header, named: name),
+              !value.isEmpty else { return nil }
+        return value
+    }
+
     private static func filenameFromContentTypeParameters(_ part: BodyStructure.Singlepart) -> String? {
+        let parameters = part.fields.parameters.map { ($0.key, $0.value) }
+        if let extended = extendedParameter("filename", in: parameters) ?? extendedParameter("name", in: parameters) {
+            return extended
+        }
         for (key, value) in part.fields.parameters {
             let lowerKey = key.lowercased()
             if (lowerKey == "filename" || lowerKey == "name") && !value.isEmpty {
