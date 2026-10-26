@@ -152,4 +152,55 @@ struct StringEmailTests {
         // Test that plus sign is typically allowed (common use case)
         #expect("user+tag@example.com".isValidEmail(), "Plus sign should typically be allowed in email addresses")
     }
+
+    @Test("Quoted local parts (RFC 5321 Quoted-string) are accepted")
+    func testQuotedLocalPart() {
+        // Japanese carrier addresses whose local part ends with a dot or has consecutive dots
+        // are sent quoted on the wire
+        #expect("\"taro.\"@docomo.ne.jp".isValidEmail())
+        #expect("\"taro..yamada\"@ezweb.ne.jp".isValidEmail())
+        #expect("\"john doe\"@example.com".isValidEmail())
+        #expect("\"a\\\"b\"@example.com".isValidEmail(), "escaped quote inside")
+        // The unquoted forms stay invalid (not RFC 5321 dot-strings)
+        #expect(!"taro.@docomo.ne.jp".isValidEmail())
+        #expect(!".taro@docomo.ne.jp".isValidEmail())
+        // Broken quoting stays invalid
+        #expect(!"\"taro@docomo.ne.jp".isValidEmail())
+        #expect(!"\"\"@example.com".isValidEmail(), "empty quoted string")
+        #expect(!"\"a\"b\"@example.com".isValidEmail(), "unescaped quote inside")
+        #expect(!"\"日本\"@example.com".isValidEmail(), "non-ASCII inside quotes")
+        // A trailing line break must not pass (it would end the SMTP command early)
+        #expect(!"user@example.com\n".isValidEmail())
+        #expect(!"\"taro.\"@docomo.ne.jp\r\n".isValidEmail())
+    }
+
+    @Test("RFC 5322 atext local parts that AddressParser reads as one mailbox are accepted")
+    func testAtextLocalParts() {
+        // The parser and formatter take these as canonical mailboxes; SMTP must accept them
+        // too, or the header names an address the envelope refuses (or vice versa)
+        let addresses = [
+            "o'neil@example.com", "!user@example.com", "{x}@example.com", "a#b@example.com", "~me@example.com"
+        ]
+        for address in addresses {
+            #expect(address.isValidEmail(), "\(address)")
+            #expect(EmailAddress(address: address).description == address, "header form stays the same address")
+        }
+        // Still refused: non-ASCII, white space, control characters, over-long local parts, bad domains
+        #expect(!"用户@example.com".isValidEmail())
+        #expect(!"o'neil @example.com".isValidEmail())
+        #expect(!"o'neil@example.com\r\nBcc: x@example.com".isValidEmail())
+        #expect(!(String(repeating: "'", count: 65) + "@example.com").isValidEmail())
+        #expect(!"o'neil@192.168.1.1".isValidEmail())
+        #expect(!"o'neil@example".isValidEmail())
+    }
+
+    @Test("A quoted local part is held to the RFC 5321 64-octet limit, quotes and escapes included")
+    func testQuotedLocalPartOctetLimit() {
+        let atLimit = "\"" + String(repeating: "x", count: 62) + "\"@example.com"
+        #expect(atLimit.isValidEmail(), "64 octets including the quotes")
+        let overLimit = "\"" + String(repeating: "x", count: 64) + "\"@example.com"
+        #expect(!overLimit.isValidEmail(), "66 octets")
+        let escaped = "\"" + String(repeating: "\\\"", count: 32) + "\"@example.com"
+        #expect(!escaped.isValidEmail(), "each quoted-pair is two octets")
+    }
 }
