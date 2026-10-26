@@ -23,7 +23,7 @@ extension String {
         do {
             let regex = try NSRegularExpression(pattern: pattern, options: [.allowCommentsAndWhitespace])
             let range = NSRange(location: 0, length: self.utf16.count)
-            if regex.firstMatch(in: self, options: [], range: range) != nil { return true }
+            if regex.firstMatch(in: self, options: [], range: range) != nil { return withinLengthLimits }
             return isCanonicalASCIIAddrSpec(domainPattern: domainPattern)
         } catch {
             // If regex creation fails (which shouldn't happen with a valid pattern),
@@ -43,10 +43,18 @@ extension String {
     private func isCanonicalASCIIAddrSpec(domainPattern: String) -> Bool {
         guard unicodeScalars.allSatisfy({ (0x21...0x7E).contains($0.value) || $0 == " " }),
               AddressParser.parseAddressList(self) == [.mailbox(EmailAddress(address: self))],
+              withinLengthLimits,
               let atSign = range(of: "@", options: .backwards),
-              self[..<atSign.lowerBound].utf8.count <= 64, utf8.count <= 254,  // RFC 5321 4.5.3.1
               self[..<atSign.lowerBound] != "\"\"" else { return false }  // empty quoted local part: no mailbox
         let domain = String(self[atSign.upperBound...])
         return domain.range(of: domainPattern, options: .regularExpression) != nil
+    }
+
+    /// RFC 5321 4.5.3.1: a local part of at most 64 octets — counted as written,
+    /// so the quotes and both octets of each quoted-pair count — and a path of
+    /// at most 254 octets.
+    private var withinLengthLimits: Bool {
+        guard let atSign = range(of: "@", options: .backwards) else { return false }
+        return self[..<atSign.lowerBound].utf8.count <= 64 && utf8.count <= 254
     }
 }

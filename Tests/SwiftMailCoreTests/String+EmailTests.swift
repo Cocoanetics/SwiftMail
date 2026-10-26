@@ -193,4 +193,14 @@ struct StringEmailTests {
         #expect(!"o'neil@192.168.1.1".isValidEmail())
         #expect(!"o'neil@example".isValidEmail())
     }
+
+    @Test("A quoted local part is held to the RFC 5321 64-octet limit, quotes and escapes included")
+    func testQuotedLocalPartOctetLimit() {
+        let atLimit = "\"" + String(repeating: "x", count: 62) + "\"@example.com"
+        #expect(atLimit.isValidEmail(), "64 octets including the quotes")
+        let overLimit = "\"" + String(repeating: "x", count: 64) + "\"@example.com"
+        #expect(!overLimit.isValidEmail(), "66 octets")
+        let escaped = "\"" + String(repeating: "\\\"", count: 32) + "\"@example.com"
+        #expect(!escaped.isValidEmail(), "each quoted-pair is two octets")
+    }
 }
