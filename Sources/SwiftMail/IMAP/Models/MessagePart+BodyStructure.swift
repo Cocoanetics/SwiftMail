@@ -168,23 +168,20 @@ extension Array where Element == MessagePart {
         for part: BodyStructure.Singlepart,
         contentType: String
     ) -> (disposition: String?, filename: String?) {
-        var filename = filenameFromContentTypeParameters(part)
         var disposition: String?
-
+        var dispositionHeader = ""
         if let ext = part.extension, let disp = ext.dispositionAndLanguage?.disposition {
             disposition = String(disp.kind.rawValue)
-            // Content-Disposition's filename overrides Content-Type's filename/name,
-            // in its plain spelling or the RFC 2231 extended one (`filename*=UTF-8''...`,
-            // `filename*0*=...`), which non-ASCII names are written in.
-            if let extended = extendedParameter("filename", in: disp.parameters.map { ($0.key, $0.value) }) {
-                filename = extended
-            } else {
-                for (key, value) in disp.parameters where key.lowercased() == "filename" && !value.isEmpty {
-                    filename = value
-                    break
-                }
-            }
+            dispositionHeader = parameterHeader(disp.parameters.map { ($0.key, $0.value) })
         }
+        // Rank the filename spellings across Content-Type and Content-Disposition
+        // together, exactly as a parsed MIME header is ranked (`filename*`,
+        // `filename`, `name*`, `name`), so a part gets the same name from
+        // BODYSTRUCTURE as from its .eml. RFC 2231 extended spellings
+        // (`filename*=UTF-8''...`, `filename*0*=...`) carry non-ASCII names.
+        let contentTypeHeader = parameterHeader(part.fields.parameters.map { ($0.key, $0.value) })
+        var filename = EMLParser.extractFilename(from: contentTypeHeader, dispositionHeader)
+        if filename?.isEmpty == true { filename = nil }
 
         // Default filename for text/calendar parts (Outlook often omits filename).
         if filename == nil, contentType.lowercased().hasPrefix("text/calendar") {
@@ -216,30 +213,10 @@ extension Array where Element == MessagePart {
         return (disposition, filename)
     }
 
-    /// The decoded value of an RFC 2231 extended parameter (`name*` or the
-    /// continuations `name*0*`, `name*1`, ...) among BODYSTRUCTURE parameters, or nil
-    /// when the parameter only appears in its plain spelling.
-    private static func extendedParameter(_ name: String, in parameters: [(String, String)]) -> String? {
-        guard parameters.contains(where: { $0.0.lowercased().hasPrefix(name + "*") }) else { return nil }
-        // Write the parameters back as a header value and let the RFC 2231 reader decode them.
-        let header = "x; " + parameters.map { "\($0.0)=\(parameterValue($0.1))" }.joined(separator: "; ")
-        guard let value = EMLParser.extractExtendedHeaderParam(from: header, named: name),
-              !value.isEmpty else { return nil }
-        return value
-    }
-
-    private static func filenameFromContentTypeParameters(_ part: BodyStructure.Singlepart) -> String? {
-        let parameters = part.fields.parameters.map { ($0.key, $0.value) }
-        if let extended = extendedParameter("filename", in: parameters) ?? extendedParameter("name", in: parameters) {
-            return extended
-        }
-        for (key, value) in part.fields.parameters {
-            let lowerKey = key.lowercased()
-            if (lowerKey == "filename" || lowerKey == "name") && !value.isEmpty {
-                return value
-            }
-        }
-        return nil
+    /// BODYSTRUCTURE parameters written back as a header value (`x; name=value; ...`)
+    /// for the MIME header parameter readers.
+    private static func parameterHeader(_ parameters: [(String, String)]) -> String {
+        "x; " + parameters.map { "\($0.0)=\(parameterValue($0.1))" }.joined(separator: "; ")
     }
 
     /// Build the embedded `MessageInfo` for a `message/rfc822` part from its envelope.
