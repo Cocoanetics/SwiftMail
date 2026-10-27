@@ -125,6 +125,19 @@ struct FetchRawMessagesTests {
         #expect(received.dictionary == [SwiftMail.UID(10): first])
     }
 
+    @Test("A second BODY[] in one FETCH response is ignored, not appended to the first")
+    func repeatedBodyInOneResponse() async throws {
+        let first = Data("one\r\n".utf8)
+        let again = Data("two\r\n".utf8)
+        var data = Data("* 1 FETCH (UID 10 BODY[] {\(first.count)}\r\n".utf8)
+        data.append(first)
+        data.append(contentsOf: Data(" BODY[] {\(again.count)}\r\n".utf8))
+        data.append(again)
+        data.append(contentsOf: Data(")\r\n".utf8))
+        let received = try await executeFetch([data, Data("A001 OK FETCH completed\r\n".utf8)])
+        #expect(received.dictionary == [SwiftMail.UID(10): first])
+    }
+
     @Test("A body without its UID in a UID fetch fails the command; earlier bodies were delivered, none after")
     func bodyWithoutUID() async throws {
         let body = Data("Subject: a\r\n\r\nx\r\n".utf8)

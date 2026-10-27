@@ -80,8 +80,9 @@ final class FetchRawMessagesHandler<T: MessageIdentifier>:
             case .simpleAttribute(.uid(let number)):
                 uid = UID(nio: number)
             case .streamingBegin(let kind, _):
-                collecting = Self.isCompleteBody(kind)
-                if collecting, body == nil { body = Data() }
+                // A second BODY[] in the same FETCH is a repeat: keep the first, never join the two.
+                collecting = Self.isCompleteBody(kind) && body == nil
+                if collecting { body = Data() }
             case .streamingBytes(let bytes):
                 if collecting { body?.append(contentsOf: bytes.readableBytesView) }
             case .streamingEnd:
