@@ -82,6 +82,39 @@ extension IMAPNamedConnection {
         return blocks
     }
 
+    /// Fetch the complete raw messages for a set of messages as a stream
+    /// (`BODY.PEEK[]`), as in
+    /// ``IMAPServer/fetchRawMessages(using:chunkSize:timeoutSeconds:)``: one command per chunk
+    /// of at most `chunkSize` messages (25 when `nil`), each with a deadline of
+    /// `timeoutSeconds` (60 when `nil`).
+    public nonisolated func fetchRawMessages<T: MessageIdentifier>(
+        using identifierSet: MessageIdentifierSet<T>,
+        chunkSize: Int? = nil,
+        timeoutSeconds: Int? = nil
+    ) -> AsyncThrowingStream<(identifier: T, data: Data), Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    let commands = try FetchRawMessagesCommand.chunks(
+                        identifierSet: identifierSet, chunkSize: chunkSize, timeoutSeconds: timeoutSeconds,
+                        sink: { continuation.yield((identifier: $0, data: $1)) }
+                    )
+                    for command in commands {
+                        try Task.checkCancellation()
+                        try await executeCommand(command)
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
+
     /// Fetch message metadata for one identifier.
     /// - Parameters:
     ///   - identifier: The message identifier to fetch.
