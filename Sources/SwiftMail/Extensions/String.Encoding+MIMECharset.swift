@@ -33,7 +33,12 @@ extension String.Encoding {
     /// For decoding only. An encoder must not emit bytes outside the charset
     /// its label names.
     public init?(mimeCharset label: String) {
-        guard let encoding = String.Encoding(ianaCharsetName: label) else {
+        let normalized = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+            .lowercased()
+        // WHATWG GBK aliases missing from CoreFoundation's iOS charset table.
+        let lookupLabel = ["chinese", "x-gbk", "iso-ir-58", "csiso58gb231280"].contains(normalized) ? "gbk" : label
+        guard let encoding = String.Encoding(ianaCharsetName: lookupLabel) else {
             return nil
         }
         self = Self.decodingSupersets[encoding] ?? encoding

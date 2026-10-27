@@ -156,9 +156,39 @@ struct MIMECharsetTests {
     @Test("Every gb2312 and GBK label decodes as GB18030")
     func gbLabelsResolveToGB18030() {
         let gb18030 = String.Encoding(ianaCharsetName: "gb18030")
-        for label in ["gb2312", "GB2312", "euc-cn", "csgb2312", "chinese", "gbk", "x-gbk", "cp936", "windows-936"] {
+        for label in ["gb2312", "GB2312", "euc-cn", "csgb2312", "chinese", "gbk", "x-gbk", "cp936", "windows-936",
+                      "iso-ir-58", "csISO58GB231280"] {
             #expect(String.Encoding(mimeCharset: label) == gb18030, "\(label)")
         }
+    }
+
+    @Test("GBK aliases decode received bodies and encoded-words", arguments: [
+        "chinese", "CHINESE", "x-gbk", "X-GBK",
+        "iso-ir-58", "ISO-IR-58", "csISO58GB231280", "CSISO58GB231280"
+    ])
+    func gbAliasesDecodeReceivedText(label: String) throws {
+        let subject = "=?\(label)?B?1tDOxKhD?="
+        let headers = [
+            "From: sender@example.com", "Subject: \(subject)",
+            "Content-Type: text/plain; charset=\(label)",
+            "Content-Transfer-Encoding: 8bit", "", ""
+        ].joined(separator: "\r\n")
+        var raw = Data(headers.utf8)
+        raw.append(contentsOf: Self.gb2312Zhongwen + Self.gbkEnDash)
+        let message = try Message(emlData: raw)
+        #expect(message.header.subject == "中文\u{2013}")
+        let part = try #require(message.parts.first)
+        #expect(part.textContent == "中文\u{2013}")
+        #expect(subject.decodeMIMEHeader() == "中文\u{2013}")
+        let encoding = String.Encoding(mimeCharset: label)
+        #expect(encoding == String.Encoding(ianaCharsetName: "gb18030"))
+    }
+
+    @Test("GBK aliases retain IANA label whitespace and quote handling", arguments: [
+        " chinese ", "\"x-gbk\"", "'CHINESE'", "\tX-GBK\r\n"
+    ])
+    func gbAliasLabelNormalization(label: String) {
+        #expect(String.Encoding(mimeCharset: label) == String.Encoding(ianaCharsetName: "gb18030"))
     }
 
     @Test("An euc-kr encoded-word holding a Windows-949 syllable decodes")
