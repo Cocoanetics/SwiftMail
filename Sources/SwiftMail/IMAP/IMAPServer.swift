@@ -82,6 +82,10 @@ public actor IMAPServer {
     /// Set it before calling `login`/`authenticatePlain`/`authenticateXOAUTH2`.
     var clientIdentification: Identification?
 
+    /// Whether a command that finds its connection gone reconnects and logs in again
+    /// inside itself. On by default. See ``setReconnectsInsideCommands(_:)``.
+    public internal(set) var reconnectsInsideCommands = true
+
     /** The list of all mailboxes with their attributes */
     public private(set) var mailboxes: [Mailbox.Info] = []
 

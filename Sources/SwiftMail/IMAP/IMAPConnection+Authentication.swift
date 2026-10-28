@@ -165,8 +165,7 @@ extension IMAPConnection {
         clearInvalidChannel()
 
         if self.channel == nil {
-            logger.info("\(connectionContext) Channel is nil, re-establishing connection before authentication")
-            try await connectBody()
+            try await reopenTransport(before: "authentication")
         }
 
         guard let channel = self.channel, channel.isActive else {

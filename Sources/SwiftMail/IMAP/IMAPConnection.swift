@@ -50,6 +50,10 @@ final class IMAPConnection {
     /// capability and namespace refreshes inside it cannot recursively authenticate.
     /// The outer authentication flow detects a replaced transport and retries itself.
     var authenticationInProgress = false
+    /// Whether a command that finds its channel gone reopens the transport (and
+    /// re-authenticates) inside itself. When false it throws and opens nothing.
+    /// Set by `IMAPServer.setReconnectsInsideCommands(_:)`.
+    var reconnectsInsideCommands = true
 
     let logger: Logging.Logger
     let duplexLogger: IMAPLogger
