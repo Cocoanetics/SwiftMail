@@ -212,7 +212,7 @@ extension IMAPServer {
         // handle; failure clears this sentinel so a later call can retry normally.
         pendingNamedConnectionWaiters[normalizedName] = []
         let connection = makeNamedConnection(name: normalizedName)
-        connection.reconnectsInsideCommands = reconnectsInsideCommands
+        applyReconnectsInsideCommands(to: connection)
         installReauthentication(on: connection)
 
         do {
@@ -227,6 +227,7 @@ extension IMAPServer {
                 }
             )
 
+            applyReconnectsInsideCommands(to: connection)
             namedConnections[normalizedName] = NamedConnection(connection: connection, handle: handle)
             completePendingNamedConnection(named: normalizedName, with: .success(handle))
             return handle

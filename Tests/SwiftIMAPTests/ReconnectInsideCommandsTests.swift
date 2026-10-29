@@ -95,6 +95,41 @@ struct ReconnectInsideCommandsTests {
         #expect(await server.isConnected)
     }
 
+    #if os(macOS)
+        @Test
+        func switchSetWhileANamedConnectionIsBeingCreatedReachesIt() async throws {
+            let maildir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: maildir) }
+            let testServer = try IMAPTestServer(
+                host: "localhost",
+                port: 0,
+                username: "u",
+                password: "p",
+                loginResponseDelay: 0.3,
+                maildirURL: maildir
+            )
+            try testServer.start()
+
+            try await testServer.run {
+                let server = IMAPServer(host: "127.0.0.1", port: testServer.port, useTLS: false)
+                try await server.connect()
+                try await server.login(username: "u", password: "p")
+
+                let named = Task { try await server.connection(named: "mover") }
+                // The named connection's LOGIN has gone out; its creation is suspended.
+                while testServer.commandLog.filter({ $0.contains(" LOGIN ") }).count < 2 {
+                    try await Task.sleep(nanoseconds: 5_000_000)
+                }
+                await server.setReconnectsInsideCommands(false)
+                _ = try await named.value
+
+                let connection = await server.namedConnections["mover"]?.connection
+                #expect(connection?.reconnectsInsideCommands == false)
+                try await server.disconnect()
+            }
+        }
+    #endif
+
     // MARK: - Harness
 
     /// Authenticates the server's primary connection on a channel, kills that channel as a

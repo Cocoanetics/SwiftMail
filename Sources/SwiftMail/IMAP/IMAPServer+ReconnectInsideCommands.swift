@@ -18,4 +18,11 @@ extension IMAPServer {
             named.connection.reconnectsInsideCommands = enabled
         }
     }
+
+    /// Hands a connection this server owns the current switch. A named connection gets
+    /// it when it is made and again when it is registered: the switch may change during
+    /// the awaits in between, while the connection is not yet where the setter looks.
+    func applyReconnectsInsideCommands(to connection: IMAPConnection) {
+        connection.reconnectsInsideCommands = reconnectsInsideCommands
+    }
 }
