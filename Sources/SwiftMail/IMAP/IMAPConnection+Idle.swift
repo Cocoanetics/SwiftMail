@@ -35,8 +35,7 @@ extension IMAPConnection {
         clearInvalidChannel()
 
         if self.channel == nil {
-            logger.info("\(connectionContext) Channel is nil, re-establishing connection before starting IDLE")
-            try await connectBody()
+            try await reopenTransport(before: "starting IDLE")
             try await reauthenticateIfSessionWasLost(before: "IDLE")
         }
 

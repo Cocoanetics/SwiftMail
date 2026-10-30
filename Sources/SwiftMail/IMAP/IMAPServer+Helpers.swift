@@ -27,6 +27,9 @@ extension IMAPServer {
     /// and could invoke an OAuth token provider twice.
     func ensurePrimaryConnectionAuthenticated() async throws {
         guard let authentication, !primaryConnection.isAuthenticated else { return }
+        // With the reconnect inside commands off, a dead transport is the command's to
+        // report, not this refresh's to reopen.
+        guard primaryConnection.reconnectsInsideCommands || primaryConnection.isConnected else { return }
         if let inFlight = primaryAuthenticationInFlight {
             try await inFlight.value
             return

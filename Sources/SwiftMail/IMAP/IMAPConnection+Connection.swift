@@ -279,6 +279,23 @@ extension IMAPConnection {
         self.responseBuffer.reset()
     }
 
+    /// Reopens the transport a command found gone, the reconnect a command runs inside
+    /// itself. Throws instead, opening nothing, when `reconnectsInsideCommands` is off:
+    /// the caller then learns the session it was using has ended and reconnects on
+    /// purpose with `connect()`, which this switch never blocks.
+    func reopenTransport(before operation: String) async throws {
+        guard reconnectsInsideCommands else {
+            logger.info(
+                "\(connectionContext) Channel is nil; reconnecting inside commands is off, failing \(operation)"
+            )
+            throw IMAPError.connectionFailed(
+                "Connection lost before \(operation); reconnecting inside commands is turned off"
+            )
+        }
+        logger.info("\(connectionContext) Channel is nil, re-establishing connection before \(operation)")
+        try await connectBody()
+    }
+
     func clearInvalidChannel() {
         if let channel = self.channel, !channel.isActive {
             logger.info("\(connectionContext) Channel is no longer active, clearing channel reference")

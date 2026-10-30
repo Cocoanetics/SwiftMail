@@ -167,8 +167,7 @@ extension IMAPConnection {
 
         clearInvalidChannel()
         if self.channel == nil {
-            logger.info("\(connectionContext) Channel is nil, re-establishing connection before pipelined fetch")
-            try await connectBody()
+            try await reopenTransport(before: "pipelined fetch")
         }
 
         guard let channel = self.channel, channel.isActive else {
