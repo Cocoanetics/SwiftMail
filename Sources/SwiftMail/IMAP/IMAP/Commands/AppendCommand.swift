@@ -9,7 +9,8 @@ struct AppendCommand: IMAPCommand {
     typealias HandlerType = AppendHandler
 
     let mailboxName: String
-    let message: String
+    /// The message's bytes, sent as they are.
+    let message: Data
     let flags: [Flag]
     let internalDate: ServerMessageDate?
 
@@ -24,8 +25,8 @@ struct AppendCommand: IMAPCommand {
     func send(
         on channel: Channel, tag: String, whenWritten: @escaping @Sendable (EventLoopFuture<Void>) -> Void
     ) async throws {
-        var messageBuffer = channel.allocator.buffer(capacity: message.utf8.count)
-        messageBuffer.writeString(message)
+        var messageBuffer = channel.allocator.buffer(capacity: message.count)
+        messageBuffer.writeBytes(message)
 
         var mailboxBuffer = channel.allocator.buffer(capacity: mailboxName.utf8.count)
         mailboxBuffer.writeString(mailboxName)
@@ -54,5 +55,12 @@ struct AppendCommand: IMAPCommand {
             channel.write(IMAPClientHandler.OutboundIn.part(.append(.endMessage)), promise: nil)
             channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.append(.finish)), promise: finished)
         }
+    }
+}
+
+extension AppendCommand {
+    /// A message given as text: its UTF-8 bytes.
+    init(mailboxName: String, message: String, flags: [Flag], internalDate: ServerMessageDate?) {
+        self.init(mailboxName: mailboxName, message: Data(message.utf8), flags: flags, internalDate: internalDate)
     }
 }

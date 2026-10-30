@@ -324,3 +324,30 @@ struct AppendDeadlineTests {
         #expect(counter.count == 5)
     }
 }
+
+/// Keeps the APPEND payload as it was written.
+private final class PayloadCapture: ChannelOutboundHandler, @unchecked Sendable {
+    typealias OutboundIn = IMAPClientHandler.OutboundIn
+    var payload: [UInt8]?
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        if case .part(.append(.messageBytes(let buffer))) = unwrapOutboundIn(data) {
+            payload = Array(buffer.readableBytesView)
+        }
+        context.write(data, promise: promise)
+    }
+}
+
+@Suite("APPEND payload")
+struct AppendPayloadTests {
+    @Test("the message goes out byte for byte, also where it is not UTF-8")
+    func payloadIsSentUnchanged() async throws {
+        let channel = EmbeddedChannel()
+        let capture = PayloadCapture()
+        try channel.pipeline.syncOperations.addHandler(capture)
+        let bytes: [UInt8] = Array("Subject: x\r\n\r\n".utf8) + [0xE4, 0x0D, 0x0A]       // „ä" in Latin-1
+        let command = AppendCommand(mailboxName: "INBOX", message: Data(bytes), flags: [], internalDate: nil)
+        try await command.send(on: channel, tag: "A1") { _ in }
+        channel.embeddedEventLoop.run()
+        #expect(capture.payload == bytes)
+    }
+}
