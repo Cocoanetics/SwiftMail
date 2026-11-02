@@ -103,8 +103,8 @@ jobs:
         run: |
           swift --version
           swift --version 2>&1 | grep -q "Swift version 6\.4" || { echo "::error::Expected Swift 6.4"; exit 1; }
-      - name: Install gdb (for the test watchdog)
-        run: apt-get update && apt-get install -y gdb
+      - name: Install gdb and procps (for the test watchdog)
+        run: apt-get update && apt-get install -y gdb procps
       - name: Build (Linux)
         run: swift build --build-tests -v
       # Same watchdog as build-macos, with gdb standing in for sample(1): a
