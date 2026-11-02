@@ -7,7 +7,7 @@ import NIOIMAP
 import NIOIMAPCore
 
 /// A protocol for all IMAP commands that know their handler type.
-protocol IMAPCommand where ResultType: Sendable {
+protocol IMAPCommand: SendableMetatype where ResultType: Sendable {
     /// The result type this command produces
     associatedtype ResultType
 

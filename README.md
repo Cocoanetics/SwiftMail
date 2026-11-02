@@ -150,7 +150,7 @@ try await imapServer.append(
 
 ## Requirements
 
-- Swift 6.2+
+- Swift 6.2+ (CI builds with Swift 6.4)
 - macOS 15.0+
 - iOS 18.0+
 - tvOS 18.0+

@@ -43,7 +43,7 @@ struct MIMECharsetTests {
             let part = MessagePart(
                 sectionString: "1",
                 contentType: "text/plain",
-                data: try #require(text.data(using: .isoLatin1))
+                data: text.data(using: .isoLatin1)!
             )
             #expect(part.textContent == text)
         }
