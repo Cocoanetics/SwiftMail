@@ -67,8 +67,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0"),
         // swift-testing releases track toolchain versions: 6.3.2's manifest is
         // swift-tools-version 6.2, so every platform that compiles the test
-        // targets needs Swift 6.2+. The macOS CI job selects Xcode 26 for that
-        // reason (Linux/Android/Windows runners are already on Swift 6.3.x).
+        // targets needs Swift 6.2+. CI builds every platform with Swift 6.4 (Xcode 27.1 on
+        // macOS/iOS).
         .package(url: "https://github.com/apple/swift-testing", exact: "6.3.2"),
         // No DocC plugin dependency: Swift Package Index injects it when building
         // the hosted docs (.spi.yml), and Xcode's Build Documentation has DocC
