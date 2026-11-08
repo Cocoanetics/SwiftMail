@@ -57,11 +57,4 @@ extension IMAPServer {
         }
         return namespaces.relativeMailboxName(from: mailbox)
     }
-
-    func canonicalizeCRLF(_ value: String) -> String {
-        let normalized = value
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-        return normalized.replacingOccurrences(of: "\n", with: "\r\n")
-    }
 }

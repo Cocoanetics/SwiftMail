@@ -11,8 +11,8 @@ extension String {
     /// - No control characters except CR, LF, and TAB
     /// - No line longer than 998 octets of UTF-8 (RFC 5322 §2.1.1, RFC 6532 §3.4).
     ///   Lines end at CR or LF, the only characters that become line breaks once
-    ///   the text is written with CRLF line endings (``crlfNormalized``); a
-    ///   multibyte character counts as all of its octets.
+    ///   the text is written with CRLF line endings; a multibyte character counts
+    ///   as all of its octets.
     public func isSafe8BitContent() -> Bool {
         // Quick return if empty string
         if isEmpty { return true }
@@ -46,9 +46,13 @@ extension String {
     /// The string with every line ending (CRLF, a bare LF or a bare CR) written
     /// as CRLF, the only line ending SMTP DATA and MIME bodies allow
     /// (RFC 5321 §2.3.8, RFC 5322 §2.3).
+    ///
+    /// The searches are literal: a default search compares whole characters, and a
+    /// line break followed by a combining mark, a variation selector or an emoji
+    /// modifier forms one character with it, so it would not be matched.
     var crlfNormalized: String {
-        replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-            .replacingOccurrences(of: "\n", with: "\r\n")
+        replacingOccurrences(of: "\r\n", with: "\n", options: .literal)
+            .replacingOccurrences(of: "\r", with: "\n", options: .literal)
+            .replacingOccurrences(of: "\n", with: "\r\n", options: .literal)
     }
 }

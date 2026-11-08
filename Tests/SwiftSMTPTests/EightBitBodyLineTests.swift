@@ -73,6 +73,8 @@ struct EightBitBodyLineTests {
         case emoji
         case joinedEmoji
         case lineSeparatorCharacter
+        case lineBreakBeforeMark
+        case markHidesOverlongLine
 
         var testDescription: String { "\(self)" }
 
@@ -96,6 +98,13 @@ struct EightBitBodyLineTests {
                 case .lineSeparatorCharacter:
                     // U+2028 is not a line break in SMTP: this is one 1,203-octet line.
                     return String(repeating: "a", count: 600) + "\u{2028}" + String(repeating: "b", count: 600)
+                case .lineBreakBeforeMark:
+                    // A break followed by a combining mark, a variation selector or an
+                    // emoji modifier is one character with it.
+                    return "one\n\u{301}two\r\u{FE0F}three\r\n\u{1F3FB}four"
+                case .markHidesOverlongLine:
+                    // Two 600-octet lines; the CR before the mark must still end the first.
+                    return String(repeating: "a", count: 600) + "\r\u{301}" + String(repeating: "b", count: 600)
             }
         }
 
@@ -115,15 +124,16 @@ struct EightBitBodyLineTests {
     /// apart from its line endings.
     @Test(arguments: Shape.allCases)
     func safeBodyStaysEightBitWithCRLFEndings(shape: Shape) throws {
-        let text = "first line\nsecond \u{4E2D}\u{6587} line\rthird line"
-        let html = "<p>first\n\u{4E2D}\u{6587}</p>"
+        let text = "first line\nsecond \u{4E2D}\u{6587} line\rthird line\r\nfourth\r\n\u{301}fifth"
+        let html = "<p>first\n\u{4E2D}\u{6587}\r\n\u{301}</p>"
         let email = shape.email(text: text, html: html)
         let content = email.constructContent(use8BitMIME: true)
 
-        let textPart = "first line\r\nsecond \u{4E2D}\u{6587} line\r\nthird line"
+        let textPart = "first line\r\nsecond \u{4E2D}\u{6587} line\r\nthird line\r\nfourth\r\n\u{301}fifth"
         #expect(content.contains("Content-Transfer-Encoding: 8bit\r\n\r\n" + textPart))
         if email.htmlBody != nil {
-            #expect(content.contains("Content-Transfer-Encoding: 8bit\r\n\r\n<p>first\r\n\u{4E2D}\u{6587}</p>"))
+            let htmlPart = "<p>first\r\n\u{4E2D}\u{6587}\r\n\u{301}</p>"
+            #expect(content.contains("Content-Transfer-Encoding: 8bit\r\n\r\n" + htmlPart))
         }
         #expect(!content.contains("quoted-printable"))
         Self.expectWellFormedLines(Array(content.utf8))
@@ -137,6 +147,10 @@ struct EightBitBodyLineTests {
         #expect(String(repeating: "a", count: 998).isSafe8BitContent())
         #expect(!String(repeating: "a", count: 999).isSafe8BitContent())
         #expect(!String(repeating: "\u{1F600}", count: 250).isSafe8BitContent()) // 1,000 octets
+        for lineBreak in ["\n", "\r\n", "\r"] {
+            #expect(("first" + lineBreak + String(repeating: "a", count: 998)).isSafe8BitContent())
+            #expect(!("first" + lineBreak + String(repeating: "a", count: 999)).isSafe8BitContent())
+        }
     }
 
     @Test

@@ -204,7 +204,7 @@ extension IMAPServer {
         // preserve verbatim; lossy decoding keeps replacement chars rather than
         // dropping the message entirely.
         var rawMessageString = rawMessageData.lossyUTF8String
-        rawMessageString = canonicalizeCRLF(rawMessageString)
+        rawMessageString = rawMessageString.crlfNormalized
         if !rawMessageString.hasSuffix("\r\n") {
             rawMessageString.append("\r\n")
         }
