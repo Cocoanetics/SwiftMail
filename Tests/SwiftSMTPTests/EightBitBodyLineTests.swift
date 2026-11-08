@@ -117,7 +117,25 @@ struct EightBitBodyLineTests {
         let prepared = try SMTPServer.prepareEmailForSend(email, capabilities: ["8BITMIME"])
         #expect(prepared.use8BitMIME)
         Self.expectWellFormedLines(Array(prepared.contentData))
-        Self.expectWellFormedLines(Array(email.constructContent(use8BitMIME: true).utf8))
+        let content = email.constructContent(use8BitMIME: true)
+        Self.expectWellFormedLines(Array(content.utf8))
+        Self.expectBodiesPreserved(content, text: email.textBody, html: email.htmlBody)
+    }
+
+    /// The text and the HTML body are each checked: an overlong line in either one
+    /// alone keeps every line of the message within 998 octets, and both bodies
+    /// still arrive whole.
+    @Test(arguments: [Shape.textAndHTML, .htmlWithAttachment, .htmlWithInlineImage], [true, false])
+    func eitherBodyAloneKeepsLinesWithinLimit(shape: Shape, htmlIsOverlong: Bool) throws {
+        let long = String(repeating: "a", count: 1_200)
+        let text = htmlIsOverlong ? "short text\n" : "short text\n" + long
+        let html = htmlIsOverlong ? "<p>" + long + "</p>" : "<p>short</p>"
+        let email = shape.email(text: text, html: html)
+        let prepared = try SMTPServer.prepareEmailForSend(email, capabilities: ["8BITMIME"])
+        Self.expectWellFormedLines(Array(prepared.contentData))
+        let content = email.constructContent(use8BitMIME: true)
+        Self.expectWellFormedLines(Array(content.utf8))
+        Self.expectBodiesPreserved(content, text: text, html: html)
     }
 
     /// A body that already meets both rules still goes out as 8bit, its text unchanged
@@ -208,5 +226,92 @@ struct EightBitBodyLineTests {
             }
         }
         #expect(longest <= 998, "longest line is \(longest) octets")
+    }
+
+    /// Each `text/plain` and `text/html` part, decoded, is the whole body it was
+    /// built from. Line breaks are compared as one break each whatever their
+    /// form (the wire form is checked by `expectWellFormedLines`), so a body that
+    /// is cut short or altered fails here even when its lines are well formed.
+    private static func expectBodiesPreserved(_ content: String, text: String, html: String?) {
+        let bytes = Array(content.utf8)
+        let textParts = parts(of: "text/plain", in: bytes)
+        #expect(textParts.count == 1, "\(textParts.count) text/plain parts")
+        for part in textParts {
+            #expect(lineBreaksAsLF(part) == lineBreaksAsLF(Array(text.utf8)), "the text body is not preserved")
+        }
+        let htmlParts = parts(of: "text/html", in: bytes)
+        #expect(htmlParts.count == (html == nil ? 0 : 1), "\(htmlParts.count) text/html parts")
+        if let html {
+            for part in htmlParts {
+                #expect(lineBreaksAsLF(part) == lineBreaksAsLF(Array(html.utf8)), "the HTML body is not preserved")
+            }
+        }
+    }
+}
+
+extension EightBitBodyLineTests {
+    /// The decoded payload of every part whose content type is `type`. A payload
+    /// runs to the blank line before the next boundary, or to the end of the
+    /// message for a single-part one.
+    private static func parts(of type: String, in bytes: [UInt8]) -> [[UInt8]] {
+        let header = Array("Content-Type: \(type); charset=UTF-8\r\nContent-Transfer-Encoding: ".utf8)
+        let headerEnd = Array("\r\n\r\n".utf8)
+        let partEnd = Array("\r\n\r\n--".utf8)
+        var result: [[UInt8]] = []
+        var searchFrom = 0
+        while let start = firstIndex(of: header, in: bytes, from: searchFrom) {
+            guard let encodingEnd = firstIndex(of: headerEnd, in: bytes, from: start) else { break }
+            let encoding = String(bytes: bytes[(start + header.count)..<encodingEnd], encoding: .ascii)
+            let payloadStart = encodingEnd + headerEnd.count
+            let payloadEnd = firstIndex(of: partEnd, in: bytes, from: payloadStart) ?? bytes.count
+            let payload = Array(bytes[payloadStart..<payloadEnd])
+            result.append(encoding == "quoted-printable" ? quotedPrintableDecoded(payload) : payload)
+            searchFrom = payloadEnd
+        }
+        return result
+    }
+
+    private static func firstIndex(of needle: [UInt8], in bytes: [UInt8], from start: Int) -> Int? {
+        guard start <= bytes.count - needle.count else { return nil }
+        return (start...(bytes.count - needle.count)).first { bytes[$0..<($0 + needle.count)].elementsEqual(needle) }
+    }
+
+    /// RFC 2045 §6.7: `=XX` is the octet XX and `=` before CRLF is a soft line break.
+    private static func quotedPrintableDecoded(_ bytes: [UInt8]) -> [UInt8] {
+        var out: [UInt8] = []
+        var index = 0
+        while index < bytes.count {
+            if bytes[index] == UInt8(ascii: "="), index + 2 <= bytes.count {
+                let next = Array(bytes[(index + 1)..<min(index + 3, bytes.count)])
+                if next == [0x0D, 0x0A] {
+                    index += 3
+                    continue
+                }
+                if next.count == 2, let hex = String(bytes: next, encoding: .ascii), let octet = UInt8(hex, radix: 16) {
+                    out.append(octet)
+                    index += 3
+                    continue
+                }
+            }
+            out.append(bytes[index])
+            index += 1
+        }
+        return out
+    }
+
+    /// CRLF, a lone CR and a lone LF each become one LF.
+    private static func lineBreaksAsLF(_ bytes: [UInt8]) -> [UInt8] {
+        var out: [UInt8] = []
+        var index = 0
+        while index < bytes.count {
+            if bytes[index] == 0x0D {
+                out.append(0x0A)
+                index += (index + 1 < bytes.count && bytes[index + 1] == 0x0A) ? 2 : 1
+            } else {
+                out.append(bytes[index])
+                index += 1
+            }
+        }
+        return out
     }
 }
