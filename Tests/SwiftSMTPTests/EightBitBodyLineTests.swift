@@ -99,8 +99,8 @@ struct EightBitBodyLineTests {
                     // U+2028 is not a line break in SMTP: this is one 1,203-octet line.
                     return String(repeating: "a", count: 600) + "\u{2028}" + String(repeating: "b", count: 600)
                 case .lineBreakBeforeMark:
-                    // A break followed by a combining mark, a variation selector or an
-                    // emoji modifier is one character with it.
+                    // A default search treats a break followed by a combining mark, a
+                    // variation selector or an emoji modifier as one composed sequence.
                     return "one\n\u{301}two\r\u{FE0F}three\r\n\u{1F3FB}four"
                 case .markHidesOverlongLine:
                     // Two 600-octet lines; the CR before the mark must still end the first.
@@ -137,6 +137,32 @@ struct EightBitBodyLineTests {
         }
         #expect(!content.contains("quoted-printable"))
         Self.expectWellFormedLines(Array(content.utf8))
+    }
+
+    /// A calendar invite goes out inline as 8bit with every line ending written as
+    /// CRLF, including a break directly before a combining mark, a variation
+    /// selector or an emoji modifier.
+    @Test
+    func calendarInviteLinesEndInCRLF() throws {
+        let ics = "BEGIN:VCALENDAR\nMETHOD:REQUEST\nX-NOTE:a\n\u{301}b\r\u{FE0F}c\r\n\u{1F3FB}d\nEND:VCALENDAR\n"
+        let invite = SwiftMail.Attachment(
+            filename: "invite.ics",
+            mimeType: "text/calendar; method=REQUEST",
+            data: Data(ics.utf8)
+        )
+        let email = Email(
+            sender: EmailAddress(address: "sender@example.com"),
+            recipients: [EmailAddress(address: "recipient@example.com")],
+            subject: "Invite",
+            textBody: "Invitation",
+            attachments: [invite]
+        )
+        let content = Data(email.constructContent(use8BitMIME: true).utf8)
+        let calendarPart = "Content-Transfer-Encoding: 8bit\r\n\r\n"
+            + "BEGIN:VCALENDAR\r\nMETHOD:REQUEST\r\nX-NOTE:a\r\n\u{301}b\r\n\u{FE0F}c\r\n"
+            + "\u{1F3FB}d\r\nEND:VCALENDAR\r\n"
+        #expect(content.range(of: Data(calendarPart.utf8)) != nil)
+        Self.expectWellFormedLines(Array(content))
     }
 
     @Test

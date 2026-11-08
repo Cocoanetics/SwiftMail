@@ -89,7 +89,7 @@ extension IMAPServer {
             throw IMAPError.invalidArgument("Mailbox name must not be empty")
         }
 
-        var content = try email.keptCopyContent(use8BitMIME: true).crlfNormalized
+        var content = try email.keptCopyContent(use8BitMIME: true)
         if !content.hasSuffix("\r\n") {
             content.append("\r\n")
         }

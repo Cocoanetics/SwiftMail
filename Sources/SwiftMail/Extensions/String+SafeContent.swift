@@ -1,8 +1,9 @@
 import Foundation
 
 extension String {
-    /// The longest line, in octets and without its CRLF, that RFC 5322 §2.1.1
-    /// allows (RFC 6532 §3.4 keeps the limit in octets for UTF-8 content).
+    /// The longest line, in octets and without its CRLF, that 8bit data may have
+    /// (RFC 2045 §2.8, RFC 5322 §2.1.1; RFC 6532 §3.4 states it in octets for
+    /// UTF-8 content).
     static let maximumLineOctets = 998
 
     /// Determines if a string is safe for 8bit MIME transmission according to SMTP standards.
@@ -47,9 +48,9 @@ extension String {
     /// as CRLF, the only line ending SMTP DATA and MIME bodies allow
     /// (RFC 5321 §2.3.8, RFC 5322 §2.3).
     ///
-    /// The searches are literal: a default search compares whole characters, and a
-    /// line break followed by a combining mark, a variation selector or an emoji
-    /// modifier forms one character with it, so it would not be matched.
+    /// The searches are literal: a default search compares composed character
+    /// sequences and treats a line break followed by a combining mark, a variation
+    /// selector or an emoji modifier as one sequence, so it would not match it.
     var crlfNormalized: String {
         replacingOccurrences(of: "\r\n", with: "\n", options: .literal)
             .replacingOccurrences(of: "\r", with: "\n", options: .literal)
