@@ -39,6 +39,27 @@ struct AdditionalHeaderLineBreakTests {
         #expect(content.contains("\r\nX-Note: first\r\n\tsecond\r\n"))
     }
 
+    /// A fold is still a fold when the continuation starts with a combining mark,
+    /// a variation selector or an emoji modifier, and a line break that is not a
+    /// fold is still refused before one.
+    @Test("an SMTP send keeps a fold before a mark and refuses any other line break before one",
+          arguments: ["\r\n ", "\r\n\t", "\r\n", "\r", "\n", "\r\n\r\n "],
+          ["\u{0301}", "\u{FE0F}", "\u{1F3FB}"])
+    func foldBeforeMark(lineBreak: String, mark: String) throws {
+        var email = BccHeaderTests.email
+        let value = "a" + lineBreak + mark + "b"
+        email.additionalHeaders = ["X-Note": value]
+        if lineBreak == "\r\n " || lineBreak == "\r\n\t" {
+            let prepared = try SMTPServer.prepareEmailForSend(email, capabilities: [])
+            let content = String(bytes: prepared.contentData, encoding: .utf8) ?? ""
+            #expect(content.contains("\r\nX-Note: " + value + "\r\n"))
+            #expect(throws: Never.self) { try email.keptCopyContent(use8BitMIME: true) }
+        } else {
+            #expect(throws: SMTPError.self) { try SMTPServer.prepareEmailForSend(email, capabilities: []) }
+            #expect(throws: IMAPError.self) { try email.keptCopyContent(use8BitMIME: true) }
+        }
+    }
+
     @Test("an SMTP send refuses an additional header name that is not a header field name", arguments: [
         "Bcc:\(blind),X-Pad", "X Note", "", "X-N\u{F6}te"
     ])

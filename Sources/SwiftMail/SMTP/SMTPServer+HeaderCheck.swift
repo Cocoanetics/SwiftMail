@@ -24,9 +24,11 @@ extension SMTPServer {
             }
             // Unfolding keeps the space or tab, so the first replacement cannot
             // join a CRLF to the next whitespace into a fold the second one removes.
+            // The searches are literal: the default search compares composed character
+            // sequences, so it misses a fold whose next character is a combining mark.
             let unfolded = field.value
-                .replacingOccurrences(of: "\r\n ", with: " ")
-                .replacingOccurrences(of: "\r\n\t", with: "\t")
+                .replacingOccurrences(of: "\r\n ", with: " ", options: .literal)
+                .replacingOccurrences(of: "\r\n\t", with: "\t", options: .literal)
             if unfolded.unicodeScalars.contains(where: { $0 == "\r" || $0 == "\n" }) {
                 throw SMTPError.sendFailed("Header \(field.name) has a line break that would start a new header field")
             }
