@@ -28,9 +28,12 @@ extension Email {
             let safe8Bit = use8BitMIME && email.textBody.isSafe8BitContent()
                 && (email.htmlBody == nil || email.htmlBody!.isSafe8BitContent())
             if safe8Bit {
+                // Shipped as written, so the line endings must already be the
+                // CRLF that SMTP DATA requires (RFC 5321 §2.3.8); the
+                // quoted-printable encoder below writes CRLF itself.
                 self.textEncoding = "8bit"
-                self.textBody = email.textBody
-                self.htmlBody = email.htmlBody
+                self.textBody = email.textBody.crlfNormalized
+                self.htmlBody = email.htmlBody?.crlfNormalized
             } else {
                 self.textEncoding = "quoted-printable"
                 self.textBody = email.textBody.quotedPrintableEncoded()
@@ -228,12 +231,9 @@ extension Email {
     /// Content that is unsafe for verbatim transmission — NUL/control bytes, or a
     /// line over the RFC 5322 §2.1.1 998-octet limit (unfolded `DESCRIPTION`,
     /// `X-ALT-DESC`) — also returns `nil`, since such a line would overrun SMTP's
-    /// limit. NUL/control safety reuses ``String/isSafe8BitContent()`` (the gate the
-    /// text and HTML bodies already pass through); the line length is measured here
-    /// in UTF-8 *octets* between hard CRLFs, because `isSafe8BitContent` counts
-    /// grapheme clusters — which undercounts multibyte ICS lines (a 600-character
-    /// `SUMMARY` of 2-byte chars is 1200 octets) — and splits on Unicode separators
-    /// (U+2028/U+2029) that SMTP does not treat as line breaks.
+    /// limit. Both checks are ``String/isSafe8BitContent()``, the gate the text and
+    /// HTML bodies pass through, which measures each line in UTF-8 *octets* (a
+    /// 600-character `SUMMARY` of 2-byte characters is 1200 octets).
     private func calendarInviteText(
         for attachment: Attachment,
         use8BitMIME: Bool
@@ -247,13 +247,8 @@ extension Email {
         // SMTP DATA requires CRLF-only line endings (RFC 5321 §2.3.8) and the
         // send path's dot-stuffing assumes canonical CRLF framing, while ICS
         // producers commonly emit bare LF — normalize before shipping verbatim.
-        let icsText = decoded
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
-            .replacingOccurrences(of: "\n", with: "\r\n")
-        guard icsText.isSafe8BitContent(),
-              icsText.components(separatedBy: "\r\n").allSatisfy({ $0.utf8.count <= 998 })
-        else { return nil }
+        let icsText = decoded.crlfNormalized
+        guard icsText.isSafe8BitContent() else { return nil }
         if icsText.utf8.allSatisfy({ $0 < 128 }) { return (icsText, "7bit") }
         if use8BitMIME { return (icsText, "8bit") }
         return nil
