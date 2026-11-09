@@ -31,7 +31,7 @@ extension Array where Element == MessagePart {
                   let header = headers[part.section],
                   let restored = Self.filename(inMIMEHeader: header),
                   restored != current,
-                  restored.replacingOccurrences(of: "\\", with: "") == current
+                  restored.replacingOccurrences(of: "\\", with: "", options: .literal) == current
             else { return part }
 
             return MessagePart(

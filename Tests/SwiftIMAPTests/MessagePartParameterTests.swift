@@ -157,7 +157,21 @@ struct MessagePartParameterTests {
         #"slash\"quote"#,
         "x; delsp=yes",
         " \t ",
-        ""
+        "",
+        // A quote or backslash sharing a character with a neighbouring scalar,
+        // which a search by whole characters misses: a combining mark, variation
+        // selector, emoji modifier, joiner or spacing mark after it, or a
+        // prepended scalar (U+0600) before it.
+        "a\"\u{0301}b",
+        "a\"\u{FE0F}b",
+        "a \"\u{1F3FB}b",
+        "a\"\u{200D}b",
+        "a\"\u{0903}b",
+        "a\\\u{0301}b",
+        "a\\\u{FE0F}b",
+        "a \\\u{1F3FB}b",
+        "a\u{0600}\"b",
+        "a\u{0600}\\b"
     ])
     func aParameterValueReadsBackAsWritten(value: String) {
         // Quotes and backslashes are escaped in the quoted-string and unescaped
@@ -183,10 +197,37 @@ struct MessagePartParameterTests {
             #expect(Self.isMIMEParameterValue(emitted), "format=\(emitted) is not a token or a quoted-string")
         }
         part.data = Data("body text".utf8)
-        #expect(part.contentTypeParameter(named: "FORMAT") == value)
+        let readBack = part.contentTypeParameter(named: "FORMAT")
+        #expect(readBack.map { Array($0.unicodeScalars) } == Array(value.unicodeScalars))
         #expect(part.contentTypeParameter(named: "delsp") == "no")
         #expect(part.declaredCharset == "UTF-8")
         #expect(part.textContent == "body text")
+    }
+
+    @Test(arguments: [
+        "a\"b.pdf",
+        "a\\b.pdf",
+        "a\"\u{0301}b.pdf",
+        "a\"\u{FE0F}b.pdf",
+        "a \"\u{1F3FB}b.pdf",
+        "a\\\u{0301}b.pdf",
+        "a\u{0600}\"b.pdf",
+        "a\u{0600}\\b.pdf"
+    ])
+    func aNameIsReadWholeWhateverIsNextToAQuoteOrBackslash(name: String) {
+        // The name parameter is written back as a quoted-string and the filename
+        // read from it; an unescaped quote would end the name there.
+        let fields = BodyStructure.Fields(
+            parameters: ["name": name], id: nil, contentDescription: nil, encoding: nil, octetCount: 3)
+        let structure = BodyStructure.singlepart(BodyStructure.Singlepart(
+            kind: .basic(Media.MediaType(topLevel: "application", sub: "octet-stream")), fields: fields))
+
+        let parts = [MessagePart](structure)
+
+        #expect(parts.count == 1)
+        guard parts.count == 1 else { return }
+        #expect(parts[0].filename.map { Array($0.unicodeScalars) } == Array(name.unicodeScalars),
+                "read \(String(describing: parts[0].filename))")
     }
 
     /// RFC 2045 §5.1 `value := token / quoted-string`, checked independently of the

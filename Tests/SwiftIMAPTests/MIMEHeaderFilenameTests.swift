@@ -46,6 +46,26 @@ struct MIMEHeaderFilenameTests {
         #expect(restored[2].filename == "logo.png")
     }
 
+    @Test("A backslash sharing a character with a neighbouring scalar is put back",
+          arguments: ["a\\\u{0301}b.md", "a\\\u{FE0F}b.md", "a\\\u{1F3FB}b.md", "a\\\u{200D}b.md",
+                      "a\u{0600}\\b.md"])
+    func restoresABackslashNextToAJoiningScalar(name: String) {
+        // The header names the file with a backslash that shares a character with
+        // a combining mark, variation selector, emoji modifier or joiner after it,
+        // or with a prepended scalar (U+0600) before it; the BODYSTRUCTURE name
+        // lost the backslash.
+        let header = Data("Content-Type: application/octet-stream; name=\"\(name)\"\r\n\r\n".utf8)
+        let withoutBackslash = String(String.UnicodeScalarView(name.unicodeScalars.filter { $0 != "\\" }))
+        let part = MessagePart(section: Section([2]), contentType: "application/octet-stream",
+                               disposition: "attachment", filename: withoutBackslash)
+
+        let restored = [part].restoringFilenames(fromMIMEHeaders: [Section([2]): header])
+
+        #expect(restored.count == 1)
+        guard restored.count == 1 else { return }
+        #expect(restored[0].filename.map { Array($0.unicodeScalars) } == Array(name.unicodeScalars))
+    }
+
     @Test("A header naming anything but the same name with backslashes is ignored")
     func otherNamesAreIgnored() {
         let other = Data("Content-Type: image/png; name=\"other.png\"\r\n\r\n".utf8)
