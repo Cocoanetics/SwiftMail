@@ -7,9 +7,12 @@ import Foundation
 extension String {
     /// Encodes the string using quoted-printable encoding
     public func quotedPrintableEncoded() -> String {
+        // A literal search: the default search compares composed character sequences,
+        // so it misses a line ending directly followed by a combining mark, a variation
+        // selector or an emoji modifier.
         let normalizedLineEndings = self
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(of: "\r", with: "\n")
+            .replacingOccurrences(of: "\r\n", with: "\n", options: .literal)
+            .replacingOccurrences(of: "\r", with: "\n", options: .literal)
         let logicalLines = normalizedLineEndings.split(separator: "\n", omittingEmptySubsequences: false)
         return logicalLines.map(String.encodeQuotedPrintableLogicalLine).joined(separator: "\r\n")
     }
