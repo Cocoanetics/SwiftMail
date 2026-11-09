@@ -42,9 +42,7 @@ extension IMAPServer {
             // A server may refuse a wildcard outside the personal namespace (Zimbra: "LIST failed:
             // wildcards not permitted in username" for its "Other Users" prefix); the personal
             // listing stands on its own, so only a personal pattern fails the whole call.
-            let personalPatterns = Set(
-                NamespaceResponse(personal: namespaces.personal, otherUsers: [], shared: [])
-                    .listingPatterns(for: wildcard))
+            let personalPatterns = namespaces.personalListingPatterns(for: wildcard)
             for pattern in patterns {
                 let command = ListCommand(wildcard: pattern, budget: budget)
                 do {

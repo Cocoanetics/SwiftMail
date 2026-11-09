@@ -137,6 +137,12 @@ public struct NamespaceResponse: Sendable {
         return patterns
     }
 
+    /// The listing patterns of the personal namespace. A server may refuse a pattern of another
+    /// namespace; only a refused personal pattern fails a listing.
+    func personalListingPatterns(for wildcard: String) -> Set<String> {
+        Set(NamespaceResponse(personal: personal, otherUsers: [], shared: []).listingPatterns(for: wildcard))
+    }
+
     private func hasNamespacePrefix(_ mailbox: String) -> Bool {
         for namespace in all where !namespace.prefix.isEmpty {
             if mailbox.hasPrefix(namespace.prefix) {

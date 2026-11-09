@@ -81,8 +81,8 @@ final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, IMAPComm
                 // Convert NIOIMAPCore.MailboxInfo to our Mailbox.Info
                 let convertedMailboxes = mailboxes.map { Mailbox.Info(nio: $0) }
                 succeedWithResult(convertedMailboxes)
-            case .no, .bad:
-                failWithError(IMAPError.commandFailed("List command failed"))
+            case .no(let text), .bad(let text):
+                failWithError(IMAPError.commandFailed("List command failed: \(text.text)"))
         }
     }
 }

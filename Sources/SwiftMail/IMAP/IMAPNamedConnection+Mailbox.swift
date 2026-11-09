@@ -167,11 +167,17 @@ extension IMAPNamedConnection {
             var allMailboxes: [Mailbox.Info] = []
             var seenNames: Set<String> = []
 
+            // As in `IMAPServer.listMailboxes`: only a refused personal pattern fails the call.
+            let personalPatterns = namespaces.personalListingPatterns(for: wildcard)
             for pattern in patterns {
                 let command = ListCommand(wildcard: pattern, budget: budget)
-                let listed = try await executeCommand(command)
-                for mailbox in listed where seenNames.insert(mailbox.name).inserted {
-                    allMailboxes.append(mailbox)
+                do {
+                    let listed = try await executeCommand(command)
+                    for mailbox in listed where seenNames.insert(mailbox.name).inserted {
+                        allMailboxes.append(mailbox)
+                    }
+                } catch IMAPError.commandFailed(let reason) where !personalPatterns.contains(pattern) {
+                    connection.logger.warning("LIST \(pattern) refused, skipping that namespace: \(reason)")
                 }
             }
 
