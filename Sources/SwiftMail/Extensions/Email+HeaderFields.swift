@@ -17,8 +17,11 @@ extension Email {
         var fields = [HeaderField(name: "From", value: self.sender.headerString())]
         let bcc = includeBccHeader ? [("Bcc", self.bccRecipients)] : []
         for (name, addresses) in [("To", self.recipients), ("Cc", self.ccRecipients)] + bcc where !addresses.isEmpty {
+            // Folded between addresses, so a long list never adds up past
+            // RFC 5322's 998-octet line limit (§2.1.1). An address is never
+            // split, so only one that is that long by itself passes it.
             fields.append(HeaderField(
-                name: name, value: addresses.map { $0.headerString() }.joined(separator: ", "),
+                name: name, value: AddressFormatter.foldedList(addresses.map { $0.headerString() }, fieldName: name),
                 namesBccRecipients: name == "Bcc"))
         }
         fields.append(HeaderField(name: "Subject", value: self.subject.rfc2047EncodedHeader()))

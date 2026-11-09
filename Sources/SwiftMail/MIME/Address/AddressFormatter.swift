@@ -47,12 +47,61 @@ enum AddressFormatter {
         switch entry {
             case .mailbox(let address):
                 return string(for: address, form: form)
-            case let .group(name, members):
-                let list = members.map { string(for: $0, form: form) }.joined(separator: ", ")
-                return phrase(name, form: form) + ":" + (list.isEmpty ? "" : " " + list) + ";"
+            case .group:
+                return listPieces(for: entry, form: form).joined(separator: ", ")
             case .invalid(let text):
                 return invalidString(text, form: form)
         }
+    }
+
+    /// The text of an address-list element as pieces that `", "` joins into
+    /// that text, so a field can be folded between any two addresses (see
+    /// ``foldedList(_:fieldName:)``). A mailbox or invalid text is one piece; a
+    /// group is one piece per member, the first starting with `name: ` and the
+    /// last ending with `;`.
+    static func listPieces(for entry: AddressListEntry, form: Form) -> [String] {
+        guard case let .group(name, members) = entry else { return [string(for: entry, form: form)] }
+        let head = phrase(name, form: form) + ":"
+        guard !members.isEmpty else { return [head + ";"] }
+        var pieces = members.map { string(for: $0, form: form) }
+        pieces[0] = head + " " + pieces[0]
+        pieces[pieces.count - 1] += ";"
+        return pieces
+    }
+
+    /// The line length a folded address list keeps to when each address fits:
+    /// RFC 5322 §2.1.1 asks for at most 78 characters a line, excluding the CRLF.
+    static let foldedLineLength = 78
+
+    /// The body of the address-list field named `fieldName`: `pieces` joined by
+    /// `", "`, with the space before a piece replaced by a fold (CRLF and a
+    /// space) when that piece would take its line past ``foldedLineLength``
+    /// octets. `fieldName` and its `": "` count toward the first line.
+    ///
+    /// A piece is never split, so one longer than a line sits alone on its own.
+    /// It may hold folds of its own, as a long encoded display name does: the
+    /// fit is judged on its first line, and the next piece counts from its last.
+    /// Unfolded (each CRLF before a space removed), the result is
+    /// `pieces.joined(separator: ", ")` unfolded.
+    static func foldedList(_ pieces: [String], fieldName: String) -> String {
+        var body = ""
+        var lineLength = fieldName.utf8.count + 2
+        for (index, piece) in pieces.enumerated() {
+            let text = index < pieces.count - 1 ? piece + "," : piece
+            if index > 0 {
+                let firstLine = text.range(of: "\r\n", options: .literal).map { text[..<$0.lowerBound] } ?? text[...]
+                let fits = lineLength + 1 + firstLine.utf8.count <= foldedLineLength
+                body += fits ? " " : "\r\n "
+                lineLength = fits ? lineLength + 1 : 1
+            }
+            body += text
+            if let lastFold = text.range(of: "\r\n", options: [.literal, .backwards]) {
+                lineLength = text[lastFold.upperBound...].utf8.count
+            } else {
+                lineLength += text.utf8.count
+            }
+        }
+        return body
     }
 
     /// Invalid text as it is, when that reads back as exactly this invalid
