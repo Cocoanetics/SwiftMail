@@ -25,13 +25,18 @@ extension Array where Element == MessagePart {
     /// backslashes the BODYSTRUCTURE name has lost. Any other difference keeps
     /// the BODYSTRUCTURE name, so the header can put back backslashes and
     /// nothing else.
+    ///
+    /// The names are compared scalar by scalar. `String`'s `==` treats
+    /// canonically equivalent spellings as equal (`é` and `e` + U+0301), so it
+    /// would let the header's spelling replace every other scalar as well.
     func restoringFilenames(fromMIMEHeaders headers: [Section: Data]) -> [MessagePart] {
         map { part in
             guard let current = part.filename,
                   let header = headers[part.section],
                   let restored = Self.filename(inMIMEHeader: header),
                   restored != current,
-                  restored.replacingOccurrences(of: "\\", with: "", options: .literal) == current
+                  restored.replacingOccurrences(of: "\\", with: "", options: .literal)
+                    .unicodeScalars.elementsEqual(current.unicodeScalars)
             else { return part }
 
             return MessagePart(

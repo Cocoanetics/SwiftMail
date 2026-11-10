@@ -171,7 +171,12 @@ struct MessagePartParameterTests {
         "a\\\u{FE0F}b",
         "a \\\u{1F3FB}b",
         "a\u{0600}\"b",
-        "a\u{0600}\\b"
+        "a\u{0600}\\b",
+        // Every quote and backslash is escaped, not only the first.
+        #"a"b"c"#,
+        #"a\b\c"#,
+        "a\"\u{0301}b\"\u{0301}c",
+        "a\\\u{0301}b\\\u{0301}c"
     ])
     func aParameterValueReadsBackAsWritten(value: String) {
         // Quotes and backslashes are escaped in the quoted-string and unescaped
@@ -212,7 +217,9 @@ struct MessagePartParameterTests {
         "a \"\u{1F3FB}b.pdf",
         "a\\\u{0301}b.pdf",
         "a\u{0600}\"b.pdf",
-        "a\u{0600}\\b.pdf"
+        "a\u{0600}\\b.pdf",
+        "a\"b\"c.pdf",
+        "a\\b\\c.pdf"
     ])
     func aNameIsReadWholeWhateverIsNextToAQuoteOrBackslash(name: String) {
         // The name parameter is written back as a quoted-string and the filename
