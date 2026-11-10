@@ -39,11 +39,19 @@ extension IMAPServer {
             var allMailboxes: [Mailbox.Info] = []
             var seenNames: Set<String> = []
 
+            // A server may refuse a wildcard outside the personal namespace (Zimbra: "LIST failed:
+            // wildcards not permitted in username" for its "Other Users" prefix); the personal
+            // listing stands on its own, so only a personal pattern fails the whole call.
+            let personalPatterns = namespaces.personalListingPatterns(for: wildcard)
             for pattern in patterns {
                 let command = ListCommand(wildcard: pattern, budget: budget)
-                let listed = try await executeCommand(command)
-                for mailbox in listed where seenNames.insert(mailbox.name).inserted {
-                    allMailboxes.append(mailbox)
+                do {
+                    let listed = try await executeCommand(command)
+                    for mailbox in listed where seenNames.insert(mailbox.name).inserted {
+                        allMailboxes.append(mailbox)
+                    }
+                } catch IMAPError.commandFailed(let reason) where !personalPatterns.contains(pattern) {
+                    logger.warning("LIST \(pattern) refused, skipping that namespace: \(reason)")
                 }
             }
 

@@ -67,6 +67,8 @@ final class IMAPTestServer {
     private let mimeHeaders: [String: String]
     private let rejectsMIMEHeaderFetch: Bool
     private let listedMailboxNames: [String]
+    private let otherUsersNamespacePrefix: String?
+    private let refusedListPatterns: [String: String]
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
     private var commandLogStorage: [String] = []
@@ -95,6 +97,8 @@ final class IMAPTestServer {
         mimeHeaders: [String: String] = [:],
         rejectsMIMEHeaderFetch: Bool = false,
         listedMailboxNames: [String] = ["INBOX"],
+        otherUsersNamespacePrefix: String? = nil,
+        refusedListPatterns: [String: String] = [:],
         maildirURL: URL
     ) throws {
         self.host = host
@@ -114,6 +118,8 @@ final class IMAPTestServer {
         self.mimeHeaders = mimeHeaders
         self.rejectsMIMEHeaderFetch = rejectsMIMEHeaderFetch
         self.listedMailboxNames = listedMailboxNames
+        self.otherUsersNamespacePrefix = otherUsersNamespacePrefix
+        self.refusedListPatterns = refusedListPatterns
         self.messages = try Self.loadMaildir(maildirURL)
     }
 
@@ -583,9 +589,18 @@ final class IMAPTestServer {
                 // With a mailbox selected, fetchReply answers.
                 return "\(tag) NO No mailbox selected\r\n"
             case "NAMESPACE":
-                return "* NAMESPACE ((\"\(personalNamespacePrefix)\" \"\(namespaceDelimiter)\")) NIL NIL\r\n"
+                let otherUsers = otherUsersNamespacePrefix
+                    .map { "((\"\($0)\" \"\(namespaceDelimiter)\"))" } ?? "NIL"
+                return "* NAMESPACE ((\"\(personalNamespacePrefix)\" \"\(namespaceDelimiter)\")) "
+                    + "\(otherUsers) NIL\r\n"
                     + "\(tag) OK NAMESPACE completed\r\n"
             case "LIST":
+                // The pattern is the last argument: LIST "" "<pattern>".
+                let pattern = args.split(separator: " ").last
+                    .map { $0.trimmingCharacters(in: .init(charactersIn: "\"")) }
+                if let pattern, let reason = refusedListPatterns[pattern] {
+                    return "\(tag) NO \(reason)\r\n"
+                }
                 // Every name in one write, so the client decodes them from a single read.
                 return listedMailboxNames.map { "* LIST (\\HasNoChildren) \"/\" \"\($0)\"\r\n" }.joined()
                     + "\(tag) OK LIST completed\r\n"
