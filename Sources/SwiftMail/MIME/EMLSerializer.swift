@@ -75,13 +75,16 @@ public struct EMLSerializer {
     }
 
     /// An address header field: each entry in RFC 5322 form for a header
-    /// field (see ``AddressListEntry/description``), groups whole. Display
+    /// field (see ``AddressListEntry/description``). Display
     /// names are encoded where they must be, an addr-spec never is (RFC 6532
     /// keeps a UTF-8 one as it is), and no control character can start a
-    /// header field of its own.
+    /// header field of its own. The list is folded between addresses, group
+    /// members included, so a long one never adds up past RFC 5322's 998-octet
+    /// line limit (§2.1.1); only an address that long by itself passes it.
     private static func appendAddressHeader(_ name: String, _ entries: [AddressListEntry], into output: inout String) {
         guard !entries.isEmpty else { return }
-        output += "\(name): \(entries.map(\.description).joined(separator: ", "))\r\n"
+        let pieces = entries.flatMap { AddressFormatter.listPieces(for: $0, form: .header) }
+        output += "\(name): \(AddressFormatter.foldedList(pieces, fieldName: name))\r\n"
     }
 
     /// Emit the body: empty placeholder, single-part inline, or multipart.
