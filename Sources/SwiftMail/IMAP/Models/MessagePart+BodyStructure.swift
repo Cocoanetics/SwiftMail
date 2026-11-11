@@ -154,9 +154,14 @@ extension Array where Element == MessagePart {
             $0.value > 0x20 && $0.value < 0x7F && !tspecials.contains($0)
         }
         if isToken { return value }
+        // Literal: every quote and backslash must be escaped whatever is next to
+        // it, and a default search compares whole characters, so it misses one
+        // that shares a character with a neighbouring scalar (a combining mark
+        // after it, or a prepended scalar such as U+0600 before it) and writes
+        // it unescaped.
         let escaped = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "\"", with: "\\\"", options: .literal)
         return "\"\(escaped)\""
     }
 

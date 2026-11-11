@@ -46,12 +46,46 @@ struct MIMEHeaderFilenameTests {
         #expect(restored[2].filename == "logo.png")
     }
 
-    @Test("A header naming anything but the same name with backslashes is ignored")
-    func otherNamesAreIgnored() {
-        let other = Data("Content-Type: image/png; name=\"other.png\"\r\n\r\n".utf8)
-        let restored = Self.parts.restoringFilenames(fromMIMEHeaders: [Section([3]): other])
+    @Test("A backslash sharing a character with a neighbouring scalar is put back",
+          arguments: ["a\\\u{0301}b.md", "a\\\u{FE0F}b.md", "a\\\u{1F3FB}b.md", "a\\\u{200D}b.md",
+                      "a\u{0600}\\b.md"])
+    func restoresABackslashNextToAJoiningScalar(name: String) {
+        // The header names the file with a backslash that shares a character with
+        // a combining mark, variation selector, emoji modifier or joiner after it,
+        // or with a prepended scalar (U+0600) before it; the BODYSTRUCTURE name
+        // lost the backslash.
+        let header = Data("Content-Type: application/octet-stream; name=\"\(name)\"\r\n\r\n".utf8)
+        let withoutBackslash = String(String.UnicodeScalarView(name.unicodeScalars.filter { $0 != "\\" }))
+        let part = MessagePart(section: Section([2]), contentType: "application/octet-stream",
+                               disposition: "attachment", filename: withoutBackslash)
 
-        #expect(restored[2].filename == "logo.png")
+        let restored = [part].restoringFilenames(fromMIMEHeaders: [Section([2]): header])
+
+        #expect(restored.count == 1)
+        guard restored.count == 1 else { return }
+        #expect(restored[0].filename.map { Array($0.unicodeScalars) } == Array(name.unicodeScalars))
+    }
+
+    @Test("A header naming anything but the same name with backslashes is ignored",
+          arguments: zip(
+              // The header's name: another name, the same letters in another case, the
+              // same text with a backslash spelled with other scalars (NFD and NFC), and
+              // the name with backslashes and extra text, or with part of it missing.
+              ["other.png", "a\\Report.md", "cafe\u{0301}\\\u{200D}notes.md", "caf\u{E9}\\notes.md",
+               "a\\b.md.txt", "a\\b"],
+              // The BODYSTRUCTURE name.
+              ["logo.png", "areport.md", "caf\u{E9}\u{200D}notes.md", "cafe\u{0301}notes.md",
+               "ab.md", "ab.md"]))
+    func otherNamesAreIgnored(headerName: String, current: String) {
+        let header = Data("Content-Type: application/octet-stream; name=\"\(headerName)\"\r\n\r\n".utf8)
+        let part = MessagePart(section: Section([2]), contentType: "application/octet-stream",
+                               disposition: "attachment", filename: current)
+
+        let restored = [part].restoringFilenames(fromMIMEHeaders: [Section([2]): header])
+
+        #expect(restored.count == 1)
+        guard restored.count == 1 else { return }
+        #expect(restored[0].filename.map { Array($0.unicodeScalars) } == Array(current.unicodeScalars))
     }
 
     @Test("The handler keeps each header up to its cap and none of the streamed bytes in its history")
