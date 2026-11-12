@@ -99,6 +99,8 @@ public struct NamespaceResponse: Sendable {
     ///
     /// This expands patterns across all known namespace prefixes so listings include
     /// personal/other/shared roots when servers scope LIST results by namespace.
+    /// For a full listing (`*` or `%`) the patterns also cover INBOX, which may live outside
+    /// every namespace prefix.
     public func listingPatterns(for wildcard: String) -> [String] {
         guard !all.isEmpty else {
             return [wildcard]
@@ -132,6 +134,18 @@ public struct NamespaceResponse: Sendable {
 
         if patterns.isEmpty {
             appendUnique(wildcard)
+        }
+
+        // INBOX always exists and need not sit inside the personal namespace (RFC 2342 §6,
+        // RFC 3501 §5.1): with a personal prefix such as "Mail/", neither "Mail/*" nor "Mail"
+        // lists it. A full listing asks for it by name unless a pattern already covers it.
+        if wildcard == "*" || wildcard == "%" {
+            let coversInbox = patterns.contains { pattern in
+                pattern == wildcard || pattern.caseInsensitiveCompare("INBOX") == .orderedSame
+            }
+            if !coversInbox {
+                appendUnique("INBOX")
+            }
         }
 
         return patterns
