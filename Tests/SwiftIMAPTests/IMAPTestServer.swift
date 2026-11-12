@@ -69,6 +69,7 @@ final class IMAPTestServer {
     private let listedMailboxNames: [String]
     private let otherUsersNamespacePrefix: String?
     private let refusedListPatterns: [String: String]
+    private let matchesListPatterns: Bool
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
     private var commandLogStorage: [String] = []
@@ -99,6 +100,7 @@ final class IMAPTestServer {
         listedMailboxNames: [String] = ["INBOX"],
         otherUsersNamespacePrefix: String? = nil,
         refusedListPatterns: [String: String] = [:],
+        matchesListPatterns: Bool = false,
         maildirURL: URL
     ) throws {
         self.host = host
@@ -120,7 +122,32 @@ final class IMAPTestServer {
         self.listedMailboxNames = listedMailboxNames
         self.otherUsersNamespacePrefix = otherUsersNamespacePrefix
         self.refusedListPatterns = refusedListPatterns
+        self.matchesListPatterns = matchesListPatterns
         self.messages = try Self.loadMaildir(maildirURL)
+    }
+
+    /// RFC 3501 §6.3.8 LIST matching: `*` matches anything, `%` anything but the delimiter `/`,
+    /// and INBOX is case-insensitive.
+    static func listPattern(_ pattern: String, matches name: String) -> Bool {
+        func matches(_ pattern: Substring, _ name: Substring) -> Bool {
+            guard let first = pattern.first else { return name.isEmpty }
+            let rest = pattern.dropFirst()
+            switch first {
+                case "*":
+                    return name.indices.contains { matches(rest, name[$0...]) } || matches(rest, name[name.endIndex...])
+                case "%":
+                    if matches(rest, name) { return true }
+                    guard let next = name.first, next != "/" else { return false }
+                    return matches(pattern, name.dropFirst())
+                default:
+                    guard name.first == first else { return false }
+                    return matches(rest, name.dropFirst())
+            }
+        }
+        func canonical(_ value: String) -> String {
+            value.uppercased() == "INBOX" ? "INBOX" : value
+        }
+        return matches(Substring(canonical(pattern)), Substring(canonical(name)))
     }
 
     var idleCommandCount: Int {
@@ -602,7 +629,10 @@ final class IMAPTestServer {
                     return "\(tag) NO \(reason)\r\n"
                 }
                 // Every name in one write, so the client decodes them from a single read.
-                return listedMailboxNames.map { "* LIST (\\HasNoChildren) \"/\" \"\($0)\"\r\n" }.joined()
+                let names = matchesListPatterns
+                    ? listedMailboxNames.filter { Self.listPattern(pattern ?? "", matches: $0) }
+                    : listedMailboxNames
+                return names.map { "* LIST (\\HasNoChildren) \"/\" \"\($0)\"\r\n" }.joined()
                     + "\(tag) OK LIST completed\r\n"
             case "ID":
                 recordIDCommand()
