@@ -25,6 +25,39 @@ private actor ReauthenticationCounter {
 /// unauthenticated socket, and concurrent callers cannot each authenticate.
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct ReauthenticationAfterReconnectTests {
+    @Test(arguments: [false, true])
+    func abortWakesQueueOwnerDuringOAuthReconnectBeforeProviderRelease(fails: Bool) async throws {
+        let harness = AuthenticationRaceHarness()
+        let connection = await harness.server.primaryConnection
+        let stale = try await harness.install(on: connection)
+        connection.markSessionAuthenticated()
+        try await stale.close()
+        let provider = HeldAuthenticationProvider(fails: fails)
+        let ownerExited = IMAPTestSignal()
+        connection.operationOwnerFinishedForTesting = ownerExited.signal
+        connection.replaceConnectForTesting { _ = try await harness.install(on: connection) }
+        await harness.server.replaceAuthenticationForTesting(harness.configuration(provider))
+        defer { provider.release.signal(); connection.abortNow() }
+        // Go directly through command recovery so the provider runs while this
+        // command owns the queue, rather than through primary pre-authentication.
+        let command = Task { try await connection.noop() }
+        await provider.entered.wait()
+        connection.operationOwnerFinishedForTesting = nil
+        let replacement = try #require(connection.channel as? NIOAsyncTestingChannel)
+        let queued = Task { try await connection.noop() }
+        try await authenticationWaitUntil { connection.lifetime.reservationCount == 2 }
+        connection.abortNow()
+        await #expect(throws: IMAPAbortReason.connectionAborted) { _ = try await authenticationResult(command) }
+        await #expect(throws: IMAPAbortReason.connectionAborted) { _ = try await authenticationResult(queued) }
+        try await authenticationResult(Task { await ownerExited.wait() })
+        #expect(connection.lifetime.reservationCount == 0)
+        #expect(try await replacement.readOutbound(as: ByteBuffer.self) == nil)
+        provider.release.signal()
+        await provider.returned.wait()
+        #expect(!connection.isAuthenticated)
+        #expect(try await replacement.readOutbound(as: ByteBuffer.self) == nil)
+    }
+
     @Test
     func commandThatReopensTheTransportReauthenticatesFirst() async throws {
         try await withEventLoopGroup { group in
