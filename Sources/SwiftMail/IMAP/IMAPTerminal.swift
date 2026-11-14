@@ -16,7 +16,7 @@ final class IMAPLifetimeGate {
 
 /// The sole result authority for an operation. Producers complete this cell,
 /// rather than independently completing promises made by its adapters.
-final class IMAPTerminal<Value> {
+final class IMAPTerminal<Value>: @unchecked Sendable {
     typealias Outcome = Result<Value, Error>
     let gate: IMAPLifetimeGate
     private var result: Outcome?
@@ -77,7 +77,7 @@ final class IMAPTerminal<Value> {
     /// Result delivery never waits for event-loop cleanup to finish.
     func addCleanup(id: UUID = UUID(), on eventLoop: EventLoop? = nil, _ cleanup: @escaping () -> Void) {
         let action: () -> Void = {
-            if let eventLoop { eventLoop.execute(cleanup) } else { cleanup() }
+            if let eventLoop, !eventLoop.inEventLoop { eventLoop.execute(cleanup) } else { cleanup() }
         }
         let runNow = gate.withLock {
             guard cleanupIDs.insert(id).inserted else { return false }

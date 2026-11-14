@@ -6,10 +6,12 @@ import Logging
 
 extension IMAPConnection {
     @discardableResult func fetchCapabilities() async throws -> [Capability] {
-        let command = CapabilityCommand()
-        let serverCapabilities = try await executeCommand(command)
-        self.capabilities = Set(serverCapabilities)
-        return serverCapabilities
+        try await withOperation { [self] in
+            let serverCapabilities = try await executeCommandBody(CapabilityCommand())
+            let context = try capturedTransport()
+            try commit(on: context) { context.capabilities = Set(serverCapabilities) }
+            return serverCapabilities
+        }
     }
 
     /// Replaces the capability snapshot with `reportedCapabilities`, or — when the
@@ -17,45 +19,58 @@ extension IMAPConnection {
     /// Pass `useCommandBody: true` from call sites that already hold the command
     /// queue (mirrors `fetchNamespacesIfSupported(useCommandBody:)`).
     func refreshCapabilities(using reportedCapabilities: [Capability], useCommandBody: Bool = false) async throws {
+        try validateOperation()
         if !reportedCapabilities.isEmpty {
-            self.capabilities = Set(reportedCapabilities)
+            let context = try capturedTransport()
+            try commit(on: context) { context.capabilities = Set(reportedCapabilities) }
             return
         }
 
         if useCommandBody {
             let refreshedCapabilities = try await executeCommandBody(CapabilityCommand())
-            self.capabilities = Set(refreshedCapabilities)
+            let context = try capturedTransport()
+            try commit(on: context) { context.capabilities = Set(refreshedCapabilities) }
         } else {
             try await fetchCapabilities()
         }
     }
 
     func fetchNamespaces() async throws -> NamespaceResponse {
-        let response = try await executeCommand(NamespaceCommand())
-        namespaces = response
-        return response
+        try await withOperation { [self] in
+            let response = try await executeCommandBody(NamespaceCommand())
+            let context = try capturedTransport()
+            try commit(on: context) { context.namespaces = response }
+            return response
+        }
     }
 
-    func fetchNamespacesIfSupported(useCommandBody: Bool) async {
+    func fetchNamespacesIfSupported(useCommandBody: Bool) async throws {
+        try validateOperation()
         let namespaceCapability = Capability("NAMESPACE")
         guard capabilities.contains(namespaceCapability) else {
-            namespaces = nil
+            let context = try capturedTransport()
+            try commit(on: context) { context.namespaces = nil }
             return
         }
 
         do {
+            let response: NamespaceResponse
             if useCommandBody {
-                namespaces = try await executeCommandBody(NamespaceCommand())
+                response = try await executeCommandBody(NamespaceCommand())
             } else {
-                namespaces = try await executeCommand(NamespaceCommand())
+                response = try await executeCommand(NamespaceCommand())
             }
+            let context = try capturedTransport()
+            try commit(on: context) { context.namespaces = response }
         } catch {
+            try validateOperation()
+            if error is IMAPAbortReason { throw error }
             logger.warning("\(connectionContext) Failed to fetch namespace metadata: \(error)")
         }
     }
 
     func executeCommand<CommandType: IMAPCommand>(_ command: CommandType) async throws -> CommandType.ResultType {
-        try await commandQueue.run { [self] in
+        try await withOperation { [self] in
             try await self.executeCommandBody(command)
         }
     }
@@ -63,6 +78,7 @@ extension IMAPConnection {
     func executeCommandBody<CommandType: IMAPCommand>(
         _ command: CommandType
     ) async throws -> CommandType.ResultType {
+        try validateOperation()
         try command.validate()
         try await waitForIdleCompletionIfNeeded()
         try await recycleConnectionIfBufferedTerminationIfNeeded(operation: String(describing: CommandType.self))
@@ -79,12 +95,14 @@ extension IMAPConnection {
         }
 
         let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
+        let context = try capturedTransport()
         let tag = generateCommandTag()
         let handler = command.makeHandler(commandTag: tag, promise: resultPromise)
 
         return try await runCommandHandler(
             CommandHandlerRun(
                 command: command,
+                context: context,
                 channel: channel,
                 tag: tag,
                 handler: handler,
@@ -95,6 +113,7 @@ extension IMAPConnection {
 
     private struct CommandHandlerRun<CommandType: IMAPCommand> {
         let command: CommandType
+        let context: TransportContext
         let channel: Channel
         let tag: String
         let handler: CommandType.HandlerType
@@ -125,11 +144,14 @@ extension IMAPConnection {
     private func runCommandHandler<CommandType: IMAPCommand>(
         _ run: CommandHandlerRun<CommandType>
     ) async throws -> CommandType.ResultType {
-        let command = run.command
         let channel = run.channel
         let tag = run.tag
         let handler = run.handler
         let resultPromise = run.resultPromise
+        let context = run.context
+        let responseBuffer = context.responseBuffer
+        let duplexLogger = context.duplexLogger
+        let terminal = bindHandler(handler, promise: resultPromise, context: context)
         // The timeout measures the SERVER. It is armed by `send`'s `whenWritten`
         // callback, in the same event-loop task that emits the command, so no
         // local delay — installing the handler, building an APPEND payload, a
@@ -144,25 +166,20 @@ extension IMAPConnection {
         let writeState = WriteState()
         resultPromise.futureResult.whenFailure { _ in writeState.failedWithWritePending = !writeState.settled }
         do {
-            try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
-            responseBuffer.hasActiveHandler = true
-            let timeoutSeconds = command.timeoutSeconds
-            let logger = self.logger
-            try await command.send(on: channel, tag: tag) { lastWrite in
-                Self.armCommandTimeout(
-                    channel: channel, timeoutSeconds: timeoutSeconds, promise: resultPromise, logger: logger)
-                lastWrite.whenComplete { _ in writeState.settled = true }
-            }
+            try await installHandler(handler, terminal: terminal, context: context)
+            try await lifecycleCheckpoint("write:\(String(describing: CommandType.self))", context: context)
+            try await sendCommand(run, terminal: terminal, writeState: writeState)
             // A close that raced the handler's installation may have been
             // delivered before the handler was added; don't wait out the deadline.
             if !channel.isActive {
-                resultPromise.fail(IMAPError.connectionFailed("Connection closed before command completed"))
+                terminal.complete(.failure(IMAPError.connectionFailed("Connection closed before command completed")))
             }
-            let result = try await resultPromise.futureResult.get()
+            let result = try await terminal.value()
+            try await lifecycleCheckpoint("response:\(String(describing: CommandType.self))", context: context)
 
             responseBuffer.hasActiveHandler = false
 
-            await handleConnectionTerminationInResponses(handler.untaggedResponses)
+            await handleConnectionTerminationInResponses(handler.untaggedResponses, context: context)
             duplexLogger.flushInboundBuffer()
 
             return result
@@ -171,12 +188,12 @@ extension IMAPConnection {
 
             // Ensure the promise is always resolved — prevents NIO "leaking promise" fatal error
             // when the channel becomes inactive between the guard and pipeline operations.
-            resultPromise.fail(caught)
+            terminal.complete(.failure(caught))
             // If the timeout fired first, report it rather than the write it aborted.
             var error = caught
-            do { _ = try await resultPromise.futureResult.get() } catch let settled { error = settled }
+            do { _ = try await terminal.value() } catch let settled { error = settled }
 
-            await handleConnectionTerminationInResponses(handler.untaggedResponses)
+            await handleConnectionTerminationInResponses(handler.untaggedResponses, context: context)
             duplexLogger.flushInboundBuffer()
             if !handler.isCompleted {
                 try? await channel.pipeline.removeHandler(handler)
@@ -188,16 +205,40 @@ extension IMAPConnection {
             let writePending = (try? await channel.eventLoop.submit { writeState.failedWithWritePending }.get())
                 ?? false
             if writePending || shouldRecycleConnection(for: error) {
-                try? await disconnectBody()
+                await closeTransport(context)
             }
             throw error
         }
+    }
+
+    private func sendCommand<CommandType: IMAPCommand>(
+        _ run: CommandHandlerRun<CommandType>, terminal: IMAPTerminal<CommandType.ResultType>, writeState: WriteState
+    ) async throws {
+        let channel = run.channel
+        let context = run.context
+        let timeoutSeconds = run.command.timeoutSeconds
+        let logger = self.logger
+        let token = operationToken
+        try await IMAPWriteScope.$validate.withValue({ [self] in
+            try validateTransport(context, token: token)
+        }, operation: {
+            try await run.command.send(on: channel, tag: run.tag) { lastWrite in
+                let timer = channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
+                    if terminal.complete(.failure(IMAPError.timeout)) {
+                        logger.warning("Command timed out after \(timeoutSeconds) seconds")
+                    }
+                }
+                terminal.attachTimer(timer, on: channel.eventLoop)
+                lastWrite.whenComplete { _ in writeState.settled = true }
+            }
+        })
     }
 
     func executeHandlerOnly<T: Sendable, HandlerType: IMAPCommandHandler>(
         handlerType: HandlerType.Type,
         timeoutSeconds: Int = 5
     ) async throws -> T where HandlerType.ResultType == T {
+        try validateOperation()
         try await recycleConnectionIfBufferedTerminationIfNeeded(operation: String(describing: HandlerType.self))
         clearInvalidChannel()
 
@@ -243,15 +284,20 @@ extension IMAPConnection {
         resultPromise: EventLoopPromise<T>,
         scheduledTask: Scheduled<Void>
     ) async throws -> T where HandlerType.ResultType == T {
+        let context = try capturedTransport()
+        let responseBuffer = context.responseBuffer
+        let duplexLogger = context.duplexLogger
+        let terminal = bindHandler(handler, promise: resultPromise, context: context)
+        terminal.attachTimer(scheduledTask, on: channel.eventLoop)
         do {
-            try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
-            responseBuffer.hasActiveHandler = true
-            let result = try await resultPromise.futureResult.get()
+            try await installHandler(handler, terminal: terminal, context: context)
+            let result = try await terminal.value()
+            try validateTransport(context)
 
             scheduledTask.cancel()
             responseBuffer.hasActiveHandler = false
 
-            await handleConnectionTerminationInResponses(handler.untaggedResponses)
+            await handleConnectionTerminationInResponses(handler.untaggedResponses, context: context)
             duplexLogger.flushInboundBuffer()
 
             return result
@@ -261,16 +307,16 @@ extension IMAPConnection {
 
             // Ensure the promise is always resolved — prevents NIO "leaking promise" fatal error
             // when the channel becomes inactive between the guard and pipeline operations.
-            resultPromise.fail(error)
+            terminal.complete(.failure(error))
 
-            await handleConnectionTerminationInResponses(handler.untaggedResponses)
+            await handleConnectionTerminationInResponses(handler.untaggedResponses, context: context)
             duplexLogger.flushInboundBuffer()
             if !handler.isCompleted {
                 try? await channel.pipeline.removeHandler(handler)
             }
             logErrorDiagnostics(error: error, operation: "handler \(String(describing: HandlerType.self))")
             if shouldRecycleConnection(for: error) {
-                try? await disconnectBody()
+                await closeTransport(context)
             }
             throw error
         }

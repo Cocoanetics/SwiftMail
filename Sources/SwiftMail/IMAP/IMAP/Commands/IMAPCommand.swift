@@ -71,8 +71,10 @@ extension IMAPTaggedCommand {
         // handler nor the deadline can wake it. A failed write closes the
         // channel, which fails the outstanding command.
         let written = channel.eventLoop.makePromise(of: Void.self)
+        let validate = IMAPWriteScope.validate
         written.futureResult.whenFailure { _ in channel.close(promise: nil) }
         channel.eventLoop.execute {
+            do { try validate() } catch { written.fail(error); return }
             channel.writeAndFlush(wrapped, promise: written)
             whenWritten(written.futureResult)
         }

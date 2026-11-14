@@ -13,6 +13,7 @@ extension IMAPServer.Authentication {
                 try await connection.authenticatePlainBody(username: username, password: password)
             case .xoauth2(let email, let accessTokenProvider):
                 let accessToken = try await accessTokenProvider()
+                try connection.validateOperation()
                 try await connection.authenticateXOAUTH2Body(email: email, accessToken: accessToken)
         }
         guard let identification else { return }
@@ -28,6 +29,8 @@ extension IMAPServer.Authentication {
         } catch let error as CancellationError {
             throw error
         } catch {
+            try connection.validateOperation()
+            if error is IMAPAbortReason { throw error }
             guard connection.isConnected, connection.isAuthenticated else {
                 throw error
             }

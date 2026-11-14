@@ -161,20 +161,9 @@ public actor IMAPServer {
         var identification: Identification?
 
         func authenticate(on connection: IMAPConnection) async throws {
-            switch method {
-                case .login(let username, let password):
-                    try await connection.login(username: username, password: password)
-                case .plain(let username, let password):
-                    try await connection.authenticatePlain(username: username, password: password)
-                case .xoauth2(let email, let accessTokenProvider):
-                    let accessToken = try await accessTokenProvider()
-                    try await connection.authenticateXOAUTH2(email: email, accessToken: accessToken)
+            try await connection.withOperation {
+                try await authenticateBody(on: connection)
             }
-            // RFC 2971: some servers (e.g. NetEase 163/126) reject SELECT on any
-            // authenticated connection that has not identified itself, so the
-            // stored identity is replayed after every authentication.
-            guard let identification else { return }
-            try await Self.identify(connection, with: identification)
         }
 
         /// Replays the stored RFC 2971 identity on a freshly authenticated
@@ -197,6 +186,8 @@ public actor IMAPServer {
             } catch let error as CancellationError {
                 throw error
             } catch {
+                try connection.validateOperation()
+                if error is IMAPAbortReason { throw error }
                 guard connection.isConnected, connection.isAuthenticated else {
                     throw error
                 }

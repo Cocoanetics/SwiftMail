@@ -51,7 +51,7 @@ final class IMAPConnectionLifetime {
         }
     }
 
-    private let gate = IMAPLifetimeGate()
+    let gate = IMAPLifetimeGate()
     private var generation = ConnectionGeneration()
     private var abortReason: IMAPAbortReason?
     private var operations: [OperationToken: RegisteredOperation] = [:]
@@ -62,10 +62,17 @@ final class IMAPConnectionLifetime {
 
     var currentGeneration: ConnectionGeneration { gate.withLock { generation } }
 
-    func registerOperation<Value>(of type: Value.Type = Value.self) -> (OperationToken, IMAPTerminal<Value>) {
+    func registerOperation<Value>(
+        of type: Value.Type = Value.self, parent: OperationToken? = nil
+    ) -> (OperationToken, IMAPTerminal<Value>) {
         let terminal = IMAPTerminal<Value>(gate: gate)
         let (token, actions) = gate.withLock { () -> (OperationToken, [Action]) in
             let token = OperationToken(generation: generation)
+            if let parent {
+                do { try validateLocked(parent) } catch {
+                    return (token, terminal.settleLocked(.failure(error)) ?? [])
+                }
+            }
             if let abortReason {
                 return (token, terminal.settleLocked(.failure(abortReason)) ?? [])
             }
@@ -88,20 +95,31 @@ final class IMAPConnectionLifetime {
         try gate.withLock { try validateLocked(token) }
     }
 
-    private func validateLocked(_ token: OperationToken) throws {
+    func validateAdmission() throws {
+        try gate.withLock { if let abortReason { throw abortReason } }
+    }
+
+    func validateLocked(_ token: OperationToken) throws {
         guard token.generation == generation, abortReason == nil,
               operations[token]?.isPendingLocked() == true else {
             throw abortReason ?? IMAPAbortReason.connectionAborted
         }
     }
 
+    func validateGenerationLocked(_ expected: ConnectionGeneration) throws {
+        guard generation == expected, abortReason == nil else {
+            throw abortReason ?? IMAPAbortReason.connectionAborted
+        }
+    }
+
     /// Invalidation claims all results under the same gate as completion. Active
     /// closures are not cancelled here; their eventual lease releases are harmless.
-    func invalidate(reason: IMAPAbortReason = .connectionAborted) {
+    func invalidate(reason: IMAPAbortReason = .connectionAborted, detach: () -> [Action] = { [] }) {
         let actions = gate.withLock { () -> [Action] in
             guard abortReason == nil else { return [] }
             abortReason = reason
-            var actions = operations.values.flatMap { $0.invalidateLocked(reason) }
+            var actions = detach()
+            actions += operations.values.flatMap { $0.invalidateLocked(reason) }
             operations.removeAll()
             for reservation in reservations.values {
                 reservation.phase = .retired

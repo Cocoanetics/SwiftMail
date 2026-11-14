@@ -14,7 +14,7 @@ extension IMAPConnection {
             throw IMAPError.commandFailed("Failed to start IDLE session")
         }
 
-        try await commandQueue.run { [self] in
+        try await withOperation { [self] in
             try await self.startIdleSession(continuation: continuation)
         }
 
@@ -22,6 +22,7 @@ extension IMAPConnection {
     }
 
     func startIdleSession(continuation: AsyncStream<IMAPServerEvent>.Continuation) async throws {
+        try validateOperation()
         if !capabilities.contains(.idle) {
             throw IMAPError.commandNotSupported("IDLE command not supported by server")
         }
@@ -30,7 +31,6 @@ extension IMAPConnection {
             throw IMAPError.commandFailed("IDLE session already active")
         }
 
-        idleTerminationInProgress = false
         try await recycleConnectionIfBufferedTerminationIfNeeded(operation: "IDLE start")
         clearInvalidChannel()
 
@@ -44,54 +44,82 @@ extension IMAPConnection {
         }
 
         let promise = channel.eventLoop.makePromise(of: Void.self)
+        let context = try capturedTransport()
+        let responseBuffer = context.responseBuffer
         let tag = generateCommandTag()
         let handler = IdleHandler(commandTag: tag, promise: promise, continuation: continuation)
-        idleHandler = handler
+        try commit(on: context) {
+            context.idleHandler = handler
+            context.idleTerminationInProgress = false
+        }
+        let terminal = bindHandler(handler, promise: promise, context: context)
 
         do {
-            try await channel.pipeline.addHandler(handler, position: .before(responseBuffer)).get()
-            responseBuffer.hasActiveHandler = true
+            try await installIdleHandler(handler, terminal: terminal, context: context)
             let command = IdleCommand()
             let tagged = command.toTaggedCommand(tag: tag)
             let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
-            try await channel.writeAndFlush(wrapped).get()
+            let token = operationToken
+            try await channel.eventLoop.submit {
+                try self.validateTransport(context, token: token)
+                channel.writeAndFlush(wrapped).whenFailure { terminal.complete(.failure($0)) }
+            }.get()
+            try validateTransport(context)
         } catch {
             responseBuffer.hasActiveHandler = false
-            idleHandler = nil
+            try? commit(on: context) { context.idleHandler = nil }
             // Ensure the promise is resolved to prevent NIO "leaking promise" fatal error
-            promise.fail(error)
+            terminal.complete(.failure(error))
             if !handler.isCompleted {
                 try? await channel.pipeline.removeHandler(handler)
             }
             logErrorDiagnostics(error: error, operation: "IDLE start")
             if shouldRecycleConnection(for: error) {
-                try? await disconnectBody()
+                await closeTransport(context)
             }
             throw error
         }
     }
 
+    private func installIdleHandler(
+        _ handler: IdleHandler, terminal: IMAPTerminal<Void>, context: TransportContext
+    ) async throws {
+        let channel = context.channel
+        let installed: EventLoopFuture<Void> = channel.pipeline.addHandler(
+            handler, position: .before(context.responseBuffer))
+        terminal.attachHandlerCleanup(after: installed) {
+            channel.pipeline.removeHandler(handler, promise: nil)
+            context.responseBuffer.hasActiveHandler = false
+        }
+        try await installed.get()
+        try validateTransport(context)
+        context.responseBuffer.hasActiveHandler = true
+    }
+
     func waitForIdleCompletionIfNeeded(timeoutSeconds: TimeInterval = 15) async throws {
+        try validateOperation()
         guard let handler = idleHandler else { return }
+        let context = try capturedTransport()
         do {
             try await waitForIdleHandlerCompletion(handler, timeoutSeconds: timeoutSeconds)
         } catch {
             let warning = "\(connectionContext) IDLE handler did not complete in time; "
                 + "resetting connection before continuing"
             logger.warning("\(warning)")
-            idleHandler = nil
-            responseBuffer.hasActiveHandler = false
-            try? await disconnectBody()
+            context.responseBuffer.hasActiveHandler = false
+            await closeTransport(context)
             throw error
         }
     }
 
     func waitForIdleStartIfNeeded(_ handler: IdleHandler, timeoutSeconds: TimeInterval) async throws {
+        let context = try capturedTransport()
         guard !handler.hasEnteredIdleState else { return }
 
         let pollIntervalNanos: UInt64 = 25_000_000 // 25ms
         let start = Date()
         while !handler.hasEnteredIdleState {
+            try validateTransport(context)
             if Task.isCancelled {
                 throw CancellationError()
             }
@@ -100,7 +128,7 @@ extension IMAPConnection {
                 throw IMAPError.timeout
             }
 
-            if self.channel?.isActive != true {
+            if !context.channel.isActive {
                 throw IMAPError.connectionFailed("Channel became inactive before IDLE confirmation")
             }
 
@@ -122,14 +150,13 @@ extension IMAPConnection {
 
         let timeout = max(timeoutSeconds, 0.1)
         let timeoutMilliseconds = max(Int64(timeout * 1_000), 100)
-        let timeoutPromise = future.eventLoop.makePromise(of: T.self)
+        let (_, terminal) = lifetime.registerOperation(of: T.self, parent: operationToken)
         let timeoutTask = future.eventLoop.scheduleTask(in: .milliseconds(timeoutMilliseconds)) {
-            timeoutPromise.fail(IMAPError.timeout)
+            _ = terminal.complete(.failure(IMAPError.timeout))
         }
 
-        defer { timeoutTask.cancel() }
-
-        future.cascade(to: timeoutPromise)
-        return try await timeoutPromise.futureResult.get()
+        terminal.attachTimer(timeoutTask, on: future.eventLoop)
+        future.whenComplete { terminal.complete($0) }
+        return try await terminal.value()
     }
 }
