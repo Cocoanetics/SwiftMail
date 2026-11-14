@@ -14,12 +14,12 @@ struct IMAPIdleCancellationTests {
     }
 
     private struct CommandQueueBlocker {
-        let task: Task<Void, Never>
+        let task: Task<Void, Error>
         let release: AsyncStream<Void>.Continuation
     }
 
     @Test
-    func cancelledDoneRecyclesChannelBeforeDroppingIdleState() async throws {
+    func cancelledQueuedDonePreservesActiveIdleTransport() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
         do {
@@ -27,26 +27,31 @@ struct IMAPIdleCancellationTests {
             try await enterIdle(connection: harness.connection, channel: harness.channel)
 
             let blocker = await blockCommandQueue(on: harness.connection)
+            let doneQueued = IMAPTestSignal()
+            harness.connection.commandQueue.testHooks.didEnqueue = { doneQueued.signal() }
             let doneTask = Task {
                 try await harness.connection.done(timeoutSeconds: 1)
             }
+            await doneQueued.wait()
             doneTask.cancel()
-            blocker.release.yield(())
-            blocker.release.finish()
-            await blocker.task.value
 
             do {
                 try await doneTask.value
                 Issue.record("Expected cancelled DONE to throw CancellationError")
             } catch is CancellationError {
-                // Expected. The connection must still be recycled before this leaves.
+                // Queued cancellation settles before releasing the active owner.
             } catch {
                 Issue.record("Expected CancellationError, got \(error)")
             }
 
-            #expect(harness.connection.channel == nil)
-            #expect(harness.connection.idleHandler == nil)
-            #expect(!harness.connection.responseBuffer.hasActiveHandler)
+            #expect(harness.connection.channel === harness.channel)
+            #expect(harness.channel.isActive)
+            #expect(harness.connection.idleHandler != nil)
+            #expect(harness.connection.responseBuffer.hasActiveHandler)
+            blocker.release.yield(())
+            blocker.release.finish()
+            try await blocker.task.value
+            try await harness.connection.disconnect()
 
             try await group.shutdownGracefully()
         } catch {
@@ -283,7 +288,7 @@ struct IMAPIdleCancellationTests {
         let blockerStarted = AsyncStream<Void>.makeStream()
         let blockerRelease = AsyncStream<Void>.makeStream()
         let blocker = Task {
-            await connection.commandQueue.run {
+            try await connection.commandQueue.run {
                 blockerStarted.continuation.yield(())
                 for await _ in blockerRelease.stream {
                     break
@@ -295,5 +300,31 @@ struct IMAPIdleCancellationTests {
         await blockerIterator.next()
 
         return CommandQueueBlocker(task: blocker, release: blockerRelease.continuation)
+    }
+}
+
+extension IMAPIdleCancellationTests {
+    @Test
+    func disconnectFromAlreadyCancelledTaskStillClosesTransport() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+
+        do {
+            let harness = try await makeIdleHarness(group: group)
+            let beginDisconnect = IMAPTestSignal()
+            let disconnect = Task {
+                await beginDisconnect.wait()
+                try await harness.connection.disconnect()
+            }
+            disconnect.cancel()
+            beginDisconnect.signal()
+
+            try await disconnect.value
+            #expect(harness.connection.channel == nil)
+            #expect(!harness.channel.isActive)
+            try await group.shutdownGracefully()
+        } catch {
+            try? await group.shutdownGracefully()
+            throw error
+        }
     }
 }

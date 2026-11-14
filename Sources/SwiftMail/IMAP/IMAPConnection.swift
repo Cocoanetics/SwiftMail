@@ -32,7 +32,8 @@ final class IMAPConnection {
     var isSessionAuthenticated: Bool = false
     var idleHandler: IdleHandler?
     var idleTerminationInProgress: Bool = false
-    let commandQueue = IMAPCommandQueue()
+    let lifetime: IMAPConnectionLifetime
+    let commandQueue: IMAPCommandQueue
     let responseBuffer = UntaggedResponseBuffer()
     var startTLSUpgradeOverrideForTesting: (() async throws -> Void)?
     var capabilityRefreshOverrideForTesting: (() async throws -> Void)?
@@ -80,6 +81,9 @@ final class IMAPConnection {
         responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit,
         parserLimits: IMAPParserLimits
     ) {
+        let lifetime = IMAPConnectionLifetime()
+        self.lifetime = lifetime
+        self.commandQueue = IMAPCommandQueue(lifetime: lifetime)
         self.host = host
         self.port = port
         self.transportSecurity = transportSecurity
@@ -285,7 +289,7 @@ final class IMAPConnection {
     }
 
     func disconnect() async throws {
-        try await commandQueue.run { [self] in
+        try await commandQueue.runForCleanup { [self] in
             try await self.disconnectBody()
             // Ending the session on purpose is not losing it.
             self.lostAuthenticatedSession = false
