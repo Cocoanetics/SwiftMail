@@ -9,6 +9,7 @@
 // integration tests that use it are themselves gated to `#if os(macOS)`).
 #if os(macOS) || os(Linux)
 import Foundation
+import Testing
 #if canImport(Glibc)
     import Glibc
 #endif
@@ -19,7 +20,213 @@ enum IMAPTestError: Error {
 
 /// A minimal IMAP4rev1 server implemented in Swift using POSIX sockets.
 /// Uses POSIX sockets directly since Network.framework doesn't work in the iOS simulator.
-final class IMAPTestServer {
+/// Lifecycle/connection lookup is isolated to queue, metrics to metricsQueue, event history
+/// to controlQueue, and each connection's worker state to its condition lock.
+final class IMAPTestServer: @unchecked Sendable {
+    struct ConnectionID: Hashable, Sendable {
+        let run: UUID
+        let number: UInt64
+    }
+
+    struct CommandID: Hashable, Sendable {
+        let connection: ConnectionID
+        /// Zero is the greeting; subsequent commands increase even if tags repeat.
+        let occurrence: Int
+        let tag: String
+    }
+
+    enum EventKind: Sendable {
+        case accepted, commandReachedServer, replyHeld, fragmentSent, released, gateCancelled
+        case writerBackpressured, peerEOF, peerReset, readFailed, sendFailed, localShutdown, workerDrained
+        case cancellationRequested, callerSettled
+    }
+
+    struct Event: Sendable {
+        let sequence: UInt64
+        let uptimeNanoseconds: UInt64
+        let connection: ConnectionID
+        let command: CommandID?
+        let kind: EventKind
+        let detail: String
+    }
+
+    /// Scripts replace the entire reply. There is no automatic completion after a script.
+    /// Use distinct hold names for successive releases. `send` acknowledges a fragment only
+    /// after every byte has reached send(2), not when the action is enqueued.
+    enum Action: Sendable {
+        case hold(String)
+        case send(Data, acknowledgement: String)
+        case taggedCompletion(String)
+        case close
+        case delay(TimeInterval)
+    }
+
+    struct Script: Sendable {
+        /// Monotonically increasing across restarts of this fixture, independent of the fd.
+        let connectionNumber: UInt64
+        let occurrence: Int
+        let actions: [Action]
+    }
+
+    enum WaitError: Error, Equatable {
+        case timedOut, connectionEnded, runEnded
+    }
+
+    private struct EventQuery {
+        let run: UUID
+        let connection: ConnectionID?
+        let kind: EventKind
+        let occurrence: Int?
+        let detail: String?
+        let after: UInt64
+
+        func matches(_ event: Event) -> Bool {
+            event.connection.run == run && (connection == nil || event.connection == connection)
+                && event.kind == kind && (occurrence == nil || event.command?.occurrence == occurrence)
+                && (detail == nil || event.detail == detail) && event.sequence > after
+        }
+    }
+
+    /// Cancellation can win before continuation installation. Timer, event and cancellation
+    /// all use this same terminal claim, including disposal of the losing timer.
+    private final class EventWaiter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var result: Result<Event, Error>?
+        private var continuation: CheckedContinuation<Event, Error>?
+        private var timer: DispatchSourceTimer?
+
+        func install(_ continuation: CheckedContinuation<Event, Error>) {
+            lock.lock()
+            if let result {
+                lock.unlock()
+                continuation.resume(with: result)
+            } else {
+                self.continuation = continuation
+                lock.unlock()
+            }
+        }
+
+        func arm(_ timer: DispatchSourceTimer) {
+            lock.lock()
+            if result == nil { self.timer = timer } else { timer.cancel() }
+            lock.unlock()
+            timer.resume()
+        }
+
+        @discardableResult
+        func finish(_ result: Result<Event, Error>) -> Bool {
+            lock.lock()
+            guard self.result == nil else { lock.unlock(); return false }
+            self.result = result
+            let continuation = continuation
+            self.continuation = nil
+            timer?.cancel()
+            timer = nil
+            lock.unlock()
+            continuation?.resume(with: result)
+            return true
+        }
+    }
+
+    private let controlQueue = DispatchQueue(label: "IMAPTestServer.controls")
+    private var eventStorage: [Event] = []
+    private var eventSequence: UInt64 = 0
+    private var eventWaiters: [UUID: (EventQuery, EventWaiter)] = [:]
+    private var endedConnections: Set<ConnectionID> = []
+    private var endedRuns: Set<UUID> = []
+    private var failuresStorage: [String] = []
+    private let scripts: [Script]
+    private let sendBufferSize: Int32?
+
+    var events: [Event] { controlQueue.sync { eventStorage } }
+    var fixtureFailures: [String] { controlQueue.sync { failuresStorage } }
+    var pendingEventWaiterCount: Int { controlQueue.sync { eventWaiters.count } }
+    var runID: UUID { queue.sync { currentRun } }
+
+    /// Always supply the captured run (or connection.run). History is retained, so callers
+    /// can register after arrival; `after` permits waiting for a later occurrence of an event.
+    func waitForEvent(
+        _ kind: EventKind, run: UUID, connection: ConnectionID? = nil,
+        occurrence: Int? = nil, detail: String? = nil, after: UInt64 = 0,
+        timeout: TimeInterval = 2, registered: (@Sendable () -> Void)? = nil
+    ) async throws -> Event {
+        let token = UUID()
+        let waiter = EventWaiter()
+        let query = EventQuery(
+            run: run, connection: connection, kind: kind, occurrence: occurrence, detail: detail, after: after)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                waiter.install(continuation)
+                controlQueue.sync {
+                    if let event = eventStorage.first(where: query.matches) {
+                        waiter.finish(.success(event))
+                    } else if endedRuns.contains(run) {
+                        waiter.finish(.failure(WaitError.runEnded))
+                    } else if let connection, endedConnections.contains(connection), kind != .workerDrained {
+                        waiter.finish(.failure(WaitError.connectionEnded))
+                    } else if Task.isCancelled {
+                        waiter.finish(.failure(CancellationError()))
+                    } else {
+                        eventWaiters[token] = (query, waiter)
+                        let timer = DispatchSource.makeTimerSource(queue: controlQueue)
+                        timer.setEventHandler { [weak self] in
+                            self?.eventWaiters.removeValue(forKey: token)?.1.finish(.failure(WaitError.timedOut))
+                        }
+                        timer.schedule(deadline: .now() + max(0, timeout))
+                        waiter.arm(timer)
+                    }
+                }
+                registered?()
+            }
+        } onCancel: {
+            waiter.finish(.failure(CancellationError()))
+            self.controlQueue.async { self.eventWaiters.removeValue(forKey: token) }
+        }
+    }
+
+    @discardableResult
+    func mark(_ kind: EventKind, connection: ConnectionID, detail: String) -> Event {
+        precondition(kind == .cancellationRequested || kind == .callerSettled)
+        return recordEvent(kind, connection: connection, detail: detail)
+    }
+
+    @discardableResult
+    private func recordEvent(
+        _ kind: EventKind, connection: ConnectionID, command: CommandID? = nil, detail: String = ""
+    ) -> Event {
+        controlQueue.sync {
+            eventSequence += 1
+            let event = Event(
+                sequence: eventSequence, uptimeNanoseconds: DispatchTime.now().uptimeNanoseconds,
+                connection: connection, command: command, kind: kind, detail: detail)
+            eventStorage.append(event)
+            for (token, entry) in eventWaiters where entry.0.matches(event) {
+                eventWaiters.removeValue(forKey: token)
+                entry.1.finish(.success(event))
+            }
+            if kind == .peerEOF || kind == .peerReset || kind == .readFailed
+                || kind == .sendFailed || kind == .localShutdown {
+                endedConnections.insert(connection)
+                for (token, entry) in eventWaiters
+                where entry.0.connection == connection && entry.0.kind != .workerDrained {
+                    eventWaiters.removeValue(forKey: token)
+                    entry.1.finish(.failure(WaitError.connectionEnded))
+                }
+            }
+            return event
+        }
+    }
+
+    @discardableResult
+    func release(_ command: CommandID, gate: String) -> Bool {
+        queue.sync { connections[command.connection] }?.settleGate(command, name: gate, released: true) ?? false
+    }
+
+    @discardableResult
+    func cancelGate(_ command: CommandID, gate: String) -> Bool {
+        queue.sync { connections[command.connection] }?.settleGate(command, name: gate, released: false) ?? false
+    }
+
     enum PartialFetchBehavior {
         case honor
         case ignoreRange
@@ -48,7 +255,8 @@ final class IMAPTestServer {
     let host: String
     let username: String
     let password: String
-    private(set) var port: Int
+    private var portStorage: Int
+    var port: Int { queue.sync { portStorage } }
 
     private var listenFd: Int32 = -1
     private var acceptSource: DispatchSourceRead?
@@ -73,10 +281,11 @@ final class IMAPTestServer {
     private let metricsQueue = DispatchQueue(label: "IMAPTestServer.metrics")
     private var idleCommandCountStorage = 0
     private var commandLogStorage: [String] = []
-    private var clientFds: Set<Int32> = []
-    private let clientFdsLock = NSLock()
-    private let clientGroup = DispatchGroup()
+    private var connections: [ConnectionID: Connection] = [:]
+    private var clientGroup = DispatchGroup()
     private var isStopping = false
+    private var currentRun = UUID()
+    private var nextConnectionNumber: UInt64 = 0
 
     init(
         host: String = "localhost",
@@ -101,10 +310,12 @@ final class IMAPTestServer {
         otherUsersNamespacePrefix: String? = nil,
         refusedListPatterns: [String: String] = [:],
         matchesListPatterns: Bool = false,
+        scripts: [Script] = [],
+        sendBufferSize: Int32? = nil,
         maildirURL: URL
     ) throws {
         self.host = host
-        self.port = port
+        self.portStorage = port
         self.username = username
         self.password = password
         self.loginResponseDelay = loginResponseDelay
@@ -123,6 +334,8 @@ final class IMAPTestServer {
         self.otherUsersNamespacePrefix = otherUsersNamespacePrefix
         self.refusedListPatterns = refusedListPatterns
         self.matchesListPatterns = matchesListPatterns
+        self.scripts = scripts
+        self.sendBufferSize = sendBufferSize
         self.messages = try Self.loadMaildir(maildirURL)
     }
 
@@ -213,7 +426,15 @@ final class IMAPTestServer {
     }
 
     func start() throws {
-        resetClientTrackingForStart()
+        try queue.sync { try startOnQueue() }
+    }
+
+    private func startOnQueue() throws {
+        guard listenFd < 0, !isStopping, connections.isEmpty else {
+            throw IMAPTestError.setup("previous server run has not drained")
+        }
+        currentRun = UUID()
+        clientGroup = DispatchGroup()
 
         #if os(Linux)
             listenFd = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
@@ -232,7 +453,7 @@ final class IMAPTestServer {
             addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
         #endif
         addr.sin_family = sa_family_t(AF_INET)
-        addr.sin_port = UInt16(port).bigEndian
+        addr.sin_port = UInt16(portStorage).bigEndian
         addr.sin_addr.s_addr = INADDR_ANY
 
         let bindResult = withUnsafePointer(to: &addr) {
@@ -242,11 +463,13 @@ final class IMAPTestServer {
         }
         guard bindResult == 0 else {
             close(listenFd)
+            listenFd = -1
             throw IMAPTestError.setup("bind() failed: \(errno)")
         }
 
         guard listen(listenFd, 5) == 0 else {
             close(listenFd)
+            listenFd = -1
             throw IMAPTestError.setup("listen() failed: \(errno)")
         }
 
@@ -258,21 +481,31 @@ final class IMAPTestServer {
                 getsockname(listenFd, $0, &addrLen)
             }
         }
-        self.port = Int(UInt16(bigEndian: boundAddr.sin_port))
+        self.portStorage = Int(UInt16(bigEndian: boundAddr.sin_port))
 
         // Set up accept dispatch source
-        let source = DispatchSource.makeReadSource(fileDescriptor: listenFd, queue: queue)
+        let listener = listenFd
+        let run = currentRun
+        _ = fcntl(listener, F_SETFL, O_NONBLOCK)
+        let source = DispatchSource.makeReadSource(fileDescriptor: listener, queue: queue)
         source.setEventHandler { [weak self] in
-            self?.acceptClient()
+            self?.acceptClient(listener: listener, run: run)
         }
-        source.setCancelHandler { [weak self] in
-            if let fileDescriptor = self?.listenFd, fileDescriptor >= 0 {
-                close(fileDescriptor)
-                self?.listenFd = -1
-            }
+        let group = clientGroup
+        group.enter()
+        source.setCancelHandler {
+            // The captured fd belongs to this source, never to a subsequent run.
+            close(listener)
+            group.leave()
         }
         self.acceptSource = source
         source.resume()
+    }
+
+    private struct StopSnapshot {
+        let run: UUID
+        let clients: [Connection]
+        let group: DispatchGroup
     }
 
     /// Stops the server and awaits the client handlers' drain.
@@ -284,23 +517,27 @@ final class IMAPTestServer {
     /// continuation is resumed from `DispatchGroup.notify` when the last handler leaves — same
     /// determinism, same 2-second upper bound, zero threads parked.
     func stop() async {
-        acceptSource?.cancel()
-        acceptSource = nil
-
-        let activeClientFds = markStoppingAndSnapshotClientFds()
-        for fileDescriptor in activeClientFds {
-            // `SHUT_RDWR` imports as `Int32` on Darwin but `Int` on Glibc; cast so
-            // the `shutdown(2)` call (which wants `Int32`) compiles on Linux too.
-            shutdown(fileDescriptor, Int32(SHUT_RDWR))
+        let snapshot = queue.sync {
+            isStopping = true
+            acceptSource?.cancel()
+            acceptSource = nil
+            listenFd = -1
+            return StopSnapshot(run: currentRun, clients: Array(connections.values), group: clientGroup)
         }
-
-        if !activeClientFds.isEmpty {
-            await awaitClientDrain(timeoutSeconds: 2)
+        for client in snapshot.clients { client.terminate(.localShutdown) }
+        let drained = await awaitClientDrain(snapshot.group, timeoutSeconds: 2)
+        controlQueue.sync {
+            endedRuns.insert(snapshot.run)
+            for (token, entry) in eventWaiters where entry.0.run == snapshot.run {
+                eventWaiters.removeValue(forKey: token)
+                entry.1.finish(.failure(WaitError.runEnded))
+            }
+            if !drained { failuresStorage.append("server workers exceeded the two-second drain bound") }
         }
-
-        for fileDescriptor in drainClientFds() {
-            close(fileDescriptor)
+        if !drained {
+            Issue.record("IMAPTestServer workers exceeded the two-second drain bound; descriptors retained")
         }
+        queue.sync { if currentRun == snapshot.run, drained { isStopping = false } }
     }
 
     /// Runs `body`, then stops the server — on success and on throw alike. The scoped
@@ -318,7 +555,7 @@ final class IMAPTestServer {
 
     /// Resumes when the last client handler leaves `clientGroup`, or after `timeoutSeconds` —
     /// whichever comes first. Both paths arrive as GCD callbacks; nothing blocks anywhere.
-    private func awaitClientDrain(timeoutSeconds: Double) async {
+    private func awaitClientDrain(_ group: DispatchGroup, timeoutSeconds: Double) async -> Bool {
         final class ResumeOnce: @unchecked Sendable {
             private let lock = NSLock()
             private var resumed = false
@@ -331,31 +568,38 @@ final class IMAPTestServer {
             }
         }
         let once = ResumeOnce()
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            clientGroup.notify(queue: .global()) {
-                if once.claim() { continuation.resume() }
+        return await withCheckedContinuation { continuation in
+            let timer = DispatchSource.makeTimerSource(queue: .global())
+            timer.setEventHandler {
+                if once.claim() { continuation.resume(returning: false) }
+                timer.setEventHandler(handler: nil)
+                timer.cancel()
             }
-            DispatchQueue.global().asyncAfter(deadline: .now() + timeoutSeconds) {
-                if once.claim() { continuation.resume() }
+            timer.schedule(deadline: .now() + timeoutSeconds)
+            group.notify(queue: .global()) {
+                if once.claim() { continuation.resume(returning: true) }
+                timer.setEventHandler(handler: nil)
+                timer.cancel()
             }
+            timer.resume()
         }
     }
 
     // MARK: - Connection Handling
 
-    private func acceptClient() {
+    private func acceptClient(listener: Int32, run: UUID) {
+        guard !isStopping, currentRun == run, listenFd == listener else { return }
         var clientAddr = sockaddr_in()
         var addrLen = socklen_t(MemoryLayout<sockaddr_in>.size)
         let clientFd = withUnsafeMutablePointer(to: &clientAddr) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                accept(listenFd, $0, &addrLen)
+                accept(listener, $0, &addrLen)
             }
         }
         guard clientFd >= 0 else { return }
-        guard registerClient(fd: clientFd) else {
-            close(clientFd)
-            return
-        }
+        // Set descriptor-level nonblocking mode as well as MSG_DONTWAIT: on Darwin a
+        // large send can otherwise stay inside the syscall after making partial progress.
+        _ = fcntl(clientFd, F_SETFL, O_NONBLOCK)
         #if os(macOS)
             var noSigPipe: Int32 = 1
             setsockopt(
@@ -363,7 +607,25 @@ final class IMAPTestServer {
                 &noSigPipe, socklen_t(MemoryLayout<Int32>.size)
             )
         #endif
+        if var size = sendBufferSize {
+            setsockopt(clientFd, SOL_SOCKET, SO_SNDBUF, &size, socklen_t(MemoryLayout<Int32>.size))
+        }
+        nextConnectionNumber += 1
+        let identity = ConnectionID(run: run, number: nextConnectionNumber)
+        let client: Connection
+        do {
+            client = try Connection(fd: clientFd, id: identity) { [weak self] kind, command, detail in
+                self?.recordEvent(kind, connection: identity, command: command, detail: detail)
+            }
+        } catch {
+            close(clientFd)
+            controlQueue.sync { failuresStorage.append("connection wakeup pipe failed: \(error)") }
+            Issue.record("IMAPTestServer connection setup failed: \(error)")
+            return
+        }
+        connections[identity] = client
         recordAcceptedConnection()
+        recordEvent(.accepted, connection: identity)
 
         // Each client gets its own thread, as its handler blocks in read() for the
         // whole connection. On a GCD global queue it would take one of the
@@ -372,23 +634,46 @@ final class IMAPTestServer {
         // could wait past the client's 5-second greeting deadline.
         let clientGroup = clientGroup
         clientGroup.enter()
-        let thread = Thread { [weak self] in
-            defer { clientGroup.leave() }
-            guard let self else {
-                close(clientFd)
-                return
-            }
-            self.handleClient(fd: clientFd)
+        clientGroup.enter()
+        let reader = Thread {
+            self.handleClient(client)
+            self.finishWorker(client, name: "reader", group: clientGroup)
         }
-        thread.name = "IMAPTestServer client"
-        thread.start()
+        let writer = Thread {
+            client.writeReplies()
+            self.finishWorker(client, name: "writer", group: clientGroup)
+        }
+        reader.name = "IMAPTestServer reader"
+        writer.name = "IMAPTestServer writer"
+        reader.start()
+        writer.start()
     }
 
-    private func handleClient(fd fileDescriptor: Int32) {
-        defer { closeTrackedClient(fd: fileDescriptor) }
+    private func finishWorker(_ client: Connection, name: String, group: DispatchGroup) {
+        let last = client.workerExited(name)
+        if last { queue.sync { _ = connections.removeValue(forKey: client.id) } }
+        group.leave()
+    }
+
+    private func actions(for command: CommandID) -> [Action]? {
+        scripts.first {
+            $0.connectionNumber == command.connection.number && $0.occurrence == command.occurrence
+        }?.actions
+    }
+
+    private func handleClient(_ client: Connection) {
+        let fileDescriptor = client.descriptor
+        var occurrence = 0
+        var currentCommand = CommandID(connection: client.id, occurrence: 0, tag: "*")
+        func reply(_ text: String) {
+            guard actions(for: currentCommand) == nil else { return }
+            client.enqueue(currentCommand, actions: [.send(Data(text.utf8), acknowledgement: "reply")])
+        }
 
         // Send greeting
-        sendLine(fd: fileDescriptor, "* OK IMAP test server ready\r\n")
+        client.enqueue(currentCommand, actions: actions(for: currentCommand) ?? [
+            .send(Data("* OK IMAP test server ready\r\n".utf8), acknowledgement: "greeting")
+        ])
 
         var buffer = Data()
         var authenticated = false
@@ -396,14 +681,28 @@ final class IMAPTestServer {
         let readBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 65536)
         defer { readBuf.deallocate() }
 
-        var idleTag: String?  // non-nil while in IDLE state
-        var appendLiteral: (tag: String, size: Int)?  // an APPEND literal still arriving
-        var appendTag: String?  // an APPEND whose literal arrived, awaiting its line end
+        var idleCommand: CommandID?  // non-nil while in IDLE state
+        var appendLiteral: (command: CommandID, size: Int)?
+        var appendCommand: CommandID?  // literal arrived, awaiting its line end
+        var commandInputEnded = false
 
         while true {
             let bytesRead = read(fileDescriptor, readBuf, 65536)
-            if bytesRead <= 0 { break }
+            if bytesRead == 0 { client.terminate(.peerEOF); break }
+            if bytesRead < 0 {
+                if errno == EINTR { continue }
+                if errno == EAGAIN || errno == EWOULDBLOCK {
+                    if client.waitForReadable() { continue }
+                    break
+                }
+                client.terminate(errno == ECONNRESET ? .peerReset : .readFailed, detail: "\(errno)")
+                break
+            }
             buffer.append(readBuf, count: bytesRead)
+            if commandInputEnded {
+                buffer.removeAll(keepingCapacity: true)
+                continue
+            }
 
             while true {
                 if let pending = appendLiteral {
@@ -411,7 +710,7 @@ final class IMAPTestServer {
                     recordAppendedMessage(Data(buffer.prefix(pending.size)))
                     buffer = Data(buffer.dropFirst(pending.size))
                     appendLiteral = nil
-                    appendTag = pending.tag
+                    appendCommand = pending.command
                     continue
                 }
                 guard let crlfRange = buffer.range(of: Data("\r\n".utf8)) else { break }
@@ -421,65 +720,82 @@ final class IMAPTestServer {
                 guard let line = String(data: lineData, encoding: .utf8) else { continue }
 
                 // The line end after an APPEND literal completes the command.
-                if let tag = appendTag {
-                    appendTag = nil
-                    sendLine(fd: fileDescriptor, "\(tag) OK APPEND completed\r\n")
+                if let command = appendCommand {
+                    appendCommand = nil
+                    currentCommand = command
+                    reply("\(command.tag) OK APPEND completed\r\n")
                     continue
                 }
 
                 // Handle DONE (untagged) while in IDLE state
-                if let tag = idleTag, line.uppercased() == "DONE" {
-                    sendLine(fd: fileDescriptor, "\(tag) OK IDLE terminated\r\n")
-                    idleTag = nil
+                if let command = idleCommand, line.uppercased() == "DONE" {
+                    currentCommand = command
+                    reply("\(command.tag) OK IDLE terminated\r\n")
+                    idleCommand = nil
                     continue
+                }
+
+                occurrence += 1
+                currentCommand = CommandID(
+                    connection: client.id, occurrence: occurrence,
+                    tag: line.split(separator: " ").first.map(String.init) ?? "*")
+                recordCommand(line)
+                recordEvent(.commandReachedServer, connection: client.id, command: currentCommand, detail: line)
+                if let script = actions(for: currentCommand) {
+                    client.enqueue(currentCommand, actions: script)
                 }
 
                 // A synchronizing literal (`{N}`) waits for our `+`; a server that
                 // never sends it leaves the client's write pending.
                 if withholdsLiteralContinuation,
                    line.range(of: #"\{\d+\}$"#, options: .regularExpression) != nil {
-                    recordCommand(line)
                     // Optionally answer with something other than `+` (`{tag}` is
                     // replaced by the command's tag), keeping the socket open.
-                    if withheldLiteralReply == "{close}" { return }
-                    if let reply = withheldLiteralReply {
+                    if withheldLiteralReply == "{close}" {
+                        if actions(for: currentCommand) == nil {
+                            client.enqueue(currentCommand, actions: [.close])
+                        }
+                        return
+                    }
+                    if let withheldReply = withheldLiteralReply {
                         let tag = line.split(separator: " ").first.map(String.init) ?? "*"
-                        sendLine(fd: fileDescriptor, reply.replacingOccurrences(of: "{tag}", with: tag))
+                        reply(withheldReply.replacingOccurrences(of: "{tag}", with: tag))
                     }
                     continue
                 }
 
                 let parts = line.split(separator: " ", maxSplits: 2).map(String.init)
                 guard parts.count >= 2 else {
-                    sendLine(fd: fileDescriptor, "* BAD Invalid command\r\n")
+                    reply("* BAD Invalid command\r\n")
                     continue
                 }
 
                 let tag = parts[0]
                 let command = parts[1].uppercased()
                 let args = parts.count > 2 ? parts[2] : ""
-                recordCommand(line)
 
                 if command == "APPEND",
                    let match = line.range(of: #"\{\d+\+?\}$"#, options: .regularExpression) {
                     let literal = line[match].dropFirst().dropLast()
                     let synchronizing = !literal.hasSuffix("+")
-                    appendLiteral = (tag, Int(literal.filter(\.isNumber)) ?? 0)
+                    appendLiteral = (currentCommand, Int(literal.filter(\.isNumber)) ?? 0)
                     if synchronizing {
-                        sendLine(fd: fileDescriptor, "+ Ready for literal data\r\n")
+                        reply("+ Ready for literal data\r\n")
                     }
                     continue
                 }
 
                 if command == "IDLE" {
                     recordIdleCommand()
-                    sendLine(fd: fileDescriptor, "+ idling\r\n")
-                    idleTag = tag
+                    reply("+ idling\r\n")
+                    idleCommand = currentCommand
                     continue
                 }
 
-                if let reply = fetchReply(tag: tag, command: command, args: args, selectedMailbox: selectedMailbox) {
-                    sendBytes(fd: fileDescriptor, reply)
+                if let data = fetchReply(tag: tag, command: command, args: args, selectedMailbox: selectedMailbox) {
+                    if actions(for: currentCommand) == nil {
+                        client.enqueue(currentCommand, actions: [.send(data, acknowledgement: "reply")])
+                    }
                     continue
                 }
 
@@ -490,76 +806,214 @@ final class IMAPTestServer {
                     authenticated: &authenticated,
                     selectedMailbox: &selectedMailbox
                 )
-                sendLine(fd: fileDescriptor, response)
+                var responseActions: [Action] = []
+                if command == "LOGIN", loginResponseDelay > 0 { responseActions.append(.delay(loginResponseDelay)) }
+                responseActions.append(.send(Data(response.utf8), acknowledgement: "reply"))
+                if command == "LOGOUT" { responseActions.append(.close) }
+                if actions(for: currentCommand) == nil { client.enqueue(currentCommand, actions: responseActions) }
 
                 if command == "LOGOUT" {
-                    return
+                    // LOGOUT's close action can be queued behind a gated reply. Stop parsing
+                    // commands, but keep the sole reader alive so peer FIN/reset can cancel
+                    // the gate and unsent LOGOUT reply before the writer reaches `.close`.
+                    commandInputEnded = true
+                    buffer.removeAll(keepingCapacity: true)
+                    break
                 }
             }
         }
     }
 
-    private func resetClientTrackingForStart() {
-        clientFdsLock.lock()
-        isStopping = false
-        clientFds.removeAll()
-        clientFdsLock.unlock()
+    private struct GateKey: Hashable {
+        let command: CommandID
+        let name: String
     }
 
-    private func registerClient(fd fileDescriptor: Int32) -> Bool {
-        clientFdsLock.lock()
-        defer { clientFdsLock.unlock() }
+    /// Owns all three descriptors until both workers exit. No server/control lock is held
+    /// while waiting on a gate, a delay or socket writability. The reader alone calls read.
+    private final class Connection {
+        let descriptor: Int32
+        let id: ConnectionID
+        private let wakeRead: Int32
+        private let wakeWrite: Int32
+        private let condition = NSCondition()
+        private var cancelled = false
+        private var workers = 2
+        private var replies: [(CommandID, [Action])] = []
+        private var gates: [GateKey: Bool] = [:]
+        private let emit: (EventKind, CommandID?, String) -> Void
 
-        guard !isStopping else { return false }
-        clientFds.insert(fileDescriptor)
-        return true
-    }
-
-    private func markStoppingAndSnapshotClientFds() -> [Int32] {
-        clientFdsLock.lock()
-        defer { clientFdsLock.unlock() }
-
-        isStopping = true
-        return Array(clientFds)
-    }
-
-    private func drainClientFds() -> [Int32] {
-        clientFdsLock.lock()
-        defer { clientFdsLock.unlock() }
-
-        let fileDescriptors = Array(clientFds)
-        clientFds.removeAll()
-        return fileDescriptors
-    }
-
-    private func closeTrackedClient(fd fileDescriptor: Int32) {
-        clientFdsLock.lock()
-        let shouldClose = clientFds.remove(fileDescriptor) != nil
-        clientFdsLock.unlock()
-
-        if shouldClose {
-            close(fileDescriptor)
+        init(fd fileDescriptor: Int32, id: ConnectionID,
+             emit: @escaping (EventKind, CommandID?, String) -> Void) throws {
+            var descriptors: [Int32] = [-1, -1]
+            guard pipe(&descriptors) == 0 else { throw IMAPTestError.setup("pipe: \(errno)") }
+            descriptor = fileDescriptor
+            self.id = id
+            self.emit = emit
+            wakeRead = descriptors[0]
+            wakeWrite = descriptors[1]
+            _ = fcntl(wakeWrite, F_SETFL, O_NONBLOCK)
         }
-    }
 
-    private func sendLine(fd fileDescriptor: Int32, _ text: String) {
-        sendBytes(fd: fileDescriptor, Data(text.utf8))
-    }
+        func enqueue(_ command: CommandID, actions: [Action]) {
+            condition.lock()
+            if !cancelled { replies.append((command, actions)); condition.signal() }
+            condition.unlock()
+        }
 
-    private func sendBytes(fd fileDescriptor: Int32, _ data: Data) {
-        data.withUnsafeBytes { buf in
-            guard let ptr = buf.baseAddress else { return }
-            var sent = 0
-            while sent < data.count {
-                #if os(Linux)
-                    let bytesWritten = Glibc.send(
-                        fileDescriptor, ptr + sent, data.count - sent, Int32(MSG_NOSIGNAL)
-                    )
-                #else
-                    let bytesWritten = write(fileDescriptor, ptr + sent, data.count - sent)
-                #endif
-                if bytesWritten <= 0 { return }
-                sent += bytesWritten
+        @discardableResult
+        func settleGate(_ command: CommandID, name: String, released: Bool) -> Bool {
+            condition.lock()
+            defer { condition.unlock() }
+            let key = GateKey(command: command, name: name)
+            guard !cancelled, gates[key] == nil else { return false }
+            gates[key] = released
+            emit(released ? .released : .gateCancelled, command, name)
+            condition.broadcast()
+            return true
+        }
+
+        func terminate(_ reason: EventKind, detail: String = "") {
+            condition.lock()
+            defer { condition.unlock() }
+            // read()==0 after our own shutdown is deliberately not called peer EOF.
+            guard !cancelled else { return }
+            cancelled = true
+            emit(reason, nil, detail)
+            replies.removeAll()
+            condition.broadcast()
+            var byte: UInt8 = 1
+            _ = write(wakeWrite, &byte, 1)
+            shutdown(descriptor, Int32(SHUT_RDWR))
+        }
+
+        func workerExited(_ name: String) -> Bool {
+            condition.lock()
+            defer { condition.unlock() }
+            workers -= 1
+            if workers == 0 {
+                close(descriptor)
+                close(wakeRead)
+                close(wakeWrite)
+            }
+            emit(.workerDrained, nil, name)
+            return workers == 0
+        }
+
+        private func nextReply() -> (CommandID, [Action])? {
+            condition.lock()
+            defer { condition.unlock() }
+            while replies.isEmpty, !cancelled { condition.wait() }
+            return cancelled ? nil : replies.removeFirst()
+        }
+
+        private var isCancelled: Bool {
+            condition.lock()
+            defer { condition.unlock() }
+            return cancelled
+        }
+
+        func waitForReadable() -> Bool {
+            while !isCancelled {
+                var descriptors = [
+                    pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0),
+                    pollfd(fd: wakeRead, events: Int16(POLLIN), revents: 0)
+                ]
+                let result = poll(&descriptors, 2, 100)
+                if result > 0 { return !isCancelled }
+                if result < 0, errno != EINTR {
+                    terminate(.readFailed, detail: "poll: \(errno)")
+                    return false
+                }
+            }
+            return false
+        }
+
+        private func hold(_ name: String, command: CommandID) -> Bool {
+            condition.lock()
+            defer { condition.unlock() }
+            let key = GateKey(command: command, name: name)
+            emit(.replyHeld, command, name)
+            while gates[key] == nil, !cancelled { condition.wait() }
+            if cancelled, gates[key] == nil {
+                gates[key] = false
+                emit(.gateCancelled, command, name)
+            }
+            return !cancelled && gates[key] == true
+        }
+
+        private func delay(_ seconds: TimeInterval) -> Bool {
+            let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(max(0, seconds) * 1_000_000_000)
+            condition.lock()
+            defer { condition.unlock() }
+            while !cancelled {
+                let now = DispatchTime.now().uptimeNanoseconds
+                if now >= deadline { return true }
+                _ = condition.wait(until: Date(timeIntervalSinceNow: Double(deadline - now) / 1_000_000_000))
+            }
+            return false
+        }
+
+        func writeReplies() {
+            while let (command, actions) = nextReply() {
+                if !writeReply(command, actions: actions) { return }
+            }
+        }
+
+        func writeReply(_ command: CommandID, actions: [Action]) -> Bool {
+            for action in actions {
+                if isCancelled { return false }
+                switch action {
+                    case .hold(let name):
+                        // A cancelled gate discards the batch, including any completion.
+                        if !hold(name, command: command) { return !isCancelled }
+                    case .send(let data, let acknowledgement):
+                        guard sendBytes(data, command: command) else { return false }
+                        emit(.fragmentSent, command, acknowledgement)
+                    case .taggedCompletion(let text):
+                        let data = Data("\(command.tag) \(text)\r\n".utf8)
+                        guard sendBytes(data, command: command) else { return false }
+                        emit(.fragmentSent, command, "completion")
+                    case .delay(let seconds):
+                        if !delay(seconds) { return false }
+                    case .close:
+                        terminate(.localShutdown)
+                        return false
+                }
+            }
+            return true
+        }
+
+        private func sendBytes(_ data: Data, command: CommandID) -> Bool {
+            data.withUnsafeBytes { buffer in
+                guard let pointer = buffer.baseAddress else { return true }
+                var sent = 0
+                var reportedBackpressure = false
+                while sent < data.count, !isCancelled {
+                    #if os(Linux)
+                        let flags = Int32(MSG_DONTWAIT | MSG_NOSIGNAL)
+                    #else
+                        let flags = Int32(MSG_DONTWAIT)
+                    #endif
+                    let count = send(descriptor, pointer + sent, data.count - sent, flags)
+                    if count > 0 { sent += count; continue }
+                    if count < 0, errno == EINTR { continue }
+                    if count < 0, errno == EAGAIN || errno == EWOULDBLOCK {
+                        if !reportedBackpressure {
+                            emit(.writerBackpressured, command, "\(sent)")
+                            reportedBackpressure = true
+                        }
+                        var descriptors = [
+                            pollfd(fd: descriptor, events: Int16(POLLOUT), revents: 0),
+                            pollfd(fd: wakeRead, events: Int16(POLLIN), revents: 0)
+                        ]
+                        let result = poll(&descriptors, 2, 100)
+                        if result >= 0 || errno == EINTR { continue }
+                    }
+                    terminate(.sendFailed, detail: "\(errno)")
+                    return false
+                }
+                return sent == data.count && !isCancelled
             }
         }
     }
@@ -578,9 +1032,6 @@ final class IMAPTestServer {
                 return "* CAPABILITY \(advertisedCapabilities.joined(separator: " "))\r\n"
                     + "\(tag) OK CAPABILITY completed\r\n"
             case "LOGIN":
-                if loginResponseDelay > 0 {
-                    Thread.sleep(forTimeInterval: loginResponseDelay)
-                }
                 authenticated = true
                 return "\(tag) OK LOGIN completed\r\n"
             case "SELECT":
