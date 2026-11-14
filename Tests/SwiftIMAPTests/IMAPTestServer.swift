@@ -684,6 +684,7 @@ final class IMAPTestServer: @unchecked Sendable {
         var idleCommand: CommandID?  // non-nil while in IDLE state
         var appendLiteral: (command: CommandID, size: Int)?
         var appendCommand: CommandID?  // literal arrived, awaiting its line end
+        var commandInputEnded = false
 
         while true {
             let bytesRead = read(fileDescriptor, readBuf, 65536)
@@ -698,6 +699,10 @@ final class IMAPTestServer: @unchecked Sendable {
                 break
             }
             buffer.append(readBuf, count: bytesRead)
+            if commandInputEnded {
+                buffer.removeAll(keepingCapacity: true)
+                continue
+            }
 
             while true {
                 if let pending = appendLiteral {
@@ -808,7 +813,12 @@ final class IMAPTestServer: @unchecked Sendable {
                 if actions(for: currentCommand) == nil { client.enqueue(currentCommand, actions: responseActions) }
 
                 if command == "LOGOUT" {
-                    return
+                    // LOGOUT's close action can be queued behind a gated reply. Stop parsing
+                    // commands, but keep the sole reader alive so peer FIN/reset can cancel
+                    // the gate and unsent LOGOUT reply before the writer reaches `.close`.
+                    commandInputEnded = true
+                    buffer.removeAll(keepingCapacity: true)
+                    break
                 }
             }
         }

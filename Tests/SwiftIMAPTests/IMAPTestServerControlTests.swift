@@ -486,6 +486,35 @@ extension IMAPTestServerControlTests {
 }
 
 extension IMAPTestServerControlTests {
+    @Test("queued LOGOUT keeps the reader alive to observe FIN behind a held reply")
+    func queuedLogoutStillObservesFIN() async throws {
+        let script = Server.Script(connectionNumber: 1, occurrence: 1, actions: [
+            .hold("noop"), .taggedCompletion("OK NOOP completed")
+        ])
+        try await withServer(scripts: [script]) { server in
+            let raw = try RawClient(port: server.port)
+            let connection = try await server.waitForEvent(.accepted, run: server.runID).connection
+            try raw.greeting()
+            try raw.send("A NOOP\r\nB LOGOUT\r\n")
+            let held = try await event(server, .replyHeld, connection, occurrence: 1)
+            let logout = try await event(server, .commandReachedServer, connection, occurrence: 2)
+            #expect(logout.command?.tag == "B")
+            #expect(!server.events.contains {
+                $0.connection == connection && $0.kind == .workerDrained && $0.detail == "reader"
+            })
+
+            try raw.finishWriting()
+            let eof = try await event(server, .peerEOF, connection)
+            #expect(logout.sequence < eof.sequence)
+            #expect(!server.release(try #require(held.command), gate: "noop"))
+            _ = try await event(server, .workerDrained, connection, detail: "reader")
+            _ = try await event(server, .workerDrained, connection, detail: "writer")
+            #expect(!server.events.contains {
+                $0.command?.occurrence == 2 && $0.kind == .fragmentSent
+            })
+        }
+    }
+
     @Test("scripted APPEND and IDLE preserve parser state and LOGOUT flushes queued writes")
     func protocolTransitions() async throws {
         let scripts = [
@@ -506,7 +535,7 @@ extension IMAPTestServerControlTests {
             try raw.expect("+ ready\r\n")
             let append = try await event(server, .replyHeld, connection, occurrence: 1)
             try raw.send("abc\r\nB IDLE\r\nDONE\r\nC LOGOUT\r\n")
-            _ = try await event(server, .workerDrained, connection, detail: "reader")
+            _ = try await event(server, .commandReachedServer, connection, occurrence: 3)
             #expect(server.appendedMessages == [Data("abc".utf8)])
             #expect(server.idleCommandCount == 1)
             #expect(server.commandLog == ["A APPEND INBOX {3}", "B IDLE", "C LOGOUT"])
@@ -515,6 +544,7 @@ extension IMAPTestServerControlTests {
             let idle = try await event(server, .replyHeld, connection, occurrence: 2)
             #expect(server.release(try #require(idle.command), gate: "idle"))
             try raw.expect("B OK ended\r\n* BYE IMAP server shutting down\r\nC OK LOGOUT completed\r\n")
+            _ = try await event(server, .workerDrained, connection, detail: "reader")
             _ = try await event(server, .workerDrained, connection, detail: "writer")
         }
     }
