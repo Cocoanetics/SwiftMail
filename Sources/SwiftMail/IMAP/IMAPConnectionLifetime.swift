@@ -33,13 +33,20 @@ final class IMAPConnectionLifetime {
     final class Reservation {
         let lease: QueueLease
         let admission: IMAPTerminal<QueueLease>
+        let token: OperationToken?
         var task: UnsafeCurrentTask?
         var phase = ReservationPhase.created
         var failure: Error?
 
-        init(generation: ConnectionGeneration, task: UnsafeCurrentTask?, gate: IMAPLifetimeGate) {
+        init(
+            generation: ConnectionGeneration,
+            token: OperationToken?,
+            task: UnsafeCurrentTask?,
+            gate: IMAPLifetimeGate
+        ) {
             lease = QueueLease(generation: generation)
             admission = IMAPTerminal(gate: gate)
+            self.token = token
             self.task = task
         }
     }
@@ -128,7 +135,7 @@ final class IMAPConnectionLifetime {
         try gate.withLock {
             if let token { try validateLocked(token) }
             if let abortReason { throw abortReason }
-            let reservation = Reservation(generation: generation, task: task, gate: gate)
+            let reservation = Reservation(generation: generation, token: token, task: task, gate: gate)
             reservations[reservation.lease] = reservation
             return reservation
         }
@@ -150,6 +157,7 @@ final class IMAPConnectionLifetime {
     func start(_ reservation: Reservation) throws {
         try gate.withLock {
             if let failure = reservation.failure { throw failure }
+            if let token = reservation.token { try validateLocked(token) }
             guard reservation.lease.generation == generation, abortReason == nil,
                   reservation.phase == .granted else {
                 throw abortReason ?? IMAPAbortReason.connectionAborted

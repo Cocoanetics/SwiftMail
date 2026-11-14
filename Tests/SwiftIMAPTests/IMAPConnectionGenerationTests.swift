@@ -121,6 +121,42 @@ struct IMAPConnectionGenerationTests {
     }
 
     @Test
+    func terminalSettlementWhileQueuedPreventsOperationStart() async throws {
+        let lifetime = IMAPConnectionLifetime()
+        let queue = IMAPCommandQueue(lifetime: lifetime)
+        let ownerStarted = IMAPTestSignal()
+        let releaseOwner = IMAPTestSignal()
+        let waiterQueued = IMAPTestSignal()
+        let enqueues = IMAPTestCounter()
+        queue.testHooks.didEnqueue = {
+            if enqueues.increment() == 2 { waiterQueued.signal() }
+        }
+        let owner = Task {
+            try await queue.run {
+                ownerStarted.signal()
+                await releaseOwner.wait()
+            }
+        }
+        await ownerStarted.wait()
+
+        let (token, terminal) = lifetime.registerOperation(of: Int.self)
+        let invocations = IMAPTestCounter()
+        let waiter = Task {
+            try await queue.run(token: token) { invocations.increment() }
+        }
+        await waiterQueued.wait()
+        #expect(terminal.complete(.success(42)))
+        #expect(try await terminal.value() == 42)
+        #expect(throws: IMAPAbortReason.self) { try lifetime.validate(token) }
+
+        releaseOwner.signal()
+        try await owner.value
+        await #expect(throws: IMAPAbortReason.self) { try await waiter.value }
+        #expect(invocations.value == 0)
+        #expect(lifetime.reservationCount == 0)
+    }
+
+    @Test
     func invalidationBeforeEnqueueAndAfterGrantPreventsStart() async throws {
         for enqueueFirst in [false, true] {
             let lifetime = IMAPConnectionLifetime()
