@@ -289,7 +289,7 @@ final class IMAPConnection {
     }
 
     func disconnect() async throws {
-        try await commandQueue.run { [self] in
+        try await commandQueue.runForCleanup { [self] in
             try await self.disconnectBody()
             // Ending the session on purpose is not losing it.
             self.lostAuthenticatedSession = false

@@ -28,15 +28,32 @@ final class IMAPCommandQueue {
             // onCancel covers cancellation before registration; also handle entry
             // from a task that was already cancelled.
             if Task.isCancelled { lifetime.cancel(reservation) }
-            await testHooks.beforeEnqueue?()
-            lifetime.enqueue(reservation)
-            testHooks.didEnqueue?()
-            _ = try await reservation.admission.value()
-            await testHooks.beforeStart?()
-            try lifetime.start(reservation)
-            return try await operation()
+            return try await execute(reservation, operation)
         } onCancel: {
             lifetime.cancel(reservation)
         }
+    }
+
+    /// Teardown must wait its FIFO turn and run even when invoked from an
+    /// already-cancelled task. The operation still executes in that task and
+    /// may inspect cancellation itself; only queue admission ignores it.
+    func runForCleanup<T>(_ operation: () async throws -> T) async throws -> T {
+        let task = withUnsafeCurrentTask { $0 }
+        let reservation = try lifetime.makeReservation(token: nil, task: task)
+        defer { lifetime.release(reservation) }
+        return try await execute(reservation, operation)
+    }
+
+    private func execute<T>(
+        _ reservation: IMAPConnectionLifetime.Reservation,
+        _ operation: () async throws -> T
+    ) async throws -> T {
+        await testHooks.beforeEnqueue?()
+        lifetime.enqueue(reservation)
+        testHooks.didEnqueue?()
+        _ = try await reservation.admission.value()
+        await testHooks.beforeStart?()
+        try lifetime.start(reservation)
+        return try await operation()
     }
 }

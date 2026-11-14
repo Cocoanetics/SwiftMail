@@ -255,3 +255,37 @@ struct IMAPCommandQueueTests {
         #expect(lifetime.reservationCount == 0)
     }
 }
+
+extension IMAPCommandQueueTests {
+    @Test
+    func cleanupAdmissionIgnoresCancellationWhileQueued() async throws {
+        let queue = IMAPCommandQueue()
+        let ownerStarted = IMAPTestSignal()
+        let releaseOwner = IMAPTestSignal()
+        let cleanupQueued = IMAPTestSignal()
+        let invocations = IMAPTestCounter()
+        let owner = Task {
+            try await queue.run {
+                ownerStarted.signal()
+                await releaseOwner.wait()
+            }
+        }
+        await ownerStarted.wait()
+        queue.testHooks.didEnqueue = { cleanupQueued.signal() }
+
+        let beginCleanup = IMAPTestSignal()
+        let cleanup = Task {
+            await beginCleanup.wait()
+            return try await queue.runForCleanup { invocations.increment() }
+        }
+        cleanup.cancel()
+        beginCleanup.signal()
+        await cleanupQueued.wait()
+        #expect(invocations.value == 0)
+
+        releaseOwner.signal()
+        try await owner.value
+        #expect(try await cleanup.value == 1)
+        #expect(queue.lifetime.reservationCount == 0)
+    }
+}

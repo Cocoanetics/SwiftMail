@@ -302,3 +302,29 @@ struct IMAPIdleCancellationTests {
         return CommandQueueBlocker(task: blocker, release: blockerRelease.continuation)
     }
 }
+
+extension IMAPIdleCancellationTests {
+    @Test
+    func disconnectFromAlreadyCancelledTaskStillClosesTransport() async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+
+        do {
+            let harness = try await makeIdleHarness(group: group)
+            let beginDisconnect = IMAPTestSignal()
+            let disconnect = Task {
+                await beginDisconnect.wait()
+                try await harness.connection.disconnect()
+            }
+            disconnect.cancel()
+            beginDisconnect.signal()
+
+            try await disconnect.value
+            #expect(harness.connection.channel == nil)
+            #expect(!harness.channel.isActive)
+            try await group.shutdownGracefully()
+        } catch {
+            try? await group.shutdownGracefully()
+            throw error
+        }
+    }
+}
