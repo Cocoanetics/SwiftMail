@@ -38,7 +38,9 @@ struct AppendCommand: IMAPCommand {
 
         // The payload is built above, off the event loop; the writes and the
         // `whenWritten` callback then run in one event-loop task.
+        let validate = IMAPWriteScope.validate
         channel.eventLoop.execute {
+            do { try validate() } catch { channel.close(promise: nil); return }
             let start = IMAPClientHandler.OutboundIn.part(.append(.start(tag: tag, appendingTo: mailbox)))
             channel.write(start, promise: nil)
             channel.write(IMAPClientHandler.OutboundIn.part(.append(.beginMessage(message: metadata))), promise: nil)

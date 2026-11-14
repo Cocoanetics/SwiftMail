@@ -68,9 +68,10 @@ final class XOAUTH2AuthenticationHandler:
             let credentialBuffer = credentials
             credentials = context.channel.allocator.buffer(capacity: 0)
 
-            context.channel
-                .writeAndFlush(IMAPClientHandler.OutboundIn.part(.continuationResponse(credentialBuffer)))
-                .cascadeFailure(to: promise)
+            failWhenWriteFails(
+                context.channel
+                    .writeAndFlush(IMAPClientHandler.OutboundIn.part(.continuationResponse(credentialBuffer)))
+            )
             return
         }
 
@@ -82,9 +83,10 @@ final class XOAUTH2AuthenticationHandler:
         }
 
         let emptyBuffer = context.channel.allocator.buffer(capacity: 0)
-        context.channel
-            .writeAndFlush(IMAPClientHandler.OutboundIn.part(.continuationResponse(emptyBuffer)))
-            .cascadeFailure(to: promise)
+        failWhenWriteFails(
+            context.channel
+                .writeAndFlush(IMAPClientHandler.OutboundIn.part(.continuationResponse(emptyBuffer)))
+        )
     }
 
     override func handleTaggedOKResponse(_ response: TaggedResponse) {

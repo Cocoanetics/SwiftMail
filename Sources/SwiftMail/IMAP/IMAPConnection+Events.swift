@@ -125,16 +125,18 @@ extension IMAPConnection {
         }
     }
 
-    func handleConnectionTerminationInResponses(_ untaggedResponses: [Response]) async {
+    func handleConnectionTerminationInResponses(
+        _ untaggedResponses: [Response], context: TransportContext
+    ) async {
         for response in untaggedResponses {
             if case .untagged(let payload) = response,
                case .conditionalState(let status) = payload,
                case .bye = status {
-                try? await self.disconnectBody()
+                await closeTransport(context)
                 break
             }
             if case .fatal = response {
-                try? await self.disconnectBody()
+                await closeTransport(context)
                 break
             }
         }

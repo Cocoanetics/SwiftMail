@@ -6,19 +6,19 @@ extension IMAPConnection {
     // MARK: - Queue-taking authentication entry points
 
     func login(username: String, password: String) async throws {
-        try await commandQueue.run { [self] in
+        try await withOperation { [self] in
             try await self.loginBody(username: username, password: password)
         }
     }
 
     func authenticatePlain(username: String, password: String) async throws {
-        try await commandQueue.run { [self] in
+        try await withOperation { [self] in
             try await self.authenticatePlainBody(username: username, password: password)
         }
     }
 
     func authenticateXOAUTH2(email: String, accessToken: String) async throws {
-        try await commandQueue.run { [self] in
+        try await withOperation { [self] in
             try await self.authenticateXOAUTH2Body(email: email, accessToken: accessToken)
         }
     }
@@ -37,6 +37,7 @@ extension IMAPConnection {
     /// the queue serializes them, and it covers IDLE, which never consulted the server's
     /// re-authentication path.
     func reauthenticateIfSessionWasLost(before operation: String) async throws {
+        try validateOperation()
         guard lostAuthenticatedSession, !authenticationInProgress else { return }
         guard let reauthenticate = reauthenticateAfterReconnect else {
             let warning = "\(connectionContext) Lost an authenticated session with no re-authentication "
@@ -46,6 +47,7 @@ extension IMAPConnection {
         }
         logger.info("\(connectionContext) Re-authenticating the reopened transport before \(operation)")
         try await reauthenticate(self)
+        try validateOperation()
     }
 
     /// LOGIN for a caller that already holds the command queue.
@@ -62,6 +64,7 @@ extension IMAPConnection {
 
     /// ID for a caller that already holds the command queue.
     func idBody(_ identification: Identification) async throws -> Identification {
+        try validateOperation()
         guard capabilities.contains(.id) else {
             throw IMAPError.commandNotSupported("ID command not supported by server")
         }
@@ -71,8 +74,11 @@ extension IMAPConnection {
     /// Every successful authentication lands here: the session is live again and no
     /// longer counts as lost.
     func markSessionAuthenticated() {
-        isSessionAuthenticated = true
-        lostAuthenticatedSession = false
+        guard let context = try? capturedTransport() else { return }
+        try? commit(on: context) {
+            context.authenticated = true
+            sessionWasLost = false
+        }
     }
 
     /// Authentication is not complete until its post-authentication discovery ran on
@@ -84,12 +90,17 @@ extension IMAPConnection {
         operation: String,
         authenticate: () async throws -> (channel: Channel, capabilities: [Capability])
     ) async throws {
-        authenticationInProgress = true
-        defer { authenticationInProgress = false }
+        let generation = try beginAuthentication()
+        defer {
+            lifetime.gate.withLock {
+                if authenticatingGeneration == generation { authenticatingGeneration = nil }
+            }
+        }
 
         let maximumAttempts = 2
         for attempt in 1...maximumAttempts {
             let result = try await authenticate()
+            try await lifecycleCheckpoint("authenticated")
 
             guard channel === result.channel, result.channel.isActive else {
                 if attempt < maximumAttempts {
@@ -103,10 +114,17 @@ extension IMAPConnection {
                 )
             }
 
-            markSessionAuthenticated()
+            let authenticatedContext = try capturedTransport()
+            try commit(on: authenticatedContext) {
+                authenticatedContext.authenticated = true
+                sessionWasLost = false
+            }
             try await authenticationFollowUpOverrideForTesting?()
+            try validateOperation()
             try await refreshCapabilities(using: result.capabilities, useCommandBody: true)
-            await fetchNamespacesIfSupported(useCommandBody: true)
+            try await lifecycleCheckpoint("authCapabilities")
+            try await fetchNamespacesIfSupported(useCommandBody: true)
+            try await lifecycleCheckpoint("authNamespaces")
             clearInvalidChannel()
 
             if channel === result.channel, result.channel.isActive, !lostAuthenticatedSession {
@@ -122,6 +140,16 @@ extension IMAPConnection {
             throw IMAPError.connectionFailed(
                 "\(operation) follow-up repeatedly replaced the authenticated transport"
             )
+        }
+    }
+
+    private func beginAuthentication() throws -> ConnectionGeneration {
+        let generation = operationToken?.generation ?? lifetime.currentGeneration
+        return try lifetime.gate.withLock {
+            if let token = operationToken { try lifetime.validateLocked(token) }
+            try lifetime.validateGenerationLocked(generation)
+            authenticatingGeneration = generation
+            return generation
         }
     }
 }

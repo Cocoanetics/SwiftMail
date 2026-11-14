@@ -43,6 +43,9 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
 
     /// Promise for the command result
     let promise: EventLoopPromise<ResultType>
+    /// Installed before pipeline insertion. Lifetime invalidation and protocol
+    /// completion must contend for the same result cell.
+    var settlement: ((Result<ResultType, Error>) -> Void)?
 
     /// Collected untagged responses during command execution
     private(set) var untaggedResponses: [Response] = []
@@ -78,7 +81,7 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
             return true
         }
         guard shouldSucceed else { return }
-        promise.succeed(result)
+        if let settlement { settlement(.success(result)) } else { promise.succeed(result) }
     }
 
     /// Fail the promise with an error
@@ -92,7 +95,15 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
             return true
         }
         guard shouldFail else { return }
-        promise.fail(error)
+        if let settlement { settlement(.failure(error)) } else { promise.fail(error) }
+    }
+
+    /// Route an outbound write failure through the same settlement authority as
+    /// protocol completion and lifetime invalidation.
+    func failWhenWriteFails(_ future: EventLoopFuture<Void>) {
+        future.whenFailure { [self] error in
+            failWithError(error)
+        }
     }
 
     /// Process an incoming response

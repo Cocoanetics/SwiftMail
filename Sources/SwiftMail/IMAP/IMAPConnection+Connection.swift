@@ -5,145 +5,20 @@ import NIO
 import NIOSSL
 
 extension IMAPConnection {
-    func connectBody() async throws {
-        clearInvalidChannel()
-        if channel?.isActive == true {
-            logger.debug("\(connectionContext) connect requested while channel is already active")
-            return
-        }
-        if let connectOverrideForTesting {
-            try await connectOverrideForTesting()
-            return
-        }
-
-        // Any buffered state belongs to a previous transport and must not leak.
-        responseBuffer.reset()
-        idleHandler = nil
-        idleTerminationInProgress = false
-
-        let tlsTransportMode = try Self.resolveTLSTransportMode(port: port, transportSecurity: transportSecurity)
-        let greetingPromise = group.next().makePromise(of: [Capability].self)
-        let greetingHandler = IMAPGreetingHandler(commandTag: "", promise: greetingPromise)
-
-        let bootstrap = makeConnectionBootstrap(initialTLSMode: tlsTransportMode, greetingHandler: greetingHandler)
-        let channel = try await openChannel(bootstrap: bootstrap, greetingPromise: greetingPromise)
-
-        self.channel = channel
-        self.isSessionAuthenticated = false
-        self.namespaces = nil
-
-        logger.info("\(connectionContext) Connected; response buffer limit \(responseBufferLimit) bytes")
-
-        let greetingCapabilities = try await waitForGreeting(
-            channel: channel,
-            greetingPromise: greetingPromise,
-            greetingHandler: greetingHandler
-        )
-        try await refreshCapabilities(using: greetingCapabilities)
-        try await applyPostGreetingTLSPolicy(tlsTransportMode: tlsTransportMode, capabilities: Array(capabilities))
-    }
-
-    private func makeConnectionBootstrap(
-        initialTLSMode: TLSTransportMode,
-        greetingHandler: IMAPGreetingHandler
-    ) -> ClientBootstrap {
-        let host = self.host
-        let certificateVerificationPolicy = self.certificateVerificationPolicy
-        let minimumTLSVersion = self.minimumTLSVersion
-        let duplexLogger = self.duplexLogger
-        let responseBuffer = self.responseBuffer
-        let responseBufferLimit = self.responseBufferLimit
-        let parserLimits = self.parserLimits
-        let logger = self.logger
-        let connectionContext = self.connectionContext
-
-        return ClientBootstrap(group: group)
-            .channelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-            .channelOption(ChannelOptions.tcpOption(.tcp_nodelay), value: 1)
-            .channelInitializer { channel in
-                do {
-                    let parserOptions = parserLimits.makeParserOptions(bufferLimit: responseBufferLimit)
-
-                    if case .implicitTLS = initialTLSMode {
-                        let sslHandler = try Self.makeTLSHandler(
-                            for: channel,
-                            host: host,
-                            certificateVerificationPolicy: certificateVerificationPolicy,
-                            minimumTLSVersion: minimumTLSVersion
-                        )
-                        try channel.pipeline.syncOperations.addHandler(sslHandler)
-                    }
-
-                    try channel.pipeline.syncOperations.addHandlers([
-                        IMAPClientHandler(parserOptions: parserOptions, maximumBufferSize: responseBufferLimit),
-                        // Directly behind the decoder: it sees every response and every
-                        // parser-limit error before any command handler does. The parser bounds
-                        // a single body section; this bounds the whole FETCH response, which is
-                        // what `bodySizeLimit` promises — and it closes the connection on a
-                        // violation instead of letting a rejected response sit in the decoder.
-                        IMAPResponseLimitGuard(
-                            bodySizeLimit: parserLimits.bodySizeLimit,
-                            logger: logger,
-                            connectionContext: connectionContext
-                        ),
-                        duplexLogger,
-                        greetingHandler,
-                        responseBuffer
-                    ])
-
-                    return channel.eventLoop.makeSucceededFuture(())
-                } catch {
-                    return channel.eventLoop.makeFailedFuture(error)
-                }
-            }
-    }
-
-    private func openChannel(
-        bootstrap: ClientBootstrap,
-        greetingPromise: EventLoopPromise<[Capability]>
-    ) async throws -> Channel {
-        do {
-            return try await bootstrap.connect(host: host, port: port).get()
-        } catch {
-            // Fail the greeting promise before rethrowing — prevents NIO "leaking promise"
-            // fatal error when TCP connection fails (e.g. no internet).
-            greetingPromise.fail(error)
-            throw error
-        }
-    }
-
-    private func waitForGreeting(
-        channel: Channel,
-        greetingPromise: EventLoopPromise<[Capability]>,
-        greetingHandler: IMAPGreetingHandler
-    ) async throws -> [Capability] {
-        let timeoutTask = group.next().scheduleTask(in: .seconds(5)) {
-            greetingPromise.fail(IMAPError.timeout)
-        }
-
-        do {
-            let greetingCapabilities = try await greetingPromise.futureResult.get()
-            timeoutTask.cancel()
-            try? await channel.pipeline.removeHandler(greetingHandler).get()
-            return greetingCapabilities
-        } catch {
-            timeoutTask.cancel()
-            try? await channel.pipeline.removeHandler(greetingHandler).get()
-            throw error
-        }
-    }
-
     func doneBody(timeoutSeconds: TimeInterval = 15) async throws {
+        try validateOperation()
         guard let handler = idleHandler else {
             logger.debug("\(connectionContext) No active IDLE session, skipping DONE command")
             return
         }
+        let context = try capturedTransport()
+        let responseBuffer = context.responseBuffer
 
-        if try await handleAmbiguousIdleCompletion(handler: handler) {
+        if try await handleAmbiguousIdleCompletion(handler: handler, context: context) {
             return
         }
 
-        guard let channel = try await resolveActiveChannelForDone() else {
+        guard try await resolveActiveChannelForDone(context) != nil else {
             return
         }
 
@@ -152,58 +27,72 @@ extension IMAPConnection {
             return
         }
 
-        idleTerminationInProgress = true
+        try commit(on: context) { context.idleTerminationInProgress = true }
 
         defer {
-            idleTerminationInProgress = false
-            idleHandler = nil
+            try? commit(on: context) {
+                context.idleTerminationInProgress = false
+                context.idleHandler = nil
+            }
             responseBuffer.hasActiveHandler = false
         }
 
-        try await performIdleDone(handler: handler, channel: channel, timeoutSeconds: timeoutSeconds)
+        try await performIdleDone(handler: handler, context: context, timeoutSeconds: timeoutSeconds)
     }
 
-    private func handleAmbiguousIdleCompletion(handler: IdleHandler) async throws -> Bool {
+    private func handleAmbiguousIdleCompletion(handler: IdleHandler, context: TransportContext) async throws -> Bool {
+        try validateTransport(context)
         guard handler.isCompleted else { return false }
         let warning = "\(connectionContext) IDLE already completed before DONE; "
             + "forcing reconnect due to ambiguous IDLE completion state"
         logger.warning("\(warning)")
-        idleHandler = nil
-        responseBuffer.hasActiveHandler = false
-        try? await disconnectBody()
+        context.responseBuffer.hasActiveHandler = false
+        await closeTransport(context)
         throw IMAPError.connectionFailed(
             "Ambiguous IDLE completion detected before DONE; connection recycled to resynchronize IMAP state"
         )
     }
 
-    private func resolveActiveChannelForDone() async throws -> Channel? {
-        guard let channel = self.channel, channel.isActive else {
+    private func resolveActiveChannelForDone(_ context: TransportContext) async throws -> Channel? {
+        try validateTransport(context)
+        let responseBuffer = context.responseBuffer
+        guard context.channel.isActive else {
             let terminationReasons = responseBuffer.consumeBufferedConnectionTerminationReasons()
             if !terminationReasons.isEmpty {
                 let reason = terminationReasons.joined(separator: " | ")
                 logger.info("\(connectionContext) Skipping DONE because server already closed connection: \(reason)")
-                idleHandler = nil
+                try commit(on: context) { context.idleHandler = nil }
                 responseBuffer.hasActiveHandler = false
                 return nil
             }
 
             logger.warning("\(connectionContext) Cannot send DONE because channel is not active")
-            idleHandler = nil
+            try commit(on: context) { context.idleHandler = nil }
             responseBuffer.hasActiveHandler = false
             throw IMAPError.connectionFailed("Channel is not active")
         }
-        return channel
+        return context.channel
     }
 
     private func performIdleDone(
         handler: IdleHandler,
-        channel: Channel,
+        context: TransportContext,
         timeoutSeconds: TimeInterval
     ) async throws {
+        let channel = context.channel
+        let duplexLogger = context.duplexLogger
         do {
             try await waitForIdleStartIfNeeded(handler, timeoutSeconds: min(timeoutSeconds, 5))
+            try validateTransport(context)
+            let token = operationToken
+            let write = channel.eventLoop.flatSubmit {
+                do {
+                    try self.validateTransport(context, token: token)
+                    return channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.idleDone))
+                } catch { return channel.eventLoop.makeFailedFuture(error) }
+            }
             _ = try await waitForFutureWithTimeout(
-                channel.writeAndFlush(IMAPClientHandler.OutboundIn.part(.idleDone)),
+                write,
                 timeoutSeconds: timeoutSeconds
             )
             try await waitForIdleHandlerCompletion(handler, timeoutSeconds: timeoutSeconds)
@@ -212,12 +101,12 @@ extension IMAPConnection {
 
             if error is CancellationError {
                 logger.warning("\(connectionContext) IDLE termination was cancelled; recycling connection")
-                try? await disconnectBody()
+                await closeTransport(context)
                 throw error
             }
 
             if handler.isCompleted {
-                try await requireTaggedIdleCompletion(handler)
+                try await requireTaggedIdleCompletion(handler, context: context)
                 throw error
             }
 
@@ -229,21 +118,22 @@ extension IMAPConnection {
                 logger.warning("\(connectionContext) Failed to terminate IDLE after DONE: \(error)")
             }
 
-            try? await disconnectBody()
+            await closeTransport(context)
             throw error
         }
 
-        try await requireTaggedIdleCompletion(handler)
+        try await requireTaggedIdleCompletion(handler, context: context)
         duplexLogger.flushInboundBuffer()
     }
 
-    private func requireTaggedIdleCompletion(_ handler: IdleHandler) async throws {
+    private func requireTaggedIdleCompletion(_ handler: IdleHandler, context: TransportContext) async throws {
+        try validateTransport(context)
         guard handler.completedWithTaggedResponse else {
             let reason = handler.completionReason?.rawValue ?? "unknown"
             let warning = "\(connectionContext) IDLE completed without tagged completion "
                 + "during DONE (reason=\(reason)); recycling connection"
             logger.warning("\(warning)")
-            try? await disconnectBody()
+            await closeTransport(context)
             throw IMAPError.connectionFailed(
                 "IDLE completed without tagged completion during DONE; connection recycled"
             )
@@ -251,32 +141,25 @@ extension IMAPConnection {
     }
 
     func disconnectBody() async throws {
-        if isSessionAuthenticated {
-            lostAuthenticatedSession = true
-        }
-        guard let channel = self.channel else {
-            logger.warning("\(connectionContext) Attempted to disconnect when channel was already nil")
-            isSessionAuthenticated = false
-            capabilities = []
-            namespaces = nil
-            responseBuffer.reset()
-            idleHandler = nil
-            idleTerminationInProgress = false
-            return
-        }
+        try validateOperation()
+        guard let context = try? capturedTransport() else { return }
+        await closeTransport(context)
+    }
 
-        do {
-            try await channel.close().get()
-        } catch {
-            logger.debug("\(connectionContext) Channel close during disconnect reported: \(error)")
+    func closeTransport(_ context: TransportContext) async {
+        lifetime.gate.withLock {
+            closingTransports[context.id] = context
+            if transport === context {
+                if context.authenticated { sessionWasLost = true }
+                transport = nil
+                stagingCapabilities = []
+                stagingBuffer = UntaggedResponseBuffer()
+                stagingLogger = makeDuplexLogger()
+            }
         }
-        self.channel = nil
-        self.isSessionAuthenticated = false
-        self.capabilities = []
-        self.namespaces = nil
-        self.idleHandler = nil
-        self.idleTerminationInProgress = false
-        self.responseBuffer.reset()
+        await beforeTransportCloseForTesting?(context)
+        try? await context.channel.close().get()
+        _ = lifetime.gate.withLock { closingTransports.removeValue(forKey: context.id) }
     }
 
     /// Reopens the transport a command found gone, the reconnect a command runs inside
@@ -284,6 +167,7 @@ extension IMAPConnection {
     /// the caller then learns the session it was using has ended and reconnects on
     /// purpose with `connect()`, which this switch never blocks.
     func reopenTransport(before operation: String) async throws {
+        try validateOperation()
         guard reconnectsInsideCommands else {
             logger.info(
                 "\(connectionContext) Channel is nil; reconnecting inside commands is off, failing \(operation)"
@@ -297,27 +181,28 @@ extension IMAPConnection {
     }
 
     func clearInvalidChannel() {
-        if let channel = self.channel, !channel.isActive {
-            logger.info("\(connectionContext) Channel is no longer active, clearing channel reference")
-            self.channel = nil
-            if isSessionAuthenticated {
-                lostAuthenticatedSession = true
+        lifetime.gate.withLock {
+            if let token = operationToken, (try? lifetime.validateLocked(token)) == nil { return }
+            if let context = transport, !context.channel.isActive {
+                if context.authenticated { sessionWasLost = true }
+                stagingCapabilities = context.capabilities
+                transport = nil
+                stagingBuffer = UntaggedResponseBuffer()
+                stagingLogger = makeDuplexLogger()
             }
-            self.isSessionAuthenticated = false
-            self.idleHandler = nil
-            self.idleTerminationInProgress = false
-            self.responseBuffer.reset()
         }
     }
 
     func recycleConnectionIfBufferedTerminationIfNeeded(operation: String) async throws {
-        guard responseBuffer.hasBufferedConnectionTermination else { return }
-        let reasons = responseBuffer.consumeBufferedConnectionTerminationReasons()
+        try validateOperation()
+        guard let context = try? capturedTransport(),
+              context.responseBuffer.hasBufferedConnectionTermination else { return }
+        let reasons = context.responseBuffer.consumeBufferedConnectionTerminationReasons()
         let reasonSummary = reasons.isEmpty ? "<unknown>" : reasons.joined(separator: " | ")
         let warning = "\(connectionContext) Buffered BYE/fatal detected before \(operation). "
             + "Recycling connection. reasons=\(reasonSummary)"
         logger.warning("\(warning)")
-        try await disconnectBody()
+        await closeTransport(context)
     }
 
     func shouldRecycleConnection(for error: Error) -> Bool {

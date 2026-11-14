@@ -5,8 +5,10 @@ import NIOIMAPCore
 import NIO
 import NIOSSL
 
+// Session state uses the lifetime gate; pipeline work stays on its event loop
+// and configuration/command preparation is serialized by commandQueue.
 /// Internal connection wrapper used by IMAPServer to manage per-connection state.
-final class IMAPConnection {
+final class IMAPConnection: @unchecked Sendable {
     enum TLSTransportMode: Equatable {
         case implicitTLS
         case plainText
@@ -25,20 +27,51 @@ final class IMAPConnection {
     let connectionID: String
     let connectionRole: String
     let connectionContext: String
-    var channel: Channel?
+    // All session snapshots and transport publication use the lifetime gate.
+    var transport: TransportContext?
+    var bootstrapAttempts: [UUID: BootstrapAttempt] = [:]
+    var closingTransports: [UUID: TransportContext] = [:]
+    var stagingBuffer = UntaggedResponseBuffer()
+    var stagingCapabilities: Set<NIOIMAPCore.Capability> = []
+    var channel: Channel? { lifetime.gate.withLock { transport?.channel } }
     var commandTagCounter: Int = 0
-    var capabilities: Set<NIOIMAPCore.Capability> = []
-    var namespaces: NamespaceResponse?
-    var isSessionAuthenticated: Bool = false
-    var idleHandler: IdleHandler?
-    var idleTerminationInProgress: Bool = false
+    var capabilities: Set<NIOIMAPCore.Capability> {
+        get { lifetime.gate.withLock { transport?.capabilities ?? stagingCapabilities } }
+        set { lifetime.gate.withLock {
+            if let transport { transport.capabilities = newValue } else { stagingCapabilities = newValue }
+        } }
+    }
+    var namespaces: NamespaceResponse? {
+        get { lifetime.gate.withLock { transport?.namespaces } }
+        set { lifetime.gate.withLock { transport?.namespaces = newValue } }
+    }
+    var isSessionAuthenticated: Bool {
+        get { lifetime.gate.withLock { transport?.authenticated ?? false } }
+        set { lifetime.gate.withLock { transport?.authenticated = newValue } }
+    }
+    var idleHandler: IdleHandler? {
+        get { lifetime.gate.withLock { transport?.idleHandler } }
+        set { lifetime.gate.withLock { transport?.idleHandler = newValue } }
+    }
+    var idleTerminationInProgress: Bool {
+        get { lifetime.gate.withLock { transport?.idleTerminationInProgress ?? false } }
+        set { lifetime.gate.withLock { transport?.idleTerminationInProgress = newValue } }
+    }
     let lifetime: IMAPConnectionLifetime
     let commandQueue: IMAPCommandQueue
-    let responseBuffer = UntaggedResponseBuffer()
+    var responseBuffer: UntaggedResponseBuffer {
+        lifetime.gate.withLock { transport?.responseBuffer ?? stagingBuffer }
+    }
+    var bootstrapOverrideForTesting: ((@escaping (Channel) -> EventLoopFuture<Void>) -> EventLoopFuture<Channel>)?
+    var lifecycleCheckpointForTesting: ((String) async -> Void)?
+    var beforeTransportCloseForTesting: ((TransportContext) async -> Void)?
+    var operationOwnerFinishedForTesting: (() -> Void)?
+    var channelInitializationForTesting: ((Channel) throws -> Void)?
     var startTLSUpgradeOverrideForTesting: (() async throws -> Void)?
     var capabilityRefreshOverrideForTesting: (() async throws -> Void)?
     var authenticationFollowUpOverrideForTesting: (() async throws -> Void)?
     var connectOverrideForTesting: (() async throws -> Void)?
+    var handlerPromiseCreatedForTesting: (() -> Void)?
     /// Re-authenticates this connection inside the command queue after the command path
     /// or an IDLE start had to reopen the transport for a session that was authenticated.
     /// Installed by `IMAPServer` on every connection it authenticates; nil until then.
@@ -46,18 +79,33 @@ final class IMAPConnection {
     /// Set when an authenticated session's channel is lost (peer reset, buffered BYE,
     /// timeout recycle) rather than ended on purpose. Cleared by the next successful
     /// authentication and by an explicit `disconnect()`.
-    var lostAuthenticatedSession = false
+    var sessionWasLost = false
+    var lostAuthenticatedSession: Bool {
+        get { lifetime.gate.withLock { sessionWasLost } }
+        set { lifetime.gate.withLock { sessionWasLost = newValue } }
+    }
     /// True while LOGIN, AUTHENTICATE PLAIN, or AUTHENTICATE XOAUTH2 runs, so the
     /// capability and namespace refreshes inside it cannot recursively authenticate.
     /// The outer authentication flow detects a replaced transport and retries itself.
-    var authenticationInProgress = false
+    var authenticatingGeneration: ConnectionGeneration?
+    var authenticationInProgress: Bool {
+        get { lifetime.gate.withLock { authenticatingGeneration != nil } }
+        set {
+            let generation = lifetime.currentGeneration
+            lifetime.gate.withLock { authenticatingGeneration = newValue ? generation : nil }
+        }
+    }
     /// Whether a command that finds its channel gone reopens the transport (and
     /// re-authenticates) inside itself. When false it throws and opens nothing.
     /// Set by `IMAPServer.setReconnectsInsideCommands(_:)`.
     var reconnectsInsideCommands = true
 
     let logger: Logging.Logger
-    let duplexLogger: IMAPLogger
+    let makeDuplexLogger: () -> IMAPLogger
+    lazy var stagingLogger = makeDuplexLogger()
+    var duplexLogger: IMAPLogger {
+        lifetime.gate.withLock { transport?.duplexLogger ?? stagingLogger }
+    }
 
     /// - Note: `minimumTLSVersion` and `parserLimits` deliberately have **no defaults.**
     ///   They used to, and `makeIdleConnection`/`makeNamedConnection` simply left them out — so
@@ -114,11 +162,12 @@ final class IMAPConnection {
         inboundLogger[metadataKey: "imap.port"] = .stringConvertible(port)
         inboundLogger[metadataKey: "imap.connection_id"] = .string(connectionID)
         inboundLogger[metadataKey: "imap.connection_role"] = .string(connectionRole)
-        self.duplexLogger = IMAPLogger(
+        let contextPrefix = self.connectionContext
+        self.makeDuplexLogger = { IMAPLogger(
             outboundLogger: outboundLogger,
             inboundLogger: inboundLogger,
-            contextPrefix: connectionContext
-        )
+            contextPrefix: contextPrefix
+        ) }
     }
 
     /// Legacy convenience initializer taking `useTLS` instead of a `MailTransportSecurity`.
@@ -157,62 +206,6 @@ final class IMAPConnection {
         )
     }
 
-    private static func resolveLegacyTransportSecurity(port: Int, useTLS: Bool?) -> MailTransportSecurity {
-        guard let useTLS else {
-            return .automatic
-        }
-
-        if useTLS {
-            return port == 143 ? .startTLS : .implicitTLS
-        }
-
-        return .plainText
-    }
-
-    static func resolveTLSTransportMode(
-        port: Int,
-        transportSecurity: MailTransportSecurity
-    ) throws -> TLSTransportMode {
-        switch transportSecurity {
-            case .automatic:
-                switch port {
-                    case 993:
-                        return .implicitTLS
-                    case 143:
-                        return .startTLSIfAvailable
-                    default:
-                        throw IMAPError.invalidArgument(
-                            "Port \(port) requires explicit transportSecurity because TLS mode cannot be inferred"
-                        )
-                }
-            case .implicitTLS:
-                return .implicitTLS
-            case .startTLS:
-                return .startTLSRequired
-            case .plainText:
-                return .plainText
-        }
-    }
-
-    static func requiresSTARTTLSUpgrade(
-        tlsTransportMode: TLSTransportMode,
-        capabilities: [Capability]
-    ) -> Bool {
-        switch tlsTransportMode {
-            case .startTLSIfAvailable, .startTLSRequired:
-                return capabilities.contains(.startTLS)
-            case .implicitTLS, .plainText:
-                return false
-        }
-    }
-
-    static func requiresMissingSTARTTLSError(
-        tlsTransportMode: TLSTransportMode,
-        capabilities: [Capability]
-    ) -> Bool {
-        tlsTransportMode == .startTLSRequired && !capabilities.contains(.startTLS)
-    }
-
     var isConnected: Bool {
         guard let channel = self.channel else {
             return false
@@ -241,7 +234,7 @@ final class IMAPConnection {
     /// caller that trusted the flag alone then sent an authenticated-state command on the
     /// fresh transport `executeCommandBody` reopens (Gmail answers `BAD Unknown command`).
     var isAuthenticated: Bool {
-        isSessionAuthenticated && isConnected
+        lifetime.gate.withLock { transport?.authenticated == true && transport?.channel.isActive == true }
     }
 
     var identifier: String {
@@ -261,7 +254,14 @@ final class IMAPConnection {
     }
 
     func replaceChannelForTesting(_ channel: Channel?) {
-        self.channel = channel
+        let generation = lifetime.currentGeneration
+        lifetime.gate.withLock {
+            guard let channel else { transport = nil; return }
+            let context = TransportContext(generation: generation, channel: channel,
+                                           responseBuffer: stagingBuffer, duplexLogger: stagingLogger)
+            context.capabilities = transport?.capabilities ?? stagingCapabilities
+            transport = context
+        }
     }
 
     func replaceStartTLSUpgradeForTesting(_ upgrade: (() async throws -> Void)?) {
@@ -277,22 +277,27 @@ final class IMAPConnection {
     }
 
     func connect() async throws {
-        try await commandQueue.run { [self] in
+        // Recovery calls connectBody directly and can never rearm an abort.
+        if operationToken == nil { lifetime.rearm() }
+        try await withOperation { [self] in
             try await self.connectBody()
         }
     }
 
     func done(timeoutSeconds: TimeInterval = 15) async throws {
-        try await commandQueue.run { [self] in
+        try await withOperation { [self] in
             try await self.doneBody(timeoutSeconds: timeoutSeconds)
         }
     }
 
     func disconnect() async throws {
-        try await commandQueue.runForCleanup { [self] in
+        try await withOperation(forCleanup: true) { [self] in
             try await self.disconnectBody()
             // Ending the session on purpose is not losing it.
-            self.lostAuthenticatedSession = false
+            try lifetime.gate.withLock {
+                if let token = operationToken { try lifetime.validateLocked(token) }
+                sessionWasLost = false
+            }
         }
     }
 }

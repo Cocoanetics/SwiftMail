@@ -4,6 +4,25 @@ import Testing
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPConnectionGenerationTests {
     @Test
+    func nestedConnectionsKeepDistinctOriginalAuthority() async throws {
+        try await withEventLoopGroup { group in
+            let harness = IMAPBootstrapRaceTests()
+            let first = harness.makeConnection(group)
+            let second = harness.makeConnection(group)
+            try await first.withOperation {
+                let original = try #require(first.operationToken)
+                try await second.withOperation {
+                    #expect(second.operationToken != original)
+                    #expect(first.operationToken == original)
+                    try first.validateOperation()
+                    try second.validateOperation()
+                }
+                try first.validateOperation()
+            }
+        }
+    }
+
+    @Test
     func invalidationSettlesOperationsAndWaitersBeforeOldOwnerReturns() async throws {
         let lifetime = IMAPConnectionLifetime()
         let queue = IMAPCommandQueue(lifetime: lifetime)

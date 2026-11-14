@@ -54,7 +54,7 @@ extension IMAPConnection {
         let timeout = timeoutSeconds
             ?? Self.defaultPipelinedFetchTimeout(partCount: requests.count)
 
-        return try await commandQueue.run { [self] in
+        return try await withOperation { [self] in
             try await self.pipelinedFetchPartsBody(requests: requests, timeoutSeconds: timeout)
         }
     }
@@ -69,6 +69,9 @@ extension IMAPConnection {
         // without holding the connection for the full batch.
         try Task.checkCancellation()
         let channel = try await preparePipelinedFetchChannel()
+        let context = try capturedTransport()
+        let responseBuffer = context.responseBuffer
+        let duplexLogger = context.duplexLogger
 
         // Create promises and handlers for each request.
         // Handlers are kept in an array so timeout/error can fail them safely
@@ -80,14 +83,14 @@ extension IMAPConnection {
             dispatcher: dispatcher
         )
 
-        try await channel.pipeline.addHandler(dispatcher, position: .before(responseBuffer)).get()
-        responseBuffer.hasActiveHandler = true
+        let terminal = try await installDispatcher(dispatcher, registered: registered, context: context)
 
         let scheduledTimeout = schedulePipelinedFetchTimeout(
             channel: channel,
             timeoutSeconds: timeoutSeconds,
             handlers: registered.handlers
         )
+        terminal.attachTimer(scheduledTimeout, on: channel.eventLoop)
 
         do {
             try await dispatchPipelinedFetchCommands(
@@ -98,9 +101,10 @@ extension IMAPConnection {
                 scheduledTimeout: scheduledTimeout
             )
         } catch {
+            terminal.complete(.failure(error))
             // Mirror the serial path: a failed send usually means a dead channel.
             if shouldRecycleConnection(for: error) {
-                try? await disconnectBody()
+                await closeTransport(context)
             }
             throw error
         }
@@ -120,11 +124,39 @@ extension IMAPConnection {
             tagToRequest: registered.tagToRequest,
             futures: registered.futures
         )
+        terminal.complete(.success(()))
+        try validateTransport(context)
         restoreChannelState()
         // Remove dispatcher — may already be removed if channelInactive fired
         try? await channel.pipeline.removeHandler(dispatcher)
 
-        return try await resolvePipelinedFetchDrain(drain)
+        return try await resolvePipelinedFetchDrain(drain, context: context)
+    }
+
+    private func installDispatcher(
+        _ dispatcher: PipelinedCommandDispatcher, registered: RegisteredPipelinedFetch, context: TransportContext
+    ) async throws -> IMAPTerminal<Void> {
+        let channel = context.channel
+        let (_, terminal) = lifetime.registerOperation(of: Void.self, parent: operationToken)
+        terminal.addCleanup(on: channel.eventLoop) {
+            registered.handlers.forEach { $0.fail(IMAPAbortReason.connectionAborted) }
+        }
+        let installed: EventLoopFuture<Void> = channel.pipeline.addHandler(
+            dispatcher, position: .before(context.responseBuffer)
+        )
+        terminal.attachHandlerCleanup(after: installed) {
+            context.responseBuffer.hasActiveHandler = false
+            channel.pipeline.removeHandler(dispatcher, promise: nil)
+        }
+        do {
+            try await installed.get()
+            try validateTransport(context)
+            context.responseBuffer.hasActiveHandler = true
+            return terminal
+        } catch {
+            terminal.complete(.failure(error))
+            throw error
+        }
     }
 
     /// Applies the failure policy to a drained batch: limit violations always throw
@@ -132,7 +164,7 @@ extension IMAPConnection {
     /// failures recycle the connection when they indicate a bad channel and throw
     /// only when nothing succeeded.
     private func resolvePipelinedFetchDrain(
-        _ drain: PipelinedFetchDrain
+        _ drain: PipelinedFetchDrain, context: TransportContext
     ) async throws -> [PipelinedFetchResult] {
         if let limitViolation = drain.firstLimitViolation {
             throw limitViolation
@@ -141,7 +173,7 @@ extension IMAPConnection {
             let message = "\(connectionContext) Recycling connection after pipelined routing violation: "
                 + "\(routingViolation)"
             logger.warning("\(message)")
-            try? await disconnectBody()
+            await closeTransport(context)
             throw routingViolation
         }
         // A timeout or channel drop poisons the connection even when some parts
@@ -153,7 +185,7 @@ extension IMAPConnection {
             let message = "\(connectionContext) Recycling connection after pipelined fetch failure: "
                 + "\(recyclableFailure)"
             logger.warning("\(message)")
-            try? await disconnectBody()
+            await closeTransport(context)
         }
         if let failure = drain.firstFailure, drain.results.isEmpty {
             throw failure
@@ -237,14 +269,20 @@ extension IMAPConnection {
         dispatcher: PipelinedCommandDispatcher,
         scheduledTimeout: Scheduled<Void>
     ) async throws {
+        let context = try capturedTransport()
+        let token = operationToken
         do {
             for request in tagToRequest {
                 let command = FetchMessagePartCommand(identifier: request.uid, section: request.section)
-                try await command.send(on: channel, tag: request.tag, whenWritten: { _ in })
+                try await IMAPWriteScope.$validate.withValue({ [self] in
+                    try validateTransport(context, token: token)
+                }, operation: {
+                    try await command.send(on: channel, tag: request.tag, whenWritten: { _ in })
+                })
             }
         } catch {
             scheduledTimeout.cancel()
-            responseBuffer.hasActiveHandler = false
+            context.responseBuffer.hasActiveHandler = false
             // Remove dispatcher BEFORE failing handlers to prevent double-resolve
             // from responses arriving while we fail handlers.
             try? await channel.pipeline.removeHandler(dispatcher)
