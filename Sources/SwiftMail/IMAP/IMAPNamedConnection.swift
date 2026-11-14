@@ -87,10 +87,9 @@ public actor IMAPNamedConnection {
     /// Mark a successful command — invoked by helpers that talk directly to
     /// `connection` (idle, noop, fetchCapabilities, …).
     func recordActivity() throws {
-        let generation = connection.operationToken?.generation ?? connection.lifetime.currentGeneration
+        guard let token = connection.operationToken else { throw IMAPAbortReason.connectionAborted }
         try connection.lifetime.gate.withLock {
-            if let token = connection.operationToken { try connection.lifetime.validateLocked(token) }
-            try connection.lifetime.validateGenerationLocked(generation)
+            try connection.lifetime.validateLocked(token)
             lastActivity = Date()
         }
     }

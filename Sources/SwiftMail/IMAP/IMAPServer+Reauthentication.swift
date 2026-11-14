@@ -11,6 +11,11 @@ extension IMAPServer.Authentication {
     }
 
     func authenticateBody(on connection: IMAPConnection, accessToken: String? = nil) async throws {
+        if connection.operationToken == nil {
+            return try await connection.withOperationScope {
+                try await authenticateBody(on: connection, accessToken: accessToken)
+            }
+        }
         try connection.validateOperation()
         switch method {
             case .login(let username, let password):
