@@ -43,33 +43,29 @@ extension IMAPConnection {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
 
-        let promise = channel.eventLoop.makePromise(of: Void.self)
         let context = try capturedTransport()
+        guard context.channel === channel else { throw IMAPError.connectionFailed("IDLE transport replaced") }
         let responseBuffer = context.responseBuffer
         let tag = generateCommandTag()
+        let promise = channel.eventLoop.makePromise(of: Void.self)
+        handlerPromiseCreatedForTesting?()
         let handler = IdleHandler(commandTag: tag, promise: promise, continuation: continuation)
-        try commit(on: context) {
-            context.idleHandler = handler
-            context.idleTerminationInProgress = false
-        }
         let terminal = bindHandler(handler, promise: promise, context: context)
 
         do {
+            try commit(on: context) {
+                context.idleHandler = handler
+                context.idleTerminationInProgress = false
+            }
             try await installIdleHandler(handler, terminal: terminal, context: context)
-            let command = IdleCommand()
-            let tagged = command.toTaggedCommand(tag: tag)
-            let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
-            let token = operationToken
-            try await channel.eventLoop.submit {
-                try self.validateTransport(context, token: token)
-                channel.writeAndFlush(wrapped).whenFailure { terminal.complete(.failure($0)) }
-            }.get()
+            try await sendIdleStart(tag: tag, terminal: terminal, context: context)
             try validateTransport(context)
         } catch {
             responseBuffer.hasActiveHandler = false
             try? commit(on: context) { context.idleHandler = nil }
             // Ensure the promise is resolved to prevent NIO "leaking promise" fatal error
             terminal.complete(.failure(error))
+            handler.finishStream()
             if !handler.isCompleted {
                 try? await channel.pipeline.removeHandler(handler)
             }
@@ -81,6 +77,23 @@ extension IMAPConnection {
         }
     }
 
+    private func sendIdleStart(tag: String, terminal: IMAPTerminal<Void>, context: TransportContext) async throws {
+        let channel = context.channel
+        let tagged = IdleCommand().toTaggedCommand(tag: tag)
+        let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(tagged))
+        let token = operationToken
+        try await channel.eventLoop.flatSubmit {
+            do {
+                try self.validateTransport(context, token: token)
+                let write = channel.writeAndFlush(wrapped)
+                write.whenFailure { terminal.complete(.failure($0)) }
+                return write
+            } catch {
+                return channel.eventLoop.makeFailedFuture(error)
+            }
+        }.get()
+    }
+
     private func installIdleHandler(
         _ handler: IdleHandler, terminal: IMAPTerminal<Void>, context: TransportContext
     ) async throws {
@@ -88,6 +101,7 @@ extension IMAPConnection {
         let installed: EventLoopFuture<Void> = channel.pipeline.addHandler(
             handler, position: .before(context.responseBuffer))
         terminal.attachHandlerCleanup(after: installed) {
+            handler.finishStream()
             channel.pipeline.removeHandler(handler, promise: nil)
             context.responseBuffer.hasActiveHandler = false
         }

@@ -16,11 +16,16 @@ extension IMAPConnection {
             let channel = try await prepareAuthenticationChannel(
                 operation: "PLAIN authenticate", advertising: .authenticate(mechanism), name: "PLAIN"
             )
+            let context = try capturedTransport()
+            guard context.channel === channel else {
+                throw IMAPError.connectionFailed("Authentication transport replaced")
+            }
             let tag = generateCommandTag()
 
-            let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
             let credentialBuffer = makePlainCredentialBuffer(username: username, password: password)
             let (initialResponse, expectsChallenge) = resolveSASLIR(credentials: credentialBuffer)
+            let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
+            handlerPromiseCreatedForTesting?()
 
             let handler = PlainAuthenticationHandler(
                 commandTag: tag,
@@ -28,15 +33,17 @@ extension IMAPConnection {
                 credentials: credentialBuffer,
                 expectsChallenge: expectsChallenge
             )
+            let terminal = bindHandler(handler, promise: handlerPromise, context: context)
 
             let capabilities = try await runPlainAuthentication(
                 PlainAuthenticationRun(
+                    context: context,
                     channel: channel,
                     tag: tag,
                     mechanism: mechanism,
                     initialResponse: initialResponse,
                     handler: handler,
-                    handlerPromise: handlerPromise
+                    terminal: terminal
                 )
             )
             return (channel, capabilities)
@@ -44,12 +51,13 @@ extension IMAPConnection {
     }
 
     private struct PlainAuthenticationRun {
+        let context: TransportContext
         let channel: Channel
         let tag: String
         let mechanism: AuthenticationMechanism
         let initialResponse: InitialResponse?
         let handler: PlainAuthenticationHandler
-        let handlerPromise: EventLoopPromise<[Capability]>
+        let terminal: IMAPTerminal<[Capability]>
     }
 
     private func runPlainAuthentication(_ run: PlainAuthenticationRun) async throws -> [Capability] {
@@ -58,8 +66,8 @@ extension IMAPConnection {
                                         mechanism: run.mechanism,
                                         initialResponse: run.initialResponse
                                     ))
-        return try await runAuthentication(handler: run.handler, promise: run.handlerPromise,
-                                           channel: run.channel, command: command)
+        return try await runAuthentication(handler: run.handler, terminal: run.terminal,
+                                           context: run.context, channel: run.channel, command: command)
     }
 
     /// Returns the channel to authenticate on, judged against a capability snapshot
@@ -166,14 +174,19 @@ extension IMAPConnection {
             let channel = try await prepareAuthenticationChannel(
                 operation: "XOAUTH2 authenticate", advertising: .authenticate(mechanism), name: "XOAUTH2"
             )
+            let context = try capturedTransport()
+            guard context.channel === channel else {
+                throw IMAPError.connectionFailed("Authentication transport replaced")
+            }
             let tag = generateCommandTag()
 
-            let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
             let credentialBuffer = makeXOAUTH2InitialResponseBuffer(email: email, accessToken: accessToken)
             let (initialResponse, expectsChallenge) = resolveSASLIR(
                 credentials: credentialBuffer,
                 maxInlineBytes: 1024
             )
+            let handlerPromise = channel.eventLoop.makePromise(of: [Capability].self)
+            handlerPromiseCreatedForTesting?()
 
             let handler = XOAUTH2AuthenticationHandler(
                 commandTag: tag,
@@ -182,15 +195,17 @@ extension IMAPConnection {
                 expectsChallenge: expectsChallenge,
                 logger: logger
             )
+            let terminal = bindHandler(handler, promise: handlerPromise, context: context)
 
             let capabilities = try await runXOAUTH2Authentication(
                 XOAUTH2AuthenticationRun(
+                    context: context,
                     channel: channel,
                     tag: tag,
                     mechanism: mechanism,
                     initialResponse: initialResponse,
                     handler: handler,
-                    handlerPromise: handlerPromise
+                    terminal: terminal
                 )
             )
             return (channel, capabilities)
@@ -198,12 +213,13 @@ extension IMAPConnection {
     }
 
     private struct XOAUTH2AuthenticationRun {
+        let context: TransportContext
         let channel: Channel
         let tag: String
         let mechanism: AuthenticationMechanism
         let initialResponse: InitialResponse?
         let handler: XOAUTH2AuthenticationHandler
-        let handlerPromise: EventLoopPromise<[Capability]>
+        let terminal: IMAPTerminal<[Capability]>
     }
 
     private func runXOAUTH2Authentication(_ run: XOAUTH2AuthenticationRun) async throws -> [Capability] {
@@ -212,17 +228,14 @@ extension IMAPConnection {
                                         mechanism: run.mechanism,
                                         initialResponse: run.initialResponse
                                     ))
-        return try await runAuthentication(handler: run.handler, promise: run.handlerPromise,
-                                           channel: run.channel, command: command)
+        return try await runAuthentication(handler: run.handler, terminal: run.terminal,
+                                           context: run.context, channel: run.channel, command: command)
     }
 
     private func runAuthentication<Handler: IMAPCommandHandler>(
-        handler: Handler, promise: EventLoopPromise<[Capability]>, channel: Channel,
-        command: TaggedCommand
+        handler: Handler, terminal: IMAPTerminal<[Capability]>, context: TransportContext,
+        channel: Channel, command: TaggedCommand
     ) async throws -> [Capability] where Handler.ResultType == [Capability] {
-        let context = try capturedTransport()
-        guard context.channel === channel else { throw IMAPError.connectionFailed("Authentication transport replaced") }
-        let terminal = bindHandler(handler, promise: promise, context: context)
         do {
             try await installHandler(handler, terminal: terminal, context: context)
             let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))

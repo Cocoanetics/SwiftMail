@@ -94,10 +94,13 @@ extension IMAPConnection {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
 
-        let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
         let context = try capturedTransport()
+        guard context.channel === channel else { throw IMAPError.connectionFailed("Command transport replaced") }
         let tag = generateCommandTag()
+        let resultPromise = channel.eventLoop.makePromise(of: CommandType.ResultType.self)
+        handlerPromiseCreatedForTesting?()
         let handler = command.makeHandler(commandTag: tag, promise: resultPromise)
+        let terminal = bindHandler(handler, promise: resultPromise, context: context)
 
         return try await runCommandHandler(
             CommandHandlerRun(
@@ -106,7 +109,8 @@ extension IMAPConnection {
                 channel: channel,
                 tag: tag,
                 handler: handler,
-                resultPromise: resultPromise
+                resultPromise: resultPromise,
+                terminal: terminal
             )
         )
     }
@@ -118,6 +122,7 @@ extension IMAPConnection {
         let tag: String
         let handler: CommandType.HandlerType
         let resultPromise: EventLoopPromise<CommandType.ResultType>
+        let terminal: IMAPTerminal<CommandType.ResultType>
     }
 
     /// Arm a command's deadline. The timer is cancelled on the event loop the
@@ -151,7 +156,7 @@ extension IMAPConnection {
         let context = run.context
         let responseBuffer = context.responseBuffer
         let duplexLogger = context.duplexLogger
-        let terminal = bindHandler(handler, promise: resultPromise, context: context)
+        let terminal = run.terminal
         // The timeout measures the SERVER. It is armed by `send`'s `whenWritten`
         // callback, in the same event-loop task that emits the command, so no
         // local delay — installing the handler, building an APPEND payload, a
@@ -250,18 +255,23 @@ extension IMAPConnection {
             throw IMAPError.connectionFailed("Channel not initialized")
         }
 
+        let context = try capturedTransport()
+        guard context.channel === channel else { throw IMAPError.connectionFailed("Handler transport replaced") }
         let resultPromise = channel.eventLoop.makePromise(of: T.self)
+        handlerPromiseCreatedForTesting?()
         let handler = HandlerType.init(commandTag: "", promise: resultPromise)
+        let terminal = bindHandler(handler, promise: resultPromise, context: context)
         let scheduledTask = scheduleHandlerTimeout(
             channel: channel,
             timeoutSeconds: timeoutSeconds,
-            promise: resultPromise
+            terminal: terminal
         )
 
         return try await runStandaloneHandler(
             handler: handler,
             channel: channel,
-            resultPromise: resultPromise,
+            context: context,
+            terminal: terminal,
             scheduledTask: scheduledTask
         )
     }
@@ -269,25 +279,24 @@ extension IMAPConnection {
     private func scheduleHandlerTimeout<ResultType: Sendable>(
         channel: Channel,
         timeoutSeconds: Int,
-        promise: EventLoopPromise<ResultType>
+        terminal: IMAPTerminal<ResultType>
     ) -> Scheduled<Void> {
         let logger = self.logger
         return channel.eventLoop.scheduleTask(in: .seconds(Int64(timeoutSeconds))) {
             logger.warning("Handler execution timed out after \(timeoutSeconds) seconds")
-            promise.fail(IMAPError.timeout)
+            terminal.complete(.failure(IMAPError.timeout))
         }
     }
 
     private func runStandaloneHandler<T: Sendable, HandlerType: IMAPCommandHandler>(
         handler: HandlerType,
         channel: Channel,
-        resultPromise: EventLoopPromise<T>,
+        context: TransportContext,
+        terminal: IMAPTerminal<T>,
         scheduledTask: Scheduled<Void>
     ) async throws -> T where HandlerType.ResultType == T {
-        let context = try capturedTransport()
         let responseBuffer = context.responseBuffer
         let duplexLogger = context.duplexLogger
-        let terminal = bindHandler(handler, promise: resultPromise, context: context)
         terminal.attachTimer(scheduledTask, on: channel.eventLoop)
         do {
             try await installHandler(handler, terminal: terminal, context: context)

@@ -71,6 +71,7 @@ final class IMAPConnection: @unchecked Sendable {
     var capabilityRefreshOverrideForTesting: (() async throws -> Void)?
     var authenticationFollowUpOverrideForTesting: (() async throws -> Void)?
     var connectOverrideForTesting: (() async throws -> Void)?
+    var handlerPromiseCreatedForTesting: (() -> Void)?
     /// Re-authenticates this connection inside the command queue after the command path
     /// or an IDLE start had to reopen the transport for a session that was authenticated.
     /// Installed by `IMAPServer` on every connection it authenticates; nil until then.

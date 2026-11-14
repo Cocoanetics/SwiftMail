@@ -21,6 +21,7 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
     private let idleLogger = Logger(label: "com.cocoanetics.SwiftMail.IdleHandler")
     private var didReceiveIdleStarted = false
     private var completionReasonStorage: CompletionReason?
+    private var streamFinished = false
 
     var hasEnteredIdleState: Bool {
         lock.withLock { didReceiveIdleStarted }
@@ -32,6 +33,10 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
 
     var completedWithTaggedResponse: Bool {
         lock.withLock { completionReasonStorage == .taggedResponse }
+    }
+
+    var hasFinishedStream: Bool {
+        lock.withLock { streamFinished }
     }
 
     init(commandTag: String, promise: EventLoopPromise<Void>, continuation: AsyncStream<IMAPServerEvent>.Continuation) {
@@ -47,13 +52,13 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
         // Call super to handle CLIENTBUG warnings and fulfill the Void promise.
         recordCompletionReason(.taggedResponse)
         super.handleTaggedOKResponse(response)
-        continuation.finish()
+        finishStream()
     }
 
     override func handleTaggedErrorResponse(_ response: TaggedResponse) {
         recordCompletionReason(.taggedResponse)
         failWithError(IMAPError.commandFailed(String(describing: response.state)))
-        continuation.finish()
+        finishStream()
     }
 
     /// - Note: `continuation.finish()` is the point of this override.
@@ -68,8 +73,8 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
     ///   would only be half true — socket shut, caller still hanging.
     override func channelInactive(context: ChannelHandlerContext) {
         recordCompletionReason(.channelInactive)
+        finishStream()
         super.channelInactive(context: context)
-        continuation.finish()
     }
 
     /// - Note: Finishes the stream for the same reason as ``channelInactive(context:)``.
@@ -80,8 +85,8 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
     ///   through the promise for whoever is waiting on it.
     override func errorCaught(context: ChannelHandlerContext, error: Error) {
         recordCompletionReason(.error)
+        finishStream()
         super.errorCaught(context: context, error: error)
-        continuation.finish()
     }
 
     private func recordCompletionReason(_ reason: CompletionReason) {
@@ -90,6 +95,17 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
                 completionReasonStorage = reason
             }
         }
+    }
+
+    /// Terminal cleanup calls this before removing the handler, including when
+    /// a pending IDLE write fails before `channelInactive` can reach it.
+    func finishStream() {
+        let shouldFinish = lock.withLock { () -> Bool in
+            guard !streamFinished else { return false }
+            streamFinished = true
+            return true
+        }
+        if shouldFinish { continuation.finish() }
     }
 
     private var currentSeq: SequenceNumber?
@@ -113,8 +129,8 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
                 continuation.yield(.bye(text.text))
                 // Server-initiated termination - complete the IDLE session
                 recordCompletionReason(.serverTermination)
+                finishStream()
                 succeedWithResult(())
-                continuation.finish()
                 return true  // Indicate this response was fully handled
             default:
                 idleLogger.debug("IdleHandler: unhandled Response case: \(response)")
@@ -197,8 +213,8 @@ final class IdleHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @unch
                 continuation.yield(.bye(text.text))
                 // Server-initiated termination - complete the IDLE session
                 recordCompletionReason(.serverTermination)
+                finishStream()
                 succeedWithResult(())
-                continuation.finish()
                 return true
             default:
                 break
