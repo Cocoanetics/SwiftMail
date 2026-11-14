@@ -18,12 +18,14 @@ public actor IMAPNamedConnection {
     /// The timestamp of the last successfully completed command on this connection.
     /// Useful for implementing staleness checks in ephemeral connection patterns.
     public private(set) var lastActivity: Date?
-    private var authenticationWaiters: [CheckedContinuation<Void, any Error>] = []
-    private var isAuthenticationInFlight = false
+    private var authenticationAttempt: SharedAttempt<Void>?
 
     var authenticationWaiterCountForTesting: Int {
-        authenticationWaiters.count
+        // Preserve the old diagnostic's follower-only count.
+        max(0, (authenticationAttempt?.waiterCount ?? 0) - 1)
     }
+
+    var authenticationAttemptForTesting: SharedAttempt<Void>? { authenticationAttempt }
 
     init(
         name: String,
@@ -47,8 +49,11 @@ public actor IMAPNamedConnection {
 
     /// Connect (or reconnect) the underlying transport and ensure authentication.
     public func connect() async throws {
-        try await connection.connect()
-        try await ensureAuthenticated()
+        if connection.operationToken == nil { connection.lifetime.rearm() }
+        try await connection.withOperationScope { [self] in
+            try await connection.connect()
+            try await ensureAuthenticated()
+        }
     }
 
     /// Disconnect this named connection.
@@ -81,44 +86,51 @@ public actor IMAPNamedConnection {
 
     /// Mark a successful command — invoked by helpers that talk directly to
     /// `connection` (idle, noop, fetchCapabilities, …).
-    func recordActivity() {
-        lastActivity = Date()
+    func recordActivity() throws {
+        let generation = connection.operationToken?.generation ?? connection.lifetime.currentGeneration
+        try connection.lifetime.gate.withLock {
+            if let token = connection.operationToken { try connection.lifetime.validateLocked(token) }
+            try connection.lifetime.validateGenerationLocked(generation)
+            lastActivity = Date()
+        }
     }
 
     func ensureAuthenticated() async throws {
-        guard !connection.isAuthenticated else { return }
-
-        if isAuthenticationInFlight {
-            try await withCheckedThrowingContinuation { continuation in
-                authenticationWaiters.append(continuation)
+        if connection.operationToken == nil {
+            return try await connection.withOperationScope { [self] in
+                try await ensureAuthenticated()
             }
+        }
+        try connection.validateOperation()
+        let token = connection.operationToken
+        if let attempt = authenticationAttempt,
+           attempt.generation == token?.generation, !attempt.terminal.isSettled {
+            try await attempt.value(parent: token)
+            try connection.validateOperation()
             return
         }
-
-        // Concurrent callers share this leader's result. Failure clears the
-        // in-flight state so a later call can retry normally.
-        isAuthenticationInFlight = true
-        do {
+        guard !connection.isAuthenticated else { return }
+        let attempt = SharedAttempt<Void>(lifetime: connection.lifetime, parent: token)
+        authenticationAttempt = attempt
+        attempt.start(on: connection, operation: { [connection, authenticateOnConnection] in
             try await authenticateOnConnection(connection)
-            completeAuthenticationWaiters(with: .success(()))
-        } catch {
-            completeAuthenticationWaiters(with: .failure(error))
-            throw error
-        }
+        }, completion: { [self] result in
+            completeAuthentication(attempt, with: result)
+        })
+        try await attempt.value(parent: token)
+        try connection.validateOperation()
     }
 
-    private func completeAuthenticationWaiters(with result: Result<Void, any Error>) {
-        isAuthenticationInFlight = false
-        let waiters = authenticationWaiters
-        authenticationWaiters.removeAll()
+    private func completeAuthentication(_ attempt: SharedAttempt<Void>, with result: Result<Void, Error>) {
+        guard authenticationAttempt?.id == attempt.id else { return }
+        attempt.complete(result)
+        if authenticationAttempt?.id == attempt.id { authenticationAttempt = nil }
+    }
 
-        for waiter in waiters {
-            switch result {
-                case .success:
-                    waiter.resume()
-                case .failure(let error):
-                    waiter.resume(throwing: error)
-            }
+    func withAuthenticatedOperation<Value>(_ body: @escaping () async throws -> Value) async throws -> Value {
+        try await connection.withOperationScope { [self] in
+            try await ensureAuthenticated()
+            return try await body()
         }
     }
 
@@ -126,10 +138,11 @@ public actor IMAPNamedConnection {
     func executeCommand<CommandType: IMAPCommand>(
         _ command: CommandType
     ) async throws -> CommandType.ResultType {
-        try await ensureAuthenticated()
-        let result = try await connection.executeCommand(command)
-        lastActivity = Date()
-        return result
+        try await withAuthenticatedOperation { [self] in
+            let result = try await connection.executeCommand(command)
+            try recordActivity()
+            return result
+        }
     }
 
     func resolveMailboxPath(_ mailboxName: String) -> String {

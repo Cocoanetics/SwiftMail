@@ -39,17 +39,18 @@ extension IMAPNamedConnection {
         parts: [(uid: UID, section: Section)],
         timeoutSeconds: Int? = nil
     ) async throws -> [UID: [(section: Section, data: Data)]] {
-        try await ensureAuthenticated()
-        let results = try await connection.executePipelinedFetchParts(
-            requests: parts,
-            timeoutSeconds: timeoutSeconds
-        )
-        recordActivity()
-        var grouped: [UID: [(section: Section, data: Data)]] = [:]
-        for result in results {
-            grouped[result.uid, default: []].append((section: result.section, data: result.data))
+        try await withAuthenticatedOperation { [self] in
+            let results = try await connection.executePipelinedFetchParts(
+                requests: parts,
+                timeoutSeconds: timeoutSeconds
+            )
+            try recordActivity()
+            var grouped: [UID: [(section: Section, data: Data)]] = [:]
+            for result in results {
+                grouped[result.uid, default: []].append((section: result.section, data: result.data))
+            }
+            return grouped
         }
-        return grouped
     }
 
     /// Fetch a full raw RFC822 message, as in

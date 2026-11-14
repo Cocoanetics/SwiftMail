@@ -5,16 +5,27 @@ extension IMAPServer.Authentication {
     /// The same steps as `authenticate(on:)` for a caller that already holds the
     /// connection's command queue: the transparent re-authentication a connection runs
     /// after reopening its transport inside a command or an IDLE start.
-    func authenticateBody(on connection: IMAPConnection) async throws {
+    func resolveAccessToken(on connection: IMAPConnection) async throws -> String? {
+        guard case .xoauth2(_, let provider) = method else { return nil }
+        return try await connection.resolveAccessToken(provider)
+    }
+
+    func authenticateBody(on connection: IMAPConnection, accessToken: String? = nil) async throws {
+        try connection.validateOperation()
         switch method {
             case .login(let username, let password):
                 try await connection.loginBody(username: username, password: password)
             case .plain(let username, let password):
                 try await connection.authenticatePlainBody(username: username, password: password)
             case .xoauth2(let email, let accessTokenProvider):
-                let accessToken = try await accessTokenProvider()
+                let token: String
+                if let accessToken {
+                    token = accessToken
+                } else {
+                    token = try await connection.resolveAccessToken(accessTokenProvider)
+                }
                 try connection.validateOperation()
-                try await connection.authenticateXOAUTH2Body(email: email, accessToken: accessToken)
+                try await connection.authenticateXOAUTH2Body(email: email, accessToken: token)
         }
         guard let identification else { return }
         try await Self.identifyBody(connection, with: identification)

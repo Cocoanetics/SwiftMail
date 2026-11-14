@@ -56,34 +56,35 @@ extension IMAPServer {
         to destinationMailbox: String,
         fallback: MoveFallbackPolicy
     ) async throws -> CopyUID? {
-        try await ensurePrimaryConnectionAuthenticated()
-        let capabilities = self.capabilities
-        let useTargetedUIDExpunge = T.self == UID.self
-            && capabilities.containsUIDPlusCapability
+        try await withAuthenticatedPrimaryOperation { [self] in
+            let capabilities = self.capabilities
+            let useTargetedUIDExpunge = T.self == UID.self
+                && capabilities.containsUIDPlusCapability
 
-        if case .disabled = fallback {
-            guard capabilities.containsMoveCapability else {
-                throw IMAPError.commandNotSupported("MOVE command not supported by server")
+            if case .disabled = fallback {
+                guard capabilities.containsMoveCapability else {
+                    throw IMAPError.commandNotSupported("MOVE command not supported by server")
+                }
+                return try await executeMove(messages: identifierSet, to: destinationMailbox)
             }
-            return try await executeMove(messages: identifierSet, to: destinationMailbox)
-        }
 
-        if capabilities.containsMoveCapability
-            && (T.self != UID.self || useTargetedUIDExpunge) {
-            return try await executeMove(messages: identifierSet, to: destinationMailbox)
-        }
+            if capabilities.containsMoveCapability
+                && (T.self != UID.self || useTargetedUIDExpunge) {
+                return try await executeMove(messages: identifierSet, to: destinationMailbox)
+            }
 
-        // Preserve the existing fallback, including targeted UID EXPUNGE when UIDPLUS is available.
-        let copyUID = try await copy(messages: identifierSet, to: destinationMailbox)
-        do {
-            try await store(flags: [.deleted], on: identifierSet, operation: .add)
-            try await expungeMoveFallback(
-                messages: identifierSet,
-                useTargetedUIDExpunge: useTargetedUIDExpunge
-            )
-            return copyUID
-        } catch {
-            throw IMAPError.moveFallbackFailed(after: copyUID, underlying: error)
+            // Preserve the existing fallback, including targeted UID EXPUNGE when UIDPLUS is available.
+            let copyUID = try await copy(messages: identifierSet, to: destinationMailbox)
+            do {
+                try await store(flags: [.deleted], on: identifierSet, operation: .add)
+                try await expungeMoveFallback(
+                    messages: identifierSet,
+                    useTargetedUIDExpunge: useTargetedUIDExpunge
+                )
+                return copyUID
+            } catch {
+                throw IMAPError.moveFallbackFailed(after: copyUID, underlying: error)
+            }
         }
     }
 

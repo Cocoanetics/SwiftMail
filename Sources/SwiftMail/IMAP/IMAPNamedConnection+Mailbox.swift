@@ -5,9 +5,11 @@ extension IMAPNamedConnection {
     /// Fetch server capabilities.
     @discardableResult
     public func fetchCapabilities() async throws -> [Capability] {
-        let result = try await connection.fetchCapabilities()
-        recordActivity()
-        return result
+        try await connection.withOperationScope { [self] in
+            let result = try await connection.fetchCapabilities()
+            try recordActivity()
+            return result
+        }
     }
 
     /// Enables extensions only on this named connection.
@@ -22,13 +24,14 @@ extension IMAPNamedConnection {
     ///   ``IMAPError/commandFailed(_:)`` when the server rejects the command.
     @discardableResult
     public func enable(_ capabilities: [Capability]) async throws -> [Capability] {
-        try await ensureAuthenticated()
-        let command = EnableCommand(capabilities: capabilities)
-        try command.validate()
-        guard self.capabilities.containsCapabilityIgnoringCase(.enable) else {
-            throw IMAPError.commandNotSupported("ENABLE command not supported by server")
+        try await withAuthenticatedOperation { [self] in
+            let command = EnableCommand(capabilities: capabilities)
+            try command.validate()
+            guard self.capabilities.containsCapabilityIgnoringCase(.enable) else {
+                throw IMAPError.commandNotSupported("ENABLE command not supported by server")
+            }
+            return try await executeCommand(command)
         }
-        return try await executeCommand(command)
     }
 
     /// Select a mailbox for subsequent commands.
@@ -36,9 +39,10 @@ extension IMAPNamedConnection {
     public func select(mailbox mailboxName: String) async throws -> Mailbox.Selection {
         // Authenticate first so namespacesSnapshot is populated (or repopulated
         // after a reconnect) before we resolve the mailbox path.
-        try await ensureAuthenticated()
-        let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
-        return try await executeCommand(command)
+        try await withAuthenticatedOperation { [self] in
+            let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
+            return try await executeCommand(command)
+        }
     }
 
     /// Compatibility alias for selecting a mailbox.
@@ -65,16 +69,17 @@ extension IMAPNamedConnection {
         resyncingFrom uidValidity: UIDValidity,
         modificationSequence: ModificationSequenceValue
     ) async throws -> Mailbox.ResyncSelection {
-        try await ensureAuthenticated()
-        guard capabilities.containsCapabilityIgnoringCase(.qresync) else {
-            throw IMAPError.commandNotSupported("QRESYNC not supported by server")
+        try await withAuthenticatedOperation { [self] in
+            guard capabilities.containsCapabilityIgnoringCase(.qresync) else {
+                throw IMAPError.commandNotSupported("QRESYNC not supported by server")
+            }
+            let command = ResyncSelectMailboxCommand(
+                mailboxName: resolveMailboxPath(mailboxName),
+                uidValidity: uidValidity,
+                modificationSequence: modificationSequence
+            )
+            return try await executeCommand(command)
         }
-        let command = ResyncSelectMailboxCommand(
-            mailboxName: resolveMailboxPath(mailboxName),
-            uidValidity: uidValidity,
-            modificationSequence: modificationSequence
-        )
-        return try await executeCommand(command)
     }
 
     /// Compatibility alias for selecting a mailbox with QRESYNC.
@@ -97,9 +102,10 @@ extension IMAPNamedConnection {
     /// are not permitted while the mailbox remains selected this way.
     @discardableResult
     public func examineMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
-        try await ensureAuthenticated()
-        let command = ExamineMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
-        return try await executeCommand(command)
+        try await withAuthenticatedOperation { [self] in
+            let command = ExamineMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
+            return try await executeCommand(command)
+        }
     }
 
     /// Close the currently selected mailbox (expunges `\Deleted` messages).
@@ -192,7 +198,8 @@ extension IMAPNamedConnection {
 
     /// Fetch server namespace information.
     public func fetchNamespaces() async throws -> NamespaceResponse {
-        try await ensureAuthenticated()
-        return try await connection.fetchNamespaces()
+        try await withAuthenticatedOperation { [self] in
+            try await connection.fetchNamespaces()
+        }
     }
 }
