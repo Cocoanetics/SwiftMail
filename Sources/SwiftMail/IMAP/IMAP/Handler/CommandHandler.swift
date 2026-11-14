@@ -98,6 +98,14 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
         if let settlement { settlement(.failure(error)) } else { promise.fail(error) }
     }
 
+    /// Route an outbound write failure through the same settlement authority as
+    /// protocol completion and lifetime invalidation.
+    func failWhenWriteFails(_ future: EventLoopFuture<Void>) {
+        future.whenFailure { [self] error in
+            failWithError(error)
+        }
+    }
+
     /// Process an incoming response
     /// - Parameter response: The response to process
     /// - Returns: Whether the response was handled by this handler

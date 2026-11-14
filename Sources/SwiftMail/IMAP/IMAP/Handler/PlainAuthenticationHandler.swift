@@ -58,9 +58,10 @@ final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IM
             if sendCredentials {
                 let credentialBuffer = credentials
                 credentials = context.channel.allocator.buffer(capacity: 0)
-                context.channel
-                    .writeAndFlush(IMAPClientHandler.OutboundIn.part(.continuationResponse(credentialBuffer)))
-                    .cascadeFailure(to: promise)
+                failWhenWriteFails(
+                    context.channel
+                        .writeAndFlush(IMAPClientHandler.OutboundIn.part(.continuationResponse(credentialBuffer)))
+                )
             }
         }
 

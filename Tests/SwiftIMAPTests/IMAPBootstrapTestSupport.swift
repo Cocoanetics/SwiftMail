@@ -99,6 +99,35 @@ final class HoldGate: @unchecked Sendable {
     }
 }
 
+final class AuthenticationContinuationWriteGate: ChannelOutboundHandler, @unchecked Sendable {
+    typealias OutboundIn = IMAPClientHandler.OutboundIn
+
+    let entered = IMAPTestSignal()
+    private let lock = NSLock()
+    private var held: (EventLoopPromise<Void>, EventLoop)?
+
+    func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        let outbound = unwrapOutboundIn(data)
+        if case .part(.continuationResponse) = outbound, let promise {
+            lock.withLock { held = (promise, context.eventLoop) }
+            entered.signal()
+            return
+        }
+        context.write(data, promise: promise)
+    }
+
+    func failHeldWrite() async throws {
+        let held = lock.withLock { () -> (EventLoopPromise<Void>, EventLoop)? in
+            defer { self.held = nil }
+            return self.held
+        }
+        let (promise, eventLoop) = try #require(held)
+        try await eventLoop.submit {
+            promise.fail(ChannelError.ioOnClosedChannel)
+        }.get()
+    }
+}
+
 struct HeldCommand: IMAPTaggedCommand {
     typealias ResultType = [IMAPServerEvent]
     typealias HandlerType = NoopHandler
