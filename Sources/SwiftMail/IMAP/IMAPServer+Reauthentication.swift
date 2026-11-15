@@ -77,6 +77,9 @@ extension IMAPServer {
         for named in namedConnections.values {
             installReauthentication(on: named.connection)
         }
+        for pending in pendingNamedConnections.values {
+            installReauthentication(on: pending.connection)
+        }
         for idle in idleConnections.values {
             installReauthentication(on: idle.connection)
         }

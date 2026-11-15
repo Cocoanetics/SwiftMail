@@ -47,6 +47,7 @@ extension IMAPServer {
         configuration: IMAPIdleConfiguration = .default
     ) async throws -> IMAPIdleSession {
         let idleConfiguration = try configuration.validated()
+        try managedSession.validateAdmission()
 
         guard let authentication = authentication else {
             throw IMAPError.commandFailed("Authentication required before starting IDLE on a mailbox")
@@ -60,33 +61,38 @@ extension IMAPServer {
         let idleGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         let connection = makeIdleConnection(sessionID: sessionID, mailbox: resolvedMailbox, group: idleGroup)
         installReauthentication(on: connection)
-        idleConnections[sessionID] = IdleConnection(
-            mailbox: resolvedMailbox,
-            connection: connection,
-            idleGroup: idleGroup,
-            lifecycle: nil,
-            cycleTask: nil
+        managedConnectionCreatedForTesting?(connection)
+        let session = IMAPDedicatedIdleSession(
+            connection: connection, idleGroup: idleGroup, generation: managedSession.generation
         )
+        idleConnections[sessionID] = IdleConnection(mailbox: resolvedMailbox, session: session)
 
         do {
-            try await connection.connect()
-            try await authentication.authenticate(on: connection)
-            _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: resolvedMailbox))
+            try await session.withAuthority {
+                try await connection.connect()
+                try session.validate()
+                try await authentication.authenticate(on: connection)
+                try session.validate()
+                _ = try await connection.executeCommand(SelectMailboxCommand(mailboxName: resolvedMailbox))
+                try session.validate()
+            }
+            guard idleConnections[sessionID]?.session === session,
+                  managedSession.isCurrent(session.generation) else {
+                throw IMAPAbortReason.connectionAborted
+            }
 
             let request = IdleSessionRequest(
                 sessionID: sessionID,
                 mailbox: mailbox,
                 resolvedMailbox: resolvedMailbox,
-                connection: connection,
-                idleGroup: idleGroup,
+                session: session,
                 configuration: idleConfiguration,
                 authentication: authentication
             )
-            return startResilientIdleSession(request: request)
+            return try startResilientIdleSession(request: request)
         } catch {
-            idleConnections[sessionID] = nil
-            try? await connection.disconnect()
-            try? await idleGroup.shutdownGracefully()
+            if idleConnections[sessionID]?.session === session { idleConnections[sessionID] = nil }
+            await session.teardown()
             throw error
         }
     }
@@ -121,7 +127,11 @@ extension IMAPServer {
     }
 
     /// Wire up the AsyncStream + detached cycle task for a resilient IDLE session.
-    func startResilientIdleSession(request: IdleSessionRequest) -> IMAPIdleSession {
+    func startResilientIdleSession(request: IdleSessionRequest) throws -> IMAPIdleSession {
+        let session = request.session
+        // Checked before the cycle task exists, so a stopped session never runs.
+        try session.validate()
+
         var continuationRef: AsyncStream<IMAPServerEvent>.Continuation!
         let wrappedEvents = AsyncStream<IMAPServerEvent> { continuation in
             continuationRef = continuation
@@ -130,14 +140,14 @@ extension IMAPServer {
         let continuation = continuationRef!
 
         let cycleLogger = IMAPResilientIdleRunner.makeCycleLogger(
-            connection: request.connection,
+            connection: session.connection,
             host: self.host,
             port: self.port,
             mailbox: request.resolvedMailbox
         )
 
         let context = IdleCycleContext(
-            connection: request.connection,
+            session: session,
             mailbox: request.mailbox,
             resolvedMailbox: request.resolvedMailbox,
             configuration: request.configuration,
@@ -146,56 +156,26 @@ extension IMAPServer {
             logger: cycleLogger
         )
 
-        let idleGroup = request.idleGroup
         let sessionID = request.sessionID
-        let lifecycle = IMAPIdleSessionLifecycle()
-        let connection = request.connection
         let cycleTask = Task.detached {
-            await IMAPResilientIdleRunner.run(context: context)
+            await session.withAuthority {
+                await IMAPResilientIdleRunner.run(context: context)
+            }
             continuation.finish()
         }
-
-        if idleConnections[sessionID] != nil {
-            idleConnections[sessionID]?.lifecycle = lifecycle
-            idleConnections[sessionID]?.cycleTask = cycleTask
-        } else {
-            // A concurrent disconnect() removed (and tore down) the entry while
-            // idle(on:) was still connecting; don't leave a live cycle running
-            // behind a session nobody tracks.
-            cycleTask.cancel()
+        guard session.install(cycleTask: cycleTask) else {
+            continuation.finish()
+            throw IMAPAbortReason.connectionAborted
         }
 
-        return IMAPIdleSession(events: wrappedEvents) { [weak self, connection] in
+        return IMAPIdleSession(events: wrappedEvents) { [weak self] in
             if let self {
                 try await self.endIdleSession(id: sessionID)
-            } else {
-                // The server is gone; run the same teardown sequence inline.
-                guard await lifecycle.beginStop(cycleTask: cycleTask) else { return }
-                try? await connection.done()
-                try? await connection.disconnect()
-                await cycleTask.value
-                // Mirror teardownIdleEntry: close any connection the runner
-                // re-established while the cancellation was landing.
-                try? await connection.disconnect()
-                try? await idleGroup.shutdownGracefully()
             }
+            // The server is gone or no longer tracks the session; the session's
+            // own gate makes this a no-op when another path already tore it down.
+            await session.teardown()
         }
-    }
-}
-
-actor IMAPIdleSessionLifecycle {
-    private var isStopped = false
-
-    /// Gates the single teardown of a dedicated IDLE session. Every stop path —
-    /// the session's `done()`, `IMAPServer.disconnect()`, and the post-deinit
-    /// fallback — funnels through this before touching the connection, so the
-    /// cycle task is cancelled exactly once and cleanup never runs twice.
-    func beginStop(cycleTask: Task<Void, Never>) -> Bool {
-        guard !isStopped else { return false }
-        isStopped = true
-
-        cycleTask.cancel()
-        return true
     }
 }
 
@@ -204,8 +184,7 @@ struct IdleSessionRequest {
     let sessionID: UUID
     let mailbox: String
     let resolvedMailbox: String
-    let connection: IMAPConnection
-    let idleGroup: EventLoopGroup
+    let session: IMAPDedicatedIdleSession
     let configuration: IMAPIdleConfiguration
     let authentication: IMAPServer.Authentication
 }

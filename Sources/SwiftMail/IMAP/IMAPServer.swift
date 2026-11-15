@@ -65,8 +65,15 @@ public actor IMAPServer {
     /// User-managed named connections keyed by requested name.
     var namedConnections: [String: NamedConnection] = [:]
 
-    /// Waiters for named connections currently being created.
-    var pendingNamedConnectionWaiters: [String: [CheckedContinuation<IMAPNamedConnection, any Error>]] = [:]
+    /// Named connections currently being created, keyed by normalized name. A
+    /// completion only removes or publishes the record carrying its attempt ID.
+    var pendingNamedConnections: [String: PendingNamedConnection] = [:]
+
+    /// Admission for named and dedicated connections; see `IMAPManagedSessionGate`.
+    var managedSession = IMAPManagedSessionGate()
+
+    /// Sees every named and dedicated connection before its first connect.
+    var managedConnectionCreatedForTesting: ((IMAPConnection) -> Void)?
 
     /// Authentication configuration for spawning new connections.
     var authentication: Authentication? {
@@ -134,15 +141,10 @@ public actor IMAPServer {
 
     struct IdleConnection {
         let mailbox: String
-        let connection: IMAPConnection
-        /// The session's private EventLoopGroup; shut down as the final step of teardown.
-        let idleGroup: EventLoopGroup
-        /// Set once the resilient cycle starts. Server-side teardown must cancel the
-        /// cycle task before touching the connection — the runner is self-healing, so
-        /// a socket that merely closes underneath it is treated as a dropped
-        /// connection and re-dialed.
-        var lifecycle: IMAPIdleSessionLifecycle?
-        var cycleTask: Task<Void, Never>?
+        /// Registered before bootstrap. Owns the connection, its private
+        /// EventLoopGroup, the cycle task once it starts and the single teardown.
+        let session: IMAPDedicatedIdleSession
+        var connection: IMAPConnection { session.connection }
     }
 
     struct NamedConnection {

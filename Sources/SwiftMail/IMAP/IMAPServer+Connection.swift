@@ -19,6 +19,8 @@ extension IMAPServer {
      - Note: Logs connection attempts and capability retrieval at info level
      */
     public func connect() async throws {
+        // An explicit connect rearms new-creation admission and the primary only.
+        managedSession.rearm()
         try await primaryConnection.connect()
     }
 
@@ -190,32 +192,34 @@ extension IMAPServer {
             throw IMAPError.invalidArgument("Connection name must not be empty")
         }
 
+        try managedSession.validateAdmission()
         if let existing = namedConnections[normalizedName] {
             return existing.handle
         }
 
-        if pendingNamedConnectionWaiters[normalizedName] != nil {
-            return try await withCheckedThrowingContinuation { continuation in
-                pendingNamedConnectionWaiters[normalizedName]?.append(continuation)
-            }
+        // Same-name callers share one attempt; each caller only subscribes, so a
+        // cancelled caller (the initiator included) detaches without stopping it.
+        if let pending = pendingNamedConnections[normalizedName],
+           managedSession.isCurrent(pending.generation), !pending.attempt.terminal.isSettled {
+            return try await pending.attempt.value(parent: nil)
         }
 
         guard let authentication else {
             throw IMAPError.commandFailed("Authentication required before creating a named connection")
         }
 
-        // Concurrent callers share the leader's result. Success returns the same
-        // handle; failure clears this sentinel so a later call can retry normally.
-        pendingNamedConnectionWaiters[normalizedName] = []
         let connection = makeNamedConnection(name: normalizedName)
         applyReconnectsInsideCommands(to: connection)
         installReauthentication(on: connection)
-
-        do {
+        managedConnectionCreatedForTesting?(connection)
+        let attempt = SharedAttempt<IMAPNamedConnection>(lifetime: connection.lifetime, parent: nil)
+        pendingNamedConnections[normalizedName] = PendingNamedConnection(
+            attempt: attempt, connection: connection, generation: managedSession.generation
+        )
+        attempt.start(on: connection, operation: {
             try await connection.connect()
             try await authentication.authenticate(on: connection)
-
-            let handle = IMAPNamedConnection(
+            return IMAPNamedConnection(
                 name: normalizedName,
                 connection: connection,
                 authenticateOnConnection: { connection in
@@ -225,32 +229,40 @@ extension IMAPServer {
                     )
                 }
             )
-
-            applyReconnectsInsideCommands(to: connection)
-            namedConnections[normalizedName] = NamedConnection(connection: connection, handle: handle)
-            completePendingNamedConnection(named: normalizedName, with: .success(handle))
-            return handle
-        } catch {
-            try? await connection.disconnect()
-            completePendingNamedConnection(named: normalizedName, with: .failure(error))
-            throw error
-        }
+        }, completion: { [self] result in
+            completeNamedConnection(named: normalizedName, attempt: attempt, with: result)
+        })
+        return try await attempt.value(parent: nil)
     }
 
-    private func completePendingNamedConnection(
+    /// Settles a creation attempt. Only the record with this attempt's ID is
+    /// removed or published: a stale completion after invalidation and a rearm
+    /// cannot erase or replace a newer same-name attempt.
+    private func completeNamedConnection(
         named name: String,
-        with result: Result<IMAPNamedConnection, any Error>
+        attempt: SharedAttempt<IMAPNamedConnection>,
+        with result: Result<IMAPNamedConnection, Error>
     ) {
-        let waiters = pendingNamedConnectionWaiters.removeValue(forKey: name) ?? []
-
-        for waiter in waiters {
-            switch result {
-                case .success(let handle):
-                    waiter.resume(returning: handle)
-                case .failure(let error):
-                    waiter.resume(throwing: error)
-            }
+        guard let pending = pendingNamedConnections[name], pending.attempt.id == attempt.id else {
+            attempt.complete(.failure(IMAPAbortReason.connectionAborted))
+            return
         }
+        pendingNamedConnections[name] = nil
+        guard managedSession.isCurrent(pending.generation) else {
+            attempt.complete(.failure(IMAPAbortReason.connectionAborted))
+            pending.connection.abortNow()
+            return
+        }
+        if case .success(let handle) = result {
+            applyReconnectsInsideCommands(to: pending.connection)
+            attempt.complete(result) {
+                namedConnections[name] = NamedConnection(connection: pending.connection, handle: handle)
+            }
+            if namedConnections[name]?.handle === handle { return }
+        } else {
+            attempt.complete(result)
+        }
+        pending.connection.abortNow()
     }
 
     /**
@@ -344,44 +356,14 @@ extension IMAPServer {
 
     func endIdleSession(id: UUID) async throws {
         guard let entry = idleConnections.removeValue(forKey: id) else { return }
-        await teardownIdleEntry(entry)
-    }
-
-    /// Complete teardown of a dedicated IDLE entry. The cycle task must be
-    /// stopped before the connection is closed: the resilient runner is
-    /// self-healing, so a socket that merely closes underneath it counts as a
-    /// dropped connection and is re-dialed. Stopping is gated by the session
-    /// lifecycle, which lets `disconnect()` and the session's own `done()`
-    /// race safely; whichever loses the gate leaves cleanup to the winner.
-    private func teardownIdleEntry(_ entry: IdleConnection) async {
-        if let lifecycle = entry.lifecycle, let cycleTask = entry.cycleTask {
-            guard await lifecycle.beginStop(cycleTask: cycleTask) else { return }
-            try? await entry.connection.done()
-            try? await entry.connection.disconnect()
-            await cycleTask.value
-            // The runner may have completed a reconnect it had already started
-            // when the cancellation landed (NIO connect/auth/select are not
-            // cancellation-interruptible). Close whatever it left behind so
-            // teardown never relies on the group shutdown to reap a re-dialed
-            // socket.
-            try? await entry.connection.disconnect()
-        } else {
-            // The cycle task never started (the session is still connecting);
-            // there is only the connection and its group to release. idle(on:)'s
-            // failure path may shut the group a second time, which is harmless.
-            try? await entry.connection.done()
-            try? await entry.connection.disconnect()
-        }
-        try? await entry.idleGroup.shutdownGracefully()
+        await entry.session.teardown()
     }
 
     func closeAllConnections() async throws {
-        let idleEntries = idleConnections
-        idleConnections.removeAll()
-
-        for entry in idleEntries.values {
-            await teardownIdleEntry(entry)
-        }
+        // Pending creations and dedicated sessions are settled and begin closing
+        // before the first suspension; published named handles stay reusable.
+        let cleanup = detachManagedConnections(abortingNamed: false)
+        await cleanup.run()
 
         let namedEntries = namedConnections
         namedConnections.removeAll()

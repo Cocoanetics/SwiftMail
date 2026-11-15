@@ -2,7 +2,7 @@ import Foundation
 
 extension IMAPServer {
     /// Turns the reconnect inside commands on or off, for the primary connection and
-    /// every named connection, including ones created later. It is on by default.
+    /// every named connection, including ones being created or created later. It is on by default.
     ///
     /// With it on, a command that finds its connection gone opens a new one and logs in
     /// again before it runs. With it off, that command throws
@@ -16,6 +16,9 @@ extension IMAPServer {
         primaryConnection.reconnectsInsideCommands = enabled
         for named in namedConnections.values {
             named.connection.reconnectsInsideCommands = enabled
+        }
+        for pending in pendingNamedConnections.values {
+            pending.connection.reconnectsInsideCommands = enabled
         }
     }
 
