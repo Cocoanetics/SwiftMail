@@ -84,15 +84,10 @@ extension IMAPResilientIdleRunner {
     ) async throws {
         do {
             try? await context.connection.disconnect()
-            // Teardown may have cancelled us while the disconnect above was in
-            // flight; none of the calls below are cancellation-interruptible
-            // (NIO futures), so re-check before dialing a session that is being
-            // torn down. Teardown still force-closes anything that slips past.
-            if Task.isCancelled { return }
-            try await context.connection.connect()
-            try await context.authentication.authenticate(on: context.connection)
-            let selectCommand = SelectMailboxCommand(mailboxName: context.resolvedMailbox)
-            _ = try await context.connection.executeCommand(selectCommand)
+            // Teardown may have stopped the session while the disconnect above was
+            // in flight. The retained session token fences each step below as well.
+            guard context.session.isActive, !Task.isCancelled else { return }
+            try await reestablishSession(context: context)
 
             state.resetAfterReconnect(configuration: context.configuration)
             context.logger.info("Reconnected IDLE session for mailbox '\(context.mailbox)'")
@@ -112,6 +107,19 @@ extension IMAPResilientIdleRunner {
         }
     }
 
+    /// Dial, authenticate and SELECT on the non-rearming path. Each step runs under
+    /// the retained session token and is checked again once it returns.
+    static func reestablishSession(context: IdleCycleContext) async throws {
+        try context.session.validate()
+        try await context.connection.connect()
+        try context.session.validate()
+        try await context.authentication.authenticate(on: context.connection)
+        try context.session.validate()
+        let selectCommand = SelectMailboxCommand(mailboxName: context.resolvedMailbox)
+        _ = try await context.connection.executeCommand(selectCommand)
+        try context.session.validate()
+    }
+
     /// Generic error recovery path: log, back off, reconnect best-effort.
     static func handleCycleError(
         _ error: Error,
@@ -129,20 +137,16 @@ extension IMAPResilientIdleRunner {
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
         }
 
-        if Task.isCancelled { return }
+        guard context.session.isActive, !Task.isCancelled else { return }
 
         do {
             try? await context.connection.done(timeoutSeconds: context.configuration.doneTimeout)
             try? await context.connection.disconnect()
 
             // Same window as attemptRoutineReconnect: the check above ran before
-            // done/disconnect, and cancellation may have landed since. Don't
-            // re-dial a session that teardown is waiting on.
-            if Task.isCancelled { return }
-            try await context.connection.connect()
-            try await context.authentication.authenticate(on: context.connection)
-            let selectCommand = SelectMailboxCommand(mailboxName: context.resolvedMailbox)
-            _ = try await context.connection.executeCommand(selectCommand)
+            // done/disconnect, and the session may have been stopped since.
+            guard context.session.isActive, !Task.isCancelled else { return }
+            try await reestablishSession(context: context)
 
             state.resetAfterReconnect(configuration: context.configuration)
             context.logger.info("Reconnected IDLE session for mailbox '\(context.mailbox)'")

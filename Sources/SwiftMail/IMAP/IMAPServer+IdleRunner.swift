@@ -46,7 +46,10 @@ enum IdleCycleResult {
 /// Bundles the per-session configuration and references the resilient IDLE cycle
 /// uses across helper functions. Reduces the parameter count of dispatch helpers.
 struct IdleCycleContext {
-    let connection: IMAPConnection
+    /// Recovery runs under the session's retained token: it never rearms an
+    /// invalidated connection, and stopping the session fences every later step.
+    let session: IMAPDedicatedIdleSession
+    var connection: IMAPConnection { session.connection }
     let mailbox: String
     let resolvedMailbox: String
     let configuration: IMAPIdleConfiguration
@@ -70,17 +73,17 @@ enum IMAPResilientIdleRunner {
             + " renewal=\(configuration.renewalInterval)s)"
         context.logger.info("\(startInfo)")
 
-        while !Task.isCancelled {
+        while !Task.isCancelled, context.session.isActive {
             do {
                 state.cycleCount += 1
                 context.logger.debug("Cycle \(state.cycleCount): starting IDLE")
 
                 let cycleResult = try await runOneCycle(context: context, state: state)
-                if Task.isCancelled { break }
+                if Task.isCancelled || !context.session.isActive { break }
 
                 try await applyCycleResult(cycleResult, context: context, state: &state)
             } catch {
-                if Task.isCancelled { break }
+                if Task.isCancelled || !context.session.isActive { break }
                 await handleCycleError(error, context: context, state: &state)
             }
         }
