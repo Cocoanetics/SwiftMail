@@ -35,7 +35,7 @@ struct FetchStreamCancellationTests {
                 do { try await authenticationResult(consumer) } catch is CancellationError {}
             }
 
-            _ = try await fixture.waitForEvent(.peerEOF, run: fixture.runID, connection: held.connection)
+            _ = try await fixture.waitForConnectionEnd(run: fixture.runID, connection: held.connection)
             #expect(!fixture.release(try #require(held.command), gate: "fetch"))
             #expect(received.value == 1)
             #expect(fixture.commandLines(on: held.connection) == commands)
@@ -77,7 +77,7 @@ struct FetchStreamCancellationTests {
             _ = try await authenticationResult(owner)
             _ = try await connection.noop()
             #expect(connection.isConnected)
-            #expect(!fixture.events.contains { $0.kind == .peerEOF })
+            #expect(!fixture.events.contains { [.peerEOF, .peerReset, .readFailed].contains($0.kind) })
             #expect(!fixture.commandLines(on: held.connection).contains { $0.contains("FETCH") })
         }
     }
@@ -116,7 +116,7 @@ struct FetchStreamCancellationTests {
                     #expect(parts.map(\.filename) == [nil, "file.txt"])
             }
             if outcome != .refusal {
-                _ = try await fixture.waitForEvent(.peerEOF, run: fixture.runID, connection: held.connection)
+                _ = try await fixture.waitForConnectionEnd(run: fixture.runID, connection: held.connection)
                 #expect(!fixture.release(try #require(held.command), gate: "mime"))
             }
             #expect(fixture.commandLog.count == 3)

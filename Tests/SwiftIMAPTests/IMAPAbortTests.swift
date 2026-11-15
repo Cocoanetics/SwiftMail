@@ -33,8 +33,8 @@ struct IMAPAbortTests {
                     try await authenticationResult(caller)
                 }
             }
-            _ = try await fixture.testServer.waitForEvent(
-                .peerEOF, run: held.connection.run, connection: held.connection, timeout: 10)
+            _ = try await fixture.testServer.waitForConnectionEnd(
+                run: held.connection.run, connection: held.connection)
             #expect(try !fixture.release(held, gate: "reply"))
             #expect(fixture.commands(on: number) == commands) // No DONE or LOGOUT.
             await #expect(throws: IMAPConnectionAbortedError.self) {
@@ -45,8 +45,8 @@ struct IMAPAbortTests {
             } else if scope == "named" {
                 _ = try await server.noop()
             } else {
-                _ = try await fixture.testServer.waitForEvent(
-                    .peerEOF, run: held.connection.run, connection: fixture.testServer.connection(1), timeout: 10)
+                _ = try await fixture.testServer.waitForConnectionEnd(
+                    run: held.connection.run, connection: fixture.testServer.connection(1))
                 await #expect(throws: IMAPConnectionAbortedError.self) {
                     _ = try await server.connection(named: "later")
                 }
@@ -116,8 +116,8 @@ struct IMAPAbortTests {
             } catch {
                 #expect(!(error is AuthenticationRaceError))
             }
-            _ = try await fixture.testServer.waitForEvent(
-                .peerEOF, run: held.connection.run, connection: held.connection, timeout: 10)
+            _ = try await fixture.testServer.waitForConnectionEnd(
+                run: held.connection.run, connection: held.connection)
             #expect(try !fixture.release(held, gate: "reply"))
             #expect(fixture.commands(on: number).count == 5)
             #expect(!fixture.commands(on: number).contains { $0.contains("DONE") || $0.contains("LOGOUT") })

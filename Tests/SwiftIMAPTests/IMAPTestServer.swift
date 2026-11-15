@@ -75,14 +75,14 @@ final class IMAPTestServer: @unchecked Sendable {
     private struct EventQuery {
         let run: UUID
         let connection: ConnectionID?
-        let kind: EventKind
+        let kinds: Set<EventKind>
         let occurrence: Int?
         let detail: String?
         let after: UInt64
 
         func matches(_ event: Event) -> Bool {
             event.connection.run == run && (connection == nil || event.connection == connection)
-                && event.kind == kind && (occurrence == nil || event.command?.occurrence == occurrence)
+                && kinds.contains(event.kind) && (occurrence == nil || event.command?.occurrence == occurrence)
                 && (detail == nil || event.detail == detail) && event.sequence > after
         }
     }
@@ -150,10 +150,30 @@ final class IMAPTestServer: @unchecked Sendable {
         occurrence: Int? = nil, detail: String? = nil, after: UInt64 = 0,
         timeout: TimeInterval = 10, registered: (@Sendable () -> Void)? = nil
     ) async throws -> Event {
+        try await waitForEvent(
+            EventQuery(run: run, connection: connection, kinds: [kind], occurrence: occurrence,
+                       detail: detail, after: after),
+            timeout: timeout, registered: registered)
+    }
+
+    /// Waits until the client closed `connection`, however the server observed it: a FIN, a reset
+    /// (closing with unread replies sends RST, notably on Linux) or a failed read. Use this after a
+    /// cancel, abort or disconnect; wait for `.peerEOF` only when a clean FIN is what is asserted.
+    func waitForConnectionEnd(
+        run: UUID, connection: ConnectionID, timeout: TimeInterval = 10
+    ) async throws -> Event {
+        try await waitForEvent(
+            EventQuery(run: run, connection: connection, kinds: [.peerEOF, .peerReset, .readFailed],
+                       occurrence: nil, detail: nil, after: 0),
+            timeout: timeout, registered: nil)
+    }
+
+    private func waitForEvent(
+        _ query: EventQuery, timeout: TimeInterval, registered: (@Sendable () -> Void)?
+    ) async throws -> Event {
         let token = UUID()
         let waiter = EventWaiter()
-        let query = EventQuery(
-            run: run, connection: connection, kind: kind, occurrence: occurrence, detail: detail, after: after)
+        let run = query.run
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 waiter.install(continuation)
@@ -162,7 +182,8 @@ final class IMAPTestServer: @unchecked Sendable {
                         waiter.finish(.success(event))
                     } else if endedRuns.contains(run) {
                         waiter.finish(.failure(WaitError.runEnded))
-                    } else if let connection, endedConnections.contains(connection), kind != .workerDrained {
+                    } else if let connection = query.connection, endedConnections.contains(connection),
+                              !query.kinds.contains(.workerDrained) {
                         waiter.finish(.failure(WaitError.connectionEnded))
                     } else if Task.isCancelled {
                         waiter.finish(.failure(CancellationError()))
@@ -218,7 +239,7 @@ final class IMAPTestServer: @unchecked Sendable {
                 || kind == .sendFailed || kind == .localShutdown {
                 endedConnections.insert(connection)
                 for (token, entry) in eventWaiters
-                where entry.0.connection == connection && entry.0.kind != .workerDrained {
+                where entry.0.connection == connection && !entry.0.kinds.contains(.workerDrained) {
                     eventWaiters.removeValue(forKey: token)
                     entry.1.finish(.failure(WaitError.connectionEnded))
                 }

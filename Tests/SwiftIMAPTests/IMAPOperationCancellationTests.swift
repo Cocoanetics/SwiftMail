@@ -149,7 +149,7 @@ struct IMAPOperationCancellationTests {
                         try await authenticationResult(waiter)
                     }
                 }
-                _ = try await server.waitForEvent(.peerEOF, run: server.runID, connection: held.connection)
+                _ = try await server.waitForConnectionEnd(run: server.runID, connection: held.connection)
                 #expect(!server.release(try #require(held.command), gate: "fetch-reply"))
                 #expect(server.commandLog.count == 2)
                 // Caller settlement precedes worker cleanup. Keep the test's
@@ -190,7 +190,7 @@ struct IMAPOperationCancellationTests {
                                                          detail: "fetch-reply")
                 active.cancel()
                 await #expect(throws: CancellationError.self) { try await authenticationResult(active) }
-                _ = try await server.waitForEvent(.peerEOF, run: server.runID, connection: held.connection)
+                _ = try await server.waitForConnectionEnd(run: server.runID, connection: held.connection)
                 await ownerFinished.wait()
                 connection.operationOwnerFinishedForTesting = nil
 
