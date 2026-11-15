@@ -361,6 +361,10 @@ extension IMAPServer {
     }
 
     func closeAllConnections() async throws {
+        // Admission stays closed until teardown finishes: work admitted during one
+        // of the suspensions below would otherwise outlive this disconnect.
+        managedSession.beginDisconnect()
+        defer { managedSession.endDisconnect() }
         // Pending creations and dedicated sessions are settled and begin closing
         // before the first suspension; published named handles stay reusable.
         let cleanup = detachManagedConnections(abortingNamed: false)

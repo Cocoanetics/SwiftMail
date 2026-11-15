@@ -9,9 +9,21 @@ import NIO
 struct IMAPManagedSessionGate {
     private(set) var generation = ConnectionGeneration()
     private(set) var abortReason: IMAPAbortReason?
+    /// `disconnect()` calls still tearing down. They suspend while closing, so new
+    /// creation is refused until they finish rather than escaping their snapshot.
+    private var disconnectsInFlight = 0
 
     func validateAdmission() throws {
         if let abortReason { throw abortReason }
+        if disconnectsInFlight > 0 { throw IMAPAbortReason.connectionAborted }
+    }
+
+    mutating func beginDisconnect() {
+        disconnectsInFlight += 1
+    }
+
+    mutating func endDisconnect() {
+        disconnectsInFlight -= 1
     }
 
     func isCurrent(_ expected: ConnectionGeneration) -> Bool {

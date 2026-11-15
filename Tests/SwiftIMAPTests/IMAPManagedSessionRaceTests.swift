@@ -129,6 +129,41 @@ extension IMAPNamedConnectionTests {
         }
     }
 
+    /// `disconnect()` suspends while closing published named connections. Creation
+    /// requested in that window is refused instead of escaping the teardown, and
+    /// admission reopens once the disconnect has finished.
+    @Test
+    func creationDuringSuspendedDisconnectIsRefused() async throws {
+        try await ManagedSessionFixture.run { fixture in
+            let server = fixture.server
+            _ = try await server.connection(named: "published")
+            let connection = try #require(await server.namedConnections["published"]?.connection)
+            let closing = HoldGate("close")
+            connection.beforeTransportCloseForTesting = { _ in await closing.visit("close") }
+            defer { closing.release.signal() }
+
+            let disconnect = Task { try await server.disconnect() }
+            await closing.entered.wait()
+            await #expect(throws: IMAPAbortReason.connectionAborted) {
+                try await authenticationResult(Task { try await server.connection(named: "late") })
+            }
+            await #expect(throws: IMAPAbortReason.connectionAborted) {
+                try await authenticationResult(Task {
+                    try await server.idle(on: "INBOX", configuration: ManagedSessionFixture.fastIdle)
+                })
+            }
+            closing.release.signal()
+            try await authenticationResult(disconnect)
+            #expect(await server.pendingNamedConnectionForTesting.isEmpty)
+            #expect(await server.namedConnections.isEmpty)
+            #expect(await server.idleConnections.isEmpty)
+            #expect(fixture.testServer.acceptedConnectionCount == 2)
+
+            _ = try await server.connection(named: "late")
+            #expect(fixture.testServer.acceptedConnectionCount == 3)
+        }
+    }
+
     /// Old named handles stay aborted after the server rearms; their own
     /// `connect()` rearms them, and a new same-name request gets a new handle.
     @Test
