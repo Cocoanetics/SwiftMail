@@ -14,9 +14,11 @@ struct QueueLease: Hashable {
     fileprivate let id = UUID()
 }
 
-/// The public cancellation slice can map this internal reason to its public error.
-enum IMAPAbortReason: Error, Equatable {
-    case connectionAborted
+/// Keep existing abort checks and internal call sites on the public error type.
+typealias IMAPAbortReason = IMAPConnectionAbortedError
+
+extension IMAPConnectionAbortedError {
+    static var connectionAborted: Self { Self() }
 }
 
 /// Generation identity deliberately says nothing about the current transport.
@@ -27,7 +29,7 @@ final class IMAPConnectionLifetime {
 
     private struct RegisteredOperation {
         let isPendingLocked: () -> Bool
-        let invalidateLocked: (IMAPAbortReason) -> [Action]
+        let invalidateLocked: (Error) -> [Action]
     }
 
     final class Reservation {
@@ -114,11 +116,30 @@ final class IMAPConnectionLifetime {
 
     /// Invalidation claims all results under the same gate as completion. Active
     /// closures are not cancelled here; their eventual lease releases are harmless.
-    func invalidate(reason: IMAPAbortReason = .connectionAborted, detach: () -> [Action] = { [] }) {
+    func invalidate(
+        reason: IMAPAbortReason = .connectionAborted,
+        cancelling token: OperationToken? = nil,
+        detach: () -> [Action] = { [] }
+    ) {
         let actions = gate.withLock { () -> [Action] in
             guard abortReason == nil else { return [] }
+            var actions: [Action] = []
+            if let token {
+                guard token.generation == generation, let operation = operations[token],
+                      operation.isPendingLocked() else { return [] }
+                let owned = reservations.values.filter { $0.token == token }
+                actions += operation.invalidateLocked(CancellationError())
+                if !owned.contains(where: { $0.phase == .started }) {
+                    for reservation in owned {
+                        reservation.failure = CancellationError()
+                        actions += reservation.admission.settleLocked(.failure(CancellationError())) ?? []
+                        actions += retireLocked(reservation)
+                    }
+                    return actions
+                }
+            }
             abortReason = reason
-            var actions = detach()
+            actions += detach()
             actions += operations.values.flatMap { $0.invalidateLocked(reason) }
             operations.removeAll()
             for reservation in reservations.values {
@@ -131,6 +152,12 @@ final class IMAPConnectionLifetime {
             waiters.removeAll()
             owners.removeAll()
             ownerTask = nil
+            if token != nil {
+                // Cancellation aborts only the affected transport generation. New
+                // commands recover through the ordinary missing-transport path.
+                generation = ConnectionGeneration()
+                abortReason = nil
+            }
             return actions
         }
         actions.forEach { $0() }

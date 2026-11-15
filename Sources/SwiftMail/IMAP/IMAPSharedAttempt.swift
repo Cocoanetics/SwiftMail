@@ -75,6 +75,7 @@ extension IMAPConnection {
     /// Capture authority before authentication, without taking the command queue.
     /// Nested command entry points inherit this token through queue admission.
     func withOperationScope<Value>(_ body: @escaping () async throws -> Value) async throws -> Value {
+        try Task.checkCancellation()
         if let token = operationToken {
             try lifetime.validate(token)
             return try await body()
@@ -83,22 +84,23 @@ extension IMAPConnection {
         var authority = IMAPOperationScope.tokens
         authority[ObjectIdentifier(lifetime)] = token
         let ownerFinished = operationOwnerFinishedForTesting
-        let owner = Task { [self] in
-            defer { ownerFinished?() }
-            do {
-                let value = try await IMAPOperationScope.$tokens.withValue(authority) {
-                    try lifetime.validate(token)
-                    return try await body()
-                }
-                terminal.complete(.success(value))
-            } catch {
-                terminal.complete(.failure(error))
-            }
-        }
         return try await withTaskCancellationHandler {
-            try await terminal.value()
+            let owner = Task { [self] in
+                defer { ownerFinished?() }
+                do {
+                    let value = try await IMAPOperationScope.$tokens.withValue(authority) {
+                        try lifetime.validate(token)
+                        return try await body()
+                    }
+                    terminal.complete(.success(value))
+                } catch {
+                    terminal.complete(.failure(error))
+                }
+            }
+            terminal.addCleanup { owner.cancel() }
+            return try await terminal.value()
         } onCancel: {
-            owner.cancel()
+            abortNow(cancelling: token)
         }
     }
 
@@ -110,7 +112,9 @@ extension IMAPConnection {
         let providerWorker = Task.detached {
             do { sink.complete(.success(try await provider())) } catch { sink.complete(.failure(error)) }
         }
-        sink.addCleanup { providerWorker.cancel() }
+        // Task.cancel() runs a provider's cancellation handler synchronously.
+        // Keep foreign cleanup from delaying already-claimed terminal deliveries.
+        sink.addCleanup { _ = Task.detached { providerWorker.cancel() } }
         let value = try await withTaskCancellationHandler {
             try await sink.value()
         } onCancel: {

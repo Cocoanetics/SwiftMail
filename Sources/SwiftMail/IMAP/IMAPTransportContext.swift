@@ -59,6 +59,7 @@ extension IMAPConnection {
     /// The detached owner may remain suspended in foreign code after abort. Its
     /// caller waits on the registered cell, so fresh queue work can start at once.
     func withOperation<T>(forCleanup: Bool = false, _ body: @escaping () async throws -> T) async throws -> T {
+        if !forCleanup { try Task.checkCancellation() }
         if let token = operationToken {
             try lifetime.validate(token)
             if forCleanup { return try await commandQueue.runForCleanup(token: token, body) }
@@ -68,22 +69,23 @@ extension IMAPConnection {
         var authority = IMAPOperationScope.tokens
         authority[ObjectIdentifier(lifetime)] = token
         let ownerFinished = operationOwnerFinishedForTesting
-        let owner = Task {
-            defer { ownerFinished?() }
-            do {
-                let result = try await IMAPOperationScope.$tokens.withValue(authority) {
-                    if forCleanup { return try await commandQueue.runForCleanup(token: token, body) }
-                    return try await commandQueue.run(token: token, body)
-                }
-                terminal.complete(.success(result))
-            } catch {
-                terminal.complete(.failure(error))
-            }
-        }
         return try await withTaskCancellationHandler {
-            try await terminal.value()
+            let owner = Task {
+                defer { ownerFinished?() }
+                do {
+                    let result = try await IMAPOperationScope.$tokens.withValue(authority) {
+                        if forCleanup { return try await commandQueue.runForCleanup(token: token, body) }
+                        return try await commandQueue.run(token: token, body)
+                    }
+                    terminal.complete(.success(result))
+                } catch {
+                    terminal.complete(.failure(error))
+                }
+            }
+            terminal.addCleanup { owner.cancel() }
+            return try await terminal.value()
         } onCancel: {
-            owner.cancel()
+            if !forCleanup { abortNow(cancelling: token) }
         }
     }
 
@@ -132,8 +134,10 @@ extension IMAPConnection {
     }
 
     /// Synchronous admission latch and detach; no queue, DONE or LOGOUT.
-    func abortNow() {
-        lifetime.invalidate {
+    func abortNow(cancelling token: OperationToken? = nil) {
+        lifetime.invalidate(cancelling: token) {
+            let lostAuthenticatedSession = token != nil
+                && (self.sessionWasLost || self.transport?.authenticated == true)
             let contexts = (self.transport.map { [$0] } ?? [])
                 + self.bootstrapAttempts.values.flatMap { $0.candidates }
                 + Array(self.closingTransports.values)
@@ -144,7 +148,7 @@ extension IMAPConnection {
             self.transport = nil
             self.bootstrapAttempts.removeAll()
             self.closingTransports.removeAll()
-            self.sessionWasLost = false
+            self.sessionWasLost = lostAuthenticatedSession
             self.authenticatingGeneration = nil
             self.stagingCapabilities = []
             self.stagingBuffer = UntaggedResponseBuffer()
