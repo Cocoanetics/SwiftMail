@@ -15,7 +15,8 @@ contributors, reviewers, and the project manager who triages and plans issues.
   nothing more. It handles connections, authentication, command queuing,
   reconnects and IDLE. It turns NIOIMAP's grammar types into friendly models
   such as `MessageInfo`, `Message` and mailbox listings, and it gives callers
-  ergonomic APIs on top.
+  ergonomic APIs on top. Callers should never need to import or handle NIO
+  types.
 - **An SMTP client** built on swift-nio and swift-nio-ssl.
 - **A MIME and message-content library**: parsing and building messages,
   charsets, RFC 2047/2231 encoding, attachments, `.eml` and Outlook `.msg`.
@@ -26,11 +27,16 @@ contributors, reviewers, and the project manager who triages and plans issues.
 
 ## What SwiftMail is not
 
-- **Not an IMAP parser.** Parsing the IMAP wire protocol, the decoder, and
-  anything that needs hooks inside the parser or decoder belong in
-  swift-nio-imap. SwiftMail does not re-implement or patch IMAP parsing. It does
-  not fork or vendor swift-nio-imap, and it does not plan work that needs a new
-  nio-imap API before that API exists upstream.
+- **Not an IMAP protocol implementation.** IMAP parsing and command-level
+  communication belong to swift-nio-imap. That covers encoding commands,
+  decoding responses, the grammar, the parser and decoder, and any hooks inside
+  them. SwiftMail never duplicates something swift-nio-imap already provides,
+  unless the duplicate exists only to give it an elegant, modern Swift facade.
+  Public SwiftMail enums, structs and errors that mirror NIOIMAP concepts are
+  welcome when they keep NIO types out of SwiftMail's public API. SwiftMail does
+  not re-implement or patch IMAP parsing, does not fork or vendor
+  swift-nio-imap, and does not plan work that needs a new nio-imap API before
+  that API exists upstream.
 - **Not a hardened gateway for hostile servers.** Mail servers are treated as
   non-adversarial but fallible. Reasonable resource limits are welcome, such as
   the existing `IMAPParserLimits`, LIST limits, timeouts and opt-in budgets.
