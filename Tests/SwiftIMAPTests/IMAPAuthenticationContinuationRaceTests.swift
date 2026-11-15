@@ -3,8 +3,8 @@ import Testing
 @testable import SwiftMail
 
 extension IMAPBootstrapRaceTests {
-    @Test(arguments: ["PLAIN", "XOAUTH2"])
-    func abortWhileAuthenticationContinuationWriteIsHeld(mechanismName: String) async throws {
+    @Test(arguments: ["PLAIN", "XOAUTH2"], [false, true])
+    func abortWhileAuthenticationContinuationWriteIsHeld(mechanismName: String, cancelled: Bool) async throws {
         try await withEventLoopGroup { group in
             let connection = makeConnection(group)
             let channel = try await installTransport(connection)
@@ -28,8 +28,13 @@ extension IMAPBootstrapRaceTests {
             try await inbound(channel, "+ \r\n")
             await writeGate.entered.wait()
 
-            connection.abortNow()
-            await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticating.value }
+            if cancelled {
+                authenticating.cancel()
+                await #expect(throws: CancellationError.self) { try await authenticationResult(authenticating) }
+            } else {
+                connection.abortNow()
+                await #expect(throws: IMAPConnectionAbortedError()) { try await authenticating.value }
+            }
             try await writeGate.failHeldWrite()
             try await channel.closeFuture.get()
             #expect(connection.channel == nil)

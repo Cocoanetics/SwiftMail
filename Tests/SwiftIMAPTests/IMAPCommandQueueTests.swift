@@ -10,6 +10,36 @@ private actor EventRecorder {
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPCommandQueueTests {
+    @Test(arguments: ["created", "queued", "granted", "started"])
+    func tokenCancellationUsesReservationPhase(phase: String) async throws {
+        let lifetime = IMAPConnectionLifetime()
+        let (token, terminal) = lifetime.registerOperation(of: Int.self)
+        let (_, collateral) = lifetime.registerOperation(of: Int.self)
+        let blocker = try lifetime.makeReservation(token: nil, task: nil)
+        if phase == "queued" { lifetime.enqueue(blocker); try lifetime.start(blocker) }
+        let reservation = try lifetime.makeReservation(token: token, task: nil)
+        if phase != "created" { lifetime.enqueue(reservation) }
+        if phase == "started" { try lifetime.start(reservation) }
+        let detached = IMAPTestCounter()
+        lifetime.cancel(token) { [{ _ = detached.increment() }] }
+        lifetime.cancel(token) { Issue.record("Cancellation detached twice"); return [] }
+        await #expect(throws: CancellationError.self) { try await terminal.value() }
+        if phase == "started" {
+            await #expect(throws: IMAPConnectionAbortedError.self) { try await collateral.value() }
+            #expect(detached.value == 1)
+        } else {
+            #expect(!collateral.isSettled)
+            #expect(detached.value == 0)
+            #expect(throws: CancellationError.self) { try lifetime.start(reservation) }
+            collateral.complete(.success(42))
+        }
+        lifetime.release(blocker)
+        lifetime.release(reservation)
+        #expect(lifetime.reservationCount == 0)
+    }
+}
+
+extension IMAPCommandQueueTests {
     @Test(arguments: [0, 1, 3])
     func fifoSurvivesCancelledHeadMiddleAndTail(cancelled: Int) async throws {
         let queue = IMAPCommandQueue()
@@ -29,7 +59,16 @@ struct IMAPCommandQueueTests {
         await iterator.next()
         var callers: [Task<Void, Error>] = []
         for index in 0..<4 {
-            callers.append(Task { try await queue.run { await recorder.append(index) } })
+            let (token, terminal) = queue.lifetime.registerOperation(of: Void.self)
+            callers.append(Task {
+                try await withTaskCancellationHandler {
+                    do {
+                        try await queue.run(token: token) { await recorder.append(index) }
+                        terminal.complete(.success(()))
+                    } catch { terminal.complete(.failure(error)) }
+                    return try await terminal.value()
+                } onCancel: { queue.lifetime.cancel(token) }
+            })
             await iterator.next()
         }
 

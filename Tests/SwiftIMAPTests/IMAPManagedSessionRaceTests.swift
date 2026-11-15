@@ -71,8 +71,8 @@ extension IMAPNamedConnectionTests {
             } else {
                 await server.invalidateManagedSession()
             }
-            await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(first) }
-            await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(second) }
+            await #expect(throws: IMAPConnectionAbortedError()) { try await authenticationResult(first) }
+            await #expect(throws: IMAPConnectionAbortedError()) { try await authenticationResult(second) }
             try await fixture.eof(2)
 
             // Only now let the stalled step continue; it can no longer publish.
@@ -83,7 +83,7 @@ extension IMAPNamedConnectionTests {
             #expect(await server.pendingNamedConnectionForTesting.isEmpty)
             #expect(await server.namedConnections.isEmpty)
             if !viaDisconnect {
-                await #expect(throws: IMAPAbortReason.connectionAborted) {
+                await #expect(throws: IMAPConnectionAbortedError()) {
                     try await server.connection(named: "shared")
                 }
             }
@@ -106,7 +106,7 @@ extension IMAPNamedConnectionTests {
             await gate.entered.wait()
             let oldAttempt = try #require(await server.pendingNamedConnectionForTesting["x"]?.attempt)
             await server.invalidateManagedSession()
-            await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(old) }
+            await #expect(throws: IMAPConnectionAbortedError()) { try await authenticationResult(old) }
             try await fixture.eof(2)
 
             try await server.connect()
@@ -144,10 +144,10 @@ extension IMAPNamedConnectionTests {
 
             let disconnect = Task { try await server.disconnect() }
             await closing.entered.wait()
-            await #expect(throws: IMAPAbortReason.connectionAborted) {
+            await #expect(throws: IMAPConnectionAbortedError()) {
                 try await authenticationResult(Task { try await server.connection(named: "late") })
             }
-            await #expect(throws: IMAPAbortReason.connectionAborted) {
+            await #expect(throws: IMAPConnectionAbortedError()) {
                 try await authenticationResult(Task {
                     try await server.idle(on: "INBOX", configuration: ManagedSessionFixture.fastIdle)
                 })
@@ -173,10 +173,10 @@ extension IMAPNamedConnectionTests {
             let old = try await server.connection(named: "x")
             await server.invalidateManagedSession()
             try await fixture.eof(2)
-            await #expect(throws: IMAPAbortReason.connectionAborted) { _ = try await old.noop() }
+            await #expect(throws: IMAPConnectionAbortedError()) { _ = try await old.noop() }
 
             try await server.connect()
-            await #expect(throws: IMAPAbortReason.connectionAborted) { _ = try await old.noop() }
+            await #expect(throws: IMAPConnectionAbortedError()) { _ = try await old.noop() }
             let fresh = try await server.connection(named: "x")
             #expect(fresh !== old)
             _ = try await fresh.noop()
@@ -211,7 +211,7 @@ extension IMAPIdleGroupLifecycleTests {
             } else {
                 await server.invalidateManagedSession()
             }
-            await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(idle) }
+            await #expect(throws: IMAPConnectionAbortedError()) { try await authenticationResult(idle) }
             try await fixture.eof(2)
             let commandsAtAbort = fixture.commands(on: 2)
 
@@ -220,7 +220,7 @@ extension IMAPIdleGroupLifecycleTests {
             if stage == "tcp" { await gate.exited.wait() }
             #expect(await server.idleConnections.isEmpty)
             if !viaDisconnect {
-                await #expect(throws: IMAPAbortReason.connectionAborted) {
+                await #expect(throws: IMAPConnectionAbortedError()) {
                     _ = try await server.idle(on: "INBOX", configuration: ManagedSessionFixture.fastIdle)
                 }
             }
@@ -274,7 +274,7 @@ extension IMAPIdleGroupLifecycleTests {
             let session = try await server.idle(on: "INBOX", configuration: ManagedSessionFixture.fastIdle)
             await server.invalidatePrimaryConnection()
             try await fixture.eof(1)
-            await #expect(throws: IMAPAbortReason.connectionAborted) { _ = try await server.noop() }
+            await #expect(throws: IMAPConnectionAbortedError()) { _ = try await server.noop() }
 
             _ = try await named.noop()
             #expect(await server.idleConnections.count == 1)

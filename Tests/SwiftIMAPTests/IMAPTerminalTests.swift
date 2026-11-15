@@ -6,6 +6,39 @@ import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPTerminalTests {
+    @Test(arguments: ["completion", "cancellation", "abort"])
+    func operationCancellationSharesTheTerminalWinner(first: String) async throws {
+        let lifetime = IMAPConnectionLifetime()
+        let (token, terminal) = lifetime.registerOperation(of: Int.self)
+        let reservation = try lifetime.makeReservation(token: token, task: nil)
+        lifetime.enqueue(reservation)
+        try lifetime.start(reservation)
+        let loop = EmbeddedEventLoop()
+        let firings = IMAPTestCounter()
+        let deliveries = IMAPTestCounter()
+        terminal.observe { _ in _ = deliveries.increment(); _ = lifetime.currentGeneration }
+        terminal.attachTimer(loop.scheduleTask(in: .seconds(1)) { _ = firings.increment() }, on: loop)
+        switch first {
+            case "completion": terminal.complete(.success(42))
+            case "cancellation": lifetime.cancel(token)
+            default: lifetime.invalidate()
+        }
+        lifetime.cancel(token)
+        terminal.complete(.success(99))
+        if first == "completion" {
+            #expect(try await terminal.value() == 42)
+            try lifetime.validateAdmission()
+        } else if first == "cancellation" {
+            await #expect(throws: CancellationError.self) { try await terminal.value() }
+        } else {
+            await #expect(throws: IMAPConnectionAbortedError.self) { try await terminal.value() }
+        }
+        loop.run()
+        loop.advanceTime(by: .seconds(2))
+        #expect(deliveries.value == 1 && firings.value == 0)
+        lifetime.release(reservation)
+    }
+
     @Test(arguments: [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]])
     func completionTimeoutAndAbortHaveOneWinner(order: [Int]) async throws {
         let loop = EmbeddedEventLoop()
@@ -24,7 +57,7 @@ struct IMAPTerminalTests {
         }
         terminal.addCleanup(id: cleanupID, cleanup)
         let outcomes: [Result<Int, Error>] = [
-            .success(42), .failure(IMAPError.timeout), .failure(IMAPAbortReason.connectionAborted)
+            .success(42), .failure(IMAPError.timeout), .failure(IMAPConnectionAbortedError())
         ]
         for (index, outcome) in order.enumerated() {
             #expect(terminal.complete(outcomes[outcome]) == (index == 0))
@@ -40,8 +73,8 @@ struct IMAPTerminalTests {
                 await #expect(throws: IMAPError.self) { try await terminal.value() }
                 await #expect(throws: IMAPError.self) { try await future.get() }
             default:
-                await #expect(throws: IMAPAbortReason.self) { try await terminal.value() }
-                await #expect(throws: IMAPAbortReason.self) { try await future.get() }
+                await #expect(throws: IMAPConnectionAbortedError.self) { try await terminal.value() }
+                await #expect(throws: IMAPConnectionAbortedError.self) { try await future.get() }
         }
         #expect(deliveries.value == 1)
         #expect(cleanups.value == 2)
@@ -77,10 +110,11 @@ struct IMAPTerminalTests {
         #expect(firings.value == 0)
     }
 
-    @Test(arguments: [false, true])
-    func lateHandlerInstallationIsRemovedOnce(installationFirst: Bool) throws {
+    @Test(arguments: [false, true], [false, true])
+    func lateHandlerInstallationIsRemovedOnce(installationFirst: Bool, cancelled: Bool) throws {
         let channel = EmbeddedChannel()
-        let terminal = IMAPTerminal<Int>()
+        let lifetime = IMAPConnectionLifetime()
+        let (token, terminal) = lifetime.registerOperation(of: Int.self)
         let installation = channel.eventLoop.makePromise(of: Void.self)
         let removals = IMAPTestCounter()
         let cleanupID = UUID()
@@ -96,10 +130,14 @@ struct IMAPTerminalTests {
             try channel.pipeline.addHandler(handler).wait()
             installation.succeed(())
         }
-        terminal.complete(.failure(IMAPAbortReason.connectionAborted))
+        if cancelled { lifetime.cancel(token) } else { terminal.complete(.failure(IMAPConnectionAbortedError())) }
         // Settlement does not wait for the outstanding installation promise.
         let result = terminal.future(on: channel.eventLoop)
-        #expect(throws: IMAPAbortReason.self) { try result.wait() }
+        if cancelled {
+            #expect(throws: CancellationError.self) { try result.wait() }
+        } else {
+            #expect(throws: IMAPConnectionAbortedError.self) { try result.wait() }
+        }
         if !installationFirst {
             #expect(removals.value == 0)
             try channel.pipeline.addHandler(handler).wait()
@@ -129,7 +167,7 @@ struct IMAPTerminalTests {
         channel.embeddedEventLoop.run()
         channel.embeddedEventLoop.advanceTime(by: .seconds(6))
         #expect(try future.wait() == 42)
-        #expect(!terminal.complete(.failure(IMAPAbortReason.connectionAborted)))
+        #expect(!terminal.complete(.failure(IMAPConnectionAbortedError())))
         #expect(removals.value == 1)
         _ = try channel.finish()
     }

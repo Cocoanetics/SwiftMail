@@ -3,6 +3,62 @@ import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPConnectionGenerationTests {
+    @Test(arguments: ["entry", "enqueue", "start"], [false, true])
+    func cancellationBeforeExecutionSettlesWithoutWaitingForOwner(stage: String, scoped: Bool) async throws {
+        try await withEventLoopGroup { group in
+            let harness = IMAPBootstrapRaceTests()
+            let connection = harness.makeConnection(group)
+            let channel = try await harness.installTransport(connection)
+            let gate = HoldGate(stage)
+            let finished = IMAPTestSignal()
+            connection.operationOwnerFinishedForTesting = finished.signal
+            if stage == "enqueue" { connection.commandQueue.testHooks.beforeEnqueue = { await gate.visit(stage) } }
+            if stage == "start" { connection.commandQueue.testHooks.beforeStart = { await gate.visit(stage) } }
+            defer { gate.release.signal(); connection.abortNow() }
+            let caller = Task {
+                if stage == "entry" { await gate.visit(stage) }
+                if scoped {
+                    return try await connection.withOperationScope {
+                        try await connection.withOperation { Issue.record("Cancelled scoped body ran") }
+                    }
+                }
+                return try await connection.withOperation { Issue.record("Cancelled body ran") }
+            }
+            await gate.entered.wait()
+            caller.cancel()
+            if stage == "entry" { gate.release.signal() }
+            await #expect(throws: CancellationError.self) { try await authenticationResult(caller) }
+            #expect(channel.isActive)
+            #expect(connection.lifetime.reservationCount == 0)
+            connection.commandQueue.testHooks = .init()
+            #expect(try await connection.withOperation { 42 } == 42)
+            gate.release.signal()
+            await finished.wait()
+        }
+    }
+
+    @Test
+    func lateCancellationAndReleaseCannotAbortReconnectedWork() async throws {
+        let lifetime = IMAPConnectionLifetime()
+        let (old, terminal) = lifetime.registerOperation(of: Int.self)
+        let reservation = try lifetime.makeReservation(token: old, task: nil)
+        lifetime.enqueue(reservation)
+        try lifetime.start(reservation)
+        lifetime.cancel(old)
+        await #expect(throws: CancellationError.self) { try await terminal.value() }
+        lifetime.rearm()
+        let (fresh, survivor) = lifetime.registerOperation(of: Int.self)
+        let freshReservation = try lifetime.makeReservation(token: fresh, task: nil)
+        lifetime.enqueue(freshReservation)
+        try lifetime.start(freshReservation)
+        lifetime.cancel(old) { Issue.record("Old cancellation detached fresh transport"); return [] }
+        lifetime.release(reservation)
+        try lifetime.validate(fresh)
+        #expect(lifetime.reservationCount == 1)
+        survivor.complete(.success(42))
+        lifetime.release(freshReservation)
+    }
+
     @Test
     func nestedConnectionsKeepDistinctOriginalAuthority() async throws {
         try await withEventLoopGroup { group in
@@ -52,21 +108,21 @@ struct IMAPConnectionGenerationTests {
 
         lifetime.invalidate()
         lifetime.invalidate()
-        await #expect(throws: IMAPAbortReason.connectionAborted) { try await oldTerminal.value() }
+        await #expect(throws: IMAPConnectionAbortedError()) { try await oldTerminal.value() }
         for waiter in waiters {
-            await #expect(throws: IMAPAbortReason.connectionAborted) { try await waiter.value }
+            await #expect(throws: IMAPConnectionAbortedError()) { try await waiter.value }
         }
         #expect(lifetime.reservationCount == 0)
-        await #expect(throws: IMAPAbortReason.connectionAborted) { try await queue.run(token: oldToken) {} }
-        await #expect(throws: IMAPAbortReason.connectionAborted) { try await queue.run {} }
+        await #expect(throws: IMAPConnectionAbortedError()) { try await queue.run(token: oldToken) {} }
+        await #expect(throws: IMAPConnectionAbortedError()) { try await queue.run {} }
         let (_, rejected) = lifetime.registerOperation(of: Int.self)
-        await #expect(throws: IMAPAbortReason.connectionAborted) { try await rejected.value() }
+        await #expect(throws: IMAPConnectionAbortedError()) { try await rejected.value() }
 
         let freshGeneration = lifetime.rearm()
         #expect(freshGeneration != oldGeneration)
         #expect(lifetime.rearm() == freshGeneration)
-        #expect(throws: IMAPAbortReason.connectionAborted) { try lifetime.validate(oldToken) }
-        await #expect(throws: IMAPAbortReason.connectionAborted) { try await queue.run(token: oldToken) {} }
+        #expect(throws: IMAPConnectionAbortedError()) { try lifetime.validate(oldToken) }
+        await #expect(throws: IMAPConnectionAbortedError()) { try await queue.run(token: oldToken) {} }
         try await verifyFreshQueue(queue, iterator: &iterator) {
             releaseOldOwner.signal()
             try await oldOwner.value
@@ -121,13 +177,13 @@ struct IMAPConnectionGenerationTests {
                 _ = lifetime.currentGeneration
                 // Completion revokes the token before callbacks, even before
                 // the registration's cleanup has had a chance to remove it.
-                #expect(throws: IMAPAbortReason.self) { try lifetime.validate(token) }
+                #expect(throws: IMAPConnectionAbortedError.self) { try lifetime.validate(token) }
             }
             terminal.addCleanup { _ = cleanups.increment() }
             if abortFirst {
                 lifetime.invalidate()
                 #expect(!terminal.complete(.success(42)))
-                await #expect(throws: IMAPAbortReason.connectionAborted) { try await terminal.value() }
+                await #expect(throws: IMAPConnectionAbortedError()) { try await terminal.value() }
             } else {
                 #expect(terminal.complete(.success(42)))
                 lifetime.invalidate()
@@ -135,7 +191,7 @@ struct IMAPConnectionGenerationTests {
             }
             #expect(deliveries.value == 1)
             #expect(cleanups.value == 1)
-            #expect(throws: IMAPAbortReason.self) { try lifetime.validate(token) }
+            #expect(throws: IMAPConnectionAbortedError.self) { try lifetime.validate(token) }
         }
     }
 
@@ -166,11 +222,11 @@ struct IMAPConnectionGenerationTests {
         await waiterQueued.wait()
         #expect(terminal.complete(.success(42)))
         #expect(try await terminal.value() == 42)
-        #expect(throws: IMAPAbortReason.self) { try lifetime.validate(token) }
+        #expect(throws: IMAPConnectionAbortedError.self) { try lifetime.validate(token) }
 
         releaseOwner.signal()
         try await owner.value
-        await #expect(throws: IMAPAbortReason.self) { try await waiter.value }
+        await #expect(throws: IMAPConnectionAbortedError.self) { try await waiter.value }
         #expect(invocations.value == 0)
         #expect(lifetime.reservationCount == 0)
     }
@@ -184,7 +240,7 @@ struct IMAPConnectionGenerationTests {
             lifetime.invalidate()
             lifetime.rearm()
             lifetime.enqueue(reservation)
-            #expect(throws: IMAPAbortReason.self) { try lifetime.start(reservation) }
+            #expect(throws: IMAPConnectionAbortedError.self) { try lifetime.start(reservation) }
             lifetime.release(reservation)
             #expect(lifetime.reservationCount == 0)
         }
