@@ -34,7 +34,7 @@ final class SharedAttempt<Value>: @unchecked Sendable {
                 }
             }
         }
-        terminal.addCleanup { worker.cancel() }
+        terminal.attachTask(worker)
     }
 
     func value(parent: OperationToken?) async throws -> Value {
@@ -97,7 +97,7 @@ extension IMAPConnection {
                     terminal.complete(.failure(error))
                 }
             }
-            terminal.addCleanup { owner.cancel() }
+            terminal.attachTask(owner)
             return try await terminal.value()
         } onCancel: {
             cancelOperation(token)
@@ -112,7 +112,7 @@ extension IMAPConnection {
         let providerWorker = Task.detached {
             do { sink.complete(.success(try await provider())) } catch { sink.complete(.failure(error)) }
         }
-        sink.addCleanup { providerWorker.cancel() }
+        sink.attachTask(providerWorker)
         let value = try await withTaskCancellationHandler {
             try await sink.value()
         } onCancel: {

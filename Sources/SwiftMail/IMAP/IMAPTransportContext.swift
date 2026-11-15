@@ -83,7 +83,7 @@ extension IMAPConnection {
                     terminal.complete(.failure(error))
                 }
             }
-            terminal.addCleanup { owner.cancel() }
+            terminal.attachTask(owner)
             return try await terminal.value()
         } onCancel: {
             if !forCleanup { cancelOperation(token) }

@@ -92,6 +92,12 @@ final class IMAPTerminal<Value>: @unchecked Sendable {
         addCleanup(id: id, on: eventLoop) { timer.cancel() }
     }
 
+    /// Task.cancel can synchronously invoke foreign cancellation handlers. It
+    /// must never delay terminal delivery, socket close, or the cancelling task.
+    func attachTask<Success: Sendable, Failure: Error>(_ task: Task<Success, Failure>) {
+        addCleanup { _ = Task.detached { task.cancel() } }
+    }
+
     /// Successful late installation still gets removed when settlement wins
     /// during installation. Removal always runs on the captured event loop.
     func attachHandlerCleanup(
