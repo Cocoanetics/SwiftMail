@@ -97,7 +97,7 @@ extension IMAPConnection {
         do {
             try lifetime.gate.withLock {
                 try lifetime.validateLocked(attempt.token)
-                guard bootstrapAttempts[attempt.id] === attempt else { throw IMAPAbortReason.connectionAborted }
+                guard bootstrapAttempts[attempt.id] === attempt else { throw IMAPConnectionAbortedError() }
                 attempt.candidates.append(context)
             }
         } catch {

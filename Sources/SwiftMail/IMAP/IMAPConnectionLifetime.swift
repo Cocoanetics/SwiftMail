@@ -14,9 +14,10 @@ struct QueueLease: Hashable {
     fileprivate let id = UUID()
 }
 
-/// The public cancellation slice can map this internal reason to its public error.
-enum IMAPAbortReason: Error, Equatable {
+enum IMAPAbortReason: Equatable {
     case connectionAborted
+
+    var publicError: IMAPConnectionAbortedError { IMAPConnectionAbortedError() }
 }
 
 /// Generation identity deliberately says nothing about the current transport.
@@ -27,7 +28,7 @@ final class IMAPConnectionLifetime {
 
     private struct RegisteredOperation {
         let isPendingLocked: () -> Bool
-        let invalidateLocked: (IMAPAbortReason) -> [Action]
+        let settleLocked: (Error) -> [Action]
     }
 
     final class Reservation {
@@ -74,11 +75,11 @@ final class IMAPConnectionLifetime {
                 }
             }
             if let abortReason {
-                return (token, terminal.settleLocked(.failure(abortReason)) ?? [])
+                return (token, terminal.settleLocked(.failure(abortReason.publicError)) ?? [])
             }
             operations[token] = RegisteredOperation(
                 isPendingLocked: { terminal.isPendingLocked },
-                invalidateLocked: { terminal.settleLocked(.failure($0)) ?? [] }
+                settleLocked: { terminal.settleLocked(.failure($0)) ?? [] }
             )
             return (token, [])
         }
@@ -96,41 +97,65 @@ final class IMAPConnectionLifetime {
     }
 
     func validateAdmission() throws {
-        try gate.withLock { if let abortReason { throw abortReason } }
+        try gate.withLock { if let abortReason { throw abortReason.publicError } }
     }
 
     func validateLocked(_ token: OperationToken) throws {
         guard token.generation == generation, abortReason == nil,
               operations[token]?.isPendingLocked() == true else {
-            throw abortReason ?? IMAPAbortReason.connectionAborted
+            throw IMAPConnectionAbortedError()
         }
     }
 
     func validateGenerationLocked(_ expected: ConnectionGeneration) throws {
         guard generation == expected, abortReason == nil else {
-            throw abortReason ?? IMAPAbortReason.connectionAborted
+            throw IMAPConnectionAbortedError()
         }
     }
 
     /// Invalidation claims all results under the same gate as completion. Active
     /// closures are not cancelled here; their eventual lease releases are harmless.
     func invalidate(reason: IMAPAbortReason = .connectionAborted, detach: () -> [Action] = { [] }) {
+        let actions = gate.withLock { invalidateLocked(reason: reason, detach: detach) }
+        actions.forEach { $0() }
+    }
+
+    private func invalidateLocked(reason: IMAPAbortReason, detach: () -> [Action]) -> [Action] {
+        guard abortReason == nil else { return [] }
+        abortReason = reason
+        var actions = operations.values.flatMap { $0.settleLocked(reason.publicError) }
+        actions += detach()
+        operations.removeAll()
+        for reservation in reservations.values {
+            reservation.phase = .retired
+            reservation.task = nil
+            reservation.failure = reason.publicError
+            actions += reservation.admission.settleLocked(.failure(reason.publicError)) ?? []
+        }
+        reservations.removeAll()
+        waiters.removeAll()
+        owners.removeAll()
+        ownerTask = nil
+        return actions
+    }
+
+    /// Cancellation, completion and invalidation choose their winner under one
+    /// gate. Only a still-pending token that owns started execution may abort.
+    func cancel(_ token: OperationToken, detach: () -> [Action] = { [] }) {
         let actions = gate.withLock { () -> [Action] in
-            guard abortReason == nil else { return [] }
-            abortReason = reason
-            var actions = detach()
-            actions += operations.values.flatMap { $0.invalidateLocked(reason) }
-            operations.removeAll()
-            for reservation in reservations.values {
-                reservation.phase = .retired
-                reservation.task = nil
-                reservation.failure = reason
-                actions += reservation.admission.settleLocked(.failure(reason)) ?? []
+            guard token.generation == generation, abortReason == nil,
+                  let operation = operations[token], operation.isPendingLocked() else { return [] }
+            let owned = reservations.values.filter { $0.token == token }
+            var actions = operation.settleLocked(CancellationError())
+            if owned.contains(where: { $0.phase == .started }) {
+                actions += invalidateLocked(reason: .connectionAborted, detach: detach)
+            } else {
+                for reservation in owned {
+                    reservation.failure = CancellationError()
+                    actions += reservation.admission.settleLocked(.failure(CancellationError())) ?? []
+                    actions += retireLocked(reservation)
+                }
             }
-            reservations.removeAll()
-            waiters.removeAll()
-            owners.removeAll()
-            ownerTask = nil
             return actions
         }
         actions.forEach { $0() }
@@ -152,7 +177,7 @@ final class IMAPConnectionLifetime {
     func makeReservation(token: OperationToken?, task: UnsafeCurrentTask?) throws -> Reservation {
         try gate.withLock {
             if let token { try validateLocked(token) }
-            if let abortReason { throw abortReason }
+            if let abortReason { throw abortReason.publicError }
             let reservation = Reservation(generation: generation, token: token, task: task, gate: gate)
             reservations[reservation.lease] = reservation
             return reservation
@@ -178,7 +203,7 @@ final class IMAPConnectionLifetime {
             if let token = reservation.token { try validateLocked(token) }
             guard reservation.lease.generation == generation, abortReason == nil,
                   reservation.phase == .granted else {
-                throw abortReason ?? IMAPAbortReason.connectionAborted
+                throw IMAPConnectionAbortedError()
             }
             reservation.phase = .started
         }
@@ -188,7 +213,8 @@ final class IMAPConnectionLifetime {
         let actions = gate.withLock { () -> [Action] in
             switch reservation.phase {
                 case .started, .retired:
-                    // Active task cancellation policy belongs to #293.
+                    // The operation token owns active cancellation; cancelling
+                    // its worker task is only best-effort cleanup.
                     return []
                 case .created, .queued, .granted:
                     reservation.failure = CancellationError()

@@ -33,6 +33,7 @@ final class PlainAuthenticationHandler: BaseIMAPCommandHandler<[Capability]>, IM
     }
 
     override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        guard !isCompleted else { context.fireChannelRead(data); return }
         let response = unwrapInboundIn(data)
 
         if case .authenticationChallenge(let challenge) = response {

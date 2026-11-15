@@ -4,6 +4,18 @@
 import Foundation
 import NIOIMAPCore
 
+/// The connection was invalidated while this operation was pending.
+///
+/// Cancelling an executing operation closes its connection. That caller receives
+/// `CancellationError`; other pending callers receive this error. Explicitly
+/// reconnect before starting new work. A command may already have reached the
+/// server, so reconcile server state before retrying a mutating operation.
+public struct IMAPConnectionAbortedError: Error, Sendable, Equatable, LocalizedError {
+    public init() {}
+
+    public var errorDescription: String? { "The IMAP connection was aborted" }
+}
+
 /// Errors that can occur during IMAP operations
 public enum IMAPError: Error {
     case greetingFailed(String)

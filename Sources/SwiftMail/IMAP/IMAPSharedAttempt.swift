@@ -83,22 +83,24 @@ extension IMAPConnection {
         var authority = IMAPOperationScope.tokens
         authority[ObjectIdentifier(lifetime)] = token
         let ownerFinished = operationOwnerFinishedForTesting
-        let owner = Task { [self] in
-            defer { ownerFinished?() }
-            do {
-                let value = try await IMAPOperationScope.$tokens.withValue(authority) {
-                    try lifetime.validate(token)
-                    return try await body()
-                }
-                terminal.complete(.success(value))
-            } catch {
-                terminal.complete(.failure(error))
-            }
-        }
         return try await withTaskCancellationHandler {
-            try await terminal.value()
+            if Task.isCancelled { cancelOperation(token) }
+            let owner = Task { [self] in
+                defer { ownerFinished?() }
+                do {
+                    let value = try await IMAPOperationScope.$tokens.withValue(authority) {
+                        try lifetime.validate(token)
+                        return try await body()
+                    }
+                    terminal.complete(.success(value))
+                } catch {
+                    terminal.complete(.failure(error))
+                }
+            }
+            terminal.addCleanup { owner.cancel() }
+            return try await terminal.value()
         } onCancel: {
-            owner.cancel()
+            cancelOperation(token)
         }
     }
 

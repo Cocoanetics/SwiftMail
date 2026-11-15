@@ -66,7 +66,7 @@ extension IMAPConnection {
             throw error
         } catch {
             try validateOperation()
-            if error is IMAPAbortReason { throw error }
+            if error is IMAPConnectionAbortedError { throw error }
             logger.warning("\(connectionContext) Failed to fetch namespace metadata: \(error)")
         }
     }

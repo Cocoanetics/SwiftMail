@@ -36,6 +36,7 @@ final class XOAUTH2AuthenticationHandler:
     }
 
     override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        guard !isCompleted else { context.fireChannelRead(data); return }
         let response = unwrapInboundIn(data)
 
         if case .authenticationChallenge(var challengeBuffer) = response {

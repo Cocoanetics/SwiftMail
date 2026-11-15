@@ -78,7 +78,7 @@ extension IMAPServer {
             }
             guard idleConnections[sessionID]?.session === session,
                   managedSession.isCurrent(session.generation) else {
-                throw IMAPAbortReason.connectionAborted
+                throw IMAPConnectionAbortedError()
             }
 
             let request = IdleSessionRequest(
@@ -165,7 +165,7 @@ extension IMAPServer {
         }
         guard session.install(cycleTask: cycleTask) else {
             continuation.finish()
-            throw IMAPAbortReason.connectionAborted
+            throw IMAPConnectionAbortedError()
         }
 
         return IMAPIdleSession(events: wrappedEvents) { [weak self] in

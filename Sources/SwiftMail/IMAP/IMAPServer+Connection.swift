@@ -245,12 +245,12 @@ extension IMAPServer {
     ) {
         defer { namedAttemptCompletedForTesting?(attempt.id) }
         guard let pending = pendingNamedConnections[name], pending.attempt.id == attempt.id else {
-            attempt.complete(.failure(IMAPAbortReason.connectionAborted))
+            attempt.complete(.failure(IMAPConnectionAbortedError()))
             return
         }
         pendingNamedConnections[name] = nil
         guard managedSession.isCurrent(pending.generation) else {
-            attempt.complete(.failure(IMAPAbortReason.connectionAborted))
+            attempt.complete(.failure(IMAPConnectionAbortedError()))
             pending.connection.abortNow()
             return
         }
@@ -381,7 +381,7 @@ extension IMAPServer {
         try? await primaryConnection.done()
         do {
             try await primaryConnection.disconnect()
-        } catch is IMAPAbortReason {
+        } catch is IMAPConnectionAbortedError {
             // Invalidation already closed the primary transport.
         }
 
