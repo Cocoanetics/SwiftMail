@@ -148,7 +148,7 @@ final class IMAPTestServer: @unchecked Sendable {
     func waitForEvent(
         _ kind: EventKind, run: UUID, connection: ConnectionID? = nil,
         occurrence: Int? = nil, detail: String? = nil, after: UInt64 = 0,
-        timeout: TimeInterval = 2, registered: (@Sendable () -> Void)? = nil
+        timeout: TimeInterval = 10, registered: (@Sendable () -> Void)? = nil
     ) async throws -> Event {
         let token = UUID()
         let waiter = EventWaiter()

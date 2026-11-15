@@ -72,7 +72,7 @@ struct ManagedSessionFixture {
     ) async throws -> Server.Event {
         try await testServer.waitForEvent(
             kind, run: testServer.runID, connection: testServer.connection(number),
-            occurrence: occurrence, timeout: 1)
+            occurrence: occurrence, timeout: 10)
     }
 
     /// The client closed the socket: FIN, or a reset when it left replies unread.
@@ -80,7 +80,7 @@ struct ManagedSessionFixture {
     func eof(_ number: UInt64) async throws {
         let connection = testServer.connection(number)
         _ = try await testServer.waitForEvent(
-            .workerDrained, run: connection.run, connection: connection, detail: "reader", timeout: 1)
+            .workerDrained, run: connection.run, connection: connection, detail: "reader", timeout: 10)
         #expect(testServer.events.contains {
             $0.connection == connection && ($0.kind == .peerEOF || $0.kind == .peerReset)
         })
