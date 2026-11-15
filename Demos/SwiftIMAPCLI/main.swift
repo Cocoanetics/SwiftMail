@@ -48,7 +48,10 @@ struct IMAPTool: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "SwiftIMAPCLI",
         abstract: "A CLI for interacting with IMAP servers using SwiftMail.",
-        subcommands: [List.self, Fetch.self, Move.self, Idle.self, Search.self, Folders.self, DownloadAttachment.self]
+        subcommands: [
+            List.self, Fetch.self, Move.self, Idle.self, Search.self, Folders.self, DownloadAttachment.self,
+            LiveTest.self
+        ]
     )
 }
 

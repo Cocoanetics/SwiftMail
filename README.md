@@ -116,6 +116,12 @@ ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift run SwiftIMAPCLI
 ENABLE_DEBUG_OUTPUT=1 OS_ACTIVITY_DT_MODE=debug swift run SwiftSMTPCLI
 ```
 
+`SwiftIMAPCLI livetest` checks cancellation, `abort()`, `disconnect()` and the FETCH receive limits against the configured mailbox. It only reads (SELECT, FETCH, NOOP) and prints a pass, fail or inconclusive line per check. A step that hangs fails its check and skips the remaining ones; the command exits with status 1 if any check fails:
+
+```bash
+swift run SwiftIMAPCLI livetest --mailbox INBOX --count 200
+```
+
 The debug logging options:
 - `ENABLE_DEBUG_OUTPUT=1`: Enables trace level logging
 - `OS_ACTIVITY_DT_MODE=debug`: Formats debug output in a readable way
