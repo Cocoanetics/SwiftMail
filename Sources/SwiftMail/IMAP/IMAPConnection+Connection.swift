@@ -231,6 +231,11 @@ extension IMAPConnection {
             return true
         }
 
+        // The handler already closed the channel; retire the captured transport with it.
+        if error is FetchReceiveLimitExceededError {
+            return true
+        }
+
         // Raw NIO transport failure (e.g. writeAndFlush on a closed channel). The substring
         // check below misses most ChannelError cases — `String(describing:)` returns just the
         // case name (`alreadyClosed`, `ioOnClosedChannel`, `connectPending`, `inputClosed`,

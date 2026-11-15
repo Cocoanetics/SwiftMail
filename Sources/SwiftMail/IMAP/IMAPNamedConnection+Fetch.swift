@@ -121,16 +121,16 @@ extension IMAPNamedConnection {
     ///   - identifier: The message identifier to fetch.
     ///   - options: Which attributes to request. Defaults to `.default`.
     ///   - headerFields: Optional named header fields to request via `BODY.PEEK[HEADER.FIELDS (...)]`.
+    ///   - limits: Receive limits for this call; see ``FetchReceiveLimits``.
     public func fetchMessageInfo<T: MessageIdentifier>(
         for identifier: T,
         options: FetchMessageInfoOptions = .default,
-        headerFields: [String]? = nil
+        headerFields: [String]? = nil,
+        limits: FetchReceiveLimits = .unlimited
     ) async throws -> MessageInfo? {
-        let set = MessageIdentifierSet<T>(identifier)
-        let command = FetchMessageInfoCommand(
-            identifierSet: set, options: options, headerFields: headerFields
-        )
-        return try await executeCommand(command).first
+        try await fetchMessageInfosBulk(
+            using: MessageIdentifierSet<T>(identifier), options: options, headerFields: headerFields, limits: limits
+        ).first
     }
 
     /// Fetch message metadata in a single FETCH/UID FETCH command.
@@ -138,13 +138,16 @@ extension IMAPNamedConnection {
     ///   - identifierSet: The identifiers to fetch.
     ///   - options: Which attributes to request. Defaults to `.default`.
     ///   - headerFields: Optional named header fields. See `FetchMessageInfoOptions.newsletterHeaderFields`.
+    ///   - limits: Receive limits for this call; see ``FetchReceiveLimits``.
     public func fetchMessageInfosBulk<T: MessageIdentifier>(
         using identifierSet: MessageIdentifierSet<T>,
         options: FetchMessageInfoOptions = .default,
-        headerFields: [String]? = nil
+        headerFields: [String]? = nil,
+        limits: FetchReceiveLimits = .unlimited
     ) async throws -> [MessageInfo] {
         let command = FetchMessageInfoCommand(
-            identifierSet: identifierSet, options: options, headerFields: headerFields
+            identifierSet: identifierSet, options: options, headerFields: headerFields,
+            budget: try FetchReceiveBudget.make(for: limits)
         )
         return try await executeCommand(command)
     }
@@ -153,40 +156,44 @@ extension IMAPNamedConnection {
     public func fetchMessageInfos(
         uidRange: PartialRangeFrom<UID>,
         options: FetchMessageInfoOptions = .default,
-        headerFields: [String]? = nil
+        headerFields: [String]? = nil,
+        limits: FetchReceiveLimits = .unlimited
     ) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(using: UIDSet(uidRange), options: options, headerFields: headerFields)
+        try await fetchMessageInfosBulk(using: UIDSet(uidRange), options: options,
+                                        headerFields: headerFields, limits: limits)
     }
 
     /// Fetch message metadata for a UID range in a single command.
     public func fetchMessageInfos(
         uidRange: ClosedRange<UID>,
         options: FetchMessageInfoOptions = .default,
-        headerFields: [String]? = nil
+        headerFields: [String]? = nil,
+        limits: FetchReceiveLimits = .unlimited
     ) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(using: UIDSet(uidRange), options: options, headerFields: headerFields)
+        try await fetchMessageInfosBulk(using: UIDSet(uidRange), options: options,
+                                        headerFields: headerFields, limits: limits)
     }
 
     /// Fetch message metadata for a sequence-number range in a single command.
     public func fetchMessageInfos(
         sequenceRange: PartialRangeFrom<SequenceNumber>,
         options: FetchMessageInfoOptions = .default,
-        headerFields: [String]? = nil
+        headerFields: [String]? = nil,
+        limits: FetchReceiveLimits = .unlimited
     ) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(
-            using: SequenceNumberSet(sequenceRange), options: options, headerFields: headerFields
-        )
+        try await fetchMessageInfosBulk(using: SequenceNumberSet(sequenceRange), options: options,
+                                        headerFields: headerFields, limits: limits)
     }
 
     /// Fetch message metadata for a sequence-number range in a single command.
     public func fetchMessageInfos(
         sequenceRange: ClosedRange<SequenceNumber>,
         options: FetchMessageInfoOptions = .default,
-        headerFields: [String]? = nil
+        headerFields: [String]? = nil,
+        limits: FetchReceiveLimits = .unlimited
     ) async throws -> [MessageInfo] {
-        try await fetchMessageInfosBulk(
-            using: SequenceNumberSet(sequenceRange), options: options, headerFields: headerFields
-        )
+        try await fetchMessageInfosBulk(using: SequenceNumberSet(sequenceRange), options: options,
+                                        headerFields: headerFields, limits: limits)
     }
 
     /// Stream message metadata for a set of identifiers, auto-chunking large sets.
@@ -200,12 +207,14 @@ extension IMAPNamedConnection {
     ///   - options: Which attributes to request. Defaults to `.default`.
     ///   - headerFields: Optional named header fields.
     ///   - chunkSize: Override for the auto-derived chunk size.
+    ///   - limits: Receive limits shared by every chunk; see ``FetchReceiveLimits``.
     /// - Returns: An `AsyncThrowingStream` yielding `MessageInfo` one at a time.
     public nonisolated func fetchMessageInfos<T: MessageIdentifier>(
         using identifierSet: MessageIdentifierSet<T>,
         options: FetchMessageInfoOptions = .default,
         headerFields: [String]? = nil,
-        chunkSize: Int? = nil
+        chunkSize: Int? = nil,
+        limits: FetchReceiveLimits = .unlimited
     ) -> AsyncThrowingStream<MessageInfo, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
@@ -214,12 +223,13 @@ extension IMAPNamedConnection {
                         throw IMAPError.emptyIdentifierSet
                     }
 
+                    let budget = try FetchReceiveBudget.make(for: limits)
                     let chunks = identifierSet.chunked(size: chunkSize ?? options.suggestedChunkSize)
 
                     for chunk in chunks {
                         try Task.checkCancellation()
                         let command = FetchMessageInfoCommand(
-                            identifierSet: chunk, options: options, headerFields: headerFields
+                            identifierSet: chunk, options: options, headerFields: headerFields, budget: budget
                         )
                         let result = try await executeCommand(command)
                         for header in result {

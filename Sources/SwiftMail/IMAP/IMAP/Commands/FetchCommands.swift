@@ -25,6 +25,9 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     /// includes everything).
     let headerFields: [String]?
 
+    /// What the call this command belongs to may still receive; `nil` for no limits.
+    let budget: FetchReceiveBudget?
+
     /// Custom timeout for this operation
     let timeoutSeconds = 10
 
@@ -33,14 +36,21 @@ struct FetchMessageInfoCommand<T: MessageIdentifier>: IMAPTaggedCommand {
     ///   - identifierSet: The set of message identifiers to fetch
     ///   - options: Which attributes to request. Defaults to `.default`.
     ///   - headerFields: Optional named header fields. See `FetchMessageInfoOptions.newsletterHeaderFields`.
+    ///   - budget: The receive budget shared by every command of one call.
     init(
         identifierSet: MessageIdentifierSet<T>,
         options: FetchMessageInfoOptions = .default,
-        headerFields: [String]? = nil
+        headerFields: [String]? = nil,
+        budget: FetchReceiveBudget? = nil
     ) {
         self.identifierSet = identifierSet
         self.options = options
         self.headerFields = headerFields
+        self.budget = budget
+    }
+
+    func makeHandler(commandTag: String, promise: EventLoopPromise<[MessageInfo]>) -> FetchMessageInfoHandler {
+        FetchMessageInfoHandler(commandTag: commandTag, promise: promise, budget: budget)
     }
 
     /// Validate the command before execution

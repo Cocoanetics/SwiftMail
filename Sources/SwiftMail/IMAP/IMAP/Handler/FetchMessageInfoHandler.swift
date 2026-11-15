@@ -15,6 +15,52 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     private var currentHeaderLiteral = Data()
     private var collectingThreadingHeaders = false
 
+    /// Shared with the call's other FETCH commands; see ``FetchReceiveBudget``.
+    private let budget: FetchReceiveBudget?
+
+    /// Set once the budget is exhausted: nothing read afterwards is kept or passed on.
+    private var exceededBudget = false
+
+    init(commandTag: String, promise: EventLoopPromise<[MessageInfo]>, budget: FetchReceiveBudget?) {
+        self.budget = budget
+        super.init(commandTag: commandTag, promise: promise)
+    }
+
+    override init(commandTag: String, promise: EventLoopPromise<[MessageInfo]>) {
+        self.budget = nil
+        super.init(commandTag: commandTag, promise: promise)
+    }
+
+    override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        // Responses the same network read already decoded keep arriving until the close lands.
+        guard !exceededBudget else { return }
+        if let budget, case .fetch(let fetchResponse) = unwrapInboundIn(data) {
+            do {
+                if case .streamingBegin(_, let byteCount) = fetchResponse {
+                    try budget.consumePayload(declaredByteCount: byteCount)
+                } else if case .start = fetchResponse {
+                    try budget.consumeReply()
+                } else if case .startUID = fetchResponse {
+                    try budget.consumeReply()
+                }
+            } catch {
+                return failClosed(context: context, error: error)
+            }
+        }
+        super.channelRead(context: context, data: data)
+    }
+
+    /// Fails the call rather than return part of it, and closes the connection: a server that
+    /// sends more than allowed is not read from any further.
+    private func failClosed(context: ChannelHandlerContext, error: Error) {
+        exceededBudget = true
+        lock.withLock { messageInfos.removeAll() }
+        currentHeaderLiteral = Data()
+        logger.warning("FETCH receive limit exceeded, closing connection: \(error)")
+        failWithError(error)
+        context.close(promise: nil)
+    }
+
     /// Handle a tagged OK response by succeeding the promise with the mailbox info
     /// - Parameter response: The tagged response
     override func handleTaggedOKResponse(_ response: TaggedResponse) {
