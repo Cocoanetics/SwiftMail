@@ -74,6 +74,8 @@ public actor IMAPServer {
 
     /// Sees every named and dedicated connection before its first connect.
     var managedConnectionCreatedForTesting: ((IMAPConnection) -> Void)?
+    /// Called with the attempt ID once a named creation completion was handled.
+    var namedAttemptCompletedForTesting: ((UUID) -> Void)?
 
     /// Authentication configuration for spawning new connections.
     var authentication: Authentication? {

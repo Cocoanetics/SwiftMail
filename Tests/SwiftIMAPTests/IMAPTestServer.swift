@@ -184,6 +184,16 @@ final class IMAPTestServer: @unchecked Sendable {
         }
     }
 
+    /// The identity of the `number`th accepted connection in the current run.
+    func connection(_ number: UInt64) -> ConnectionID {
+        ConnectionID(run: runID, number: number)
+    }
+
+    /// Command lines that reached the server on one connection, in arrival order.
+    func commandLines(on connection: ConnectionID) -> [String] {
+        events.filter { $0.connection == connection && $0.kind == .commandReachedServer }.map(\.detail)
+    }
+
     @discardableResult
     func mark(_ kind: EventKind, connection: ConnectionID, detail: String) -> Event {
         precondition(kind == .cancellationRequested || kind == .callerSettled)

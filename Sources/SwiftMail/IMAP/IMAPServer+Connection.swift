@@ -243,6 +243,7 @@ extension IMAPServer {
         attempt: SharedAttempt<IMAPNamedConnection>,
         with result: Result<IMAPNamedConnection, Error>
     ) {
+        defer { namedAttemptCompletedForTesting?(attempt.id) }
         guard let pending = pendingNamedConnections[name], pending.attempt.id == attempt.id else {
             attempt.complete(.failure(IMAPAbortReason.connectionAborted))
             return
@@ -374,7 +375,11 @@ extension IMAPServer {
         }
 
         try? await primaryConnection.done()
-        try await primaryConnection.disconnect()
+        do {
+            try await primaryConnection.disconnect()
+        } catch is IMAPAbortReason {
+            // Invalidation already closed the primary transport.
+        }
 
         clearMailboxState()
     }

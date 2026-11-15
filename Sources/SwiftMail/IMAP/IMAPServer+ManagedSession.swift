@@ -93,6 +93,10 @@ extension IMAPServer {
     func setManagedConnectionCreatedForTesting(_ hook: ((IMAPConnection) -> Void)?) {
         managedConnectionCreatedForTesting = hook
     }
+
+    func setNamedAttemptCompletedForTesting(_ hook: ((UUID) -> Void)?) {
+        namedAttemptCompletedForTesting = hook
+    }
 }
 
 /// A dedicated IDLE session's operation authority and its single teardown.
@@ -136,6 +140,28 @@ final class IMAPDedicatedIdleSession: @unchecked Sendable {
         var tokens = IMAPOperationScope.tokens
         tokens[ObjectIdentifier(connection.lifetime)] = token
         return try await IMAPOperationScope.$tokens.withValue(tokens) { try await body() }
+    }
+
+    /// Runs bootstrap in a worker under the session token. The caller waits on a
+    /// registered cell, so invalidation settles it even while a provider or a held
+    /// transport step never returns.
+    func bootstrap(_ body: @escaping @Sendable () async throws -> Void) async throws {
+        let (_, result) = connection.lifetime.registerOperation(of: Void.self, parent: token)
+        let worker = Task.detached { [self] in
+            do {
+                try await withAuthority { try await body() }
+                result.complete(.success(()))
+            } catch {
+                result.complete(.failure(error))
+            }
+        }
+        result.addCleanup { worker.cancel() }
+        try await withTaskCancellationHandler {
+            try await result.value()
+        } onCancel: {
+            result.complete(.failure(CancellationError()))
+        }
+        try validate()
     }
 
     /// Installs the cycle task unless the session was stopped first.

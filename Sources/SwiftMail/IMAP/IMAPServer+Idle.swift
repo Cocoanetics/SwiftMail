@@ -68,7 +68,7 @@ extension IMAPServer {
         idleConnections[sessionID] = IdleConnection(mailbox: resolvedMailbox, session: session)
 
         do {
-            try await session.withAuthority {
+            try await session.bootstrap {
                 try await connection.connect()
                 try session.validate()
                 try await authentication.authenticate(on: connection)
