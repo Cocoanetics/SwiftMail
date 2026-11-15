@@ -135,6 +135,8 @@ extension IMAPConnection {
     /// Synchronous admission latch and detach; no queue, DONE or LOGOUT.
     func abortNow(cancelling token: OperationToken? = nil) {
         lifetime.invalidate(cancelling: token) {
+            let lostAuthenticatedSession = token != nil
+                && (self.sessionWasLost || self.transport?.authenticated == true)
             let contexts = (self.transport.map { [$0] } ?? [])
                 + self.bootstrapAttempts.values.flatMap { $0.candidates }
                 + Array(self.closingTransports.values)
@@ -145,7 +147,7 @@ extension IMAPConnection {
             self.transport = nil
             self.bootstrapAttempts.removeAll()
             self.closingTransports.removeAll()
-            self.sessionWasLost = false
+            self.sessionWasLost = lostAuthenticatedSession
             self.authenticatingGeneration = nil
             self.stagingCapabilities = []
             self.stagingBuffer = UntaggedResponseBuffer()

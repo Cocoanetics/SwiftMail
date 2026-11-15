@@ -125,6 +125,58 @@ struct IMAPOperationCancellationTests {
         #expect(server.fixtureFailures.isEmpty)
     }
 
+    @Test(arguments: [true, false])
+    func commandAfterActiveFetchCancellationFollowsReconnectPolicy(reconnects: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("cur"),
+                                                withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("new"),
+                                                withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let script = IMAPTestServer.Script(connectionNumber: 1, occurrence: 2, actions: [
+            .hold("fetch-reply"), .taggedCompletion("OK FETCH completed")
+        ])
+        let server = try IMAPTestServer(scripts: [script], maildirURL: root)
+        try server.start()
+        try await server.run {
+            try await withEventLoopGroup { group in
+                let connection = socketConnection(server, group: group)
+                defer { connection.abortNow() }
+                try await connection.connect()
+                connection.reconnectsInsideCommands = reconnects
+                let ownerFinished = IMAPTestSignal()
+                connection.operationOwnerFinishedForTesting = ownerFinished.signal
+                let active = Task {
+                    try await connection.executeCommand(FetchRawMessagesCommand(
+                        identifierSet: SwiftMail.UIDSet(SwiftMail.UID(1)...SwiftMail.UID(1)),
+                        sink: { _, _ in }))
+                }
+                let held = try await server.waitForEvent(.replyHeld, run: server.runID,
+                                                         detail: "fetch-reply")
+                active.cancel()
+                await #expect(throws: CancellationError.self) { try await authenticationResult(active) }
+                _ = try await server.waitForEvent(.peerEOF, run: server.runID, connection: held.connection)
+                await ownerFinished.wait()
+                connection.operationOwnerFinishedForTesting = nil
+
+                if reconnects {
+                    _ = try await connection.noop()
+                    #expect(server.commandLog.last?.contains(" NOOP") == true)
+                    #expect(server.events.contains { $0.kind == .accepted && $0.connection.number == 2 })
+                } else {
+                    let error = await #expect(throws: IMAPError.self) { try await connection.noop() }
+                    guard case .connectionFailed? = error else {
+                        Issue.record("Expected connectionFailed, got \(String(describing: error))")
+                        return
+                    }
+                    #expect(!server.events.contains { $0.connection.number == 2 })
+                }
+                #expect(!server.release(try #require(held.command), gate: "fetch-reply"))
+            }
+        }
+        #expect(server.fixtureFailures.isEmpty)
+    }
+
     private func socketConnection(_ server: IMAPTestServer, group: EventLoopGroup) -> IMAPConnection {
         IMAPConnection(host: "127.0.0.1", port: server.port, transportSecurity: .plainText,
                        minimumTLSVersion: .tlsv12, group: group, loggerLabel: "test.cancel",

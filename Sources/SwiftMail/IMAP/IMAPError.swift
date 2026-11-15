@@ -7,9 +7,9 @@ import NIOIMAPCore
 /// Pending work failed because its IMAP connection was aborted.
 ///
 /// Cancelling an executing command gives that caller `CancellationError` and
-/// closes its connection. Other pending callers receive this error. Explicitly
-/// reconnect before issuing new commands, and reconcile server state before
-/// retrying a command that might already have reached the server.
+/// closes its transport. Other pending callers receive this error. A later
+/// command follows the connection's automatic-reconnect policy. Reconcile server
+/// state before retrying a command that might already have reached the server.
 public struct IMAPConnectionAbortedError: Error, Sendable, Equatable, LocalizedError {
     public init() {}
 

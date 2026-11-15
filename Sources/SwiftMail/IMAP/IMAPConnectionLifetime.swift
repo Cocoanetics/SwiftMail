@@ -152,6 +152,12 @@ final class IMAPConnectionLifetime {
             waiters.removeAll()
             owners.removeAll()
             ownerTask = nil
+            if token != nil {
+                // Cancellation aborts only the affected transport generation. New
+                // commands recover through the ordinary missing-transport path.
+                generation = ConnectionGeneration()
+                abortReason = nil
+            }
             return actions
         }
         actions.forEach { $0() }
