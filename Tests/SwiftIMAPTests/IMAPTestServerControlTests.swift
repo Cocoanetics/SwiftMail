@@ -567,5 +567,30 @@ extension IMAPTestServerControlTests {
             #expect(!server.events.contains { $0.kind == .peerEOF || $0.kind == .localShutdown })
         }
     }
+
+    @Test("a connection-end wait accepts a reset where a FIN wait fails", arguments: [false, true])
+    func connectionEndAcceptsReset(reset: Bool) async throws {
+        let script = Server.Script(connectionNumber: 1, occurrence: 1, actions: [.hold("closed")])
+        try await withServer(scripts: [script]) { server in
+            let connection: Server.ConnectionID
+            do {
+                let raw = try RawClient(port: server.port)
+                connection = try await server.waitForEvent(.accepted, run: server.runID).connection
+                try raw.greeting()
+                try raw.send("A NOOP\r\n")
+                _ = try await event(server, .replyHeld, connection)
+                if reset { try raw.resetOnClose() } else { try raw.finishWriting() }
+            }
+            let ended = try await server.waitForConnectionEnd(run: connection.run, connection: connection)
+            #expect(ended.kind == (reset ? .peerReset : .peerEOF))
+            if reset {
+                // Linux reports an aborted client this way; a FIN-only wait cannot observe it.
+                await #expect(throws: Server.WaitError.connectionEnded) {
+                    try await server.waitForEvent(.peerEOF, run: connection.run, connection: connection)
+                }
+            }
+            _ = try await event(server, .workerDrained, connection, detail: "writer")
+        }
+    }
 }
 #endif
