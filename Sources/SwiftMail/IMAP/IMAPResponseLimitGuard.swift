@@ -123,6 +123,7 @@ final class IMAPResponseLimitGuard: ChannelInboundHandler {
             || error is ExceededLiteralSizeLimitError
             || error is ExceededResponseBodySizeError
             || error is ExceededListResponseLimitError
+            || error is FetchReceiveLimitExceededError
     }
 }
 

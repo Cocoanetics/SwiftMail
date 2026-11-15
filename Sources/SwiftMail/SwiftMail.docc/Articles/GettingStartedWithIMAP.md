@@ -149,6 +149,22 @@ if let latestMessagesSet = mailboxInfo.latest(10) {
 }
 ```
 
+To bound what one metadata fetch may receive, pass ``FetchReceiveLimits``. Each
+limit is optional and inclusive. A streaming call shares one budget across all of its
+chunks. Going past a limit throws ``FetchReceiveLimitExceededError`` instead of
+returning part of the result, and closes the connection the call used:
+
+```swift
+let limits = FetchReceiveLimits(maximumReplies: 500, maximumPayloadBytes: 4_000_000)
+let infos = try await imapServer.fetchMessageInfosBulk(
+    using: UIDSet(uidRange), options: [.envelope, .fullHeader], limits: limits
+)
+```
+
+`maximumPayloadBytes` counts the sizes that streamed sections such as `BODY[HEADER]`
+declare. It is not a limit on memory or network bytes, and it does not count literals
+nested inside ENVELOPE or BODYSTRUCTURE. ``IMAPParserLimits`` bound those per response.
+
 When you need header lines exactly as the message carries them, such as every
 `Received` or `Authentication-Results` field in order or the raw `Reply-To`,
 fetch the raw header block for the named fields. This sends
