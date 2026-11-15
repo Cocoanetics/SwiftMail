@@ -124,6 +124,23 @@ public actor IMAPServer {
         capabilities.containsMoveCapability
     }
 
+    /// Whether the primary connection advertised CONDSTORE (RFC 7162 section 3.1).
+    ///
+    /// Reports the latest advertised capability snapshot as sent by the server. RFC 7162
+    /// says a QRESYNC server SHOULD also advertise CONDSTORE; this value is not inferred
+    /// from QRESYNC.
+    public var supportsCondStore: Bool {
+        capabilities.containsCondStoreCapability
+    }
+
+    /// Whether the primary connection advertised QRESYNC (RFC 7162 section 3.2).
+    ///
+    /// QRESYNC must still be enabled with `enable([.qresync])` on the connection before a
+    /// QRESYNC selection.
+    public var supportsQResync: Bool {
+        capabilities.containsQResyncCapability
+    }
+
     func replaceAuthenticationForTesting(_ authentication: Authentication?) {
         self.authentication = authentication
     }
