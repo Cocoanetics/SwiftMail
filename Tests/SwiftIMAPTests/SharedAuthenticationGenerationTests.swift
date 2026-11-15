@@ -49,11 +49,13 @@ enum AuthenticationRaceError: Error { case watchdog }
 
 /// The timeout is only a failure watchdog; signals and observed waiter counts
 /// establish ordering. No structured race waits for a held provider at exit.
+/// It is ten seconds because a loaded CI runner can stall the whole test
+/// process for over a second while every suite starts at once.
 func authenticationResult<Value>(_ task: Task<Value, Error>) async throws -> Value {
     let sink = IMAPTerminal<Value>()
     let observer = Task { sink.complete(await task.result) }
     let watchdog = Task {
-        try await Task.sleep(nanoseconds: 1_000_000_000)
+        try await Task.sleep(nanoseconds: 10_000_000_000)
         sink.complete(.failure(AuthenticationRaceError.watchdog))
     }
     defer { watchdog.cancel(); observer.cancel() }
