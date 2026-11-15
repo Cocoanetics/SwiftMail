@@ -59,6 +59,7 @@ extension IMAPConnection {
     /// The detached owner may remain suspended in foreign code after abort. Its
     /// caller waits on the registered cell, so fresh queue work can start at once.
     func withOperation<T>(forCleanup: Bool = false, _ body: @escaping () async throws -> T) async throws -> T {
+        if !forCleanup { try Task.checkCancellation() }
         if let token = operationToken {
             try lifetime.validate(token)
             if forCleanup { return try await commandQueue.runForCleanup(token: token, body) }
@@ -68,23 +69,23 @@ extension IMAPConnection {
         var authority = IMAPOperationScope.tokens
         authority[ObjectIdentifier(lifetime)] = token
         let ownerFinished = operationOwnerFinishedForTesting
-        let owner = Task {
-            defer { ownerFinished?() }
-            do {
-                let result = try await IMAPOperationScope.$tokens.withValue(authority) {
-                    if forCleanup { return try await commandQueue.runForCleanup(token: token, body) }
-                    return try await commandQueue.run(token: token, body)
-                }
-                terminal.complete(.success(result))
-            } catch {
-                terminal.complete(.failure(error))
-            }
-        }
         return try await withTaskCancellationHandler {
-            try await terminal.value()
+            let owner = Task {
+                defer { ownerFinished?() }
+                do {
+                    let result = try await IMAPOperationScope.$tokens.withValue(authority) {
+                        if forCleanup { return try await commandQueue.runForCleanup(token: token, body) }
+                        return try await commandQueue.run(token: token, body)
+                    }
+                    terminal.complete(.success(result))
+                } catch {
+                    terminal.complete(.failure(error))
+                }
+            }
+            terminal.addCleanup { owner.cancel() }
+            return try await terminal.value()
         } onCancel: {
             if !forCleanup { abortNow(cancelling: token) }
-            owner.cancel()
         }
     }
 

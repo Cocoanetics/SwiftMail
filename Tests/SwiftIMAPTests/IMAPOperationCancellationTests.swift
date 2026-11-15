@@ -5,6 +5,41 @@ import Testing
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPOperationCancellationTests {
+    @Test(arguments: [false, true])
+    func preCancelledEntryDoesNotLaunchOwnerOrAbortTransport(operationScope: Bool) async throws {
+        try await withEventLoopGroup { group in
+            let harness = IMAPBootstrapRaceTests()
+            let connection = harness.makeConnection(group)
+            let channel = try await harness.installTransport(connection)
+            defer { connection.abortNow() }
+            let enter = IMAPTestSignal()
+            let executions = IMAPTestCounter()
+            let owners = IMAPTestCounter()
+            connection.operationOwnerFinishedForTesting = { _ = owners.increment() }
+            let cancelled = Task<Int, Error> {
+                await enter.wait()
+                if operationScope {
+                    return try await connection.withOperationScope {
+                        _ = executions.increment()
+                        return 42
+                    }
+                }
+                return try await connection.withOperation {
+                    _ = executions.increment()
+                    return 42
+                }
+            }
+            cancelled.cancel()
+            enter.signal()
+            await #expect(throws: CancellationError.self) { try await authenticationResult(cancelled) }
+            #expect(executions.value == 0)
+            #expect(owners.value == 0)
+            #expect(connection.lifetime.reservationCount == 0)
+            #expect(channel.isActive)
+            #expect(try await connection.withOperation { 7 } == 7)
+        }
+    }
+
     @Test
     func queuedCancellationPreservesActiveCommandAndSurvivors() async throws {
         try await withEventLoopGroup { group in
@@ -184,4 +219,65 @@ struct IMAPOperationCancellationTests {
                        connectionID: "cancel", connectionRole: "test", parserLimits: .default)
     }
     #endif
+}
+
+/// Models a foreign OAuth implementation whose synchronous cancellation hook
+/// cannot return until external cleanup releases it.
+private final class BlockingOAuthProvider: @unchecked Sendable {
+    let entered = IMAPTestSignal()
+    let cancellationEntered = IMAPTestSignal()
+    let returned = IMAPTestSignal()
+    let releaseCancellation = DispatchSemaphore(value: 0)
+
+    func token() async throws -> String {
+        entered.signal()
+        defer { returned.signal() }
+        return try await withTaskCancellationHandler {
+            try await Task.sleep(nanoseconds: 60_000_000_000)
+            return "late-token"
+        } onCancel: {
+            cancellationEntered.signal()
+            releaseCancellation.wait()
+        }
+    }
+}
+
+@Suite(.serialized, .timeLimit(.minutes(1)))
+struct IMAPOAuthCancellationTests {
+    @Test
+    func activeCancellationSettlesCollateralBeforeBlockingProviderCleanupReturns() async throws {
+        let harness = AuthenticationRaceHarness()
+        let connection = await harness.server.primaryConnection
+        let stale = try await harness.install(on: connection)
+        connection.markSessionAuthenticated()
+        try await stale.close()
+        let provider = BlockingOAuthProvider()
+        let ownersDrained = IMAPTestSignal()
+        let owners = IMAPTestCounter()
+        connection.operationOwnerFinishedForTesting = {
+            if owners.increment() == 2 { ownersDrained.signal() }
+        }
+        connection.replaceConnectForTesting { _ = try await harness.install(on: connection) }
+        await harness.server.replaceAuthenticationForTesting(.init(
+            method: .xoauth2(email: "user@example.com", accessTokenProvider: { try await provider.token() }),
+            identification: nil
+        ))
+        defer { provider.releaseCancellation.signal(); connection.abortNow() }
+
+        let active = Task { try await connection.noop() }
+        await provider.entered.wait()
+        let collateral = Task { try await connection.noop() }
+        try await authenticationWaitUntil { connection.lifetime.reservationCount == 2 }
+        let cancellation = Task.detached { active.cancel() }
+        try await authenticationResult(Task { await provider.cancellationEntered.wait() })
+
+        await #expect(throws: CancellationError.self) { try await authenticationResult(active) }
+        await #expect(throws: IMAPConnectionAbortedError.self) {
+            try await authenticationResult(collateral)
+        }
+        provider.releaseCancellation.signal()
+        await provider.returned.wait()
+        await cancellation.value
+        try await authenticationResult(Task { await ownersDrained.wait(); try Task.checkCancellation() })
+    }
 }
