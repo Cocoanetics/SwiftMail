@@ -114,6 +114,32 @@ extension IMAPServer {
         }
     }
 
+    /// Selects a mailbox with QRESYNC from a checkpoint stored as plain integers.
+    ///
+    /// Equivalent to ``selectMailbox(_:resyncingFrom:modificationSequence:)`` for the same values;
+    /// use this overload when the checkpoint (the mailbox's UIDVALIDITY and its last known HIGHESTMODSEQ, RFC 7162)
+    /// was persisted as numbers. A `modificationSequence` outside `1...Int64.max` throws
+    /// ``IMAPError/invalidArgument(_:)`` before any network activity. A zero `uidValidity`
+    /// is rejected like the typed overload: after the QRESYNC capability check, before the
+    /// SELECT is sent.
+    ///
+    /// - Throws: The same errors as the typed overload.
+    @discardableResult
+    public func selectMailbox(
+        _ mailboxName: String,
+        resyncingFromUIDValidity uidValidity: UInt32,
+        modificationSequence: UInt64
+    ) async throws -> Mailbox.ResyncSelection {
+        let checkpoint = try ResyncSelectMailboxCommand.modificationSequence(
+            fromRawValue: modificationSequence
+        )
+        return try await selectMailbox(
+            mailboxName,
+            resyncingFrom: UIDValidity(uidValidity),
+            modificationSequence: checkpoint
+        )
+    }
+
     /**
      Select a mailbox in read-only mode
 

@@ -12,6 +12,16 @@ extension Set where Element == NIOIMAPCore.Capability {
         containsBareCapability(named: "uidplus")
     }
 
+    /// RFC 7162 CONDSTORE, matched as a case-insensitive bare token.
+    var containsCondStoreCapability: Bool {
+        containsBareCapability(named: "condstore")
+    }
+
+    /// RFC 7162 QRESYNC, matched as a case-insensitive bare token.
+    var containsQResyncCapability: Bool {
+        containsBareCapability(named: "qresync")
+    }
+
     /// Case-insensitive membership test for a value-less capability token,
     /// shared by every `supports…` accessor on both connection surfaces.
     func containsBareCapability(named expectedName: String) -> Bool {

@@ -40,3 +40,16 @@ struct ResyncSelectMailboxCommand: IMAPTaggedCommand {
         )
     }
 }
+
+extension ResyncSelectMailboxCommand {
+    /// Converts a plain-integer QRESYNC checkpoint modification sequence.
+    ///
+    /// RFC 7162 `mod-sequence-value` is a positive 63-bit number, so `0` and values
+    /// above `Int64.max` are rejected before any bytes are written.
+    static func modificationSequence(fromRawValue rawValue: UInt64) throws -> ModificationSequenceValue {
+        guard rawValue > 0, let value = ModificationSequenceValue(exactly: rawValue) else {
+            throw IMAPError.invalidArgument("Modification sequence must be in 1...Int64.max")
+        }
+        return value
+    }
+}

@@ -180,6 +180,12 @@ public enum Mailbox {
         /// modification-sequence checkpoint and use ordinary synchronization in either case.
         public var highestModSequence: ModificationSequenceValue?
 
+        /// ``highestModSequence`` as a plain integer, for storing as a QRESYNC checkpoint.
+        /// Nil when the server sent NOMODSEQ or no HIGHESTMODSEQ.
+        public var highestModificationSequenceValue: UInt64? {
+            highestModSequence.map { UInt64($0) }
+        }
+
         /// Get a sequence number set for the latest n messages in the mailbox
         /// - Parameter count: The number of latest messages to include
         /// - Returns: A sequence number set containing the latest n messages, or nil if the mailbox is empty

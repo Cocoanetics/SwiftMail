@@ -89,6 +89,23 @@ public actor IMAPNamedConnection {
         capabilities.containsMoveCapability
     }
 
+    /// Whether the server advertised CONDSTORE (RFC 7162 section 3.1).
+    ///
+    /// Reports the latest advertised capability snapshot as sent by the server. RFC 7162
+    /// says a QRESYNC server SHOULD also advertise CONDSTORE; this value is not inferred
+    /// from QRESYNC.
+    public var supportsCondStore: Bool {
+        capabilities.containsCondStoreCapability
+    }
+
+    /// Whether the server advertised QRESYNC (RFC 7162 section 3.2).
+    ///
+    /// QRESYNC must still be enabled with `enable([.qresync])` on the connection before a
+    /// QRESYNC selection.
+    public var supportsQResync: Bool {
+        capabilities.containsQResyncCapability
+    }
+
     // MARK: - Internal Helpers
 
     /// Capabilities snapshot reused by the split extensions when deciding

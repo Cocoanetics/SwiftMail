@@ -26,6 +26,30 @@ private func usePublicSelectionAPIs(
         modificationSequence: 900
     )
 
+    // Stored plain-integer checkpoints, not literals: no NIOIMAPCore type is named.
+    let storedUIDValidity: UInt32 = ordinarySelection.uidValidity.value
+    let storedModificationSequence: UInt64 = ordinarySelection.highestModificationSequenceValue ?? 1
+    let _: UInt32 = ordinarySelection.uidNext.value
+    let _: Bool = await server.supportsQResync
+    let _: Bool = await server.supportsCondStore
+    let _: Bool = await namedConnection.supportsQResync
+    let _: Bool = await namedConnection.supportsCondStore
+    let _: Mailbox.ResyncSelection = try await server.selectMailbox(
+        "INBOX",
+        resyncingFromUIDValidity: storedUIDValidity,
+        modificationSequence: storedModificationSequence
+    )
+    let _: Mailbox.ResyncSelection = try await namedConnection.select(
+        mailbox: "INBOX",
+        resyncingFromUIDValidity: storedUIDValidity,
+        modificationSequence: storedModificationSequence
+    )
+    let _: Mailbox.ResyncSelection = try await namedConnection.selectMailbox(
+        "INBOX",
+        resyncingFromUIDValidity: storedUIDValidity,
+        modificationSequence: storedModificationSequence
+    )
+
     _ = Mailbox.ResyncSelection(
         selection: ordinarySelection,
         vanishedEarlier: UIDSet(),
