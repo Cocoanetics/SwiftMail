@@ -23,7 +23,8 @@ contributors, reviewers, and the project manager who triages and plans issues.
   swift-nio-imap does not cover message content, so this is SwiftMail's own
   domain.
 - **Cross-platform**: macOS, iOS and the other Apple platforms, Linux and
-  Android. Windows is experimental while swift-nio blocks it upstream.
+  Android. Windows is experimental: swift-nio now builds there, but
+  swift-nio-ssl does not yet (apple/swift-nio-ssl#567).
 
 ## What SwiftMail is not
 
