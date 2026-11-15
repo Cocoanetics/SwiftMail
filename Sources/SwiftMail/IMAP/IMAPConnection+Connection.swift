@@ -146,6 +146,46 @@ extension IMAPConnection {
         await closeTransport(context)
     }
 
+    /// Public disconnect bypasses command admission, including task cancellation.
+    /// Keep the queued internal disconnect for graceful shutdown and IDLE recovery.
+    func disconnectImmediately() async throws {
+        try validateOperation()
+        let failure = IMAPError.connectionFailed("Connection closed by disconnect")
+        let snapshot = lifetime.gate.withLock { () -> ([TransportContext], [IMAPLifetimeGate.Action]) in
+            let attempts = Array(bootstrapAttempts.values)
+            let candidates = attempts.flatMap(\.candidates)
+            let contexts = (transport.map { [$0] } ?? []) + candidates
+            // A published transport remains a candidate until bootstrap finishes.
+            let uniqueContexts = Dictionary(
+                contexts.map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            let actions = attempts.flatMap {
+                ($0.tcp.settleLocked(.failure(failure)) ?? [])
+                    + ($0.greeting.settleLocked(.failure(failure)) ?? [])
+            }
+            transport = nil
+            bootstrapAttempts.removeAll()
+            sessionWasLost = false
+            stagingCapabilities = []
+            stagingBuffer = UntaggedResponseBuffer()
+            stagingLogger = makeDuplexLogger()
+            for context in uniqueContexts.values {
+                closingTransports[context.id] = context
+            }
+            return (Array(uniqueContexts.values), actions)
+        }
+        // Initiate every captured close before a continuation can resume or this
+        // method reaches its first suspension.
+        for context in snapshot.0 { context.channel.close(promise: nil) }
+        for action in snapshot.1 { action() }
+        for context in snapshot.0 {
+            await beforeTransportCloseForTesting?(context)
+            try? await context.channel.closeFuture.get()
+            _ = lifetime.gate.withLock { closingTransports.removeValue(forKey: context.id) }
+        }
+    }
+
     func closeTransport(_ context: TransportContext) async {
         lifetime.gate.withLock {
             closingTransports[context.id] = context

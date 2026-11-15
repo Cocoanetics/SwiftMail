@@ -168,13 +168,15 @@ extension IMAPServer {
      Disconnect from the server without sending a command
 
      This method immediately closes the connection to the server without sending
-     a LOGOUT command. For a graceful disconnect, use logout() instead.
+     DONE or LOGOUT and without waiting for an active command. Named connections
+     and dedicated IDLE sessions are also closed. Subsequent commands retain the
+     configured reconnect policy. This works even from an already-cancelled task.
+     For a graceful disconnect, use logout() instead.
 
      - Throws: An error if the disconnection fails
-     - Note: Logs disconnection at debug level
      */
     public func disconnect() async throws {
-        try await closeAllConnections()
+        try await closeAllConnections(immediately: true)
     }
 
     /// Retrieve (or create) a reusable named connection.
@@ -360,7 +362,7 @@ extension IMAPServer {
         await entry.session.teardown()
     }
 
-    func closeAllConnections() async throws {
+    func closeAllConnections(immediately: Bool = false) async throws {
         // Admission stays closed until teardown finishes: work admitted during one
         // of the suspensions below would otherwise outlive this disconnect.
         managedSession.beginDisconnect()
@@ -374,13 +376,21 @@ extension IMAPServer {
         namedConnections.removeAll()
 
         for entry in namedEntries.values {
-            try? await entry.connection.done()
-            try? await entry.connection.disconnect()
+            if immediately {
+                try? await entry.connection.disconnectImmediately()
+            } else {
+                try? await entry.connection.done()
+                try? await entry.connection.disconnect()
+            }
         }
 
-        try? await primaryConnection.done()
+        if !immediately { try? await primaryConnection.done() }
         do {
-            try await primaryConnection.disconnect()
+            if immediately {
+                try await primaryConnection.disconnectImmediately()
+            } else {
+                try await primaryConnection.disconnect()
+            }
         } catch is IMAPAbortReason {
             // Invalidation already closed the primary transport.
         }

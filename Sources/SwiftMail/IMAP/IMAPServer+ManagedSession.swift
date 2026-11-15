@@ -44,6 +44,32 @@ struct IMAPManagedSessionGate {
 }
 
 extension IMAPServer {
+    /// Immediately abort the primary connection, leaving named connections and
+    /// dedicated IDLE sessions running. Sends neither DONE nor LOGOUT.
+    ///
+    /// Active and queued operations fail with ``IMAPConnectionAbortedError``.
+    /// Repeated calls are harmless, including from a cancelled task. Commands
+    /// cannot reconnect until an explicit ``connect()``; authenticate and select
+    /// the mailbox again afterwards. For graceful shutdown, use ``logout()``.
+    public func abort() async {
+        invalidatePrimaryConnection()
+        clearMailboxState()
+    }
+
+    /// Abort every connection owned by this server, including pending named
+    /// connections and dedicated IDLE sessions. Sends neither DONE nor LOGOUT.
+    ///
+    /// Invalidates all captured connections before awaiting existing IDLE teardown.
+    /// Active and queued operations fail with ``IMAPConnectionAbortedError``.
+    /// Repeated calls are harmless, including from a cancelled task. An explicit
+    /// ``connect()`` rearms the primary and permits new managed connections. Old
+    /// named handles each need their own `connect()` and mailbox selection again.
+    public func abortAllConnections() async {
+        let cleanup = invalidateManagedSessionNow()
+        clearMailboxState()
+        await cleanup.run()
+    }
+
     /// A named connection being created. The connection and attempt are registered
     /// before the first connect or authentication await.
     struct PendingNamedConnection {
