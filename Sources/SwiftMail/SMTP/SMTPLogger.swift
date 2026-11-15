@@ -14,6 +14,10 @@ final class SMTPLogger: MailLogger, @unchecked Sendable {
 
     /// Log outgoing commands and forward them to the next handler
     override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        guard logsOutbound else {
+            context.write(data, promise: promise)
+            return
+        }
         // Try to extract the command from the data
         let command = unwrapOutboundIn(data)
 
@@ -33,6 +37,10 @@ final class SMTPLogger: MailLogger, @unchecked Sendable {
 
     /// Log incoming responses and forward them to the next handler
     override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        guard logsInbound else {
+            context.fireChannelRead(data)
+            return
+        }
         // MailLogger declares InboundIn = Any but the SMTP pipeline only emits
         // Strings; ignore anything else rather than crashing.
         guard let responseString = unwrapInboundIn(data) as? String else {

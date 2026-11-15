@@ -41,6 +41,10 @@ final class IMAPLogger: MailLogger, @unchecked Sendable {
 
     /// Process outgoing IMAP commands
     override func write(context: ChannelHandlerContext, data: NIOAny, promise: EventLoopPromise<Void>?) {
+        guard logsOutbound else {
+            context.write(data, promise: promise)
+            return
+        }
         let command = unwrapOutboundIn(data)
 
         // Get string representation of the command
@@ -65,6 +69,10 @@ final class IMAPLogger: MailLogger, @unchecked Sendable {
 
     /// Process incoming IMAP responses
     override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        guard logsInbound else {
+            context.fireChannelRead(data)
+            return
+        }
         let response = unwrapInboundIn(data)
 
         // The preceding streamingBegin event already records the literal size.
