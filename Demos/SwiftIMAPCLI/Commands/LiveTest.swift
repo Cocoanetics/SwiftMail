@@ -23,7 +23,7 @@ struct LiveTest: ParsableCommand {
 
     func validate() throws {
         guard count >= 2 else { throw ValidationError("--count must be at least 2") }
-        guard delayMs >= 0 else { throw ValidationError("--delay-ms must not be negative") }
+        guard delayMs >= 1 else { throw ValidationError("--delay-ms must be at least 1") }
     }
 
     func run() throws {
@@ -40,10 +40,13 @@ struct LiveTest: ParsableCommand {
             let fetched = min(count, status.messageCount)
             print("\(mailbox): \(status.messageCount) messages; the slow fetch asks for the latest \(fetched).\n")
 
-            let checks = LiveTestChecks(
+            var checks = LiveTestChecks(
                 server: server, environment: environment, mailbox: mailbox,
                 messages: messages, messageCount: fetched, delay: .milliseconds(delayMs)
             )
+            try await checks.measureBaselines()
+            print("Uninterrupted, the slow fetch takes \(checks.commandBaseline.milliseconds) ms "
+                + "and the slow stream \(checks.streamBaseline.milliseconds) ms.\n")
             var outcomes: [LiveTestOutcome] = []
             for check in [
                 checks.cancelCommand, checks.cancelStream, checks.disconnectDuringCommand,
@@ -94,3 +97,23 @@ func liveTestErrorName(_ error: Error) -> String {
 
 /// A recovery or settlement slower than this is reported as a failure.
 let liveTestPromptLimit = Duration.seconds(2)
+
+/// The value of `operation`, or `nil` when it has not finished within `limit`.
+///
+/// The operation is not cancelled on a timeout; a check that hangs is reported and left behind.
+func liveTestRace<Value: Sendable>(
+    within limit: Duration, _ operation: @escaping @Sendable () async -> Value
+) async -> Value? {
+    let (results, continuation) = AsyncStream<Value?>.makeStream()
+    Task {
+        continuation.yield(await operation())
+        continuation.finish()
+    }
+    Task {
+        try? await Task.sleep(for: limit)
+        continuation.yield(nil)
+        continuation.finish()
+    }
+    for await result in results { return result }
+    return nil
+}
