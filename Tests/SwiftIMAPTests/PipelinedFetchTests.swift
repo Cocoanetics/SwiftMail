@@ -290,3 +290,89 @@ struct PipelinedCommandDispatcherTests {
         #expect(parts == ["ONE", "TWO", "THREE"])
     }
 }
+
+#if os(macOS)
+@Suite("Pipelined fetch cancellation on a gated socket", .serialized, .timeLimit(.minutes(1)))
+struct PipelinedFetchCancellationTests {
+    @Test("Cancelling with every reply held fails the whole batch")
+    func cancelWithAllPartsPending() async throws {
+        try await interruptBatch(afterFirstPart: false, abort: false)
+    }
+
+    @Test("Cancelling after a successful part never returns partial success")
+    func cancelAfterPartialCompletion() async throws {
+        try await interruptBatch(afterFirstPart: true, abort: false)
+    }
+
+    @Test("Explicit abort fails the whole batch", arguments: [false, true])
+    func abortBatch(afterFirstPart: Bool) async throws {
+        try await interruptBatch(afterFirstPart: afterFirstPart, abort: true)
+    }
+
+    private var heldPartScripts: [IMAPTestServer.Script] {
+        // The fixture login uses commands 1...4. Each FETCH has a separate gate;
+        // its reader continues accepting the entire burst while replies are held.
+        (1...3).map { part in
+            IMAPTestServer.Script(connectionNumber: 1, occurrence: part + 4, actions: [
+                .hold("part-\(part)"),
+                .send(Data("* 1 FETCH (UID 1 BODY[\(part)] {3}\r\nONE)\r\n".utf8),
+                      acknowledgement: "body-\(part)"),
+                .taggedCompletion("OK FETCH completed")
+            ])
+        }
+    }
+
+    private func interruptBatch(afterFirstPart: Bool, abort: Bool) async throws {
+        try await ManagedSessionFixture.run(scripts: heldPartScripts) { fixture in
+            let connection = await fixture.server.primaryConnection
+            let channel = try #require(connection.channel)
+            let ownerFinished = IMAPTestSignal()
+            connection.operationOwnerFinishedForTesting = ownerFinished.signal
+            defer { connection.operationOwnerFinishedForTesting = nil }
+            let fetch = Task {
+                try await fixture.server.fetchPartsPipelined(parts: (1...3).map {
+                    (uid: SwiftMail.UID(1), section: Section([$0]))
+                })
+            }
+            defer { fetch.cancel() }
+            let first = try await fixture.testServer.waitForEvent(
+                .replyHeld, run: fixture.testServer.runID, detail: "part-1", timeout: 10)
+            _ = try await fixture.event(.commandReachedServer, connection: 1, occurrence: 7)
+            let dispatcher = try await channel.pipeline.handler(type: PipelinedCommandDispatcher.self).get()
+            #expect(dispatcher.pendingCount == 3)
+            var held = first
+            if afterFirstPart {
+                #expect(try fixture.release(first, gate: "part-1"))
+                held = try await fixture.testServer.waitForEvent(
+                    .replyHeld, run: fixture.testServer.runID, detail: "part-2", timeout: 10)
+                // A server send acknowledgement alone cannot prove client processing.
+                // Observe the real decoder delivering the first tagged success.
+                try await authenticationWaitUntil { dispatcher.pendingCount == 2 }
+            }
+            let commands = fixture.commands(on: 1)
+            if abort {
+                await fixture.server.abort()
+                await #expect(throws: IMAPConnectionAbortedError.self) {
+                    _ = try await authenticationResult(fetch)
+                }
+            } else {
+                fetch.cancel()
+                await #expect(throws: CancellationError.self) {
+                    _ = try await authenticationResult(fetch)
+                }
+            }
+            try await fixture.eof(1)
+            #expect(try !fixture.release(held, gate: afterFirstPart ? "part-2" : "part-1"))
+            // Caller settlement can precede cleanup. The owner only exits after
+            // draining every part future, so do not tear down with promises retained.
+            try await authenticationResult(Task { await ownerFinished.wait() })
+            try await channel.eventLoop.submit {}.get()
+            #expect(connection.lifetime.reservationCount == 0)
+            #expect(!connection.responseBuffer.hasActiveHandler)
+            #expect(!channel.isActive)
+            #expect(fixture.commands(on: 1) == commands)
+            #expect(fixture.testServer.acceptedConnectionCount == 1)
+        }
+    }
+}
+#endif
