@@ -45,111 +45,149 @@ struct LiveTestChecks {
 
     /// Cancelling the task that runs a command closes its connection; the next command reconnects.
     func cancelCommand() async -> LiveTestOutcome {
-        let name = "Cancel a running command"
-        if let early = tooShortToInterrupt(name, baseline: commandBaseline) { return early }
-        guard let interruption = await interruptSlowFetch({ $0.cancel() }) else { return hung(name) }
-        if let early = await notInFlight(name, interruption, requireClosed: true) { return early }
-        guard case .failure(let error) = interruption.result, error is CancellationError else {
-            return fail(name, "expected CancellationError, the fetch ended with \(describe(interruption.result))")
+        await check("Cancel a running command") { name in
+            if let early = tooShortToInterrupt(name, baseline: commandBaseline) { return early }
+            let interruption = try await interruptSlowFetch { $0.cancel() }
+            if let early = try await notInFlight(name, interruption, requireClosed: true) { return early }
+            guard case .failure(let error) = interruption.result, error is CancellationError else {
+                return fail(name, "expected CancellationError, the fetch ended with \(describe(interruption.result))")
+            }
+            return try await finish(
+                name, "cancelled in \(interruption.elapsed.milliseconds) ms", interruption.elapsed)
         }
-        return await finish(name, "cancelled in \(interruption.elapsed.milliseconds) ms", interruption.elapsed)
     }
 
     /// Cancelling a stream's consumer stops the command in flight and sends no later chunk.
     func cancelStream() async -> LiveTestOutcome {
-        let name = "Cancel a fetch stream"
-        if let early = tooShortToInterrupt(name, baseline: streamBaseline) { return early }
-        let consumer = await started { [server, messages] in try await Self.slowStream(server, messages) }
-        try? await Task.sleep(for: delay)
-        let start = ContinuousClock.now
-        consumer.cancel()
-        guard let result = await liveTestRace(within: liveTestPromptLimit, { await consumer.result }) else {
-            return hung(name)
+        await check("Cancel a fetch stream") { name in
+            if let early = tooShortToInterrupt(name, baseline: streamBaseline) { return early }
+            let consumer = await started { [server, messages] in try await Self.slowStream(server, messages) }
+            try? await Task.sleep(for: delay)
+            let start = ContinuousClock.now
+            consumer.cancel()
+            guard let result = await liveTestRace(within: liveTestPromptLimit, { await consumer.result }) else {
+                throw LiveTestHang(step: "the cancelled stream", limit: liveTestPromptLimit)
+            }
+            let elapsed = start.duration(to: .now)
+            if case .success(let seen) = result, seen >= messageCount {
+                return LiveTestOutcome(
+                    name: name, verdict: .inconclusive, detail: "the stream delivered all \(seen) messages first")
+            }
+            if case .failure(let error) = result, !(error is CancellationError) {
+                return fail(name, "the stream ended with \(liveTestErrorName(error))")
+            }
+            return try await finish(name, "stream ended in \(elapsed.milliseconds) ms", elapsed)
         }
-        let elapsed = start.duration(to: .now)
-        if case .success(let seen) = result, seen >= messageCount {
-            return LiveTestOutcome(
-                name: name, verdict: .inconclusive, detail: "the stream delivered all \(seen) messages first")
-        }
-        if case .failure(let error) = result, !(error is CancellationError) {
-            return fail(name, "the stream ended with \(liveTestErrorName(error))")
-        }
-        return await finish(name, "stream ended in \(elapsed.milliseconds) ms", elapsed)
     }
 
     /// `disconnect()` returns without waiting for the running command; the next command reconnects.
     func disconnectDuringCommand() async -> LiveTestOutcome {
-        let name = "disconnect() during a command"
-        if let early = tooShortToInterrupt(name, baseline: commandBaseline) { return early }
-        guard let interruption = await interruptSlowFetch({ [server] _ in try? await server.disconnect() }) else {
-            return hung(name)
+        await check("disconnect() during a command") { name in
+            if let early = tooShortToInterrupt(name, baseline: commandBaseline) { return early }
+            let interruption = try await interruptSlowFetch { [server] _ in try? await server.disconnect() }
+            if let early = try await notInFlight(name, interruption, requireClosed: false) { return early }
+            return try await finish(
+                name, "returned and settled the fetch in \(interruption.elapsed.milliseconds) ms", interruption.elapsed)
         }
-        if let early = await notInFlight(name, interruption, requireClosed: false) { return early }
-        return await finish(
-            name, "returned and settled the fetch in \(interruption.elapsed.milliseconds) ms", interruption.elapsed)
     }
 
     /// A reply limit of one fails a two-message fetch with a typed error; the next command works.
     func receiveLimit() async -> LiveTestOutcome {
-        let name = "FETCH reply limit"
-        do {
-            let infos = try await server.fetchMessageInfosBulk(
-                using: messages, options: .uidFlagsOnly, limits: FetchReceiveLimits(maximumReplies: 1))
-            return fail(name, "returned \(infos.count) messages instead of throwing")
-        } catch let error as FetchReceiveLimitExceededError {
-            guard error.dimension == .replies, error.limit == 1 else { return fail(name, "unexpected error \(error)") }
-            return await finish(name, "threw FetchReceiveLimitExceededError", .zero)
-        } catch {
-            return fail(name, "expected FetchReceiveLimitExceededError, got \(liveTestErrorName(error))")
+        await check("FETCH reply limit") { name in
+            do {
+                let fetched = try await liveTestBounded("the fetch with a reply limit") { [server, messages] in
+                    try await server.fetchMessageInfosBulk(
+                        using: messages, options: .uidFlagsOnly, limits: FetchReceiveLimits(maximumReplies: 1)
+                    ).count
+                }
+                return fail(name, "returned \(fetched) messages instead of throwing")
+            } catch let error as FetchReceiveLimitExceededError {
+                guard error.dimension == .replies, error.limit == 1 else {
+                    return fail(name, "unexpected error \(error)")
+                }
+                return try await finish(name, "threw FetchReceiveLimitExceededError", .zero)
+            } catch let hang as LiveTestHang {
+                throw hang
+            } catch {
+                return fail(name, "expected FetchReceiveLimitExceededError, got \(liveTestErrorName(error))")
+            }
         }
     }
 
     /// `abort()` fails the running command, blocks later ones, and `connect()` brings the connection back.
     func abortDuringCommand() async -> LiveTestOutcome {
-        let name = "abort() during a command"
-        if let early = tooShortToInterrupt(name, baseline: commandBaseline) { return early }
-        guard let interruption = await interruptSlowFetch({ [server] _ in await server.abort() }) else {
-            return hung(name)
+        await check("abort() during a command") { name in
+            if let early = tooShortToInterrupt(name, baseline: commandBaseline) { return early }
+            let interruption = try await interruptSlowFetch { [server] _ in await server.abort() }
+            if let early = try await notInFlight(name, interruption, requireClosed: false) { return early }
+            guard case .failure(let error) = interruption.result, error is IMAPConnectionAbortedError else {
+                return fail(
+                    name, "expected IMAPConnectionAbortedError, the fetch ended with \(describe(interruption.result))")
+            }
+            return try await restoreAfterAbort(name, interruption.elapsed)
         }
-        if let early = await notInFlight(name, interruption, requireClosed: false) { return early }
-        guard case .failure(let error) = interruption.result, error is IMAPConnectionAbortedError else {
-            return fail(
-                name, "expected IMAPConnectionAbortedError, the fetch ended with \(describe(interruption.result))")
-        }
+    }
+
+    /// After `abort()`: a later command is refused, `connect()` restores the connection, and the next command works.
+    private func restoreAfterAbort(_ name: String, _ elapsed: Duration) async throws -> LiveTestOutcome {
         do {
-            _ = try await server.noop()
+            try await liveTestBounded("NOOP after abort()") { [server] in _ = try await server.noop() }
             return fail(name, "a command succeeded after abort() without connect()")
         } catch is IMAPConnectionAbortedError {
             // Expected: the connection stays aborted until connect().
+        } catch let hang as LiveTestHang {
+            throw hang
         } catch {
             return fail(
                 name, "a command after abort() threw \(liveTestErrorName(error)), not IMAPConnectionAbortedError")
         }
         do {
-            try await server.connect()
+            try await liveTestBounded("connect() after abort()") { [server] in try await server.connect() }
+        } catch let hang as LiveTestHang {
+            throw hang
         } catch {
             return fail(name, "connect() after abort() failed: \(liveTestErrorName(error))")
         }
-        var note = "aborted in \(interruption.elapsed.milliseconds) ms; later command refused; connect() restored it"
-        if await recover() != nil {
+        var note = "aborted in \(elapsed.milliseconds) ms; later command refused; connect() restored it"
+        if try await recover() != nil {
             // connect() alone was not enough; log in again as the abort() documentation says.
             do {
-                try await authenticate(server: server, using: environment)
+                try await liveTestBounded("logging in after connect()") { [server, environment] in
+                    try await authenticate(server: server, using: environment)
+                }
+            } catch let hang as LiveTestHang {
+                throw hang
             } catch {
                 return fail(name, "authenticating after connect() failed: \(liveTestErrorName(error))")
             }
             note += " after logging in again"
         }
-        return await finish(name, note, interruption.elapsed)
+        return try await finish(name, note, elapsed)
     }
 
     // MARK: - Helpers
 
+    /// Runs a check's steps. A step that throws ``LiveTestHang`` fails the check and stops the run,
+    /// because the hung command still holds the connection.
+    private func check(
+        _ name: String, _ steps: (String) async throws -> LiveTestOutcome
+    ) async -> LiveTestOutcome {
+        do {
+            return try await steps(name)
+        } catch let hang as LiveTestHang {
+            return LiveTestOutcome(
+                name: name, verdict: .fail,
+                detail: "\(hang.step) did not finish within \(hang.limit.milliseconds) ms", stopsRun: true)
+        } catch {
+            return fail(name, "unexpected \(liveTestErrorName(error))")
+        }
+    }
+
     /// Starts the slow fetch, lets it run for `delay`, interrupts it and waits for it to end.
-    /// Returns `nil` when the interruption or the fetch has not settled within the prompt limit.
+    /// Throws ``LiveTestHang`` when the interruption or the fetch has not settled within the prompt limit.
     private func interruptSlowFetch(
         _ interrupt: @escaping @Sendable (Task<Int, Error>) async -> Void
-    ) async -> LiveTestInterruption? {
+    ) async throws -> LiveTestInterruption {
         let fetch = await started { [server, messages] in try await Self.slowFetch(server, messages) }
         try? await Task.sleep(for: delay)
         let start = ContinuousClock.now
@@ -157,7 +195,9 @@ struct LiveTestChecks {
             await interrupt(fetch)
             return await fetch.result
         }
-        guard let result = settled else { return nil }
+        guard let result = settled else {
+            throw LiveTestHang(step: "the interrupted fetch", limit: liveTestPromptLimit)
+        }
         let elapsed = start.duration(to: .now)
         return LiveTestInterruption(result: result, elapsed: elapsed, closedConnection: !(await server.isConnected))
     }
@@ -175,10 +215,6 @@ struct LiveTestChecks {
         return task
     }
 
-    private func hung(_ name: String) -> LiveTestOutcome {
-        fail(name, "did not settle within \(liveTestPromptLimit.milliseconds) ms")
-    }
-
     /// An inconclusive outcome when the uninterrupted operation is too quick for `delay` to land inside it.
     private func tooShortToInterrupt(_ name: String, baseline: Duration) -> LiveTestOutcome? {
         guard delay * 2 > baseline else { return nil }
@@ -192,13 +228,15 @@ struct LiveTestChecks {
     /// The interruption has still happened, so this restores the connection for the next check.
     private func notInFlight(
         _ name: String, _ interruption: LiveTestInterruption, requireClosed: Bool
-    ) async -> LiveTestOutcome? {
+    ) async throws -> LiveTestOutcome? {
         let fetchReturned: Bool
         if case .success = interruption.result { fetchReturned = true } else { fetchReturned = false }
         guard fetchReturned || (requireClosed && !interruption.closedConnection) else { return nil }
         // After abort() only an explicit connect() brings the connection back.
-        if !(await server.isConnected) { try? await server.connect() }
-        _ = await recover()
+        if !(await server.isConnected) {
+            _ = try? await liveTestBounded("reconnecting") { [server] in try await server.connect() }
+        }
+        _ = try await recover()
         if case .success(let fetched) = interruption.result {
             return LiveTestOutcome(
                 name: name, verdict: .inconclusive,
@@ -212,23 +250,28 @@ struct LiveTestChecks {
     }
 
     /// Selects the mailbox and sends NOOP. Returns what went wrong, or `nil`.
-    private func recover() async -> String? {
+    /// Throws ``LiveTestHang`` when the two have not finished within ``liveTestHangLimit``.
+    private func recover() async throws -> String? {
         do {
-            _ = try await server.selectMailbox(mailbox)
-            _ = try await server.noop()
+            try await liveTestBounded("the next command (SELECT and NOOP)") { [server, mailbox] in
+                _ = try await server.selectMailbox(mailbox)
+                _ = try await server.noop()
+            }
             return nil
+        } catch let hang as LiveTestHang {
+            throw hang
         } catch {
             return liveTestErrorName(error)
         }
     }
 
     /// Passes when the interruption was prompt and an ordinary command works afterwards.
-    private func finish(_ name: String, _ detail: String, _ elapsed: Duration) async -> LiveTestOutcome {
+    private func finish(_ name: String, _ detail: String, _ elapsed: Duration) async throws -> LiveTestOutcome {
         guard elapsed <= liveTestPromptLimit else {
             return fail(name, "\(detail), which is slower than \(liveTestPromptLimit.milliseconds) ms")
         }
         let start = ContinuousClock.now
-        if let problem = await recover() {
+        if let problem = try await recover() {
             return fail(name, "\(detail), but the next command failed: \(problem)")
         }
         let recovery = start.duration(to: .now).milliseconds

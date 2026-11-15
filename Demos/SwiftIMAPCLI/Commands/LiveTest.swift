@@ -47,20 +47,28 @@ struct LiveTest: ParsableCommand {
             try await checks.measureBaselines()
             print("Uninterrupted, the slow fetch takes \(checks.commandBaseline.milliseconds) ms "
                 + "and the slow stream \(checks.streamBaseline.milliseconds) ms.\n")
-            var outcomes: [LiveTestOutcome] = []
-            for check in [
+            let allChecks = [
                 checks.cancelCommand, checks.cancelStream, checks.disconnectDuringCommand,
                 checks.receiveLimit, checks.abortDuringCommand
-            ] {
+            ]
+            var outcomes: [LiveTestOutcome] = []
+            for check in allChecks {
                 let outcome = await check()
                 print(outcome.line)
                 outcomes.append(outcome)
+                if outcome.stopsRun {
+                    print("A command is still running and would hold up every later one; "
+                        + "skipping the remaining checks.")
+                    break
+                }
             }
-            try? await server.disconnect()
+            _ = await liveTestRace(within: liveTestPromptLimit) { try? await server.disconnect() }
 
             let failed = outcomes.filter { $0.verdict == .fail }.count
             let inconclusive = outcomes.filter { $0.verdict == .inconclusive }.count
-            print("\n\(outcomes.count - failed - inconclusive) passed, \(failed) failed, \(inconclusive) inconclusive.")
+            let skipped = allChecks.count - outcomes.count
+            print("\n\(outcomes.count - failed - inconclusive) passed, \(failed) failed, \(inconclusive) inconclusive"
+                + (skipped > 0 ? ", \(skipped) skipped." : "."))
             if inconclusive > 0 {
                 print("Inconclusive means the fetch was not in flight when interrupted; adjust --count or --delay-ms.")
             }
@@ -75,6 +83,8 @@ struct LiveTestOutcome {
     let name: String
     let verdict: Verdict
     let detail: String
+    /// A step of this check hung and still holds the connection, so no later check can run.
+    var stopsRun = false
 
     var line: String { "[\(verdict.rawValue)] \(name): \(detail)" }
 }
@@ -116,4 +126,31 @@ func liveTestRace<Value: Sendable>(
     }
     for await result in results { return result }
     return nil
+}
+
+/// How long an ordinary step (reconnecting, logging in, SELECT, NOOP, a small fetch) may take
+/// before the run treats it as hung. Generous, so a slow server is not mistaken for a hang.
+let liveTestHangLimit = Duration.seconds(30)
+
+/// A step that did not finish in time. It is left running and holds the connection's command
+/// queue, so every later command would wait behind it; the run stops after the check that hit it.
+struct LiveTestHang: Error {
+    let step: String
+    let limit: Duration
+}
+
+/// The value of `operation`, rethrowing its error; throws ``LiveTestHang`` when it has not finished within `limit`.
+func liveTestBounded<Value: Sendable>(
+    _ step: String, within limit: Duration = liveTestHangLimit,
+    _ operation: @escaping @Sendable () async throws -> Value
+) async throws -> Value {
+    let settled = await liveTestRace(within: limit) { () async -> Result<Value, Error> in
+        do {
+            return .success(try await operation())
+        } catch {
+            return .failure(error)
+        }
+    }
+    guard let settled else { throw LiveTestHang(step: step, limit: limit) }
+    return try settled.get()
 }
