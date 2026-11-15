@@ -34,23 +34,19 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     override func channelRead(context: ChannelHandlerContext, data: NIOAny) {
         // Responses the same network read already decoded keep arriving until the close lands.
         guard !exceededBudget else { return }
-
         if let budget, case .fetch(let fetchResponse) = unwrapInboundIn(data) {
             do {
-                switch fetchResponse {
-                    case .start, .startUID:
-                        try budget.consumeReply()
-                    case .streamingBegin(_, let byteCount):
-                        try budget.consumePayload(declaredByteCount: byteCount)
-                    default:
-                        break
+                if case .streamingBegin(_, let byteCount) = fetchResponse {
+                    try budget.consumePayload(declaredByteCount: byteCount)
+                } else if case .start = fetchResponse {
+                    try budget.consumeReply()
+                } else if case .startUID = fetchResponse {
+                    try budget.consumeReply()
                 }
             } catch {
-                failClosed(context: context, error: error)
-                return
+                return failClosed(context: context, error: error)
             }
         }
-
         super.channelRead(context: context, data: data)
     }
 
@@ -58,12 +54,8 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
     /// sends more than allowed is not read from any further.
     private func failClosed(context: ChannelHandlerContext, error: Error) {
         exceededBudget = true
-        lock.withLock {
-            messageInfos.removeAll()
-            currentHeaderLiteral = Data()
-            collectingThreadingHeaders = false
-            currentSequenceNumber = nil
-        }
+        lock.withLock { messageInfos.removeAll() }
+        currentHeaderLiteral = Data()
         logger.warning("FETCH receive limit exceeded, closing connection: \(error)")
         failWithError(error)
         context.close(promise: nil)
