@@ -46,7 +46,7 @@ extension IMAPServer.Authentication {
             throw error
         } catch {
             try connection.validateOperation()
-            if error is IMAPConnectionAbortedError { throw error }
+            if error is IMAPAbortReason { throw error }
             guard connection.isConnected, connection.isAuthenticated else {
                 throw error
             }

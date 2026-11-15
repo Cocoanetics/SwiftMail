@@ -87,7 +87,7 @@ public actor IMAPNamedConnection {
     /// Mark a successful command — invoked by helpers that talk directly to
     /// `connection` (idle, noop, fetchCapabilities, …).
     func recordActivity() throws {
-        guard let token = connection.operationToken else { throw IMAPConnectionAbortedError() }
+        guard let token = connection.operationToken else { throw IMAPAbortReason.connectionAborted }
         try connection.lifetime.gate.withLock {
             try connection.lifetime.validateLocked(token)
             lastActivity = Date()

@@ -139,7 +139,7 @@ extension IMAPConnection {
         let channel = context.channel
         let (_, terminal) = lifetime.registerOperation(of: Void.self, parent: operationToken)
         terminal.addCleanup(on: channel.eventLoop) {
-            registered.handlers.forEach { $0.fail(IMAPConnectionAbortedError()) }
+            registered.handlers.forEach { $0.fail(IMAPAbortReason.connectionAborted) }
         }
         let installed: EventLoopFuture<Void> = channel.pipeline.addHandler(
             dispatcher, position: .before(context.responseBuffer)

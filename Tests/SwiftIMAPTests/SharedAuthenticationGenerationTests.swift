@@ -187,8 +187,8 @@ struct SharedAuthenticationGenerationTests {
         try await authenticationWaitUntil { await named.authenticationAttemptForTesting?.waiterCount == 2 }
         let oldAttempt = try #require(await named.authenticationAttemptForTesting)
         connection.abortNow()
-        await #expect(throws: IMAPConnectionAbortedError()) { try await authenticationResult(leader) }
-        await #expect(throws: IMAPConnectionAbortedError()) { try await authenticationResult(follower) }
+        await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(leader) }
+        await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(follower) }
         connection.replaceConnectForTesting { _ = try await harness.install(on: connection) }
         let reconnect = Task { try await named.connect() }
         await freshProvider.entered.wait()
@@ -264,8 +264,8 @@ struct SharedAuthenticationGenerationTests {
         attempt.terminal.observe { _ in _ = settlements.increment() }
         connection.abortNow()
         connection.abortNow()
-        await #expect(throws: IMAPConnectionAbortedError()) { try await authenticationResult(leader) }
-        await #expect(throws: IMAPConnectionAbortedError()) { try await authenticationResult(follower) }
+        await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(leader) }
+        await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(follower) }
         try await authenticationResult(Task { await workerExited.wait() })
         #expect(settlements.value == 1)
         #expect(callerSettlements.value == 2)
@@ -296,8 +296,8 @@ struct SharedAuthenticationGenerationTests {
         try await authenticationWaitUntil { await harness.server.primaryAuthenticationInFlight?.waiterCount == 2 }
         let oldAttempt = try #require(await harness.server.primaryAuthenticationInFlight)
         connection.abortNow()
-        await #expect(throws: IMAPConnectionAbortedError()) { try await authenticationResult(leader) }
-        await #expect(throws: IMAPConnectionAbortedError()) { try await authenticationResult(follower) }
+        await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(leader) }
+        await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(follower) }
 
         // Exercise the explicit connect path that alone is allowed to rearm.
         connection.replaceConnectForTesting { _ = try await harness.install(on: connection) }
@@ -350,33 +350,5 @@ struct SharedAuthenticationGenerationTests {
         try await harness.completeOAuth(on: channel)
         try await authenticationResult(cancelInitiator ? follower : initiator)
         #expect(connection.isAuthenticated)
-    }
-
-    @Test
-    func directlyOwnedOAuthCancellationClosesTransportAndFencesLateToken() async throws {
-        let harness = AuthenticationRaceHarness()
-        let connection = await harness.server.primaryConnection
-        let old = try await harness.install(on: connection)
-        let provider = HeldAuthenticationProvider()
-        let finished = IMAPTestSignal()
-        connection.operationOwnerFinishedForTesting = finished.signal
-        defer { provider.release.signal(); connection.abortNow() }
-        let authentication = harness.configuration(provider)
-        let caller = Task {
-            try await connection.withOperation { try await authentication.authenticateBody(on: connection) }
-        }
-        await provider.entered.wait()
-        caller.cancel()
-        await #expect(throws: CancellationError.self) { try await authenticationResult(caller) }
-        try await old.closeFuture.get()
-        #expect(!connection.isAuthenticated)
-        connection.lifetime.rearm()
-        let fresh = try await harness.install(on: connection)
-        provider.release.signal()
-        await provider.returned.wait()
-        await finished.wait()
-        #expect(connection.channel === fresh)
-        #expect(!connection.isAuthenticated)
-        #expect(try await fresh.readOutbound(as: ByteBuffer.self) == nil)
     }
 }

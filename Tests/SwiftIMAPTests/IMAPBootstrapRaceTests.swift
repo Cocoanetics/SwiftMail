@@ -23,16 +23,16 @@ struct IMAPBootstrapRaceTests {
             attempt.greeting.observe { _ in _ = settlements.increment() }
             connection.abortNow()
             connection.abortNow()
-            await #expect(throws: IMAPConnectionAbortedError()) { try await connecting.value }
+            await #expect(throws: IMAPAbortReason.connectionAborted) { try await connecting.value }
             #expect(connection.channel == nil)
             #expect(settlements.value == 1)
 
             // Neither ordinary recovery nor another command may rearm abort.
-            await #expect(throws: IMAPConnectionAbortedError()) {
+            await #expect(throws: IMAPAbortReason.connectionAborted) {
                 try await connection.executeCommand(NoopCommand())
             }
             let late = try await activeChannel()
-            await #expect(throws: IMAPConnectionAbortedError()) {
+            await #expect(throws: IMAPAbortReason.connectionAborted) {
                 try await late.eventLoop.flatSubmit { initialize(late) }.get()
             }
             if failTCP { driver.tcp.fail(IMAPConcurrencyTestError.expected) } else { driver.tcp.succeed(late) }
@@ -55,7 +55,7 @@ struct IMAPBootstrapRaceTests {
             try await first.eventLoop.flatSubmit { initialize(first) }.get()
             try await second.eventLoop.flatSubmit { initialize(second) }.get()
             connection.abortNow()
-            await #expect(throws: IMAPConnectionAbortedError()) { try await connecting.value }
+            await #expect(throws: IMAPAbortReason.connectionAborted) { try await connecting.value }
             try await first.closeFuture.get()
             try await second.closeFuture.get()
             if failTCP { driver.tcp.fail(IMAPConcurrencyTestError.expected) } else { driver.tcp.succeed(first) }
@@ -81,7 +81,7 @@ struct IMAPBootstrapRaceTests {
             await gate.entered.wait()
             #expect((connection.channel != nil) == (stage != "tcp"))
             connection.abortNow()
-            await #expect(throws: IMAPConnectionAbortedError()) { try await connecting.value }
+            await #expect(throws: IMAPAbortReason.connectionAborted) { try await connecting.value }
             try await channel.closeFuture.get()
             #expect(connection.channel == nil)
             #expect(connection.capabilitiesSnapshot.isEmpty)
@@ -109,7 +109,7 @@ struct IMAPBootstrapRaceTests {
             driver.tcp.succeed(channel)
             await published.wait()
             connection.abortNow()
-            await #expect(throws: IMAPConnectionAbortedError()) { try await connecting.value }
+            await #expect(throws: IMAPAbortReason.connectionAborted) { try await connecting.value }
             try await channel.closeFuture.get()
             #expect(connection.channel == nil)
         }
@@ -133,7 +133,7 @@ struct IMAPBootstrapRaceTests {
             }
             await gate.entered.wait()
             connection.abortNow()
-            await #expect(throws: IMAPConnectionAbortedError()) { try await connecting.value }
+            await #expect(throws: IMAPAbortReason.connectionAborted) { try await connecting.value }
             try await channel.closeFuture.get()
             gate.release.signal()
             await gate.exited.wait()
@@ -173,7 +173,7 @@ extension IMAPBootstrapRaceTests {
                 }
             }
             connection.abortNow()
-            await #expect(throws: IMAPConnectionAbortedError()) { try await authenticating.value }
+            await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticating.value }
             try await channel.closeFuture.get()
             try await installFreshTransport(connection)
             #expect(connection.isAuthenticated)
@@ -203,7 +203,7 @@ extension IMAPBootstrapRaceTests {
             }
             await gate.entered.wait()
             connection.abortNow()
-            await #expect(throws: IMAPConnectionAbortedError()) { try await authenticating.value }
+            await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticating.value }
             try await installFreshTransport(connection)
             let fresh = try connection.capturedTransport()
             gate.release.signal()
@@ -237,7 +237,7 @@ extension IMAPBootstrapRaceTests {
             }.get()
             #expect(installed == (stage == "tlsInstalled"))
             connection.abortNow()
-            await #expect(throws: IMAPConnectionAbortedError()) { try await connecting.value }
+            await #expect(throws: IMAPAbortReason.connectionAborted) { try await connecting.value }
             try await installFreshTransport(connection)
             let fresh = try connection.capturedTransport()
             gate.release.signal()
@@ -304,7 +304,7 @@ extension IMAPBootstrapRaceTests {
             }
             await entered.wait()
             connection.abortNow()
-            await #expect(throws: IMAPConnectionAbortedError()) { try await command.value }
+            await #expect(throws: IMAPAbortReason.connectionAborted) { try await command.value }
             try await installFreshTransport(connection)
             let fresh = try #require(connection.channel as? NIOAsyncTestingChannel)
             let pending = Task { try await connection.noop() }
@@ -339,7 +339,7 @@ extension IMAPBootstrapRaceTests {
             let disconnecting = Task { try await connection.disconnect() }
             await entered.wait()
             connection.abortNow()
-            await #expect(throws: IMAPConnectionAbortedError()) { try await disconnecting.value }
+            await #expect(throws: IMAPAbortReason.connectionAborted) { try await disconnecting.value }
             try await old.closeFuture.get()
             try await installFreshTransport(connection)
             connection.lostAuthenticatedSession = true

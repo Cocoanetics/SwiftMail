@@ -35,7 +35,7 @@ extension ClientIdentificationReplayTests {
         try await harness.inbound(old, "* ID NIL\r\n\(idTag) OK identified\r\n")
         await entered.wait()
         connection.abortNow()
-        await #expect(throws: IMAPConnectionAbortedError()) { try await authenticationResult(login) }
+        await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(login) }
         connection.lifecycleCheckpointForTesting = nil
         connection.operationOwnerFinishedForTesting = nil
         connection.replaceConnectForTesting { _ = try await harness.install(on: connection) }

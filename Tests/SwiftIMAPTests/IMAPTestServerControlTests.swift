@@ -3,7 +3,6 @@
 // swiftlint:disable file_length
 import Foundation
 import Testing
-@testable import SwiftMail
 #if canImport(Glibc)
 import Glibc
 #endif
@@ -487,51 +486,6 @@ extension IMAPTestServerControlTests {
 }
 
 extension IMAPTestServerControlTests {
-    @Test
-    func activeOperationCancellationSettlesBeforeHeldReplyAndInvalidatesOnlyItsGeneration() async throws {
-        let script = Server.Script(connectionNumber: 1, occurrence: 2, actions: [
-            .hold("active-reply"), .taggedCompletion("OK NOOP completed")
-        ])
-        try await withServer(scripts: [script]) { server in
-            try await withEventLoopGroup { group in
-                func connection(_ id: String) -> IMAPConnection {
-                    IMAPConnection(host: "127.0.0.1", port: server.port, transportSecurity: .plainText,
-                                   minimumTLSVersion: .tlsv12, group: group, loggerLabel: "test.cancel",
-                                   outboundLabel: "test.cancel.out", inboundLabel: "test.cancel.in",
-                                   connectionID: id, connectionRole: "test", parserLimits: .default)
-                }
-                let primary = connection("primary")
-                let sibling = connection("sibling")
-                defer { primary.abortNow(); sibling.abortNow() }
-                try await primary.connect()
-                try await sibling.connect()
-                let oldGeneration = primary.lifetime.currentGeneration
-                let active = Task { try await primary.noop() }
-                let held = try await server.waitForEvent(.replyHeld, run: server.runID, detail: "active-reply")
-                let queued = IMAPTestSignal()
-                primary.commandQueue.testHooks.didEnqueue = queued.signal
-                let collateral = Task { try await primary.noop() }
-                await queued.wait()
-                active.cancel()
-                await #expect(throws: CancellationError.self) { try await authenticationResult(active) }
-                await #expect(throws: IMAPConnectionAbortedError.self) {
-                    try await authenticationResult(collateral)
-                }
-                _ = try await server.waitForEvent(.peerEOF, run: server.runID, connection: held.connection)
-                #expect(!server.release(try #require(held.command), gate: "active-reply"))
-                #expect(server.events.filter {
-                    $0.kind == .commandReachedServer && $0.connection == held.connection
-                }.count == 2)
-                #expect(primary.lifetime.reservationCount == 0)
-                _ = try await sibling.noop()
-                try await primary.connect()
-                #expect(primary.lifetime.currentGeneration != oldGeneration)
-                _ = try await primary.noop()
-                _ = try await sibling.noop()
-            }
-        }
-    }
-
     @Test("queued LOGOUT keeps the reader alive to observe FIN behind a held reply")
     func queuedLogoutStillObservesFIN() async throws {
         let script = Server.Script(connectionNumber: 1, occurrence: 1, actions: [

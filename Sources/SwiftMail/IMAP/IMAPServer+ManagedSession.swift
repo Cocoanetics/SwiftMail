@@ -14,8 +14,8 @@ struct IMAPManagedSessionGate {
     private var disconnectsInFlight = 0
 
     func validateAdmission() throws {
-        if let abortReason { throw abortReason.publicError }
-        if disconnectsInFlight > 0 { throw IMAPConnectionAbortedError() }
+        if let abortReason { throw abortReason }
+        if disconnectsInFlight > 0 { throw IMAPAbortReason.connectionAborted }
     }
 
     mutating func beginDisconnect() {
@@ -142,7 +142,7 @@ final class IMAPDedicatedIdleSession: @unchecked Sendable {
 
     func validate() throws {
         try connection.lifetime.gate.withLock {
-            guard !stopped else { throw IMAPConnectionAbortedError() }
+            guard !stopped else { throw IMAPAbortReason.connectionAborted }
             try connection.lifetime.validateLocked(token)
         }
     }
@@ -196,7 +196,7 @@ final class IMAPDedicatedIdleSession: @unchecked Sendable {
             return .some(cycleTask)
         }
         guard let task else { return false }
-        authority.complete(.failure(IMAPConnectionAbortedError()))
+        authority.complete(.failure(IMAPAbortReason.connectionAborted))
         task?.cancel()
         connection.abortNow()
         return true

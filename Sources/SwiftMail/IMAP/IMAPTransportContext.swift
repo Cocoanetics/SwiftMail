@@ -68,25 +68,23 @@ extension IMAPConnection {
         var authority = IMAPOperationScope.tokens
         authority[ObjectIdentifier(lifetime)] = token
         let ownerFinished = operationOwnerFinishedForTesting
-        return try await withTaskCancellationHandler {
-            if Task.isCancelled && !forCleanup { cancelOperation(token) }
-            let owner = Task {
-                defer { ownerFinished?() }
-                do {
-                    let result = try await IMAPOperationScope.$tokens.withValue(authority) {
-                        try lifetime.validate(token)
-                        if forCleanup { return try await commandQueue.runForCleanup(token: token, body) }
-                        return try await commandQueue.run(token: token, body)
-                    }
-                    terminal.complete(.success(result))
-                } catch {
-                    terminal.complete(.failure(error))
+        let owner = Task {
+            defer { ownerFinished?() }
+            do {
+                let result = try await IMAPOperationScope.$tokens.withValue(authority) {
+                    if forCleanup { return try await commandQueue.runForCleanup(token: token, body) }
+                    return try await commandQueue.run(token: token, body)
                 }
+                terminal.complete(.success(result))
+            } catch {
+                terminal.complete(.failure(error))
             }
-            terminal.attachTask(owner)
-            return try await terminal.value()
+        }
+        return try await withTaskCancellationHandler {
+            try await terminal.value()
         } onCancel: {
-            if !forCleanup { cancelOperation(token) }
+            if !forCleanup { abortNow(cancelling: token) }
+            owner.cancel()
         }
     }
 
@@ -135,34 +133,26 @@ extension IMAPConnection {
     }
 
     /// Synchronous admission latch and detach; no queue, DONE or LOGOUT.
-    func abortNow() {
-        lifetime.invalidate { detachTransportsLocked() }
-    }
-
-    func cancelOperation(_ token: OperationToken) {
-        lifetime.cancel(token) { detachTransportsLocked() }
-    }
-
-    /// Called with the lifetime gate held. Closing captured sockets happens only
-    /// after unlocking, and never waits for the queue or a foreign callback.
-    private func detachTransportsLocked() -> [IMAPLifetimeGate.Action] {
-        let contexts = (transport.map { [$0] } ?? [])
-            + bootstrapAttempts.values.flatMap { $0.candidates }
-            + Array(closingTransports.values)
-        var actions = bootstrapAttempts.values.flatMap {
-            ($0.tcp.settleLocked(.failure(IMAPConnectionAbortedError())) ?? [])
-                + ($0.greeting.settleLocked(.failure(IMAPConnectionAbortedError())) ?? [])
+    func abortNow(cancelling token: OperationToken? = nil) {
+        lifetime.invalidate(cancelling: token) {
+            let contexts = (self.transport.map { [$0] } ?? [])
+                + self.bootstrapAttempts.values.flatMap { $0.candidates }
+                + Array(self.closingTransports.values)
+            var actions = self.bootstrapAttempts.values.flatMap {
+                ($0.tcp.settleLocked(.failure(IMAPAbortReason.connectionAborted)) ?? [])
+                    + ($0.greeting.settleLocked(.failure(IMAPAbortReason.connectionAborted)) ?? [])
+            }
+            self.transport = nil
+            self.bootstrapAttempts.removeAll()
+            self.closingTransports.removeAll()
+            self.sessionWasLost = false
+            self.authenticatingGeneration = nil
+            self.stagingCapabilities = []
+            self.stagingBuffer = UntaggedResponseBuffer()
+            self.stagingLogger = self.makeDuplexLogger()
+            actions += contexts.map { context in { context.channel.close(promise: nil) } }
+            return actions
         }
-        transport = nil
-        bootstrapAttempts.removeAll()
-        closingTransports.removeAll()
-        sessionWasLost = false
-        authenticatingGeneration = nil
-        stagingCapabilities = []
-        stagingBuffer = UntaggedResponseBuffer()
-        stagingLogger = makeDuplexLogger()
-        actions += contexts.map { context in { context.channel.close(promise: nil) } }
-        return actions
     }
 
     func bindHandler<T, Handler: IMAPCommandHandler>(

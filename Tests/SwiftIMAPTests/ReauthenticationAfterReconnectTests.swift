@@ -47,8 +47,8 @@ struct ReauthenticationAfterReconnectTests {
         let queued = Task { try await connection.noop() }
         try await authenticationWaitUntil { connection.lifetime.reservationCount == 2 }
         connection.abortNow()
-        await #expect(throws: IMAPConnectionAbortedError()) { _ = try await authenticationResult(command) }
-        await #expect(throws: IMAPConnectionAbortedError()) { _ = try await authenticationResult(queued) }
+        await #expect(throws: IMAPAbortReason.connectionAborted) { _ = try await authenticationResult(command) }
+        await #expect(throws: IMAPAbortReason.connectionAborted) { _ = try await authenticationResult(queued) }
         try await authenticationResult(Task { await ownerExited.wait() })
         #expect(connection.lifetime.reservationCount == 0)
         #expect(try await replacement.readOutbound(as: ByteBuffer.self) == nil)

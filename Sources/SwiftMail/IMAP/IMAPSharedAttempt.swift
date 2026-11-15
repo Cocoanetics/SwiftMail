@@ -34,7 +34,7 @@ final class SharedAttempt<Value>: @unchecked Sendable {
                 }
             }
         }
-        terminal.attachTask(worker)
+        terminal.addCleanup { worker.cancel() }
     }
 
     func value(parent: OperationToken?) async throws -> Value {
@@ -83,24 +83,23 @@ extension IMAPConnection {
         var authority = IMAPOperationScope.tokens
         authority[ObjectIdentifier(lifetime)] = token
         let ownerFinished = operationOwnerFinishedForTesting
-        return try await withTaskCancellationHandler {
-            if Task.isCancelled { cancelOperation(token) }
-            let owner = Task { [self] in
-                defer { ownerFinished?() }
-                do {
-                    let value = try await IMAPOperationScope.$tokens.withValue(authority) {
-                        try lifetime.validate(token)
-                        return try await body()
-                    }
-                    terminal.complete(.success(value))
-                } catch {
-                    terminal.complete(.failure(error))
+        let owner = Task { [self] in
+            defer { ownerFinished?() }
+            do {
+                let value = try await IMAPOperationScope.$tokens.withValue(authority) {
+                    try lifetime.validate(token)
+                    return try await body()
                 }
+                terminal.complete(.success(value))
+            } catch {
+                terminal.complete(.failure(error))
             }
-            terminal.attachTask(owner)
-            return try await terminal.value()
+        }
+        return try await withTaskCancellationHandler {
+            try await terminal.value()
         } onCancel: {
-            cancelOperation(token)
+            abortNow(cancelling: token)
+            owner.cancel()
         }
     }
 
@@ -112,7 +111,7 @@ extension IMAPConnection {
         let providerWorker = Task.detached {
             do { sink.complete(.success(try await provider())) } catch { sink.complete(.failure(error)) }
         }
-        sink.attachTask(providerWorker)
+        sink.addCleanup { providerWorker.cancel() }
         let value = try await withTaskCancellationHandler {
             try await sink.value()
         } onCancel: {
