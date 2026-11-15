@@ -56,9 +56,22 @@ public actor IMAPNamedConnection {
         }
     }
 
-    /// Disconnect this named connection.
+    /// Immediately close this named connection without DONE or LOGOUT or waiting
+    /// for an active command. Subsequent commands retain the configured reconnect
+    /// policy. This works even from an already-cancelled task.
     public func disconnect() async throws {
-        try await connection.disconnect()
+        try await connection.disconnectImmediately()
+    }
+
+    /// Immediately abort only this named connection without DONE or LOGOUT.
+    ///
+    /// Active and queued operations fail with ``IMAPConnectionAbortedError``.
+    /// Repeated calls are harmless, including from a cancelled task. Commands
+    /// cannot reconnect until this handle's explicit ``connect()`` authenticates
+    /// it again; select the mailbox again afterwards. Server `connect()` does not
+    /// rearm this handle. Use ``done()`` to end IDLE gracefully.
+    public func abort() async {
+        connection.abortNow()
     }
 
     /// Whether the server advertised UIDPLUS for this connection.

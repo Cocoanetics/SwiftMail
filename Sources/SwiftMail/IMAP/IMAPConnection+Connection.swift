@@ -146,6 +146,19 @@ extension IMAPConnection {
         await closeTransport(context)
     }
 
+    /// Public disconnect bypasses command admission, including task cancellation.
+    /// Keep the queued internal disconnect for graceful shutdown and IDLE recovery.
+    func disconnectImmediately() async throws {
+        try validateOperation()
+        guard let context = try? capturedTransport() else { return }
+        await closeTransport(context)
+        try lifetime.gate.withLock {
+            try lifetime.validateGenerationLocked(context.generation)
+            // A command may already have reopened a transport during close.
+            if transport == nil { sessionWasLost = false }
+        }
+    }
+
     func closeTransport(_ context: TransportContext) async {
         lifetime.gate.withLock {
             closingTransports[context.id] = context

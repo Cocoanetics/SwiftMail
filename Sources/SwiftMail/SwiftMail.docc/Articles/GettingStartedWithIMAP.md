@@ -27,6 +27,25 @@ try await imapServer.connect()
 try await imapServer.login(username: "user@example.com", password: "password")
 ```
 
+### Cancelling and closing connections
+
+Cancelling a task waiting in the command queue cancels only that operation.
+Cancelling an active command closes its transport; other affected callers receive
+``IMAPConnectionAbortedError``, and later commands follow the reconnect policy.
+
+Use `await imapServer.abort()` to stop the primary connection, or
+`await namedConnection.abort()` to stop one named connection. These calls are
+idempotent and nonthrowing, send no DONE or LOGOUT, and require an explicit
+`connect()` before further commands. Authenticate and select the mailbox again
+after reconnecting (a named handle's `connect()` includes authentication).
+`await imapServer.abortAllConnections()` also stops pending named connections and
+dedicated IDLE sessions using their existing teardown. Server `connect()` permits
+new managed connections again; old named handles still need their own `connect()`.
+
+`disconnect()` closes without waiting for an active command and preserves the
+configured reconnect policy for later commands. For graceful protocol completion,
+use `logout()` on the server, or `done()` to end IDLE.
+
 ## Working with Mailboxes
 
 List available mailboxes and select one to work with:
