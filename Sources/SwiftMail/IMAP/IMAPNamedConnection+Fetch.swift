@@ -5,6 +5,8 @@ extension IMAPNamedConnection {
     ///
     /// Named parts get their filename checked against their MIME header, as
     /// in ``IMAPServer/fetchStructure(_:)``.
+    /// `CancellationError` and ``IMAPConnectionAbortedError`` propagate even when
+    /// the optional MIME-header fetch fails.
     public func fetchStructure<T: MessageIdentifier>(_ identifier: T) async throws -> [MessagePart] {
         let parts = try await executeCommand(FetchStructureCommand(identifier: identifier))
         let sections = parts.sectionsForFilenameCheck
@@ -12,8 +14,8 @@ extension IMAPNamedConnection {
         do {
             let headers = try await executeCommand(FetchMIMEHeadersCommand(identifier: identifier, sections: sections))
             return parts.restoringFilenames(fromMIMEHeaders: headers)
-        } catch is CancellationError {
-            throw CancellationError()
+        } catch let error where error is CancellationError || error is IMAPConnectionAbortedError {
+            throw error
         } catch {
             return parts
         }
@@ -88,6 +90,10 @@ extension IMAPNamedConnection {
     /// ``IMAPServer/fetchRawMessages(using:chunkSize:timeoutSeconds:)``: one command per chunk
     /// of at most `chunkSize` messages (25 when `nil`), each with a deadline of
     /// `timeoutSeconds` (60 when `nil`).
+    /// Cancelling the consuming task cancels the producer and its current command,
+    /// closing this connection if the command is executing and preventing later chunks.
+    /// Cancellation while queued leaves the executing command alone. Explicit ``abort()``
+    /// finishes the stream with ``IMAPConnectionAbortedError``; yielded values remain valid.
     public nonisolated func fetchRawMessages<T: MessageIdentifier>(
         using identifierSet: MessageIdentifierSet<T>,
         chunkSize: Int? = nil,
@@ -201,6 +207,10 @@ extension IMAPNamedConnection {
     /// Chunk size defaults to `options.suggestedChunkSize` — lighter per-message payloads
     /// (e.g. `.uidFlagsOnly`, `.slim`) take larger chunks so the same total fetch needs
     /// fewer round trips. Pass `chunkSize` to override.
+    /// Cancelling the consuming task cancels the producer and its current command,
+    /// closing this connection if the command is executing and preventing later chunks.
+    /// Cancellation while queued leaves the executing command alone. Explicit ``abort()``
+    /// finishes the stream with ``IMAPConnectionAbortedError``; yielded values remain valid.
     ///
     /// - Parameters:
     ///   - identifierSet: The identifiers to fetch.

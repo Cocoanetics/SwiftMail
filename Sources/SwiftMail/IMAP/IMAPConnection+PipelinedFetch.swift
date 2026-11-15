@@ -63,10 +63,8 @@ extension IMAPConnection {
         requests: [(uid: UID, section: Section)],
         timeoutSeconds: Int
     ) async throws -> [PipelinedFetchResult] {
-        // A caller cancelled while queued for the command lock must not dispatch
-        // its burst: once on the wire the batch is not cancellation-responsive,
-        // so this check is the last point where a superseded fetch can bow out
-        // without holding the connection for the full batch.
+        // A caller cancelled while queued must not dispatch its burst. Once a
+        // batch is executing, operation cancellation closes its transport.
         try Task.checkCancellation()
         let channel = try await preparePipelinedFetchChannel()
         let context = try capturedTransport()
