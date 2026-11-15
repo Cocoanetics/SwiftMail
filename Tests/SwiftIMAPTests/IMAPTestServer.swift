@@ -1119,6 +1119,9 @@ final class IMAPTestServer: @unchecked Sendable {
             case "ID":
                 recordIDCommand()
                 return "* ID NIL\r\n\(tag) OK ID completed\r\n"
+            case "STATUS":
+                guard authenticated else { return "\(tag) NO Not authenticated\r\n" }
+                return statusReply(tag: tag, args: args)
             case "NOOP":
                 return "\(tag) OK NOOP completed\r\n"
             case "EXPUNGE":
@@ -1128,6 +1131,24 @@ final class IMAPTestServer: @unchecked Sendable {
             default:
                 return "\(tag) BAD Unknown command \(command)\r\n"
         }
+    }
+
+    /// RFC 3501 §6.3.10 STATUS: answers exactly the base data items the client asked for
+    /// (MESSAGES, RECENT, UNSEEN, UIDNEXT, UIDVALIDITY), whatever the advertised capabilities.
+    private func statusReply(tag: String, args: String) -> String {
+        guard let open = args.firstIndex(of: "("), let close = args.lastIndex(of: ")"), open < close else {
+            return "\(tag) BAD Invalid STATUS\r\n"
+        }
+        let mailbox = args[..<open].trimmingCharacters(in: .init(charactersIn: "\" "))
+        let uidnext = (messages.last?.uid ?? 0) + 1
+        let values: [String: Int] = [
+            "MESSAGES": messages.count, "RECENT": 0, "UNSEEN": messages.count,
+            "UIDNEXT": uidnext, "UIDVALIDITY": 1,
+        ]
+        let items = args[args.index(after: open)..<close].split(separator: " ").map { $0.uppercased() }
+        let answered = items.compactMap { item in values[item].map { "\(item) \($0)" } }
+        return "* STATUS \"\(mailbox)\" (\(answered.joined(separator: " ")))\r\n"
+            + "\(tag) OK STATUS completed\r\n"
     }
 
     private func handleUID(tag: String, args: String) -> String {

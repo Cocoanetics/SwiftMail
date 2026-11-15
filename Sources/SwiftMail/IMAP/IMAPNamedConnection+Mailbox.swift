@@ -178,13 +178,11 @@ extension IMAPNamedConnection {
         var attributes: [NIOIMAPCore.MailboxAttribute] = [
             .messageCount,
             .recentCount,
-            .unseenCount
+            .unseenCount,
+            .uidNext,
+            .uidValidity
         ]
 
-        if capabilities.contains(.uidPlus) {
-            attributes.append(.uidNext)
-            attributes.append(.uidValidity)
-        }
         if capabilities.contains(.condStore) {
             attributes.append(.highestModificationSequence)
         }
