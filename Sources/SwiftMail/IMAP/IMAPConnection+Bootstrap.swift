@@ -70,6 +70,9 @@ extension IMAPConnection {
         try await lifecycleCheckpoint("tcp")
         let context = try lifetime.gate.withLock {
             try lifetime.validateLocked(token)
+            guard bootstrapAttempts[attempt.id] === attempt else {
+                throw IMAPError.connectionFailed("Bootstrap was stopped before publication")
+            }
             guard let context = attempt.candidates.first(where: { $0.channel === channel }) else {
                 throw IMAPError.connectionFailed("Bootstrap returned an unregistered channel")
             }
