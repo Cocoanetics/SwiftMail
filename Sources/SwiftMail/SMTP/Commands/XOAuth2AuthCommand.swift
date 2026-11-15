@@ -4,7 +4,7 @@ import NIO
 /// Command to authenticate with SMTP server using XOAUTH2 method (used by Gmail and other OAuth2 providers)
 struct XOAuth2AuthCommand: SMTPCommand {
     typealias ResultType = AuthResult
-    typealias HandlerType = PlainAuthHandler
+    typealias HandlerType = XOAuth2AuthHandler
 
     let email: String
     let accessToken: String
