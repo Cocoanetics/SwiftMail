@@ -2,7 +2,7 @@ import Foundation
 
 /// Opt-in ceilings on what one metadata FETCH call may receive.
 ///
-/// Pass these to the `limits:` overloads of the metadata FETCH calls on ``IMAPServer`` and
+/// Pass these as the `limits:` parameter of the metadata FETCH calls on ``IMAPServer`` and
 /// ``IMAPNamedConnection``. Both ceilings are optional, independent and inclusive: exactly the
 /// limit is allowed, one more fails with ``FetchReceiveLimitExceededError``. One call owns one
 /// budget, shared by every chunk it fetches; a separate call starts afresh.
@@ -20,7 +20,7 @@ public struct FetchReceiveLimits: Sendable, Equatable {
     /// The most declared streamed-section bytes, or `nil` for no limit.
     public let maximumPayloadBytes: UInt64?
 
-    /// No limits: the behaviour of the overloads without `limits:`.
+    /// No limits: the default.
     public static let unlimited = FetchReceiveLimits()
 
     public init(maximumReplies: Int? = nil, maximumPayloadBytes: UInt64? = nil) {
