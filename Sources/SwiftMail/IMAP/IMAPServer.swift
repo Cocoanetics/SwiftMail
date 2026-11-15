@@ -160,12 +160,16 @@ public actor IMAPServer {
         let method: AuthenticationMethod
         var identification: Identification?
 
-        func authenticate(on connection: IMAPConnection) async throws {
+        func authenticate(
+            on connection: IMAPConnection,
+            skipIfAuthenticatedAfterAdmission: Bool = false
+        ) async throws {
             try await connection.withOperationScope {
                 // Resolve external credentials before taking the queue. Recovery
                 // already holding the queue uses the same bridge in authenticateBody.
                 let accessToken = try await resolveAccessToken(on: connection)
                 try await connection.withOperation {
+                    if skipIfAuthenticatedAfterAdmission, connection.isAuthenticated { return }
                     try await authenticateBody(on: connection, accessToken: accessToken)
                 }
             }

@@ -26,6 +26,25 @@ final class HeldAuthenticationProvider: @unchecked Sendable {
     }
 }
 
+/// Holds the shared attempt's pre-queue token request while allowing queue-owned
+/// reconnect authentication to obtain a second token immediately.
+final class OvertakingAuthenticationProvider: @unchecked Sendable {
+    let firstEntered = IMAPTestSignal()
+    let releaseFirst = IMAPTestSignal()
+    let secondEntered = IMAPTestSignal()
+    let calls = IMAPTestCounter()
+
+    func token() async -> String {
+        if calls.increment() == 1 {
+            firstEntered.signal()
+            await releaseFirst.wait()
+            return "shared-token"
+        }
+        secondEntered.signal()
+        return "reconnect-token"
+    }
+}
+
 enum AuthenticationRaceError: Error { case watchdog }
 
 /// The timeout is only a failure watchdog; signals and observed waiter counts
@@ -100,6 +119,55 @@ struct AuthenticationRaceHarness {
 
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct SharedAuthenticationGenerationTests {
+    @Test
+    func queueOwnedRecoveryCanOvertakePreQueueOAuthWithoutDuplicateAuthentication() async throws {
+        let harness = AuthenticationRaceHarness()
+        let connection = await harness.server.primaryConnection
+        let stale = try await harness.install(on: connection)
+        connection.markSessionAuthenticated()
+        try await stale.close()
+        let provider = OvertakingAuthenticationProvider()
+        let authentication = SwiftMail.IMAPServer.Authentication(
+            method: .xoauth2(email: "user@example.com", accessTokenProvider: { await provider.token() }),
+            identification: Identification(name: "SwiftMailTests")
+        )
+        await harness.server.replaceAuthenticationForTesting(authentication)
+        let replacementCell = IMAPTerminal<NIOAsyncTestingChannel>()
+        connection.replaceConnectForTesting {
+            do {
+                replacementCell.complete(.success(try await harness.install(on: connection)))
+            } catch {
+                replacementCell.complete(.failure(error))
+                throw error
+            }
+        }
+        defer { provider.releaseFirst.signal(); connection.abortNow() }
+
+        let selecting = Task { try await harness.server.selectMailbox("INBOX") }
+        await provider.firstEntered.wait()
+        #expect(connection.lifetime.reservationCount == 0)
+
+        let noop = Task { try await harness.server.noop() }
+        let replacement = try await replacementCell.value()
+        await provider.secondEntered.wait()
+        try await harness.completeOAuth(on: replacement)
+        let noopLine = try await harness.outbound(replacement)
+        #expect(noopLine.contains(" NOOP"))
+        let noopTag = try #require(noopLine.split(separator: " ").first)
+        try await harness.inbound(replacement, "\(noopTag) OK noop completed\r\n")
+        _ = try await authenticationResult(noop)
+
+        provider.releaseFirst.signal()
+        let selectLine = try await harness.outbound(replacement)
+        #expect(selectLine.contains(" SELECT "), "Shared recovery must not authenticate an already recovered session")
+        #expect(provider.calls.value == 2)
+        let selectTag = try #require(selectLine.split(separator: " ").first)
+        try await harness.inbound(replacement, "* 0 EXISTS\r\n\(selectTag) OK selected\r\n")
+        _ = try await authenticationResult(selecting)
+        #expect(connection.isAuthenticated)
+        #expect(try await replacement.readOutbound(as: ByteBuffer.self) == nil)
+    }
+
     @Test(arguments: [false, true])
     func namedRearmKeepsFreshAttemptWhenOldProviderCompletes(fails: Bool) async throws {
         let harness = AuthenticationRaceHarness()

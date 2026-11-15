@@ -219,7 +219,10 @@ extension IMAPServer {
                 name: normalizedName,
                 connection: connection,
                 authenticateOnConnection: { connection in
-                    try await authentication.authenticate(on: connection)
+                    try await authentication.authenticate(
+                        on: connection,
+                        skipIfAuthenticatedAfterAdmission: true
+                    )
                 }
             )
 

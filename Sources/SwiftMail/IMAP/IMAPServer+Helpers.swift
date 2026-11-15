@@ -56,7 +56,10 @@ extension IMAPServer {
         let attempt = SharedAttempt<Void>(lifetime: primaryConnection.lifetime, parent: token)
         primaryAuthenticationInFlight = attempt
         attempt.start(on: primaryConnection, operation: { [primaryConnection] in
-            try await authentication.authenticate(on: primaryConnection)
+            try await authentication.authenticate(
+                on: primaryConnection,
+                skipIfAuthenticatedAfterAdmission: true
+            )
         }, completion: { [self] result in
             completePrimaryAuthentication(attempt, with: result)
         })
