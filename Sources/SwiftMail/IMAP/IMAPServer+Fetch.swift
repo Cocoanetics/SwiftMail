@@ -111,19 +111,17 @@ extension IMAPServer {
         parts: [(uid: UID, section: Section)],
         timeoutSeconds: Int? = nil
     ) async throws -> [UID: [(section: Section, data: Data)]] {
-        if let authentication, !primaryConnection.isAuthenticated {
-            logger.info("Primary connection not authenticated; re-authenticating before pipelined fetch")
-            try await authentication.authenticate(on: primaryConnection)
+        try await withAuthenticatedPrimaryOperation { [self] in
+            let results = try await primaryConnection.executePipelinedFetchParts(
+                requests: parts,
+                timeoutSeconds: timeoutSeconds
+            )
+            var grouped: [UID: [(section: Section, data: Data)]] = [:]
+            for result in results {
+                grouped[result.uid, default: []].append((section: result.section, data: result.data))
+            }
+            return grouped
         }
-        let results = try await primaryConnection.executePipelinedFetchParts(
-            requests: parts,
-            timeoutSeconds: timeoutSeconds
-        )
-        var grouped: [UID: [(section: Section, data: Data)]] = [:]
-        for result in results {
-            grouped[result.uid, default: []].append((section: result.section, data: result.data))
-        }
-        return grouped
     }
 
     /**

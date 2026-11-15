@@ -69,13 +69,10 @@ extension IMAPServer {
      - Note: Logs login attempts at info level (without credentials)
      */
     public func login(username: String, password: String) async throws {
-        try await primaryConnection.login(username: username, password: password)
-        authentication = Authentication(
+        try await authenticatePrimary(using: Authentication(
             method: .login(username: username, password: password),
             identification: clientIdentification
-        )
-        try await identifyPrimaryConnectionIfNeeded()
-        namespaces = primaryConnection.namespacesSnapshot
+        ))
     }
 
     /// Authenticate using AUTHENTICATE PLAIN (RFC 4616) with optional SASL-IR (RFC 4959).
@@ -90,13 +87,10 @@ extension IMAPServer {
     /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise AUTH=PLAIN,
     ///   or ``IMAPError.authFailed`` when authentication fails.
     public func authenticatePlain(username: String, password: String) async throws {
-        try await primaryConnection.authenticatePlain(username: username, password: password)
-        authentication = Authentication(
+        try await authenticatePrimary(using: Authentication(
             method: .plain(username: username, password: password),
             identification: clientIdentification
-        )
-        try await identifyPrimaryConnectionIfNeeded()
-        namespaces = primaryConnection.namespacesSnapshot
+        ))
     }
 
     /// Performs XOAUTH2 authentication for the current IMAP connection.
@@ -106,13 +100,10 @@ extension IMAPServer {
     /// - Throws: ``IMAPError.unsupportedAuthMechanism`` if the server does not advertise XOAUTH2 or
     ///   ``IMAPError.authFailed`` when authentication fails.
     public func authenticateXOAUTH2(email: String, accessToken: String) async throws {
-        try await primaryConnection.authenticateXOAUTH2(email: email, accessToken: accessToken)
-        authentication = Authentication(
+        try await authenticatePrimary(using: Authentication(
             method: .xoauth2(email: email, accessTokenProvider: { accessToken }),
             identification: clientIdentification
-        )
-        try await identifyPrimaryConnectionIfNeeded()
-        namespaces = primaryConnection.namespacesSnapshot
+        ))
     }
 
     /// Configures XOAUTH2 re-authentication to resolve the access token dynamically.
@@ -144,12 +135,17 @@ extension IMAPServer {
         authentication?.identification = identification
     }
 
-    /// RFC 2971 replay for the primary connection's explicit authentication
-    /// paths, with the same failure semantics as the internal replay in
-    /// ``Authentication/identify(_:with:)``.
-    private func identifyPrimaryConnectionIfNeeded() async throws {
-        guard let clientIdentification else { return }
-        try await Authentication.identify(primaryConnection, with: clientIdentification)
+    private func authenticatePrimary(using configuration: Authentication) async throws {
+        try await primaryConnection.withOperationScope { [self] in
+            let token = primaryConnection.operationToken
+            try await configuration.authenticate(on: primaryConnection)
+            let discoveredNamespaces = primaryConnection.namespacesSnapshot
+            try primaryConnection.lifetime.gate.withLock {
+                if let token { try primaryConnection.lifetime.validateLocked(token) }
+                authentication = configuration
+                namespaces = discoveredNamespaces
+            }
+        }
     }
 
     /// Identify the client to the server using the `ID` command.
@@ -223,7 +219,10 @@ extension IMAPServer {
                 name: normalizedName,
                 connection: connection,
                 authenticateOnConnection: { connection in
-                    try await authentication.authenticate(on: connection)
+                    try await authentication.authenticate(
+                        on: connection,
+                        skipIfAuthenticatedAfterAdmission: true
+                    )
                 }
             )
 

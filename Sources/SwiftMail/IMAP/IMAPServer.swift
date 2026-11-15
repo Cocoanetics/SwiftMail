@@ -74,7 +74,7 @@ public actor IMAPServer {
     }
     /// The primary re-authentication in flight, shared by every caller that finds the
     /// session gone at the same time.
-    var primaryAuthenticationInFlight: Task<Void, Error>?
+    var primaryAuthenticationInFlight: SharedAttempt<Void>?
 
     /// RFC 2971 client identity replayed after every successful
     /// authentication on every connection this server opens (primary,
@@ -160,9 +160,18 @@ public actor IMAPServer {
         let method: AuthenticationMethod
         var identification: Identification?
 
-        func authenticate(on connection: IMAPConnection) async throws {
-            try await connection.withOperation {
-                try await authenticateBody(on: connection)
+        func authenticate(
+            on connection: IMAPConnection,
+            skipIfAuthenticatedAfterAdmission: Bool = false
+        ) async throws {
+            try await connection.withOperationScope {
+                // Resolve external credentials before taking the queue. Recovery
+                // already holding the queue uses the same bridge in authenticateBody.
+                let accessToken = try await resolveAccessToken(on: connection)
+                try await connection.withOperation {
+                    if skipIfAuthenticatedAfterAdmission, connection.isAuthenticated { return }
+                    try await authenticateBody(on: connection, accessToken: accessToken)
+                }
             }
         }
 
@@ -179,17 +188,9 @@ public actor IMAPServer {
             _ connection: IMAPConnection,
             with identification: Identification
         ) async throws {
-            guard connection.capabilitiesSnapshot.contains(.id) else { return }
-
-            do {
-                _ = try await connection.id(identification)
-            } catch let error as CancellationError {
-                throw error
-            } catch {
-                try connection.validateOperation()
-                if error is IMAPAbortReason { throw error }
-                guard connection.isConnected, connection.isAuthenticated else {
-                    throw error
+            try await connection.withOperationScope {
+                try await connection.withOperation {
+                    try await identifyBody(connection, with: identification)
                 }
             }
         }

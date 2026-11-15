@@ -62,6 +62,8 @@ extension IMAPConnection {
             }
             let context = try capturedTransport()
             try commit(on: context) { context.namespaces = response }
+        } catch let error as CancellationError {
+            throw error
         } catch {
             try validateOperation()
             if error is IMAPAbortReason { throw error }

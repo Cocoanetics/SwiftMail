@@ -14,12 +14,13 @@ extension IMAPServer {
     ///   ``IMAPError/commandFailed(_:)`` when the server rejects the command.
     @discardableResult
     public func enable(_ capabilities: [Capability]) async throws -> [Capability] {
-        try await ensurePrimaryConnectionAuthenticated()
-        let command = EnableCommand(capabilities: capabilities)
-        try command.validate()
-        guard primaryConnection.capabilitiesSnapshot.containsCapabilityIgnoringCase(.enable) else {
-            throw IMAPError.commandNotSupported("ENABLE command not supported by server")
+        try await withAuthenticatedPrimaryOperation { [self] in
+            let command = EnableCommand(capabilities: capabilities)
+            try command.validate()
+            guard primaryConnection.capabilitiesSnapshot.containsCapabilityIgnoringCase(.enable) else {
+                throw IMAPError.commandNotSupported("ENABLE command not supported by server")
+            }
+            return try await primaryConnection.executeCommand(command)
         }
-        return try await primaryConnection.executeCommand(command)
     }
 }

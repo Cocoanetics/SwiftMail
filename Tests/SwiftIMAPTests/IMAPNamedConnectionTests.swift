@@ -38,6 +38,41 @@ private actor AuthenticationCounter {
     }
 }
 
+extension IMAPNamedConnectionTests {
+    @Test(arguments: [false, true])
+    func cancellingAuthenticationWaiterDoesNotCancelSharedWorker(cancelInitiator: Bool) async throws {
+        let harness = AuthenticationRaceHarness()
+        let connection = await harness.server.primaryConnection
+        let channel = try await harness.install(on: connection)
+        let provider = HeldAuthenticationProvider()
+        let configuration = harness.configuration(provider)
+        let named = IMAPNamedConnection(name: "shared", connection: connection, authenticateOnConnection: {
+            try await configuration.authenticate(on: $0)
+        })
+        defer { provider.release.signal(); connection.abortNow() }
+        let initiator = Task { try await named.ensureAuthenticated() }
+        await provider.entered.wait()
+        let follower = Task { try await named.ensureAuthenticated() }
+        let survivor = Task { try await named.ensureAuthenticated() }
+        try await authenticationWaitUntil { await named.authenticationAttemptForTesting?.waiterCount == 3 }
+        let attempt = try #require(await named.authenticationAttemptForTesting)
+        let cancelled = cancelInitiator ? initiator : follower
+        cancelled.cancel()
+        await #expect(throws: CancellationError.self) { try await authenticationResult(cancelled) }
+        #expect(attempt.waiterCount == 2)
+        #expect(!attempt.terminal.isSettled)
+        #expect(provider.calls.value == 1)
+        provider.release.signal()
+        try await harness.completeOAuth(on: channel)
+        try await authenticationResult(cancelInitiator ? follower : initiator)
+        try await authenticationResult(survivor)
+        #expect(provider.calls.value == 1)
+        #expect(connection.isAuthenticated)
+        #expect(try await channel.readOutbound(as: ByteBuffer.self) == nil)
+    }
+
+}
+
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct IMAPNamedConnectionTests {
     private struct NamedConnectionHarness {

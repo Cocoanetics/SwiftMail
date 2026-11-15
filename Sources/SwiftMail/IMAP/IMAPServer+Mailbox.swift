@@ -77,8 +77,10 @@ extension IMAPServer {
      To get the count of unseen messages, use `mailboxStatus("INBOX").unseenCount` instead.
      */
     @discardableResult public func selectMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
-        let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
-        return try await executeCommand(command)
+        try await withAuthenticatedPrimaryOperation { [self] in
+            let command = SelectMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
+            return try await executeCommand(command)
+        }
     }
 
     /// Selects a mailbox and asks the server to return QRESYNC changes from a checkpoint.
@@ -99,16 +101,17 @@ extension IMAPServer {
         resyncingFrom uidValidity: UIDValidity,
         modificationSequence: ModificationSequenceValue
     ) async throws -> Mailbox.ResyncSelection {
-        try await ensurePrimaryConnectionAuthenticated()
-        guard primaryConnection.capabilitiesSnapshot.containsCapabilityIgnoringCase(.qresync) else {
-            throw IMAPError.commandNotSupported("QRESYNC not supported by server")
+        try await withAuthenticatedPrimaryOperation { [self] in
+            guard primaryConnection.capabilitiesSnapshot.containsCapabilityIgnoringCase(.qresync) else {
+                throw IMAPError.commandNotSupported("QRESYNC not supported by server")
+            }
+            let command = ResyncSelectMailboxCommand(
+                mailboxName: resolveMailboxPath(mailboxName),
+                uidValidity: uidValidity,
+                modificationSequence: modificationSequence
+            )
+            return try await primaryConnection.executeCommand(command)
         }
-        let command = ResyncSelectMailboxCommand(
-            mailboxName: resolveMailboxPath(mailboxName),
-            uidValidity: uidValidity,
-            modificationSequence: modificationSequence
-        )
-        return try await primaryConnection.executeCommand(command)
     }
 
     /**
@@ -125,9 +128,10 @@ extension IMAPServer {
      - `IMAPError.connectionFailed` if not connected
      */
     @discardableResult public func examineMailbox(_ mailboxName: String) async throws -> Mailbox.Selection {
-        try await ensurePrimaryConnectionAuthenticated()
-        let command = ExamineMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
-        return try await executeCommand(command)
+        try await withAuthenticatedPrimaryOperation { [self] in
+            let command = ExamineMailboxCommand(mailboxName: resolveMailboxPath(mailboxName))
+            return try await executeCommand(command)
+        }
     }
 
     /**

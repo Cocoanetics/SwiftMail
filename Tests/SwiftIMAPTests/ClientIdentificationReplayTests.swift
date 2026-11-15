@@ -11,6 +11,55 @@ import Testing
 /// the replay itself, the post-auth capability refresh that makes the
 /// ID-capability guard reliable for XOAUTH2, and the failure semantics —
 /// a server refusing ID is tolerated, a connection-killing ID failure is not.
+extension ClientIdentificationReplayTests {
+    @Test
+    func abortedIDReplayCannotPublishOldExplicitCredentials() async throws {
+        let harness = AuthenticationRaceHarness()
+        let connection = await harness.server.primaryConnection
+        let old = try await harness.install(on: connection)
+        let entered = IMAPTestSignal()
+        let release = IMAPTestSignal()
+        let ownerExited = IMAPTestSignal()
+        connection.operationOwnerFinishedForTesting = ownerExited.signal
+        connection.lifecycleCheckpointForTesting = { stage in
+            if stage == "response:IDCommand" { entered.signal(); await release.wait() }
+        }
+        defer { release.signal(); connection.abortNow() }
+        await harness.server.setClientIdentification(Self.identification)
+        let login = Task { try await harness.server.login(username: "old", password: "old-secret") }
+        let loginLine = try await harness.outbound(old)
+        let loginTag = try #require(loginLine.split(separator: " ").first)
+        try await harness.inbound(old, "\(loginTag) OK [CAPABILITY IMAP4rev1 ID] authenticated\r\n")
+        let identify = try await harness.outbound(old)
+        let idTag = try #require(identify.split(separator: " ").first)
+        try await harness.inbound(old, "* ID NIL\r\n\(idTag) OK identified\r\n")
+        await entered.wait()
+        connection.abortNow()
+        await #expect(throws: IMAPAbortReason.connectionAborted) { try await authenticationResult(login) }
+        connection.lifecycleCheckpointForTesting = nil
+        connection.operationOwnerFinishedForTesting = nil
+        connection.replaceConnectForTesting { _ = try await harness.install(on: connection) }
+        try await harness.server.connect()
+        let fresh = try #require(connection.channel as? NIOAsyncTestingChannel)
+        let newLogin = Task { try await harness.server.login(username: "fresh", password: "new-secret") }
+        let freshLoginLine = try await harness.outbound(fresh)
+        let freshTag = try #require(freshLoginLine.split(separator: " ").first)
+        try await harness.inbound(fresh, "\(freshTag) OK [CAPABILITY IMAP4rev1] authenticated\r\n")
+        try await authenticationResult(newLogin)
+        release.signal()
+        await ownerExited.wait()
+        guard case .login(let username, _) = await harness.server.authentication?.method else {
+            Issue.record("Fresh explicit login credentials were lost")
+            return
+        }
+        #expect(username == "fresh")
+        #expect(connection.isAuthenticated)
+        #expect(connection.channel === fresh)
+        #expect(try await fresh.readOutbound(as: ByteBuffer.self) == nil)
+    }
+
+}
+
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct ClientIdentificationReplayTests {
     private struct Harness {
@@ -20,8 +69,8 @@ struct ClientIdentificationReplayTests {
 
     private static let identification = Identification(name: "SwiftMailTests", version: "1.0")
 
-    @Test
-    func serverRefusingIDDoesNotFailAuthentication() async throws {
+    @Test(arguments: ["NO", "BAD"])
+    func serverRefusingIDDoesNotFailAuthentication(refusal: String) async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
 
         do {
@@ -47,7 +96,7 @@ struct ClientIdentificationReplayTests {
             }
             #expect(idLine.hasPrefix("A002 ID ("))
 
-            try await writeInboundLines(harness.channel, "A002 NO ID not permitted\r\n")
+            try await writeInboundLines(harness.channel, "A002 \(refusal) ID not permitted\r\n")
 
             try await authTask.value
             #expect(harness.connection.isAuthenticated)
