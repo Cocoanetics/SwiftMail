@@ -38,6 +38,15 @@ class MailLogger: ChannelDuplexHandler, @unchecked Sendable {
         self.inboundLogger = inboundLogger
     }
 
+    /// Whether outbound commands are logged. Everything this handler logs is
+    /// at trace level, so below it a command is not turned into text at all.
+    var logsOutbound: Bool { outboundLogger.logLevel <= .trace }
+
+    /// Whether inbound responses are logged. Below trace level a response is
+    /// not described and buffered only to be dropped at the flush: on a busy
+    /// connection that was most of the work this handler did.
+    var logsInbound: Bool { inboundLogger.logLevel <= .trace }
+
     /// Add a response to the inbound buffer
     func bufferInboundResponse(_ message: String) {
         lock.withLock {

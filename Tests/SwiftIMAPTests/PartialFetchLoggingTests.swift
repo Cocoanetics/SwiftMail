@@ -10,9 +10,11 @@ import Testing
 struct PartialFetchLoggingTests {
     @Test("Diagnostics stay bounded and reset after flushing")
     func boundedDiagnostics() throws {
+        var inbound = Logger(label: "partial-fetch-test.in")
+        inbound.logLevel = .trace
         let logger = IMAPLogger(
             outboundLogger: Logger(label: "partial-fetch-test.out"),
-            inboundLogger: Logger(label: "partial-fetch-test.in")
+            inboundLogger: inbound
         )
         let channel = EmbeddedChannel()
         try channel.pipeline.syncOperations.addHandler(logger)
@@ -56,6 +58,24 @@ struct PartialFetchLoggingTests {
         #expect(logger.inboundBufferByteCount == mediumMessage.utf8.count)
         #expect(logger.droppedInboundResponseCount == 1)
         logger.flushInboundBuffer()
+        _ = try channel.finish()
+    }
+
+    @Test("Responses are not described below trace level")
+    func nothingBufferedBelowTrace() throws {
+        // The default level is info.
+        let logger = IMAPLogger(
+            outboundLogger: Logger(label: "partial-fetch-test.out"),
+            inboundLogger: Logger(label: "partial-fetch-test.in")
+        )
+        let channel = EmbeddedChannel()
+        try channel.pipeline.syncOperations.addHandler(logger)
+        for _ in 0..<100 {
+            try channel.writeInbound(Response.untagged(.mailboxData(.sort([2, 1], 1))))
+            #expect(try channel.readInbound(as: Response.self) != nil)
+        }
+        #expect(logger.inboundBuffer.isEmpty)
+        #expect(!logger.hasBufferedMessages())
         _ = try channel.finish()
     }
 }
