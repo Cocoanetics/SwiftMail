@@ -346,7 +346,8 @@ struct SharedAuthenticationGenerationTests {
         let cancelled = cancelInitiator ? initiator : follower
         cancelled.cancel()
         await #expect(throws: CancellationError.self) { try await authenticationResult(cancelled) }
-        #expect(await harness.server.primaryAuthenticationInFlight?.waiterCount == 1)
+        // The cancelled caller resumes before its waiter is removed; wait for the removal.
+        try await authenticationWaitUntil { await harness.server.primaryAuthenticationInFlight?.waiterCount == 1 }
         #expect(provider.calls.value == 1)
         provider.release.signal()
         try await harness.completeOAuth(on: channel)

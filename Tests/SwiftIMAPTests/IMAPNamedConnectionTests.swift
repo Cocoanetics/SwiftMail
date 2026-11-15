@@ -59,7 +59,8 @@ extension IMAPNamedConnectionTests {
         let cancelled = cancelInitiator ? initiator : follower
         cancelled.cancel()
         await #expect(throws: CancellationError.self) { try await authenticationResult(cancelled) }
-        #expect(attempt.waiterCount == 2)
+        // The cancelled caller resumes before its waiter is removed; wait for the removal.
+        try await authenticationWaitUntil { attempt.waiterCount == 2 }
         #expect(!attempt.terminal.isSettled)
         #expect(provider.calls.value == 1)
         provider.release.signal()
