@@ -3,6 +3,48 @@ import Testing
 @testable import SwiftMail
 
 extension IMAPBootstrapRaceTests {
+    @Test(arguments: [false, true])
+    func immediateDisconnectClosesPublishedBootstrapWhileGreetingIsPending(
+        commandReconnect: Bool
+    ) async throws {
+        try await withEventLoopGroup { group in
+            let connection = makeConnection(group)
+            let published = IMAPTestSignal()
+            connection.lifecycleCheckpointForTesting = { stage in
+                if stage == "published" { published.signal() }
+            }
+            let driver = BootstrapDriver(connection)
+            let operation = Task<Void, Error> {
+                if commandReconnect {
+                    _ = try await connection.noop()
+                } else {
+                    try await connection.connect()
+                }
+            }
+            let channel = try await driver.initializeChannel()
+            driver.tcp.succeed(channel)
+            await published.wait()
+            #expect(connection.channel === channel)
+            #expect(connection.lifetime.gate.withLock {
+                connection.bootstrapAttempts.values.flatMap(\.candidates).contains {
+                    $0 === connection.transport
+                }
+            })
+
+            try await connection.disconnectImmediately()
+            do {
+                try await authenticationResult(operation)
+                Issue.record("Published bootstrap succeeded after immediate disconnect")
+            } catch {
+                #expect(!(error is AuthenticationRaceError))
+            }
+            try await channel.closeFuture.get()
+            #expect(!channel.isActive)
+            #expect(connection.channel == nil)
+            #expect(connection.lifetime.gate.withLock { connection.bootstrapAttempts.isEmpty })
+        }
+    }
+
     @Test(arguments: [false, true], [false, true])
     func immediateDisconnectClaimsBootstrapBeforePublication(
         commandReconnect: Bool,

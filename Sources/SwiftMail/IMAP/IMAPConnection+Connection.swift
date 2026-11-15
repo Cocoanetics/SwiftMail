@@ -155,7 +155,11 @@ extension IMAPConnection {
             let attempts = Array(bootstrapAttempts.values)
             let candidates = attempts.flatMap(\.candidates)
             let contexts = (transport.map { [$0] } ?? []) + candidates
-            let uniqueContexts = Dictionary(uniqueKeysWithValues: contexts.map { ($0.id, $0) })
+            // A published transport remains a candidate until bootstrap finishes.
+            let uniqueContexts = Dictionary(
+                contexts.map { ($0.id, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
             let actions = attempts.flatMap {
                 ($0.tcp.settleLocked(.failure(failure)) ?? [])
                     + ($0.greeting.settleLocked(.failure(failure)) ?? [])
