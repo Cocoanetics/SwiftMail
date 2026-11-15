@@ -166,6 +166,26 @@ extension EMLParser {
 
     // MARK: - MessageInfo Construction
 
+    /// The message ids in an In-Reply-To or References field, in order.
+    ///
+    /// Each id is an angle-bracketed `msg-id` (RFC 5322 §3.6.4); text between
+    /// them (comments, phrases some old clients wrote, folding whitespace) is
+    /// skipped. A field with no brackets at all is read as whitespace-separated
+    /// ids.
+    static func messageIDs(in field: String) -> [MessageID] {
+        var ids: [MessageID] = []
+        var remainder = field[...]
+        while let open = remainder.firstIndex(of: "<"),
+              let close = remainder[open...].firstIndex(of: ">") {
+            if let id = MessageID(String(remainder[open...close])) { ids.append(id) }
+            remainder = remainder[remainder.index(after: close)...]
+        }
+        if ids.isEmpty, !field.contains("<") {
+            ids = field.split(whereSeparator: \.isWhitespace).compactMap { MessageID(String($0)) }
+        }
+        return ids
+    }
+
     static func buildMessageInfo(from headers: [String: String]) -> MessageInfo {
         let subject = headers["subject"].flatMap { decodeRFC2047($0) } ?? headers["subject"]
         let messageId = headers["message-id"].flatMap { MessageID($0) }
@@ -186,6 +206,8 @@ extension EMLParser {
             subject: subject,
             date: date,
             messageId: messageId,
+            inReplyTo: headers["in-reply-to"].flatMap { messageIDs(in: $0).first },
+            references: headers["references"].map { messageIDs(in: $0) }.flatMap { $0.isEmpty ? nil : $0 },
             additionalFields: additional.isEmpty ? nil : additional
         )
         info.fromAddresses = headers["from"].map(AddressParser.parseAddressList) ?? []
