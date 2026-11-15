@@ -25,7 +25,7 @@ extension IMAPServer {
      (`BODY.PEEK[n.MIME]`) to put back backslashes the server dropped from the
      names (Outlook writes Windows paths unescaped; Dovecot resolves each `\x`
      to `x`). Only backslashes are put back, nothing else. If that FETCH
-     fails, the names are the ones BODYSTRUCTURE gave.
+     fails, BODYSTRUCTURE names remain; `CancellationError` and `IMAPConnectionAbortedError` propagate.
      */
     public func fetchStructure<T: MessageIdentifier>(_ identifier: T) async throws -> [MessagePart] {
         let parts = try await executeCommand(FetchStructureCommand(identifier: identifier))
@@ -34,8 +34,8 @@ extension IMAPServer {
         do {
             let headers = try await executeCommand(FetchMIMEHeadersCommand(identifier: identifier, sections: sections))
             return parts.restoringFilenames(fromMIMEHeaders: headers)
-        } catch is CancellationError {
-            throw CancellationError()
+        } catch let error where error is CancellationError || error is IMAPConnectionAbortedError {
+            throw error
         } catch {
             logger.debug("MIME headers for filenames unavailable, keeping BODYSTRUCTURE names: \(error)")
             return parts
@@ -301,6 +301,9 @@ extension IMAPServer {
     /// FETCH command is too large. Chunk size defaults to a value derived from `options`
     /// (smaller per-message payload → larger chunks); pass `chunkSize` to override.
     /// Results are yielded one at a time as they arrive.
+    /// Cancelling the consuming task cancels its producer and command, closing the connection
+    /// if executing; queued cancellation leaves the owner alone. No later chunks are sent.
+    /// Explicit ``abort()`` throws ``IMAPConnectionAbortedError``; yielded values remain valid.
     ///
     /// - Parameters:
     ///   - identifierSet: The set of message identifiers to fetch.
@@ -316,7 +319,6 @@ extension IMAPServer {
         chunkSize: Int? = nil,
         limits: FetchReceiveLimits = .unlimited
     ) -> AsyncThrowingStream<MessageInfo, Error> {
-
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
@@ -352,11 +354,11 @@ extension IMAPServer {
 
     /// Fetch complete messages with all parts using a message identifier set as a stream
     ///
-    /// This method returns an `AsyncThrowingStream` that yields complete `Message` objects one at a time.
-    /// Large identifier sets are automatically split into chunks of `defaultFetchChunkSize`
-    /// for the header fetch phase. Message bodies are then fetched individually.
-    /// The sequence supports cancellation, allowing the caller to stop fetching early
-    /// without waiting for all messages to be downloaded.
+    /// Yields complete messages individually, fetching headers in chunks of `defaultFetchChunkSize`
+    /// and then bodies individually. Cancelling the consuming task cancels its producer and command,
+    /// closing the connection if executing; queued cancellation leaves the owner alone.
+    /// No later chunk or body request is sent. Explicit ``abort()`` throws
+    /// ``IMAPConnectionAbortedError``; messages already yielded remain valid.
     ///
     /// - Parameter identifierSet: The set of message identifiers to fetch
     /// - Returns: An `AsyncThrowingStream` yielding `Message` instances with all parts

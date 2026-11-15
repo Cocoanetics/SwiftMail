@@ -13,8 +13,11 @@ extension IMAPServer {
      ``fetchMessageInfos(using:options:headerFields:chunkSize:)`` does:
      a consumer slower than the network lets yielded messages pile up.
 
-     A message the server does not answer is not yielded. Cancelling the stream stops
-     further chunks; a command already sent runs to its end or its deadline.
+     A message the server does not answer is not yielded. Cancelling the consuming task
+     cancels the producer and its current command, closing this connection if the command
+     is executing and preventing later chunks. Cancellation while queued leaves the
+     executing command alone. Explicit ``abort()`` finishes the stream with
+     ``IMAPConnectionAbortedError``; messages already yielded remain valid.
 
      ```swift
      for try await (uid, data) in server.fetchRawMessages(using: UIDSet(uidRange)) {
