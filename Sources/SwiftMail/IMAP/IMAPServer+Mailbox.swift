@@ -202,8 +202,8 @@ extension IMAPServer {
      Get status information about a mailbox without selecting it
 
      This method uses the IMAP STATUS command to retrieve standard attributes of a mailbox
-     without having to select it. It automatically requests standard attributes (MESSAGES,
-     RECENT, UNSEEN) and optional attributes based on server capabilities.
+     without having to select it. It automatically requests the base RFC 3501 attributes (MESSAGES,
+     RECENT, UNSEEN, UIDNEXT, UIDVALIDITY) and optional attributes based on server capabilities.
 
      - Parameter mailboxName: The name of the mailbox to get status for
      - Returns: Status information about the mailbox
@@ -216,18 +216,16 @@ extension IMAPServer {
      (before `selectMailbox(_)`) or after `unselectMailbox()`/`closeMailbox()` to avoid the warning.
      */
     public func mailboxStatus(_ mailboxName: String) async throws -> Mailbox.Status {
-        // Always request standard attributes
+        // Always request the base RFC 3501 attributes (section 6.3.10)
         var attributes: [NIOIMAPCore.MailboxAttribute] = [
             .messageCount,
             .recentCount,
-            .unseenCount
+            .unseenCount,
+            .uidNext,
+            .uidValidity
         ]
 
         // Add optional attributes based on server capabilities
-        if capabilities.contains(.uidPlus) {
-            attributes.append(.uidNext)
-            attributes.append(.uidValidity)
-        }
         if capabilities.contains(.condStore) {
             attributes.append(.highestModificationSequence)
         }
