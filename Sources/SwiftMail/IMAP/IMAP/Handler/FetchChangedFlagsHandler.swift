@@ -12,9 +12,11 @@ private struct ChangedFlagsRecord: Sendable {
 ///
 /// Responses are keyed by the UID they carry, never by position. A UID outside the requested
 /// set, or a FETCH without a UID (an unsolicited sequence-number update), is not part of the
-/// answer and is skipped. Several responses for one UID (an unsolicited update and the reply)
-/// merge in arrival order, so the last value of each item wins. A requested UID whose responses
-/// end without both FLAGS and MODSEQ fails the command: dropping it would hide a change.
+/// answer and is skipped. The command sends only sets the server reads as their numeric
+/// members (no `*`, or `1:*`), so this membership is the server's. Several responses for one
+/// UID (an unsolicited update and the reply) merge in arrival order, so the last value of each
+/// item wins. A requested UID whose responses end without both FLAGS and MODSEQ fails the
+/// command: dropping it would hide a change.
 final class FetchChangedFlagsHandler: BaseIMAPCommandHandler<[ChangedMessageFlags]>,
     IMAPCommandHandler, @unchecked Sendable {
 

@@ -16,6 +16,18 @@ struct FetchChangedFlagsCommand: IMAPTaggedCommand {
 
     func validate() throws {
         guard !identifierSet.isEmpty else { throw IMAPError.emptyIdentifierSet }
+        // `UID.latest` is sent as `*`, the mailbox's highest UID. A range `n:*` whose n is above
+        // that UID means that UID alone (RFC 3501 section 6.4.8), which the set does not hold,
+        // and its reply looks exactly like an unsolicited update from another session (RFC 7162
+        // section 3.1.4.2). Only `1:*` means the same to the server as to the set, every UID, so
+        // it is the only set holding `*` whose replies the handler can check.
+        if identifierSet.contains(UID.latest),
+           let wildcardRange = identifierSet.ranges.last,
+           wildcardRange.lowerBound > 1 {
+            throw IMAPError.invalidArgument(
+                "CHANGEDSINCE needs 1:* or a UID set without UID.latest (*); n:* can mean only the highest UID"
+            )
+        }
     }
 
     func makeHandler(

@@ -49,12 +49,16 @@ extension IMAPServer {
     /// the largest MODSEQ in the result.
     ///
     /// - Parameters:
-    ///   - uids: The messages to check. Must not be empty.
+    ///   - uids: The messages to check. Must not be empty. ``UID/latest`` is sent as `*`, so a
+    ///     set holding it must be every UID, `UIDSet(UID(1)...)` (sent as `1:*`): `n:*` with `n`
+    ///     above the mailbox's highest UID means that UID alone (RFC 3501 section 6.4.8), and its
+    ///     reply cannot be told apart from an unsolicited update.
     ///   - modificationSequence: The modification sequence the caller already knows about,
     ///     typically a stored HIGHESTMODSEQ. Must be in `1...Int64.max`.
     /// - Returns: The changed messages, in ascending UID order.
     /// - Throws: ``IMAPError/invalidArgument(_:)`` for a modification sequence outside
-    ///   `1...Int64.max` (before any network activity), ``IMAPError/emptyIdentifierSet`` for empty
+    ///   `1...Int64.max` (before any network activity) or for `uids` holding ``UID/latest`` without
+    ///   being `1:*` (nothing is sent), ``IMAPError/emptyIdentifierSet`` for empty
     ///   `uids`, ``IMAPError/commandNotSupported(_:)`` when neither CONDSTORE nor QRESYNC was
     ///   advertised (nothing is sent), or ``IMAPError/fetchFailed(_:)`` when the server rejects the
     ///   command or answers a requested UID without both FLAGS and MODSEQ.

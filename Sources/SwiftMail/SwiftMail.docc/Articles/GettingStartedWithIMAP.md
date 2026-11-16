@@ -171,7 +171,10 @@ saveCheckpoint(highest)
 ```
 
 Each result holds the message's complete flag set and its MODSEQ. An empty
-result means no message in the set changed. CHANGEDSINCE reports only messages
+result means no message in the set changed. `UIDSet(UID(1)...)`, sent as `1:*`,
+asks about every message; any other set holding `UID.latest` throws
+`invalidArgument`, because the server reads `n:*` as the highest UID alone when
+`n` is above it (RFC 3501 section 6.4.8). CHANGEDSINCE reports only messages
 that still exist; finding expunged messages is up to the client (for example by
 comparing message counts or with UID SEARCH), since without QRESYNC the server
 does not report them. A plain SELECT reports HIGHESTMODSEQ only after a

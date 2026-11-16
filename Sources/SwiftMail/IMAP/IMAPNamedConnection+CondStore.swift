@@ -35,6 +35,8 @@ extension IMAPNamedConnection {
     /// `modificationSequence`, on this named connection.
     ///
     /// Behaves like ``IMAPServer/fetchFlagsChangedSince(_:modificationSequence:)`` on this connection.
+    /// A `uids` set holding ``UID/latest`` (sent as `*`) must be `1:*`; any other such set throws
+    /// ``IMAPError/invalidArgument(_:)`` before anything is sent.
     ///
     /// - Throws: The same errors as ``IMAPServer/fetchFlagsChangedSince(_:modificationSequence:)``.
     public func fetchFlagsChangedSince(
