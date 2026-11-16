@@ -11,7 +11,7 @@ import Testing
             "STATUS requests and reports UIDNEXT and UIDVALIDITY with or without UIDPLUS",
             arguments: [
                 ["IMAP4rev1", "AUTH=PLAIN"],
-                ["IMAP4rev1", "AUTH=PLAIN", "UIDPLUS"],
+                ["IMAP4rev1", "AUTH=PLAIN", "UIDPLUS"]
             ]
         )
         func statusCarriesUIDNextAndUIDValidity(capabilities: [String]) async throws {

@@ -1143,7 +1143,7 @@ final class IMAPTestServer: @unchecked Sendable {
         let uidnext = (messages.last?.uid ?? 0) + 1
         let values: [String: Int] = [
             "MESSAGES": messages.count, "RECENT": 0, "UNSEEN": messages.count,
-            "UIDNEXT": uidnext, "UIDVALIDITY": 1,
+            "UIDNEXT": uidnext, "UIDVALIDITY": 1
         ]
         let items = args[args.index(after: open)..<close].split(separator: " ").map { $0.uppercased() }
         let answered = items.compactMap { item in values[item].map { "\(item) \($0)" } }
