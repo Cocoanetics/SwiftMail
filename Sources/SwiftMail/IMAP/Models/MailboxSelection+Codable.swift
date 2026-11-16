@@ -12,6 +12,7 @@ extension Mailbox.Selection {
         case availableFlags
         case permanentFlags
         case highestModSequence
+        case messageCountReported
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -24,6 +25,7 @@ extension Mailbox.Selection {
         try container.encode(isReadOnly, forKey: .isReadOnly)
         try container.encode(availableFlags, forKey: .availableFlags)
         try container.encode(permanentFlags, forKey: .permanentFlags)
+        try container.encode(messageCountReported, forKey: .messageCountReported)
         if let highestModSequence {
             try container.encode(UInt64(highestModSequence), forKey: .highestModSequence)
         }
@@ -39,6 +41,8 @@ extension Mailbox.Selection {
         isReadOnly = try container.decode(Bool.self, forKey: .isReadOnly)
         availableFlags = try container.decode([Flag].self, forKey: .availableFlags)
         permanentFlags = try container.decode([Flag].self, forKey: .permanentFlags)
+        // Absent in encodings made before the field existed: unknown, so not reported.
+        messageCountReported = try container.decodeIfPresent(Bool.self, forKey: .messageCountReported) ?? false
 
         guard let rawValue = try container.decodeIfPresent(UInt64.self, forKey: .highestModSequence) else {
             highestModSequence = nil
