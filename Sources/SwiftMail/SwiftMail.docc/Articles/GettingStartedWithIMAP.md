@@ -141,6 +141,44 @@ message count. `vanished` contains live deletions during selection. The returned
 in arrival order, so do not subtract either set from it. A later EXISTS replaces
 the count. `changedFlags` excludes UIDs in either deletion set.
 
+### Flag changes with CONDSTORE
+
+A server that advertises CONDSTORE but not QRESYNC can still report which
+messages changed since a stored HIGHESTMODSEQ. Select the mailbox with the
+CONDSTORE parameter (this needs no ENABLE), check UIDVALIDITY and the
+modification sequence, then fetch the changed flags:
+
+```swift
+let selection = try await imapServer.selectMailbox("INBOX", enablingCondStore: true)
+guard selection.uidValidity == storedValidity,
+      let highest = selection.highestModificationSequenceValue else {
+    // A new UIDVALIDITY, or NOMODSEQ: discard the stored checkpoint.
+    try await synchronizeNormally()
+    return
+}
+
+// The lowest to the highest UID your app holds for this mailbox. A contiguous
+// range keeps the command line short; a long, sparse UID set can exceed the
+// server's line limit (RFC 7162 section 4).
+let changes = try await imapServer.fetchFlagsChangedSince(
+    UIDSet(lowestStoredUID...highestStoredUID),
+    modificationSequence: storedModificationSequence
+)
+for change in changes {
+    replaceStoredFlags(for: change.uid, with: change.flags)
+}
+saveCheckpoint(highest)
+```
+
+Each result holds the message's complete flag set and its MODSEQ. An empty
+result means no message in the set changed. CHANGEDSINCE reports only messages
+that still exist; finding expunged messages is up to the client (for example by
+comparing message counts or with UID SEARCH), since without QRESYNC the server
+does not report them. A plain SELECT reports HIGHESTMODSEQ only after a
+CONDSTORE enabling command (RFC 7162 section 3.1.2.1), so a connection that
+already ran `enable([.condStore])` can use a plain SELECT. The fetch is itself an
+enabling command and never needs ENABLE first.
+
 ## Fetching Messages
 
 Fetch messages from the selected mailbox. By default these methods fetch only the first message to keep payloads small. For large mailboxes you can
