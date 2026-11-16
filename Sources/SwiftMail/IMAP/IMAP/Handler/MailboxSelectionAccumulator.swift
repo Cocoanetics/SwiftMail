@@ -33,6 +33,7 @@ struct MailboxSelectionAccumulator: Sendable {
         switch mailboxData {
             case .exists(let count):
                 selection.messageCount = Int(count)
+                selection.messageCountReported = true
             case .recent(let count):
                 selection.recentCount = Int(count)
             case .flags(let flags):

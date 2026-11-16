@@ -151,8 +151,17 @@ public enum Mailbox {
 
     /// Result of selecting a mailbox via the IMAP `SELECT` command.
     public struct Selection: Codable, Sendable {
-        /// The total number of messages in the mailbox
+        /// The total number of messages in the mailbox. 0 both when the server
+        /// reported an empty mailbox and when it sent no `EXISTS` response; see
+        /// ``messageCountReported``.
         public var messageCount: Int = 0
+
+        /// Whether the server sent an `EXISTS` response for this selection, so
+        /// that ``messageCount`` is the server's count rather than the default.
+        /// RFC 3501 requires `EXISTS` in a `SELECT`/`EXAMINE` response, but a
+        /// non-compliant server may leave it out; a `messageCount` of 0 is a
+        /// reported empty mailbox only when this is `true`.
+        public var messageCountReported: Bool = false
 
         /// The number of recent messages in the mailbox
         public var recentCount: Int = 0
@@ -240,25 +249,6 @@ extension Mailbox.Info.Attributes: CustomStringConvertible {
         if contains(.important) { components.append("\\Important") }
 
         return components.isEmpty ? "[]" : "[\(components.joined(separator: ", "))]"
-    }
-}
-
-extension Mailbox.Selection: CustomStringConvertible {
-    public var description: String {
-        var desc = "Selection("
-
-        desc += "messages=\(messageCount)"
-        if firstUnseen > 0 {
-            desc += ", firstUnseen=\(firstUnseen)"
-        }
-        if recentCount > 0 {
-            desc += ", recent=\(recentCount)"
-        }
-        if isReadOnly {
-            desc += ", readonly"
-        }
-        desc += ")"
-        return desc
     }
 }
 
