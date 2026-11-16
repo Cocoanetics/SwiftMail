@@ -65,6 +65,12 @@ VANISHED UID FETCH modifier are not exposed. See
 [Resynchronizing with QRESYNC](Sources/SwiftMail/SwiftMail.docc/Articles/GettingStartedWithIMAP.md#resynchronizing-with-qresync)
 for enablement, checkpoint validation, and fallback guidance.
 
+For servers with CONDSTORE but no QRESYNC, `selectMailbox(_:enablingCondStore:)`
+sends SELECT with the CONDSTORE parameter (no ENABLE needed) and
+`fetchFlagsChangedSince(_:modificationSequence:)` sends a UID FETCH with the
+CHANGEDSINCE modifier, returning each changed message's UID, complete flags and
+MODSEQ. See [Flag changes with CONDSTORE](Sources/SwiftMail/SwiftMail.docc/Articles/GettingStartedWithIMAP.md#flag-changes-with-condstore).
+
 Exchange source (captured 2026-03-05 from `outlook.office365.com:993` via IMAPS CAPABILITY):
 
 `* CAPABILITY IMAP4 IMAP4rev1 AUTH=PLAIN AUTH=XOAUTH2 SASL-IR UIDPLUS MOVE ID UNSELECT CHILDREN IDLE NAMESPACE LITERAL+`

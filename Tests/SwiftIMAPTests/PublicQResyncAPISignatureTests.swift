@@ -56,3 +56,28 @@ private func usePublicSelectionAPIs(
         changedFlags: [:]
     )
 }
+
+/// Compile-only coverage for CONDSTORE without QRESYNC: stored integers in, plain values out.
+private func usePublicCondStoreAPIs(
+    server: IMAPServer,
+    namedConnection: IMAPNamedConnection
+) async throws {
+    let condStoreSelection: Mailbox.Selection = try await server.selectMailbox("INBOX", enablingCondStore: true)
+    let _: Mailbox.Selection = try await namedConnection.select(mailbox: "INBOX", enablingCondStore: true)
+    let _: Mailbox.Selection = try await namedConnection.selectMailbox("INBOX", enablingCondStore: false)
+    let knownModificationSequence: UInt64 = condStoreSelection.highestModificationSequenceValue ?? 1
+    let changed: [ChangedMessageFlags] = try await server.fetchFlagsChangedSince(
+        UIDSet(UID(1)...UID(99)),
+        modificationSequence: knownModificationSequence
+    )
+    let _: [ChangedMessageFlags] = try await namedConnection.fetchFlagsChangedSince(
+        UIDSet(UID(1)...UID(99)),
+        modificationSequence: knownModificationSequence
+    )
+    for change in changed {
+        let _: UID = change.uid
+        let _: [Flag] = change.flags
+        let _: UInt64 = change.modificationSequence
+    }
+    _ = ChangedMessageFlags(uid: UID(1), flags: [.seen], modificationSequence: 2)
+}
