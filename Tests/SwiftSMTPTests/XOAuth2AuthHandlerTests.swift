@@ -88,7 +88,8 @@ struct XOAuth2AuthHandlerTests {
     @Test("The reply code is stripped from every line of a continuation")
     func continuationPayloadStripsCodes() {
         #expect(XOAuth2AuthHandler.continuationPayload(of: SMTPResponse(code: 334, message: "334 eyJh")) == "eyJh")
-        #expect(XOAuth2AuthHandler.continuationPayload(of: SMTPResponse(code: 334, message: "334-eyJh\n334 YmM=")) == "eyJhYmM=")
+        let multiLine = SMTPResponse(code: 334, message: "334-eyJh\n334 YmM=")
+        #expect(XOAuth2AuthHandler.continuationPayload(of: multiLine) == "eyJhYmM=")
         #expect(XOAuth2AuthHandler.continuationPayload(of: SMTPResponse(code: 334, message: "334")) == "")
         // A payload that isn't prefixed (a caller's own fabricated reply) is kept.
         #expect(XOAuth2AuthHandler.continuationPayload(of: SMTPResponse(code: 334, message: "eyJh")) == "eyJh")
