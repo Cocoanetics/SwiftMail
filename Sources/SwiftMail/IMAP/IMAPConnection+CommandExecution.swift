@@ -88,6 +88,7 @@ extension IMAPConnection {
         clearInvalidChannel()
 
         if self.channel == nil {
+            guard command.reopensClosedConnection else { throw IMAPSessionAlreadyEnded() }
             try await reopenTransport(before: "sending command")
             try await reauthenticateIfSessionWasLost(before: String(describing: CommandType.self))
         }

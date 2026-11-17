@@ -276,13 +276,11 @@ extension IMAPServer {
 
      - Throws:
      - `IMAPError.logoutFailed` if the logout fails
-     - `IMAPError.connectionFailed` if not connected
-     - Note: Logs logout at info level
+     - `IMAPError.connectionFailed` if the connection fails during LOGOUT (a closed one is not reopened)
+     - Note: Never connects or logs in; a closed primary gets no LOGOUT. Every connection is closed, even on error.
      */
     public func logout() async throws {
-        let command = LogoutCommand()
-        try await executeCommand(command)
-        try await closeAllConnections()
+        try await logOutAndCloseAllConnections()
     }
 
     // MARK: - Connection Management Helpers

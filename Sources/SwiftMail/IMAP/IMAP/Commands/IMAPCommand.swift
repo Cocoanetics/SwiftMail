@@ -17,6 +17,10 @@ protocol IMAPCommand: SendableMetatype where ResultType: Sendable {
     /// Default timeout for this command type
     var timeoutSeconds: Int { get }
 
+    /// Whether a connection found closed is reopened (and re-authenticated) to run this
+    /// command. A command that only ends the session opts out.
+    var reopensClosedConnection: Bool { get }
+
     /// Check if the command is valid before execution
     func validate() throws
 
@@ -43,9 +47,15 @@ protocol IMAPTaggedCommand: IMAPCommand {
     func toTaggedCommand(tag: String) -> TaggedCommand
 }
 
+/// Thrown instead of reconnecting when a command that only ends a session finds its
+/// connection already closed: there is no session left for it to end.
+struct IMAPSessionAlreadyEnded: Error {}
+
 // Provide reasonable defaults.
 extension IMAPCommand {
     var timeoutSeconds: Int { return 5 }
+
+    var reopensClosedConnection: Bool { true }
 
     func validate() throws {
         // Default implementation does no validation
