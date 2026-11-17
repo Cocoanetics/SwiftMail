@@ -12,7 +12,9 @@ struct FetchChangedFlagsCommand: IMAPTaggedCommand {
 
     let identifierSet: UIDSet
     let changedSince: ModificationSequenceValue
-    let timeoutSeconds = 10
+    /// Like a QRESYNC select (`ResyncSelectMailboxCommand`), the reply lists every message
+    /// changed since the mod-sequence, so it can be as long and gets the same time.
+    let timeoutSeconds = 30
 
     func validate() throws {
         guard !identifierSet.isEmpty else { throw IMAPError.emptyIdentifierSet }

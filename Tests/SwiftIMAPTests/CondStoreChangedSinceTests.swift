@@ -8,6 +8,15 @@ import Testing
 /// message's UID, complete flag set and MODSEQ.
 @Suite(.serialized, .timeLimit(.minutes(1)))
 struct CondStoreChangedSinceTests {
+    // MARK: - Timeout
+
+    @Test
+    func changedSinceFetchWaitsAsLongAsAQResyncSelect() {
+        let fetch = FetchChangedFlagsCommand(identifierSet: UIDSet(UID(1)...UID(99)), changedSince: 700)
+        let select = ResyncSelectMailboxCommand(mailboxName: "INBOX", uidValidity: 777, modificationSequence: 700)
+        #expect(fetch.timeoutSeconds == select.timeoutSeconds)
+    }
+
     // MARK: - CHANGEDSINCE wire bytes
 
     @Test(arguments: [UInt64(1), UInt64(12_345), UInt64(Int64.max)])
