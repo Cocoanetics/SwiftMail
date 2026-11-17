@@ -15,11 +15,17 @@ final class XOAuth2AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable
     /// The decoded error payload of the `334` continuation, if one came.
     private var continuationError: String?
 
-    /// The context, for answering the continuation.
+    /// The context, for answering the continuation. A context retains its handler, so
+    /// this is cleared when the handler leaves the pipeline; keeping it would hold the
+    /// handler, its promise and the pipeline for as long as the process lives.
     private var context: ChannelHandlerContext?
 
     override public func handlerAdded(context: ChannelHandlerContext) {
         self.context = context
+    }
+
+    override public func handlerRemoved(context: ChannelHandlerContext) {
+        self.context = nil
     }
 
     /// Process a response line from the server
@@ -32,7 +38,7 @@ final class XOAuth2AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable
         }
 
         if response.code == 334 {
-            let payload = response.message.trimmingCharacters(in: .whitespaces)
+            let payload = Self.continuationPayload(of: response)
             if let data = Data(base64Encoded: payload), let decoded = String(data: data, encoding: .utf8) {
                 continuationError = decoded
             } else if !payload.isEmpty {
@@ -60,5 +66,22 @@ final class XOAuth2AuthHandler: BaseSMTPHandler<AuthResult>, @unchecked Sendable
         }
 
         return false
+    }
+
+    /// The text of a `334` reply without its reply code. `SMTPResponseHandler` hands
+    /// over the reply as it came, so `message` is `334 eyJ…`, not `eyJ…`; each line of
+    /// a multi-line reply carries the code, followed by `-` or a space.
+    static func continuationPayload(of response: SMTPResponse) -> String {
+        let code = String(response.code)
+        return response.message
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map { line -> Substring in
+                guard line.hasPrefix(code) else { return line }
+                let rest = line.dropFirst(code.count)
+                guard let separator = rest.first else { return rest }
+                return separator == " " || separator == "-" ? rest.dropFirst() : line
+            }
+            .joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
