@@ -258,7 +258,7 @@ extension EMLParser {
     // swiftlint:disable cyclomatic_complexity
     /// Remove RFC 822 comments outside quoted-strings. A single space replaces
     /// each comment so tokens on its two sides cannot be joined accidentally.
-    private static func removingComments(from value: Substring) -> String {
+    static func removingComments(from value: Substring) -> String {
         var result = String.UnicodeScalarView()
         var inQuotes = false
         var commentDepth = 0

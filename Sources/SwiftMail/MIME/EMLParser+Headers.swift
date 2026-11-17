@@ -168,20 +168,44 @@ extension EMLParser {
 
     /// The message ids in an In-Reply-To or References field, in order.
     ///
-    /// Each id is an angle-bracketed `msg-id` (RFC 5322 §3.6.4); text between
-    /// them (comments, phrases some old clients wrote, folding whitespace) is
-    /// skipped. A field with no brackets at all is read as whitespace-separated
-    /// ids.
+    /// Each id is an angle-bracketed `msg-id` (RFC 5322 §3.6.4). Comments are removed
+    /// first, nested ones and quoted-pairs included, so an id written inside one, as in
+    /// `(previously <old@example.com>) <parent@example.com>`, is not read as a real one.
+    /// Quoted strings (the phrases some old clients wrote, RFC 5322 §4.5.4) are skipped
+    /// too, for the same reason. A field with no brackets at all is read as
+    /// whitespace-separated ids.
     static func messageIDs(in field: String) -> [MessageID] {
+        let text = removingComments(from: field[...])
         var ids: [MessageID] = []
-        var remainder = field[...]
-        while let open = remainder.firstIndex(of: "<"),
-              let close = remainder[open...].firstIndex(of: ">") {
-            if let id = MessageID(String(remainder[open...close])) { ids.append(id) }
-            remainder = remainder[remainder.index(after: close)...]
+        var sawBracket = false
+        var inQuotes = false
+        var idStart: String.UnicodeScalarView.Index?
+        let scalars = text.unicodeScalars
+        var index = scalars.startIndex
+        while index < scalars.endIndex {
+            let scalar = scalars[index]
+            if let start = idStart {
+                if scalar == ">" {
+                    if let id = MessageID(String(scalars[start...index])) { ids.append(id) }
+                    idStart = nil
+                }
+            } else if inQuotes {
+                if scalar == "\\" {
+                    let next = scalars.index(after: index)
+                    if next < scalars.endIndex { index = next }
+                } else if scalar == "\"" {
+                    inQuotes = false
+                }
+            } else if scalar == "\"" {
+                inQuotes = true
+            } else if scalar == "<" {
+                sawBracket = true
+                idStart = index
+            }
+            index = scalars.index(after: index)
         }
-        if ids.isEmpty, !field.contains("<") {
-            ids = field.split(whereSeparator: \.isWhitespace).compactMap { MessageID(String($0)) }
+        if ids.isEmpty, !sawBracket {
+            ids = text.split(whereSeparator: \.isWhitespace).compactMap { MessageID(String($0)) }
         }
         return ids
     }

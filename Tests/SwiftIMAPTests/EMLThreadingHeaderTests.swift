@@ -39,6 +39,28 @@ struct EMLThreadingHeaderTests {
         #expect(info.references?.map(\.description) == ["<root@example.com>", "<parent@example.com>"])
     }
 
+    @Test("An id inside a comment is not a threading id", arguments: [
+        ("(previously <unrelated@example.com>) <parent@example.com>", ["<parent@example.com>"]),
+        ("<root@example.com> (was (nested <x@example.com>)) <parent@example.com>",
+         ["<root@example.com>", "<parent@example.com>"]),
+        (#"(an escaped \) then <x@example.com>) <parent@example.com>"#, ["<parent@example.com>"]),
+        (#"(an escaped \( <x@example.com>) <parent@example.com>"#, ["<parent@example.com>"]),
+    ])
+    func idsInsideComments(field: String, expected: [String]) throws {
+        let info = try parse("From: b@example.com\r\nIn-Reply-To: \(field)\r\nReferences: \(field)")
+        #expect(info.inReplyTo?.description == expected.first)
+        #expect(info.references?.map(\.description) == expected)
+    }
+
+    @Test("An id inside a quoted phrase is not a threading id")
+    func idsInsideQuotedPhrase() throws {
+        let field = #""Alice <alice@example.com> \" wrote" <parent@example.com>"#
+        #expect(EMLParser.messageIDs(in: field).map(\.description) == ["<parent@example.com>"])
+        // A parenthesis inside quotes doesn't open a comment.
+        #expect(EMLParser.messageIDs(in: #""(not a comment" <parent@example.com>"#).map(\.description)
+                == ["<parent@example.com>"])
+    }
+
     @Test("A message without them has neither")
     func absent() throws {
         let info = try parse("From: b@example.com")
