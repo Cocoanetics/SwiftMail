@@ -308,6 +308,10 @@ extension SearchResponseCompletenessTests {
     func extendedSearchAcceptsIMAP4rev2EsearchToPlainSearch() async throws {
         let tagless = try await runExtendedSearch(plainCommand(), tag: "C033", lines: ["* ESEARCH UID", "C033 OK Done"])
         #expect(tagless.all == nil)
+        let taggedLines = ["* ESEARCH (TAG \"C038\") UID", "C038 OK Done"]
+        let tagged = try await runExtendedSearch(plainCommand(), tag: "C038", lines: taggedLines)
+        #expect(tagged.all == nil)
+        #expect(tagged.count == nil)
         let lines = ["* ESEARCH (TAG \"C034\") UID ALL 4", "C034 OK Done"]
         let found = try await runExtendedSearch(plainCommand(), tag: "C034", lines: lines)
         #expect(found.all?.toArray().map(\.value) == [4])

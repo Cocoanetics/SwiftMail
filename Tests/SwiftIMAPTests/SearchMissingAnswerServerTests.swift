@@ -29,6 +29,17 @@ struct SearchMissingAnswerServerTests {
         }
     }
 
+    @Test
+    func emptyIMAP4rev2EsearchAnswerIsAnEmptyResult() async throws {
+        let replies = ["* ESEARCH (TAG \"{tag}\") UID"]
+        try await withServer(capabilities: ["IMAP4rev1", "AUTH=PLAIN", "UIDPLUS"], replies: replies) { server in
+            let result: ExtendedSearchResult<SwiftMail.UID> = try await server.extendedSearch(criteria: [.all])
+            #expect(result.all == nil)
+            #expect(result.min == nil)
+            #expect(result.max == nil)
+        }
+    }
+
     private func withServer(
         capabilities: [String],
         replies: [String],

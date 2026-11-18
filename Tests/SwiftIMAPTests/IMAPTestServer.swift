@@ -297,7 +297,8 @@ final class IMAPTestServer: @unchecked Sendable {
     private let loginResponseDelay: TimeInterval
     private let rejectedUIDSubcommand: String?
     /// Untagged lines to send for the next UID SEARCH commands, one entry per command, in
-    /// order (an empty entry sends no untagged answer); later commands get the real answer.
+    /// order (an empty entry sends no untagged answer; `{tag}` is replaced by the command's tag);
+    /// later commands get the real answer.
     private var uidSearchReplyOverrides: [String]
     private let copyUIDSourceOverride: String?
     private let personalNamespacePrefix: String
@@ -1168,7 +1169,7 @@ final class IMAPTestServer: @unchecked Sendable {
         switch subcmd {
             case "SEARCH":
                 if !uidSearchReplyOverrides.isEmpty {
-                    let untagged = uidSearchReplyOverrides.removeFirst()
+                    let untagged = uidSearchReplyOverrides.removeFirst().replacingOccurrences(of: "{tag}", with: tag)
                     return (untagged.isEmpty ? "" : untagged + "\r\n") + "\(tag) OK UID SEARCH completed\r\n"
                 }
                 let uids = messages.map { String($0.uid) }.joined(separator: " ")
