@@ -68,6 +68,26 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         for criterion in criteria { try criterion.validate() }
     }
 
+    func makeHandler(
+        commandTag: String,
+        promise: EventLoopPromise<ExtendedSearchResult<T>>
+    ) -> ExtendedSearchHandler<T> {
+        let handler = ExtendedSearchHandler<T>(commandTag: commandTag, promise: promise)
+        handler.requestedOptions = returnOptions
+        handler.expectsSort = useSort
+        return handler
+    }
+
+    /// The ESEARCH return options this command sends; empty for a plain SEARCH or SORT.
+    var returnOptions: [SearchReturnOption] {
+        guard useEsearch else { return [] }
+        if let range = partialRange {
+            // PARTIAL and ALL are mutually exclusive; use PARTIAL for paged results.
+            return [.count, .min, .max, .partial(range)]
+        }
+        return returnsAll ? [.count, .min, .max, .all] : [.count, .min, .max]
+    }
+
     func toTaggedCommand(tag: String) -> TaggedCommand {
         var nioCriteria = criteria.map { $0.toNIO(calendar: calendar) }
 
@@ -83,19 +103,7 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         let key = SearchKey.and(nioCriteria)
         let charset = SearchCriteria.searchCharset(for: criteria)
 
-        let returnOptions: [SearchReturnOption]
-        if useEsearch {
-            if let range = partialRange {
-                // PARTIAL and ALL are mutually exclusive; use PARTIAL for paged results.
-                returnOptions = [.count, .min, .max, .partial(range)]
-            } else if returnsAll {
-                returnOptions = [.count, .min, .max, .all]
-            } else {
-                returnOptions = [.count, .min, .max]
-            }
-        } else {
-            returnOptions = []
-        }
+        let returnOptions = self.returnOptions
 
         if useSort {
             if T.self == UID.self {

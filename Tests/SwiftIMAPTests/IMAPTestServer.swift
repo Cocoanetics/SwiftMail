@@ -296,6 +296,9 @@ final class IMAPTestServer: @unchecked Sendable {
     private let advertisedCapabilities: [String]
     private let loginResponseDelay: TimeInterval
     private let rejectedUIDSubcommand: String?
+    /// Untagged lines to send for the next UID SEARCH commands, one entry per command, in
+    /// order (an empty entry sends no untagged answer); later commands get the real answer.
+    private var uidSearchReplyOverrides: [String]
     private let copyUIDSourceOverride: String?
     private let personalNamespacePrefix: String
     private let namespaceDelimiter: Character
@@ -325,6 +328,7 @@ final class IMAPTestServer: @unchecked Sendable {
         password: String = "testpass",
         loginResponseDelay: TimeInterval = 0,
         rejectedUIDSubcommand: String? = nil,
+        uidSearchReplyOverrides: [String] = [],
         copyUIDSourceOverride: String? = nil,
         advertisedCapabilities: [String] = [
             "IMAP4rev1", "AUTH=PLAIN", "LITERAL+", "ID", "NAMESPACE", "UIDPLUS", "IDLE"
@@ -351,6 +355,7 @@ final class IMAPTestServer: @unchecked Sendable {
         self.password = password
         self.loginResponseDelay = loginResponseDelay
         self.rejectedUIDSubcommand = rejectedUIDSubcommand?.uppercased()
+        self.uidSearchReplyOverrides = uidSearchReplyOverrides
         self.copyUIDSourceOverride = copyUIDSourceOverride
         self.advertisedCapabilities = advertisedCapabilities
         self.personalNamespacePrefix = personalNamespacePrefix
@@ -1162,6 +1167,10 @@ final class IMAPTestServer: @unchecked Sendable {
         }
         switch subcmd {
             case "SEARCH":
+                if !uidSearchReplyOverrides.isEmpty {
+                    let untagged = uidSearchReplyOverrides.removeFirst()
+                    return (untagged.isEmpty ? "" : untagged + "\r\n") + "\(tag) OK UID SEARCH completed\r\n"
+                }
                 let uids = messages.map { String($0.uid) }.joined(separator: " ")
                 return "* SEARCH \(uids)\r\n\(tag) OK UID SEARCH completed\r\n"
             case "MOVE":
