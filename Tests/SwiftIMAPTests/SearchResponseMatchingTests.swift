@@ -158,7 +158,7 @@ extension SearchResponseCompletenessTests {
     }
 
     @Test
-    func sequenceSearchAcceptsATaglessEsearch() async throws {
+    func sequenceSearchAcceptsACorrelatedEsearch() async throws {
         let command = SearchCommand<SwiftMail.SequenceNumber>(criteria: [.all])
         let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
         let promise = channel.eventLoop.makePromise(of: SwiftMail.MessageIdentifierSet<SwiftMail.SequenceNumber>.self)
@@ -166,7 +166,7 @@ extension SearchResponseCompletenessTests {
         let tagged = IMAPClientHandler.OutboundIn.part(.tagged(command.toTaggedCommand(tag: "C059")))
         try await channel.writeAndFlush(tagged)
         _ = try await channel.readOutbound(as: ByteBuffer.self)
-        for line in ["* ESEARCH ALL 2:3", "C059 OK Search completed"] {
+        for line in ["* ESEARCH (TAG \"C059\") ALL 2:3", "C059 OK Search completed"] {
             try await channel.writeInbound(ByteBuffer(string: line + "\r\n"))
         }
         #expect(try await promise.futureResult.get().toArray().map(\.value) == [2, 3])

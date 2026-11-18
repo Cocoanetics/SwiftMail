@@ -12,7 +12,7 @@ extension SearchResponseCompletenessTests {
     private static let page = NIOIMAPCore.PartialRange.first(NIOIMAPCore.SequenceRange(50...60))
 
     /// Run a `SearchCommand` (SEARCH or SORT) through its handler and return the result.
-    private func runSearchCommand<T: SwiftMail.MessageIdentifier>(
+    func runSearchCommand<T: SwiftMail.MessageIdentifier>(
         _ command: SearchCommand<T>,
         tag: String,
         lines: [String]

@@ -80,8 +80,8 @@ final class ExtendedSearchHandler<T: MessageIdentifier>:
     private func ingest(_ mailboxData: MailboxData) {
         switch mailboxData {
             case .extendedSearch(let response):
-                // An ESEARCH correlated to another command's tag is not this command's answer
-                // (RFC 4731 §3.1, RFC 9051 §7.3.4).
+                // Only an ESEARCH whose TAG correlator names this command is its answer
+                // (RFC 4731 §3.1, RFC 9051 §7.3.4, RFC 4466 §2.6.2).
                 guard response.answers(commandTag: commandTag, identifiers: T.self) else { return }
                 // A SORT sent without RETURN is answered only by `* SORT` (RFC 5256 §3, RFC 5267 §3).
                 guard expectsSort != true || requestedOptions?.isEmpty == false else { return }
@@ -224,12 +224,13 @@ extension SearchReturnOption {
 
 extension ExtendedSearchResponse {
     /// Whether this ESEARCH answers the command with `commandTag` that searches for `T`: its TAG
-    /// correlator, when present, names that command (RFC 4731 §3.1, RFC 9051 §7.3.4), and it
-    /// carries the UID indicator exactly when the command was a UID command. An answer without
-    /// the indicator holds sequence numbers, which must never be read as UIDs.
+    /// correlator names that command, and it carries the UID indicator exactly when the command
+    /// was a UID command. An ESEARCH without a correlator "was not caused by a particular IMAP
+    /// command" (RFC 9051 §7.3.4, RFC 4466 §2.6.2), so it answers no command. An answer without
+    /// the UID indicator holds sequence numbers, which must never be read as UIDs.
     func answers<T: MessageIdentifier>(commandTag: String?, identifiers _: T.Type) -> Bool {
         guard (kind == .uid) == (T.self == UID.self) else { return false }
-        guard let tag = correlator?.tag, let commandTag else { return true }
+        guard let tag = correlator?.tag else { return false }
         return tag == commandTag
     }
 }

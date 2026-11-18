@@ -90,7 +90,7 @@ struct ExtendedSearchHandlerTests {
         try await sendSearchCommand(on: channel, tag: "A002", useUID: false, useEsearch: true)
 
         var esearchResponse = channel.allocator.buffer(capacity: 64)
-        esearchResponse.writeString("* ESEARCH COUNT 2 MIN 1 MAX 5 ALL 1,5\r\n")
+        esearchResponse.writeString("* ESEARCH (TAG \"A002\") COUNT 2 MIN 1 MAX 5 ALL 1,5\r\n")
         try await channel.writeInbound(esearchResponse)
 
         var taggedOK = channel.allocator.buffer(capacity: 64)

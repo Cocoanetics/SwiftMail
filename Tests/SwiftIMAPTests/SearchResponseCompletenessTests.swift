@@ -17,17 +17,26 @@ struct SearchResponseCompletenessTests {
 
     /// Run an `ExtendedSearchCommand` through the handler it builds, feeding `lines` as the
     /// server's reply (the tagged completion included).
-    func runExtendedSearch(
-        _ command: ExtendedSearchCommand<SwiftMail.UID>,
+    func runExtendedSearch<T: SwiftMail.MessageIdentifier>(
+        _ command: ExtendedSearchCommand<T>,
         tag: String,
         lines: [String]
-    ) async throws -> ExtendedSearchResult<SwiftMail.UID> {
+    ) async throws -> ExtendedSearchResult<T> {
+        try await runExtendedSearchOnWire(command, tag: tag, lines: lines).result
+    }
+
+    /// Like ``runExtendedSearch(_:tag:lines:)``, also returning the command as sent on the wire.
+    func runExtendedSearchOnWire<T: SwiftMail.MessageIdentifier>(
+        _ command: ExtendedSearchCommand<T>,
+        tag: String,
+        lines: [String]
+    ) async throws -> (wire: String, result: ExtendedSearchResult<T>) {
         let channel = try await NIOAsyncTestingChannel.withIMAPClientHandler()
-        let promise = channel.eventLoop.makePromise(of: ExtendedSearchResult<SwiftMail.UID>.self)
+        let promise = channel.eventLoop.makePromise(of: ExtendedSearchResult<T>.self)
         try await channel.pipeline.addHandler(command.makeHandler(commandTag: tag, promise: promise))
-        try await send(command.toTaggedCommand(tag: tag), on: channel)
+        let wire = try await send(command.toTaggedCommand(tag: tag), on: channel)
         try await feed(lines, to: channel)
-        return try await promise.futureResult.get()
+        return (wire, try await promise.futureResult.get())
     }
 
     func runPlainSearch(
@@ -306,8 +315,6 @@ extension SearchResponseCompletenessTests {
 
     @Test
     func extendedSearchAcceptsIMAP4rev2EsearchToPlainSearch() async throws {
-        let tagless = try await runExtendedSearch(plainCommand(), tag: "C033", lines: ["* ESEARCH UID", "C033 OK Done"])
-        #expect(tagless.all == nil)
         let taggedLines = ["* ESEARCH (TAG \"C038\") UID", "C038 OK Done"]
         let tagged = try await runExtendedSearch(plainCommand(), tag: "C038", lines: taggedLines)
         #expect(tagged.all == nil)
@@ -317,11 +324,15 @@ extension SearchResponseCompletenessTests {
         #expect(found.all?.toArray().map(\.value) == [4])
     }
 
-    @Test
-    func plainSearchAnswerToReturnRequestIsAccepted() async throws {
+    /// A legacy list still answers a RETURN request without PARTIAL, whether or not it asked for
+    /// ALL (`searchCount` asks only for COUNT MIN MAX); the result is synthesized from the list.
+    @Test(arguments: [true, false])
+    func plainSearchAnswerToReturnRequestIsAccepted(returnsAll: Bool) async throws {
         let lines = ["* SEARCH 4 7", "C035 OK Search completed"]
-        let result = try await runExtendedSearch(esearchCommand(), tag: "C035", lines: lines)
+        let result = try await runExtendedSearch(esearchCommand(returnsAll: returnsAll), tag: "C035", lines: lines)
         #expect(result.count == 2)
+        #expect(result.min?.value == 4)
+        #expect(result.max?.value == 7)
         #expect(result.all?.toArray().map(\.value) == [4, 7])
     }
 
