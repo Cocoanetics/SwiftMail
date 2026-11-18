@@ -52,10 +52,12 @@ final class IMAPTestServer: @unchecked Sendable {
 
     /// Scripts replace the entire reply. There is no automatic completion after a script.
     /// Use distinct hold names for successive releases. `send` acknowledges a fragment only
-    /// after every byte has reached send(2), not when the action is enqueued.
+    /// after every byte has reached send(2), not when the action is enqueued. `sendTagged` sends
+    /// its text with every `{tag}` replaced by the command's tag, for a correlated untagged reply.
     enum Action: Sendable {
         case hold(String)
         case send(Data, acknowledgement: String)
+        case sendTagged(String, acknowledgement: String)
         case taggedCompletion(String)
         case close
         case delay(TimeInterval)
@@ -999,6 +1001,10 @@ final class IMAPTestServer: @unchecked Sendable {
                         // A cancelled gate discards the batch, including any completion.
                         if !hold(name, command: command) { return !isCancelled }
                     case .send(let data, let acknowledgement):
+                        guard sendBytes(data, command: command) else { return false }
+                        emit(.fragmentSent, command, acknowledgement)
+                    case .sendTagged(let text, let acknowledgement):
+                        let data = Data(text.replacingOccurrences(of: "{tag}", with: command.tag).utf8)
                         guard sendBytes(data, command: command) else { return false }
                         emit(.fragmentSent, command, acknowledgement)
                     case .taggedCompletion(let text):

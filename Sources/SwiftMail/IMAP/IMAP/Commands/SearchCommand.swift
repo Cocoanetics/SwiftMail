@@ -55,6 +55,15 @@ struct SearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable {
         self.calendar = calendar
     }
 
+    func makeHandler(
+        commandTag: String,
+        promise: EventLoopPromise<MessageIdentifierSet<T>>
+    ) -> SearchHandler<T> {
+        let handler = SearchHandler<T>(commandTag: commandTag, promise: promise)
+        handler.expectsSort = useSort
+        return handler
+    }
+
     /// Validate that the command has at least one criterion.
     func validate() throws {
         guard !criteria.isEmpty else {
