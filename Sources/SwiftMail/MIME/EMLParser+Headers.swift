@@ -178,7 +178,6 @@ extension EMLParser {
         let text = removingComments(from: field[...])
         var ids: [MessageID] = []
         var sawBracket = false
-        var inQuotes = false
         var idStart: String.UnicodeScalarView.Index?
         let scalars = text.unicodeScalars
         var index = scalars.startIndex
@@ -189,15 +188,8 @@ extension EMLParser {
                     if let id = MessageID(String(scalars[start...index])) { ids.append(id) }
                     idStart = nil
                 }
-            } else if inQuotes {
-                if scalar == "\\" {
-                    let next = scalars.index(after: index)
-                    if next < scalars.endIndex { index = next }
-                } else if scalar == "\"" {
-                    inQuotes = false
-                }
             } else if scalar == "\"" {
-                inQuotes = true
+                index = endOfQuotedString(in: scalars, openingAt: index)
             } else if scalar == "<" {
                 sawBracket = true
                 idStart = index
@@ -208,6 +200,25 @@ extension EMLParser {
             ids = text.split(whereSeparator: \.isWhitespace).compactMap { MessageID(String($0)) }
         }
         return ids
+    }
+
+    /// The index of the quote that closes the quoted-string opening at `start`, skipping
+    /// quoted-pairs, or the last index when the string is never closed.
+    private static func endOfQuotedString(
+        in scalars: String.UnicodeScalarView,
+        openingAt start: String.UnicodeScalarView.Index
+    ) -> String.UnicodeScalarView.Index {
+        var index = scalars.index(after: start)
+        while index < scalars.endIndex {
+            if scalars[index] == "\"" { return index }
+            if scalars[index] == "\\" {
+                let next = scalars.index(after: index)
+                if next == scalars.endIndex { break }
+                index = next
+            }
+            index = scalars.index(after: index)
+        }
+        return scalars.index(before: scalars.endIndex)
     }
 
     static func buildMessageInfo(from headers: [String: String]) -> MessageInfo {

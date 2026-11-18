@@ -44,7 +44,7 @@ struct EMLThreadingHeaderTests {
         ("<root@example.com> (was (nested <x@example.com>)) <parent@example.com>",
          ["<root@example.com>", "<parent@example.com>"]),
         (#"(an escaped \) then <x@example.com>) <parent@example.com>"#, ["<parent@example.com>"]),
-        (#"(an escaped \( <x@example.com>) <parent@example.com>"#, ["<parent@example.com>"]),
+        (#"(an escaped \( <x@example.com>) <parent@example.com>"#, ["<parent@example.com>"])
     ])
     func idsInsideComments(field: String, expected: [String]) throws {
         let info = try parse("From: b@example.com\r\nIn-Reply-To: \(field)\r\nReferences: \(field)")
