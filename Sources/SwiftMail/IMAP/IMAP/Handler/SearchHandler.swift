@@ -76,6 +76,9 @@ final class SearchHandler<T: MessageIdentifier>:
                 searchResults.append(contentsOf: ids.map { T.init(UInt32($0)) })
             case .extendedSearch(let response):
                 guard response.answers(commandTag: commandTag, identifiers: T.self) else { return }
+                // This command never sends RETURN, so a SORT is answered only by `* SORT`
+                // (RFC 5256 §3, RFC 5267 §3).
+                guard expectsSort != true else { return }
                 ingest(response)
             default:
                 break

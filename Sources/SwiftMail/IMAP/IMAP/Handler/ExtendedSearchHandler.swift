@@ -83,12 +83,17 @@ final class ExtendedSearchHandler<T: MessageIdentifier>:
                 // An ESEARCH correlated to another command's tag is not this command's answer
                 // (RFC 4731 §3.1, RFC 9051 §7.3.4).
                 guard response.answers(commandTag: commandTag, identifiers: T.self) else { return }
+                // A SORT sent without RETURN is answered only by `* SORT` (RFC 5256 §3, RFC 5267 §3).
+                guard expectsSort != true || requestedOptions?.isEmpty == false else { return }
                 receivedEsearch = true
                 for datum in response.returnData {
                     ingest(datum)
                 }
             case .search(let ids, _), .sort(let ids, _):
                 guard acceptsLegacyAnswer(mailboxData, expectsSort: expectsSort) else { return }
+                // A PARTIAL request is answered only by ESEARCH (RFC 4731 §3.1, RFC 9394 §3.1); a
+                // list cannot carry the requested window.
+                guard requestedOptions?.contains(where: \.isPartial) != true else { return }
                 receivedFallbackAnswer = true
                 let converted = ids.map { T(UInt32($0)) }
                 fallbackIdentifiers.append(contentsOf: converted)
