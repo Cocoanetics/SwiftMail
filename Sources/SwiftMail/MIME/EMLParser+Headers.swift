@@ -166,6 +166,61 @@ extension EMLParser {
 
     // MARK: - MessageInfo Construction
 
+    /// The message ids in an In-Reply-To or References field, in order.
+    ///
+    /// Each id is an angle-bracketed `msg-id` (RFC 5322 §3.6.4). Comments are removed
+    /// first, nested ones and quoted-pairs included, so an id written inside one, as in
+    /// `(previously <old@example.com>) <parent@example.com>`, is not read as a real one.
+    /// Quoted strings (the phrases some old clients wrote, RFC 5322 §4.5.4) are skipped
+    /// too, for the same reason. A field with no brackets at all is read as
+    /// whitespace-separated ids.
+    static func messageIDs(in field: String) -> [MessageID] {
+        let text = removingComments(from: field[...])
+        var ids: [MessageID] = []
+        var sawBracket = false
+        var idStart: String.UnicodeScalarView.Index?
+        let scalars = text.unicodeScalars
+        var index = scalars.startIndex
+        while index < scalars.endIndex {
+            let scalar = scalars[index]
+            if let start = idStart {
+                if scalar == ">" {
+                    if let id = MessageID(String(scalars[start...index])) { ids.append(id) }
+                    idStart = nil
+                }
+            } else if scalar == "\"" {
+                index = endOfQuotedString(in: scalars, openingAt: index)
+            } else if scalar == "<" {
+                sawBracket = true
+                idStart = index
+            }
+            index = scalars.index(after: index)
+        }
+        if ids.isEmpty, !sawBracket {
+            ids = text.split(whereSeparator: \.isWhitespace).compactMap { MessageID(String($0)) }
+        }
+        return ids
+    }
+
+    /// The index of the quote that closes the quoted-string opening at `start`, skipping
+    /// quoted-pairs, or the last index when the string is never closed.
+    private static func endOfQuotedString(
+        in scalars: String.UnicodeScalarView,
+        openingAt start: String.UnicodeScalarView.Index
+    ) -> String.UnicodeScalarView.Index {
+        var index = scalars.index(after: start)
+        while index < scalars.endIndex {
+            if scalars[index] == "\"" { return index }
+            if scalars[index] == "\\" {
+                let next = scalars.index(after: index)
+                if next == scalars.endIndex { break }
+                index = next
+            }
+            index = scalars.index(after: index)
+        }
+        return scalars.index(before: scalars.endIndex)
+    }
+
     static func buildMessageInfo(from headers: [String: String]) -> MessageInfo {
         let subject = headers["subject"].flatMap { decodeRFC2047($0) } ?? headers["subject"]
         let messageId = headers["message-id"].flatMap { MessageID($0) }
@@ -186,6 +241,8 @@ extension EMLParser {
             subject: subject,
             date: date,
             messageId: messageId,
+            inReplyTo: headers["in-reply-to"].flatMap { messageIDs(in: $0).first },
+            references: headers["references"].map { messageIDs(in: $0) }.flatMap { $0.isEmpty ? nil : $0 },
             additionalFields: additional.isEmpty ? nil : additional
         )
         info.fromAddresses = headers["from"].map(AddressParser.parseAddressList) ?? []
