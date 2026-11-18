@@ -5,7 +5,8 @@ extension IMAPServer {
     /// every named connection, including ones being created or created later. It is on by default.
     ///
     /// With it on, a command that finds its connection gone opens a new one and logs in
-    /// again before it runs. With it off, that command throws
+    /// again before it runs (except LOGOUT, which ``logout()`` never sends on a closed
+    /// connection). With it off, that command throws
     /// ``IMAPError/connectionFailed(_:)`` instead and opens no connection; the session
     /// it was running in, with its selected mailbox, has ended. Reconnect on purpose
     /// with ``connect()`` and log in again. Turn it off when a command must never run

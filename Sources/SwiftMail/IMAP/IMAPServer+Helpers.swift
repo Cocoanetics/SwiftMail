@@ -67,6 +67,33 @@ extension IMAPServer {
         try primaryConnection.validateOperation()
     }
 
+    /// Sends LOGOUT on the session the primary connection holds, then closes every connection,
+    /// also when LOGOUT fails (its error is rethrown after the connections are closed).
+    ///
+    /// LOGOUT ends a session and never opens one: it is valid in any state, so it is sent
+    /// without logging in first, and when the connection has already closed (the server
+    /// ended the session, or a cancelled command closed it) there is nothing to log out of,
+    /// so no LOGOUT is sent and no connection is opened.
+    func logOutAndCloseAllConnections() async throws {
+        var logoutError: Error?
+        do {
+            try await primaryConnection.withOperationScope { [self] in
+                guard primaryConnection.isConnected else { return }
+                try await primaryConnection.executeCommand(LogoutCommand())
+            }
+        } catch is IMAPSessionAlreadyEnded {
+            // The connection closed before LOGOUT went out; the session ended without it.
+        } catch {
+            logoutError = error
+        }
+        do {
+            try await closeAllConnections()
+        } catch where logoutError != nil {
+            // LOGOUT's own failure is the one reported.
+        }
+        if let logoutError { throw logoutError }
+    }
+
     private func completePrimaryAuthentication(_ attempt: SharedAttempt<Void>, with result: Result<Void, Error>) {
         guard primaryAuthenticationInFlight?.id == attempt.id else { return }
         let discoveredNamespaces = primaryConnection.namespacesSnapshot

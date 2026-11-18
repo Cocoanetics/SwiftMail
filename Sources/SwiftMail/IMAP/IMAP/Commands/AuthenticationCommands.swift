@@ -32,6 +32,9 @@ struct LogoutCommand: IMAPTaggedCommand {
     typealias ResultType = Void
     typealias HandlerType = LogoutHandler
 
+    /// LOGOUT ends the session it is sent on; a closed connection has none to end.
+    var reopensClosedConnection: Bool { false }
+
     /// Convert to an IMAP tagged command
     /// - Parameter tag: The command tag
     /// - Returns: A TaggedCommand ready to be sent to the server

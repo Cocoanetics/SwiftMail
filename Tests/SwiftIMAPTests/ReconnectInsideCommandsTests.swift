@@ -95,6 +95,81 @@ struct ReconnectInsideCommandsTests {
         #expect(await server.isConnected)
     }
 
+    // MARK: - LOGOUT never opens a session
+
+    /// LOGOUT ends the session a connection holds. A connection already closed has no
+    /// session left, so logout() must not reconnect and log in just to send LOGOUT.
+    @Test(arguments: [true, false])
+    func logoutOnAClosedConnectionOpensNothing(reconnectsInsideCommands: Bool) async throws {
+        let server = SwiftMail.IMAPServer(host: "localhost", port: 143, useTLS: false)
+        await server.setReconnectsInsideCommands(reconnectsInsideCommands)
+        let counter = ConnectCounter()
+        let replacement = try await loseAuthenticatedSession(on: server, counter: counter, refuseConnect: true)
+
+        try await server.logout()
+
+        #expect(await counter.value() == 0, "logout() may not open a connection")
+        let line = try await nextOutboundLine(from: replacement, timeoutNanoseconds: 200_000_000)
+        #expect(line == nil, "nothing may be sent, got \(line ?? "<nothing>")")
+        #expect(!(await server.isConnected))
+    }
+
+    /// A server that ends the session with BYE leaves the channel open until the next
+    /// command recycles it; LOGOUT must not then reconnect to end a session that is gone.
+    @Test
+    func logoutAfterTheServerSaidByeOpensNothing() async throws {
+        let server = SwiftMail.IMAPServer(host: "localhost", port: 143, useTLS: false)
+        let counter = ConnectCounter()
+        let (live, replacement) = try await authenticatedSession(on: server, counter: counter, refuseConnect: true)
+        var bye = live.allocator.buffer(capacity: 0)
+        bye.writeString("* BYE idle timeout\r\n")
+        try await live.writeInbound(bye)
+
+        try await server.logout()
+
+        #expect(await counter.value() == 0, "logout() may not open a connection")
+        let sentOnReplacement = try await nextOutboundLine(from: replacement, timeoutNanoseconds: 200_000_000)
+        #expect(sentOnReplacement == nil, "nothing may be sent, got \(sentOnReplacement ?? "<nothing>")")
+    }
+
+    /// The control: a live session is still logged out on the wire, on its own connection.
+    @Test
+    func logoutOnALiveSessionSendsLogout() async throws {
+        let server = SwiftMail.IMAPServer(host: "localhost", port: 143, useTLS: false)
+        let counter = ConnectCounter()
+        let (live, _) = try await authenticatedSession(on: server, counter: counter, refuseConnect: true)
+
+        let logout = Task { try await server.logout() }
+        let line = try await nextOutboundLine(from: live)
+        #expect(line?.hasSuffix(" LOGOUT\r\n") == true, "expected LOGOUT, got \(line ?? "<nothing>")")
+        try await answerLogout(line, on: live)
+        let loggedOut = (try? await logout.value) != nil
+        #expect(loggedOut, "logout() must complete once LOGOUT is answered")
+        #expect(await counter.value() == 0)
+    }
+
+    /// LOGOUT is valid before authentication: an open connection that is not logged in
+    /// (credentials stored from an earlier session) is logged out without logging in first.
+    @Test(arguments: [true, false])
+    func logoutOnAnOpenUnauthenticatedConnectionDoesNotLogIn(reconnectsInsideCommands: Bool) async throws {
+        let server = SwiftMail.IMAPServer(host: "localhost", port: 143, useTLS: false)
+        await server.setReconnectsInsideCommands(reconnectsInsideCommands)
+        let counter = ConnectCounter()
+        let (live, _) = try await authenticatedSession(
+            on: server, counter: counter, refuseConnect: true, authenticated: false
+        )
+
+        let logout = Task { try await server.logout() }
+        let line = try await nextOutboundLine(from: live)
+        #expect(line?.hasSuffix(" LOGOUT\r\n") == true, "expected LOGOUT and no LOGIN, got \(line ?? "<nothing>")")
+        try await answerLogout(line, on: live)
+        let loggedOut = (try? await logout.value) != nil
+        #expect(loggedOut, "logout() must complete once LOGOUT is answered")
+        let after = try await nextOutboundLine(from: live, timeoutNanoseconds: 200_000_000)
+        #expect(after == nil, "nothing may follow LOGOUT, got \(after ?? "<nothing>")")
+        #expect(await counter.value() == 0)
+    }
+
     #if os(macOS)
         @Test
         func switchSetWhileANamedConnectionIsBeingCreatedReachesIt() async throws {
@@ -142,14 +217,32 @@ struct ReconnectInsideCommandsTests {
         counter: ConnectCounter,
         refuseConnect: Bool = false
     ) async throws -> NIOAsyncTestingChannel {
+        let (stale, replacement) = try await authenticatedSession(
+            on: server,
+            counter: counter,
+            refuseConnect: refuseConnect
+        )
+        try await stale.close()
+        return replacement
+    }
+
+    /// Opens the primary connection on a live channel (authenticated unless told otherwise,
+    /// with credentials stored either way) and arranges any later
+    /// connect as `loseAuthenticatedSession` does. Returns the live channel and the
+    /// replacement a reconnect would install.
+    private func authenticatedSession(
+        on server: SwiftMail.IMAPServer,
+        counter: ConnectCounter,
+        refuseConnect: Bool,
+        authenticated: Bool = true
+    ) async throws -> (live: NIOAsyncTestingChannel, replacement: NIOAsyncTestingChannel) {
         let connection = await server.primaryConnection
-        let stale = try await makeTestingChannel(for: connection)
+        let live = try await makeTestingChannel(for: connection)
         connection.replaceCapabilitiesForTesting([Capability("IMAP4rev1")])
-        connection.markSessionAuthenticated()
+        if authenticated { connection.markSessionAuthenticated() }
         await server.replaceAuthenticationForTesting(
             .init(method: .login(username: "user", password: "secret"), identification: nil)
         )
-        try await stale.close()
 
         let replacement = NIOAsyncTestingChannel()
         connection.replaceConnectForTesting {
@@ -163,7 +256,20 @@ struct ReconnectInsideCommandsTests {
             try await replacement.pipeline.addHandler(connection.responseBuffer)
             connection.replaceChannelForTesting(replacement)
         }
-        return replacement
+        return (live, replacement)
+    }
+
+    /// Answers `line` if it is LOGOUT. Anything else is a failure, and the channel is closed
+    /// so the waiting call fails instead of waiting on a reply (the testing channel's timers
+    /// never fire on their own).
+    private func answerLogout(_ line: String?, on channel: NIOAsyncTestingChannel) async throws {
+        guard let line, line.hasSuffix(" LOGOUT\r\n"), let tag = line.split(separator: " ").first else {
+            try await channel.close()
+            return
+        }
+        var reply = channel.allocator.buffer(capacity: 0)
+        reply.writeString("* BYE logging out\r\n\(tag) OK LOGOUT completed\r\n")
+        try await channel.writeInbound(reply)
     }
 
     private func makeTestingChannel(for connection: IMAPConnection) async throws -> NIOAsyncTestingChannel {
