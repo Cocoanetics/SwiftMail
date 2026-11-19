@@ -276,7 +276,8 @@ struct ClientIdentificationReplayTests {
             inboundLabel: "test.imap.in",
             connectionID: "test-id-replay",
             connectionRole: "test",
-            parserLimits: .default
+            parserLimits: .default,
+            minimumCommandTimeoutSeconds: 0
         )
         let channel = NIOAsyncTestingChannel()
         let address = try SocketAddress(ipAddress: "127.0.0.1", port: 143)

@@ -157,7 +157,8 @@ struct AuthenticationCapabilityGuardTests {
             inboundLabel: "test.imap.in",
             connectionID: "test-auth-guard",
             connectionRole: "test",
-            parserLimits: .default
+            parserLimits: .default,
+            minimumCommandTimeoutSeconds: 0
         )
     }
 

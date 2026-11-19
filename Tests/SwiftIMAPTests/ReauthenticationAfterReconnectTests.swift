@@ -220,7 +220,8 @@ struct ReauthenticationAfterReconnectTests {
             inboundLabel: "test.imap.in",
             connectionID: "test-reauth",
             connectionRole: "test",
-            parserLimits: .default
+            parserLimits: .default,
+            minimumCommandTimeoutSeconds: 0
         )
     }
 

@@ -309,7 +309,8 @@ extension IMAPServer {
             connectionID: shortID,
             connectionRole: "idle:\(sanitizedMailbox)",
             responseBufferLimit: responseBufferLimit,
-            parserLimits: parserLimits
+            parserLimits: parserLimits,
+            minimumCommandTimeoutSeconds: minimumCommandTimeoutSeconds
         )
     }
 
@@ -335,7 +336,8 @@ extension IMAPServer {
             connectionID: "named-\(shortID)",
             connectionRole: "named:\(sanitizedName)",
             responseBufferLimit: responseBufferLimit,
-            parserLimits: parserLimits
+            parserLimits: parserLimits,
+            minimumCommandTimeoutSeconds: minimumCommandTimeoutSeconds
         )
     }
 
