@@ -53,6 +53,9 @@ public actor IMAPServer {
     /// Bounds the response parser enforces against a hostile or malfunctioning server.
     let parserLimits: IMAPParserLimits
 
+    /// The shortest time, in seconds, any transport for this server waits for an answer. See the initializer.
+    let minimumCommandTimeoutSeconds: Int
+
     /** The event loop group for handling asynchronous operations */
     let group: EventLoopGroup
 
@@ -257,6 +260,13 @@ public actor IMAPServer {
      responses containing thousands of message IDs. Raise it for very dense
      mailboxes whose SEARCH/FETCH responses exceed 1 MB. Must be greater than 0.
 
+     - minimumCommandTimeoutSeconds: The shortest time, in seconds, SwiftMail waits for the server
+     to answer: the greeting, LOGIN or AUTHENTICATE, and every command, on every transport for this
+     server. A command whose own timeout is longer keeps it. Defaults to 0, which leaves each
+     command's own timeout (5 seconds for most, LOGIN and NAMESPACE among them). Raise it for a
+     server that is slow to answer but does answer, rather than have its commands time out and
+     their connection be replaced.
+
      - Precondition: `responseBufferLimit > 0` — a non-positive limit would make
      every response exceed the buffer and fail with `PayloadTooLargeError`.
      */
@@ -268,9 +278,11 @@ public actor IMAPServer {
         minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
         numberOfThreads: Int = 1,
         responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit,
-        parserLimits: IMAPParserLimits = .default
+        parserLimits: IMAPParserLimits = .default,
+        minimumCommandTimeoutSeconds: Int = 0
     ) {
         precondition(responseBufferLimit > 0, "responseBufferLimit must be greater than 0 bytes")
+        precondition(minimumCommandTimeoutSeconds >= 0, "minimumCommandTimeoutSeconds must not be negative")
         self.host = host
         self.port = port
         self.transportSecurity = transportSecurity
@@ -278,6 +290,7 @@ public actor IMAPServer {
         self.minimumTLSVersion = minimumTLSVersion
         self.responseBufferLimit = responseBufferLimit
         self.parserLimits = parserLimits
+        self.minimumCommandTimeoutSeconds = minimumCommandTimeoutSeconds
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: numberOfThreads)
 
         // Initialize loggers
@@ -299,7 +312,8 @@ public actor IMAPServer {
             connectionID: "primary",
             connectionRole: "primary",
             responseBufferLimit: responseBufferLimit,
-            parserLimits: parserLimits
+            parserLimits: parserLimits,
+            minimumCommandTimeoutSeconds: minimumCommandTimeoutSeconds
         )
     }
 

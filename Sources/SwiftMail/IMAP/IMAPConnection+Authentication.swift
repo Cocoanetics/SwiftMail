@@ -240,11 +240,12 @@ extension IMAPConnection {
             try await installHandler(handler, terminal: terminal, context: context)
             let wrapped = IMAPClientHandler.OutboundIn.part(CommandStreamPart.tagged(command))
             let token = operationToken
+            let authenticationWait = Int64(timeout(10))
             channel.eventLoop.execute { [self] in
                 do {
                     try validateTransport(context, token: token)
                     channel.writeAndFlush(wrapped).whenFailure { terminal.complete(.failure($0)) }
-                    let timer = channel.eventLoop.scheduleTask(in: .seconds(10)) {
+                    let timer = channel.eventLoop.scheduleTask(in: .seconds(authenticationWait)) {
                         _ = terminal.complete(.failure(IMAPError.timeout))
                     }
                     terminal.attachTimer(timer, on: channel.eventLoop)

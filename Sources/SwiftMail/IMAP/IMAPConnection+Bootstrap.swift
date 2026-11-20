@@ -80,7 +80,8 @@ extension IMAPConnection {
             return context
         }
         try await lifecycleCheckpoint("published", context: context)
-        let timeout = channel.eventLoop.scheduleTask(in: .seconds(5)) {
+        let greetingWait = Int64(timeout(5))
+        let timeout = channel.eventLoop.scheduleTask(in: .seconds(greetingWait)) {
             _ = attempt.greeting.complete(.failure(IMAPError.timeout))
         }
         attempt.greeting.attachTimer(timeout, on: channel.eventLoop)

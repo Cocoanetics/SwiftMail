@@ -13,7 +13,8 @@ extension IMAPBootstrapRaceTests {
         IMAPConnection(host: "127.0.0.1", port: 143, transportSecurity: security,
                        minimumTLSVersion: .tlsv12, group: group, loggerLabel: "test.bootstrap",
                        outboundLabel: "test.bootstrap.out", inboundLabel: "test.bootstrap.in",
-                       connectionID: "bootstrap", connectionRole: "test", parserLimits: .default)
+                       connectionID: "bootstrap", connectionRole: "test", parserLimits: .default,
+                       minimumCommandTimeoutSeconds: 0)
     }
 
     func activeChannel() async throws -> NIOAsyncTestingChannel {

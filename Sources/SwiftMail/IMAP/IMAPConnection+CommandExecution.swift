@@ -224,7 +224,7 @@ extension IMAPConnection {
     ) async throws {
         let channel = run.channel
         let context = run.context
-        let timeoutSeconds = run.command.timeoutSeconds
+        let timeoutSeconds = timeout(run.command.timeoutSeconds)
         let logger = self.logger
         let token = operationToken
         try await IMAPWriteScope.$validate.withValue({ [self] in
@@ -266,7 +266,7 @@ extension IMAPConnection {
         let terminal = bindHandler(handler, promise: resultPromise, context: context)
         let scheduledTask = scheduleHandlerTimeout(
             channel: channel,
-            timeoutSeconds: timeoutSeconds,
+            timeoutSeconds: timeout(timeoutSeconds),
             terminal: terminal
         )
 

@@ -125,7 +125,8 @@ struct IMAPTransportSecurityTests {
                 inboundLabel: "test.imap.in",
                 connectionID: "test-starttls-failure",
                 connectionRole: "test",
-                parserLimits: .default
+                parserLimits: .default,
+                minimumCommandTimeoutSeconds: 0
             )
             let channel = EmbeddedChannel()
             let address = try SocketAddress(ipAddress: "127.0.0.1", port: 143)

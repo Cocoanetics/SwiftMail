@@ -23,6 +23,8 @@ final class IMAPConnection: @unchecked Sendable {
     let minimumTLSVersion: MailTLSMinimumVersion
     let responseBufferLimit: Int
     let parserLimits: IMAPParserLimits
+    /// The shortest wait for any answer from the server; see `IMAPServer.init`.
+    let minimumCommandTimeoutSeconds: Int
     let group: EventLoopGroup
     let connectionID: String
     let connectionRole: String
@@ -107,7 +109,14 @@ final class IMAPConnection: @unchecked Sendable {
         lifetime.gate.withLock { transport?.duplexLogger ?? stagingLogger }
     }
 
-    /// - Note: `minimumTLSVersion` and `parserLimits` deliberately have **no defaults.**
+    /// How long to wait for an answer that would otherwise wait `seconds`: never less than
+    /// `minimumCommandTimeoutSeconds`.
+    func timeout(_ seconds: Int) -> Int {
+        max(seconds, minimumCommandTimeoutSeconds)
+    }
+
+    /// - Note: `minimumTLSVersion`, `parserLimits` and `minimumCommandTimeoutSeconds` deliberately have
+    ///   **no defaults.**
     ///   They used to, and `makeIdleConnection`/`makeNamedConnection` simply left them out — so
     ///   a server configured with a TLS 1.3 floor and 64 MiB parser limits spawned IDLE and named
     ///   connections with a TLS 1.2 floor and *unbounded* limits, while `IMAPServer`'s
@@ -127,7 +136,8 @@ final class IMAPConnection: @unchecked Sendable {
         connectionID: String,
         connectionRole: String,
         responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit,
-        parserLimits: IMAPParserLimits
+        parserLimits: IMAPParserLimits,
+        minimumCommandTimeoutSeconds: Int
     ) {
         let lifetime = IMAPConnectionLifetime()
         self.lifetime = lifetime
@@ -139,6 +149,7 @@ final class IMAPConnection: @unchecked Sendable {
         self.minimumTLSVersion = minimumTLSVersion
         self.responseBufferLimit = responseBufferLimit
         self.parserLimits = parserLimits
+        self.minimumCommandTimeoutSeconds = minimumCommandTimeoutSeconds
         self.group = group
         self.connectionID = connectionID
         self.connectionRole = connectionRole
@@ -187,7 +198,8 @@ final class IMAPConnection: @unchecked Sendable {
         connectionRole: String,
         responseBufferLimit: Int = IMAPServer.defaultResponseBufferLimit,
         minimumTLSVersion: MailTLSMinimumVersion = .tlsv12,
-        parserLimits: IMAPParserLimits = .default
+        parserLimits: IMAPParserLimits = .default,
+        minimumCommandTimeoutSeconds: Int = 0
     ) {
         self.init(
             host: host,
@@ -202,7 +214,8 @@ final class IMAPConnection: @unchecked Sendable {
             connectionID: connectionID,
             connectionRole: connectionRole,
             responseBufferLimit: responseBufferLimit,
-            parserLimits: parserLimits
+            parserLimits: parserLimits,
+            minimumCommandTimeoutSeconds: minimumCommandTimeoutSeconds
         )
     }
 
