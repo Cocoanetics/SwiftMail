@@ -216,7 +216,8 @@ struct IMAPOperationCancellationTests {
         IMAPConnection(host: "127.0.0.1", port: server.port, transportSecurity: .plainText,
                        minimumTLSVersion: .tlsv12, group: group, loggerLabel: "test.cancel",
                        outboundLabel: "test.cancel.out", inboundLabel: "test.cancel.in",
-                       connectionID: "cancel", connectionRole: "test", parserLimits: .default, minimumCommandTimeoutSeconds: 0)
+                       connectionID: "cancel", connectionRole: "test", parserLimits: .default,
+                       minimumCommandTimeoutSeconds: 0)
     }
     #endif
 }

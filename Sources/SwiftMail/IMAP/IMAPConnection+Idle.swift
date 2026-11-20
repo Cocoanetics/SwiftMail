@@ -131,6 +131,7 @@ extension IMAPConnection {
         guard !handler.hasEnteredIdleState else { return }
 
         let pollIntervalNanos: UInt64 = 25_000_000 // 25ms
+        let timeout = max(timeoutSeconds, TimeInterval(minimumCommandTimeoutSeconds))
         let start = Date()
         while !handler.hasEnteredIdleState {
             try validateTransport(context)
@@ -138,7 +139,7 @@ extension IMAPConnection {
                 throw CancellationError()
             }
 
-            if Date().timeIntervalSince(start) >= timeoutSeconds {
+            if Date().timeIntervalSince(start) >= timeout {
                 throw IMAPError.timeout
             }
 
@@ -162,7 +163,7 @@ extension IMAPConnection {
             throw CancellationError()
         }
 
-        let timeout = max(timeoutSeconds, 0.1)
+        let timeout = max(timeoutSeconds, TimeInterval(minimumCommandTimeoutSeconds), 0.1)
         let timeoutMilliseconds = max(Int64(timeout * 1_000), 100)
         let (_, terminal) = lifetime.registerOperation(of: T.self, parent: operationToken)
         let timeoutTask = future.eventLoop.scheduleTask(in: .milliseconds(timeoutMilliseconds)) {

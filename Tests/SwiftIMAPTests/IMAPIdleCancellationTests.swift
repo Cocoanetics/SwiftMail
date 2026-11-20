@@ -142,7 +142,9 @@ struct IMAPIdleCancellationTests {
         }
     }
 
-    private func makeIdleHarness(group: MultiThreadedEventLoopGroup) async throws -> IdleHarness {
+    private func makeIdleHarness(
+        group: MultiThreadedEventLoopGroup, minimumCommandTimeoutSeconds: Int = 0
+    ) async throws -> IdleHarness {
         let connection = IMAPConnection(
             host: "localhost",
             port: 143,
@@ -157,7 +159,7 @@ struct IMAPIdleCancellationTests {
             connectionID: "test-idle-cancel",
             connectionRole: "test",
             parserLimits: .default,
-            minimumCommandTimeoutSeconds: 0
+            minimumCommandTimeoutSeconds: minimumCommandTimeoutSeconds
         )
         let channel = NIOAsyncTestingChannel()
         let address = try SocketAddress(ipAddress: "127.0.0.1", port: 143)
@@ -305,6 +307,47 @@ struct IMAPIdleCancellationTests {
 }
 
 extension IMAPIdleCancellationTests {
+    @Test(arguments: [false, true])
+    func minimumTimeoutPreservesIdleDuringSlowReplies(delayConfirmation: Bool) async throws {
+        let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
+
+        do {
+            let harness = try await makeIdleHarness(group: group, minimumCommandTimeoutSeconds: 2)
+            if delayConfirmation {
+                _ = try await harness.connection.idle()
+                _ = try await harness.channel.readOutbound(as: ByteBuffer.self)
+            } else {
+                try await enterIdle(connection: harness.connection, channel: harness.channel)
+            }
+
+            let doneTask = Task {
+                try await harness.connection.done(timeoutSeconds: 0.1)
+            }
+            defer { doneTask.cancel() }
+
+            if delayConfirmation {
+                try await Task.sleep(nanoseconds: 250_000_000)
+                let confirmation = harness.channel.allocator.buffer(string: "+ idling\r\n")
+                try await harness.channel.writeInbound(confirmation)
+            }
+            let doneLine = try await nextOutboundLine(from: harness.channel, timeoutNanoseconds: 1_000_000_000)
+            #expect(doneLine == "DONE\r\n")
+            try await Task.sleep(nanoseconds: 250_000_000)
+            let completion = harness.channel.allocator.buffer(string: "A001 OK IDLE terminated\r\n")
+            try await harness.channel.writeInbound(completion)
+            try await doneTask.value
+
+            #expect(harness.connection.channel === harness.channel)
+            #expect(harness.channel.isActive)
+            #expect(harness.connection.idleHandler == nil)
+            try await harness.connection.disconnect()
+            try await group.shutdownGracefully()
+        } catch {
+            try? await group.shutdownGracefully()
+            throw error
+        }
+    }
+
     @Test
     func disconnectFromAlreadyCancelledTaskStillClosesTransport() async throws {
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
