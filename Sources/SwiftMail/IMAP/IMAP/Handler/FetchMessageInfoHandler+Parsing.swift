@@ -5,6 +5,7 @@
 import Foundation
 @preconcurrency import NIOIMAP
 import NIOIMAPCore
+import NIOConcurrencyHelpers
 
 extension FetchMessageInfoHandler {
     static func shouldCollectThreadingHeaders(for kind: StreamingKind) -> Bool {
@@ -28,32 +29,20 @@ extension FetchMessageInfoHandler {
     /// parsing is used so corrupted dates surface as `nil` rather than silently
     /// rolling over into a different valid timestamp.
     static func parseEnvelopeDate(_ dateString: String) -> Date? {
-        // Strip trailing parenthetical comments such as " (UTC)"
-        var cleaned = dateString.replacingOccurrences(
-            of: "\\s*\\([^)]+\\)\\s*$",
-            with: "",
-            options: .regularExpression
-        )
+        // Strip trailing parenthetical comments such as " (UTC)". The regular
+        // expression only runs when there can be one to strip.
+        var cleaned = dateString
+        if dateString.last(where: { !$0.isWhitespace }) == ")" {
+            cleaned = dateString.replacingOccurrences(
+                of: "\\s*\\([^)]+\\)\\s*$",
+                with: "",
+                options: .regularExpression
+            )
+        }
         // Substitute named US time zones with their numeric offsets so `Z` can parse them.
         cleaned = normalizeNamedTimeZones(in: cleaned)
 
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-
-        let formats = [
-            "EEE, dd MMM yyyy HH:mm:ss Z",       // RFC 5322
-            "EEE, d MMM yyyy HH:mm:ss Z",        // single-digit day
-            "d MMM yyyy HH:mm:ss Z",             // no weekday
-            "dd MMM yyyy HH:mm:ss Z",            // no weekday, two-digit day
-            "EEE, dd MMM yy HH:mm:ss Z",         // two-digit year
-            "EEE, dd MMM yyyy HH:mm:ss",         // no timezone
-            "EEE, d MMM yyyy HH:mm:ss",
-            "d MMM yyyy HH:mm:ss",               // no weekday, no timezone
-            "dd MMM yyyy HH:mm:ss"
-        ]
-
-        if let date = parseEnvelopeDate(cleaned, formats: formats, formatter: formatter) {
+        if let date = envelopeDateFormatters.date(from: cleaned) {
             return date
         }
 
@@ -62,20 +51,22 @@ extension FetchMessageInfoHandler {
         // so out-of-range numeric fields still fail.
         let normalized = normalizeMonthAndWeekdayCase(cleaned)
         if normalized != cleaned {
-            return parseEnvelopeDate(normalized, formats: formats, formatter: formatter)
+            return envelopeDateFormatters.date(from: normalized)
         }
         return nil
     }
 
-    private static func parseEnvelopeDate(_ string: String, formats: [String], formatter: DateFormatter) -> Date? {
-        for format in formats {
-            formatter.dateFormat = format
-            if let date = formatter.date(from: string) {
-                return date
-            }
-        }
-        return nil
-    }
+    private static let envelopeDateFormatters = EnvelopeDateFormatters(formats: [
+        "EEE, dd MMM yyyy HH:mm:ss Z",       // RFC 5322
+        "EEE, d MMM yyyy HH:mm:ss Z",        // single-digit day
+        "d MMM yyyy HH:mm:ss Z",             // no weekday
+        "dd MMM yyyy HH:mm:ss Z",            // no weekday, two-digit day
+        "EEE, dd MMM yy HH:mm:ss Z",         // two-digit year
+        "EEE, dd MMM yyyy HH:mm:ss",         // no timezone
+        "EEE, d MMM yyyy HH:mm:ss",
+        "d MMM yyyy HH:mm:ss",               // no weekday, no timezone
+        "dd MMM yyyy HH:mm:ss"
+    ])
 
     private static let monthAbbreviations: Set<String> = [
         "jan", "feb", "mar", "apr", "may", "jun",
@@ -137,5 +128,38 @@ extension FetchMessageInfoHandler {
         let zone = String(input[input.index(after: lastSpaceIndex)...]).uppercased()
         guard let offset = namedZoneOffsets[zone] else { return input }
         return String(input[..<lastSpaceIndex]) + " " + offset
+    }
+}
+
+/// One `DateFormatter` per envelope date format, created once and tried in order.
+///
+/// Building a formatter or changing its `dateFormat` is expensive, and envelope dates
+/// are parsed once per message of every FETCH (#342). Each formatter keeps the format it
+/// was created with. `DateFormatter` is not documented as thread-safe on every platform
+/// Swift runs on, so all use goes through the lock.
+private final class EnvelopeDateFormatters: @unchecked Sendable {
+    private let formatters: [DateFormatter]
+    private let lock = NIOLock()
+
+    init(formats: [String]) {
+        formatters = formats.map { format in
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            formatter.dateFormat = format
+            return formatter
+        }
+    }
+
+    /// The date from the first format that parses `string`, or `nil` if none does.
+    func date(from string: String) -> Date? {
+        lock.withLock {
+            for formatter in formatters {
+                if let date = formatter.date(from: string) {
+                    return date
+                }
+            }
+            return nil
+        }
     }
 }

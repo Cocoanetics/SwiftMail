@@ -263,34 +263,10 @@ extension Array where Element == MessagePart {
 
     // MARK: - Envelope Helpers
 
-    /// Parse an RFC 5322 date from the IMAP envelope into a Date.
-    /// Uses the same format list as FetchMessageInfoHandler.
+    /// Parse an RFC 5322 date from the IMAP envelope into a Date, with the same
+    /// parser as top-level envelopes.
     private static func parseEnvelopeDate(_ date: InternetMessageDate?) -> Date? {
         guard let date else { return nil }
-        let dateString = String(date)
-        let cleanDateString = dateString.replacingOccurrences(
-            of: "\\s*\\([^)]+\\)\\s*$",
-            with: "",
-            options: .regularExpression
-        )
-
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-
-        let formats = [
-            "EEE, dd MMM yyyy HH:mm:ss Z",
-            "EEE, d MMM yyyy HH:mm:ss Z",
-            "d MMM yyyy HH:mm:ss Z",
-            "EEE, dd MMM yy HH:mm:ss Z"
-        ]
-
-        for format in formats {
-            formatter.dateFormat = format
-            if let parsed = formatter.date(from: cleanDateString) {
-                return parsed
-            }
-        }
-        return nil
+        return FetchMessageInfoHandler.parseEnvelopeDate(String(date))
     }
 }

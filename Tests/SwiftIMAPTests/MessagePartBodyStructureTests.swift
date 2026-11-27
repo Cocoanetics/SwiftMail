@@ -309,6 +309,19 @@ struct MessagePartBodyStructureTests {
         #expect(components.month == 10)
         #expect(components.day == 15)
     }
+
+    @Test
+    func embeddedMessageInfoEnvelopeDateUsesSharedParser() {
+        // Embedded envelopes go through the same parser as top-level ones, so the
+        // tolerated deviations (lowercase month, named zone, comment) apply here too.
+        let env = envelope(date: "tue, 15 oct 2024 09:30:00 PDT (Pacific)")
+        let structure = rfc822Singlepart(envelope: env, nestedBody: textPlainBody())
+        let parts = [MessagePart](structure)
+
+        let date = parts[0].embeddedMessageInfo?.date
+        #expect(date == FetchMessageInfoHandler.parseEnvelopeDate("Tue, 15 Oct 2024 16:30:00 +0000"))
+        #expect(date != nil)
+    }
 }
 
 // MARK: - RFC 2231 filenames
