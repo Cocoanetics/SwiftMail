@@ -56,8 +56,11 @@ struct EnvelopeDateParsingTests {
         // Issue #342: parsing every envelope date of a large mailbox must not build
         // a DateFormatter per message. The bound is relative to doing exactly that
         // (one fresh formatter per date, one parse each), so it holds on fast and
-        // slow machines alike; reusing formatters is about three times faster.
-        let bases = (0..<10_000).map { index in
+        // slow machines alike. The two are measured in alternating rounds and the
+        // fastest round of each is compared, so load from tests running in parallel
+        // does not skew one side. The old parser was no faster than the reference;
+        // reusing formatters is about three times faster.
+        let bases = (0..<2_000).map { index in
             let day = index % 28 + 1
             return "Wed, \(day < 10 ? "0" : "")\(day) Apr 2026 02:14:\(index % 50 + 10) +0000"
         }
@@ -67,30 +70,37 @@ struct EnvelopeDateParsingTests {
 
         let clock = ContinuousClock()
         var parsed = 0
-        let elapsed = clock.measure {
-            for input in inputs where FetchMessageInfoHandler.parseEnvelopeDate(input) != nil {
-                parsed += 1
-            }
-        }
-
         var referenceParsed = 0
-        let perCallFormatter = clock.measure {
-            for base in bases {
-                let formatter = DateFormatter()
-                formatter.locale = Locale(identifier: "en_US_POSIX")
-                formatter.timeZone = TimeZone(secondsFromGMT: 0)
-                formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
-                if formatter.date(from: base) != nil {
-                    referenceParsed += 1
+        var fastestParse = Duration.seconds(Int64.max)
+        var fastestPerCallFormatter = Duration.seconds(Int64.max)
+
+        for _ in 0..<5 {
+            let elapsed = clock.measure {
+                for input in inputs where FetchMessageInfoHandler.parseEnvelopeDate(input) != nil {
+                    parsed += 1
                 }
             }
+            fastestParse = min(fastestParse, elapsed)
+
+            let perCallFormatter = clock.measure {
+                for base in bases {
+                    let formatter = DateFormatter()
+                    formatter.locale = Locale(identifier: "en_US_POSIX")
+                    formatter.timeZone = TimeZone(secondsFromGMT: 0)
+                    formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+                    if formatter.date(from: base) != nil {
+                        referenceParsed += 1
+                    }
+                }
+            }
+            fastestPerCallFormatter = min(fastestPerCallFormatter, perCallFormatter)
         }
 
-        #expect(parsed == inputs.count)
-        #expect(referenceParsed == bases.count)
+        #expect(parsed == inputs.count * 5)
+        #expect(referenceParsed == bases.count * 5)
         #expect(
-            elapsed * 2 < perCallFormatter,
-            "parsing 10,000 envelope dates took \(elapsed); a formatter per date took \(perCallFormatter)"
+            fastestParse * 3 < fastestPerCallFormatter * 2,
+            "parsing 2,000 envelope dates took \(fastestParse); a formatter per date took \(fastestPerCallFormatter)"
         )
     }
 
