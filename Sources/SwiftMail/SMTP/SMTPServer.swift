@@ -298,7 +298,7 @@ public actor SMTPServer {
             } else if error is SMTPError {
                 throw error
             } else {
-                throw SMTPError.connectionFailed("Command failed: \(error.localizedDescription)")
+                throw SMTPError.connectionFailed("Command failed: \(error)")
             }
         }
     }
@@ -344,7 +344,7 @@ public actor SMTPServer {
         if let sslError = error as? NIOSSLError, case .uncleanShutdown = sslError {
             logger.notice("SSL unclean shutdown in SMTP channel (this is normal during disconnection)")
         } else {
-            logger.error("Error in SMTP channel: \(error.localizedDescription)")
+            logger.error("Error in SMTP channel: \(error)")
         }
 
         // Error handling is now done directly by the handlers

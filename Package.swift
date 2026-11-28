@@ -80,6 +80,7 @@ let package = Package(
             name: "SwiftMail",
             dependencies: [
                 .product(name: "NIO", package: "swift-nio"),
+                .product(name: "NIOTLS", package: "swift-nio"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "NIOIMAP", package: "swift-nio-imap"),

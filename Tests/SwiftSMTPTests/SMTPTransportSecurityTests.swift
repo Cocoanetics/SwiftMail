@@ -55,7 +55,7 @@ struct SMTPTransportSecurityTests {
             try await server.applyPostEHLOTLSPolicy(
                 transportMode: .startTLSRequired,
                 capabilities: ["STARTTLS"],
-                startTLSOverrideForTesting: {}
+                startTLSOverrideForTesting: { nil }
             )
         }
 

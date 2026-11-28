@@ -68,8 +68,12 @@ extension SMTPServer {
             // For EHLO responses, each line starts with a response code (e.g., "250-AUTH LOGIN PLAIN")
             let prefix = capabilityLine.prefix(4)
             if capabilityLine.count > 4 && (prefix.hasPrefix("250-") || prefix.hasPrefix("250 ")) {
-                // Extract the capability (after the response code)
-                let capabilityPart = capabilityLine.dropFirst(4).trimmingCharacters(in: .whitespaces)
+                // Extract the capability (after the response code). EHLO keywords
+                // must be recognized in any case (RFC 5321 section 4.1.1.1), so the
+                // keyword is kept in upper case; its parameters stay as sent.
+                let rawCapability = capabilityLine.dropFirst(4).trimmingCharacters(in: .whitespaces)
+                let keywordEnd = rawCapability.firstIndex(of: " ") ?? rawCapability.endIndex
+                let capabilityPart = rawCapability[..<keywordEnd].uppercased() + rawCapability[keywordEnd...]
 
                 // Special handling for AUTH capability which may list multiple methods
                 if capabilityPart.hasPrefix("AUTH ") {
@@ -80,7 +84,9 @@ extension SMTPServer {
                     let authMethods = capabilityPart.dropFirst(5).split(separator: " ")
 
                     for method in authMethods {
-                        let authMethod = "AUTH \(method)"
+                        // SASL mechanism names are upper case by definition (RFC 4422
+                        // section 3.1), so a lower-case spelling names the same mechanism.
+                        let authMethod = "AUTH \(method.uppercased())"
                         parsedCapabilities.append(authMethod)
                     }
                 } else {

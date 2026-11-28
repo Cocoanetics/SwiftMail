@@ -100,6 +100,18 @@ enum SMTPScriptAction {
     case silence
 }
 
+/// How the scripted server answers STARTTLS. Without one it answers 500, as for
+/// any command it does not know.
+enum SMTPStartTLSAnswer {
+    /// Refuse the upgrade with this reply line (CRLF appended).
+    case refuse(String)
+    /// Never answer, but keep the connection open and keep reading.
+    case silence
+    /// Accept with 220, wait for the client's first TLS bytes, answer them with
+    /// these raw bytes instead of a TLS handshake, then close once the client has.
+    case acceptThenAnswerHandshake([UInt8])
+}
+
 /// Per-command reply scripts. Each list is consumed one action per received
 /// command across the whole connection; the last action repeats once the list
 /// is exhausted, so single-element scripts describe a constant behavior.
@@ -110,6 +122,7 @@ struct SMTPServerScript {
     var onRcptTo: [SMTPScriptAction] = [.reply("250 OK")]
     var onData: [SMTPScriptAction] = [.reply("354 End data with <CRLF>.<CRLF>")]
     var onContent: [SMTPScriptAction] = [.reply("250 2.0.0 OK queued as TEST42")]
+    var startTLSAnswer: SMTPStartTLSAnswer?
     var contentReadGate: SMTPTestContentReadGate?
     var contentReadDelay: TimeInterval = 0
     var receiveBufferBytes: Int32?
@@ -309,12 +322,9 @@ final class SMTPTestServer {
         acceptSource?.cancel()
         acceptSource = nil
 
-        let activeClientFds = markStoppingAndSnapshotClientFds()
-        for fileDescriptor in activeClientFds {
-            shutdown(fileDescriptor, Int32(SHUT_RDWR))
-        }
+        let hadActiveClients = markStoppingAndShutDownClients()
 
-        if !activeClientFds.isEmpty {
+        if hadActiveClients {
             await awaitClientDrain(timeoutSeconds: 2)
         }
 
@@ -369,6 +379,12 @@ final class SMTPTestServer {
             }
         }
         guard clientFd >= 0 else { return }
+        // A write after the client or `stop()` closed the socket fails with EPIPE
+        // instead of raising SIGPIPE in the test host (Linux sends pass MSG_NOSIGNAL).
+        #if os(macOS)
+            var noSigPipe: Int32 = 1
+            setsockopt(clientFd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+        #endif
         guard registerClient(fd: clientFd) else {
             close(clientFd)
             return
@@ -504,6 +520,10 @@ final class SMTPTestServer {
             return .keepGoing
         }
 
+        if upper == "STARTTLS", let answer = script.startTLSAnswer {
+            return answerStartTLS(answer, fd: fileDescriptor)
+        }
+
         if upper.hasPrefix("MAIL FROM") {
             return apply(nextMailFromAction(), fd: fileDescriptor)
         }
@@ -537,6 +557,32 @@ final class SMTPTestServer {
 
         sendLine(fd: fileDescriptor, "500 Unrecognized command\r\n")
         return .keepGoing
+    }
+
+    private func answerStartTLS(_ answer: SMTPStartTLSAnswer, fd fileDescriptor: Int32) -> CommandOutcome {
+        switch answer {
+            case .refuse(let line):
+                sendLine(fd: fileDescriptor, line + "\r\n")
+                return .keepGoing
+            case .silence:
+                return .keepGoing
+            case .acceptThenAnswerHandshake(let bytes):
+                sendLine(fd: fileDescriptor, "220 2.0.0 Ready to start TLS\r\n")
+                let readBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: 65536)
+                defer { readBuf.deallocate() }
+                // The client's first TLS bytes, then the scripted answer.
+                guard read(fileDescriptor, readBuf, 65536) > 0 else { return .closeConnection }
+                bytes.withUnsafeBytes { buf in
+                    guard let ptr = buf.baseAddress else { return }
+                    _ = sendBytes(fd: fileDescriptor, ptr, buf.count)
+                }
+                // Half-close and wait for the client to hang up, so unread
+                // client bytes never turn the close into a reset that could
+                // discard the answer before the client reads it.
+                shutdown(fileDescriptor, SHUT_WR)
+                while read(fileDescriptor, readBuf, 65536) > 0 {}
+                return .closeConnection
+        }
     }
 
     private func apply(_ action: SMTPScriptAction, fd fileDescriptor: Int32) -> CommandOutcome {
@@ -582,12 +628,18 @@ final class SMTPTestServer {
         return true
     }
 
-    private func markStoppingAndSnapshotClientFds() -> [Int32] {
+    /// Shuts the tracked sockets down under the lock: a worker removes its
+    /// descriptor under the same lock before closing it, so a number shut down
+    /// here is never one already closed and reused elsewhere.
+    private func markStoppingAndShutDownClients() -> Bool {
         clientFdsLock.lock()
         defer { clientFdsLock.unlock() }
 
         isStopping = true
-        return Array(clientFds)
+        for fileDescriptor in clientFds {
+            shutdown(fileDescriptor, Int32(SHUT_RDWR))
+        }
+        return !clientFds.isEmpty
     }
 
     private func drainClientFds() -> [Int32] {
@@ -609,13 +661,21 @@ final class SMTPTestServer {
         }
     }
 
+    private func sendBytes(fd fileDescriptor: Int32, _ bytes: UnsafeRawPointer, _ count: Int) -> Int {
+        #if os(Linux)
+            return send(fileDescriptor, bytes, count, Int32(MSG_NOSIGNAL))
+        #else
+            return write(fileDescriptor, bytes, count)
+        #endif
+    }
+
     private func sendLine(fd fileDescriptor: Int32, _ text: String) {
         let data = Data(text.utf8)
         data.withUnsafeBytes { buf in
             guard let ptr = buf.baseAddress else { return }
             var sent = 0
             while sent < data.count {
-                let bytesWritten = write(fileDescriptor, ptr + sent, data.count - sent)
+                let bytesWritten = sendBytes(fd: fileDescriptor, ptr + sent, data.count - sent)
                 if bytesWritten <= 0 { return }
                 sent += bytesWritten
             }
