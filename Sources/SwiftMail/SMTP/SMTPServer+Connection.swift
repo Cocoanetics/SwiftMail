@@ -184,7 +184,7 @@ extension SMTPServer {
     func applyPostEHLOTLSPolicy(
         transportMode: SMTPTransportMode,
         capabilities: [String],
-        startTLSOverrideForTesting: (@Sendable () async throws -> Void)? = nil
+        startTLSOverrideForTesting: (@Sendable () async throws -> TLSHandshakeErrorRecorder?)? = nil
     ) async throws {
         let permit = try await operationGate.acquire()
         defer { operationGate.release(permit) }
@@ -200,7 +200,7 @@ extension SMTPServer {
         transportMode: SMTPTransportMode,
         capabilities: [String],
         holding permit: SMTPOperationGate.Permit,
-        startTLSOverrideForTesting: (@Sendable () async throws -> Void)? = nil
+        startTLSOverrideForTesting: (@Sendable () async throws -> TLSHandshakeErrorRecorder?)? = nil
     ) async throws {
         if Self.requiresMissingSTARTTLSError(
             transportMode: transportMode,
@@ -217,11 +217,12 @@ extension SMTPServer {
             transportMode: transportMode,
             capabilities: capabilities
         ) {
+            var handshake: TLSHandshakeErrorRecorder?
             do {
                 if let startTLSOverrideForTesting {
-                    try await startTLSOverrideForTesting()
+                    handshake = try await startTLSOverrideForTesting()
                 } else {
-                    try await startTLS(holding: permit)
+                    handshake = try await startTLS(holding: permit)
                 }
 
                 // RFC 3207 resets the SMTP protocol state after STARTTLS. Use
@@ -232,55 +233,23 @@ extension SMTPServer {
                 await closeAndClearChannel(holding: permit)
                 throw error
             } catch {
-                let failureMessage = "STARTTLS failed for \(host):\(port): \(error.localizedDescription). "
+                // A failed handshake surfaces only as a closed channel under the
+                // EHLO that follows it; report the handshake's own error instead.
+                // Once the handshake completed nothing is recorded, so the
+                // command's own error stands.
+                var cause = await handshake?.recordedError() ?? error
+                // A socket error is the connection failing, not TLS deciding
+                // anything: report it as one while its type is still known.
+                if let socketError = cause as? IOError {
+                    cause = SMTPError.connectionFailed("\(socketError)")
+                }
+                let failureMessage = "STARTTLS failed for \(host):\(port): \(cause). "
                     + "Cannot continue without encryption."
                 logger.error("\(failureMessage)")
                 await closeAndClearChannel(holding: permit)
-                throw SMTPError.tlsFailed("STARTTLS upgrade failed: \(error.localizedDescription)")
+                throw SMTPError.tlsFailed("STARTTLS upgrade failed: \(cause)")
             }
         }
-    }
-
-    static func resolveTransportMode(
-        port: Int,
-        transportSecurity: MailTransportSecurity
-    ) -> SMTPTransportMode {
-        switch transportSecurity {
-            case .automatic:
-                switch port {
-                    case 465:
-                        return .implicitTLS
-                    case 587:
-                        return .startTLSIfAvailable
-                    default:
-                        return .plainText
-                }
-            case .implicitTLS:
-                return .implicitTLS
-            case .startTLS:
-                return .startTLSRequired
-            case .plainText:
-                return .plainText
-        }
-    }
-
-    static func requiresSTARTTLSUpgrade(
-        transportMode: SMTPTransportMode,
-        capabilities: [String]
-    ) -> Bool {
-        switch transportMode {
-            case .startTLSIfAvailable, .startTLSRequired:
-                return capabilities.contains("STARTTLS")
-            case .implicitTLS, .plainText:
-                return false
-        }
-    }
-
-    static func requiresMissingSTARTTLSError(
-        transportMode: SMTPTransportMode,
-        capabilities: [String]
-    ) -> Bool {
-        transportMode == .startTLSRequired && !capabilities.contains("STARTTLS")
     }
 
     var hasChannelForTesting: Bool {
@@ -351,10 +320,11 @@ extension SMTPServer {
      - Throws:
        - `SMTPError.tlsFailed` if TLS negotiation fails
        - `SMTPError.commandFailed` if STARTTLS command fails
-       - `SMTPError.connectionFailed` if not connected
+       - `SMTPError.connectionFailed` if not connected, or if the connection closed before the handshake began
+     - Returns: The recorder installed after the TLS handler, which keeps a failed handshake's error
      - Note: Logs TLS upgrade attempts at info level
      */
-    private func startTLS(holding permit: SMTPOperationGate.Permit) async throws {
+    private func startTLS(holding permit: SMTPOperationGate.Permit) async throws -> TLSHandshakeErrorRecorder {
         // Send STARTTLS command using the modernized command approach
         let command = StartTLSCommand()
         let success = try await executeCommand(
@@ -383,15 +353,26 @@ extension SMTPServer {
         let finalTlsConfig = tlsConfig
         let host = self.host
 
-        // Add SSL handler to the pipeline using EventLoop submission to ensure correct thread
-        try await channel.eventLoop.submit {
-            let sslContext = try NIOSSLContext(configuration: finalTlsConfig)
-            let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
-            let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: serverHostname)
-            try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
-        }.get()
+        // Add SSL handler to the pipeline using EventLoop submission to ensure correct thread.
+        // Adding the TLS handler starts the handshake, which can fail at once, so the
+        // recorder goes in first and the TLS handler then goes in front of it.
+        let handshake = TLSHandshakeErrorRecorder(eventLoop: channel.eventLoop)
+        do {
+            try await channel.eventLoop.submit {
+                let sslContext = try NIOSSLContext(configuration: finalTlsConfig)
+                let serverHostname = MailTLSConfiguration.serverHostnameForTLSHandler(host: host)
+                let sslHandler = try NIOSSLClientHandler(context: sslContext, serverHostname: serverHostname)
+                try channel.pipeline.syncOperations.addHandler(handshake, position: .first)
+                try channel.pipeline.syncOperations.addHandler(sslHandler, position: .first)
+            }.get()
+        } catch ChannelError.ioOnClosedChannel {
+            // The connection closed after the server accepted STARTTLS and before the
+            // handshake began, so TLS decided nothing: report the closed connection.
+            throw SMTPError.connectionFailed("Connection closed before the TLS handshake started")
+        }
 
         // Set TLS flag
         isTLSEnabled = true
+        return handshake
     }
 }
